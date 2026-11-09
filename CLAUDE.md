@@ -23,6 +23,21 @@ change a decision, propose a new ADR. Never edit an accepted one.
 - **Documentation language.** Everything committed is written in English. The
   conversation with the maintainer may be in Turkish.
 
+## Commands
+
+- **`pnpm install`** installs dependencies and links the workspace packages.
+  `pnpm add -w` alone doesn't link them.
+- **`pnpm check`** runs everything CI runs: format check, type check (which
+  also builds), lint with the layer check, and tests. CI runs it on Node.js 24
+  and 26.
+- **Single steps:** `pnpm build`, `pnpm typecheck`, `pnpm lint`, `pnpm test`,
+  `pnpm format`.
+- **Markdown is hand-formatted.** Prettier skips `*.md`, so accepted ADRs are
+  never rewritten.
+- **Empty entry points carry an `oxlint-disable unicorn/no-empty-file`
+  directive.** The first real export makes it an unused-directive error.
+  Remove the directive at that point.
+
 ## Layer rules
 
 | Layer | May depend on |

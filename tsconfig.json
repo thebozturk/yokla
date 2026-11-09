@@ -1,0 +1,29 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/core"
+    },
+    {
+      "path": "./packages/runtime"
+    },
+    {
+      "path": "./packages/report"
+    },
+    {
+      "path": "./packs/ecommerce"
+    },
+    {
+      "path": "./packs/lang-tr"
+    },
+    {
+      "path": "./packs/lang-en"
+    },
+    {
+      "path": "./packages/cli"
+    },
+    {
+      "path": "./examples/demo-shop"
+    }
+  ]
+}

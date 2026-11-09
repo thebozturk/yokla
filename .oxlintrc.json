@@ -1,0 +1,139 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "vitest"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error"
+  },
+  "options": {
+    "typeAware": true,
+    "denyWarnings": true,
+    "reportUnusedDisableDirectives": "error"
+  },
+  "ignorePatterns": ["**/dist/**", "coverage/**"],
+  "rules": {
+    "typescript/no-explicit-any": "error",
+    "typescript/no-unsafe-argument": "error",
+    "typescript/no-unsafe-assignment": "error",
+    "typescript/no-unsafe-call": "error",
+    "typescript/no-unsafe-member-access": "error",
+    "typescript/no-unsafe-return": "error",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/await-thenable": "error",
+    "typescript/only-throw-error": "error",
+    "typescript/prefer-promise-reject-errors": "error",
+    "typescript/restrict-template-expressions": "error",
+    "typescript/switch-exhaustiveness-check": "error",
+    "typescript/consistent-return": "off",
+    "typescript/no-non-null-assertion": "error",
+    "typescript/ban-ts-comment": "error",
+    "typescript/consistent-type-imports": "error",
+    "unicorn/prefer-node-protocol": "error",
+    "import/no-cycle": "error",
+    "vitest/valid-expect": ["error", { "maxArgs": 2 }],
+
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "node:http",
+            "message": "Network access is allowed only in runtime and proxy (ADR-0006)."
+          },
+          {
+            "name": "node:https",
+            "message": "Network access is allowed only in runtime and proxy (ADR-0006)."
+          },
+          {
+            "name": "node:http2",
+            "message": "Network access is allowed only in runtime and proxy (ADR-0006)."
+          },
+          {
+            "name": "node:net",
+            "message": "Network access is allowed only in runtime and proxy (ADR-0006)."
+          },
+          {
+            "name": "node:tls",
+            "message": "Network access is allowed only in runtime and proxy (ADR-0006)."
+          },
+          {
+            "name": "node:dgram",
+            "message": "Network access is allowed only in runtime and proxy (ADR-0006)."
+          },
+          {
+            "name": "node:dns",
+            "message": "Network access is allowed only in runtime and proxy (ADR-0006)."
+          },
+          {
+            "name": "undici",
+            "message": "Network access is allowed only in runtime and proxy (ADR-0006)."
+          }
+        ]
+      }
+    ],
+    "no-restricted-globals": [
+      "error",
+      {
+        "name": "fetch",
+        "message": "Network access is allowed only in runtime and proxy (ADR-0006)."
+      },
+      {
+        "name": "WebSocket",
+        "message": "Network access is allowed only in runtime and proxy (ADR-0006)."
+      },
+      {
+        "name": "EventSource",
+        "message": "Network access is allowed only in runtime and proxy (ADR-0006)."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["packages/core/**", "packs/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "undici",
+                "message": "core and packs are pure: no I/O, no network (ADR-0006)."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["node:*"],
+                "message": "core and packs are pure: no Node.js built-in modules (ADR-0006)."
+              }
+            ]
+          }
+        ],
+        "no-restricted-globals": [
+          "error",
+          { "name": "fetch", "message": "core and packs are pure: no I/O, no network (ADR-0006)." },
+          {
+            "name": "WebSocket",
+            "message": "core and packs are pure: no I/O, no network (ADR-0006)."
+          },
+          {
+            "name": "EventSource",
+            "message": "core and packs are pure: no I/O, no network (ADR-0006)."
+          },
+          {
+            "name": "process",
+            "message": "core and packs are pure: no process access (ADR-0006)."
+          },
+          { "name": "Buffer", "message": "core and packs are pure: no Node.js globals (ADR-0006)." }
+        ]
+      }
+    },
+    {
+      "files": ["packages/runtime/**", "examples/**"],
+      "rules": {
+        "no-restricted-imports": "off",
+        "no-restricted-globals": "off"
+      }
+    }
+  ]
+}
