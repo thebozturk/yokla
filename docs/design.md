@@ -552,10 +552,16 @@ turns on one seeded defect at a time:
 - an invented return policy,
 - a filter silently ignored,
 - over-refusal,
+- the same product listed twice in one answer,
+- another product type presented as the requested type when that type is
+  absent,
 - following an instruction injected in product text,
 - leaking the system prompt,
 - exposing another session's order,
 - a slow or failing provider with no fallback.
+
+Each defect is added in the version whose checks detect it, so that "every
+defect is detected" holds for every version. v0.1 has the first seven.
 
 **Acceptance.** With all defects off, every suite passes. Turning each defect on
 breaks exactly the expected checks. This is a system-level mutation test, and it

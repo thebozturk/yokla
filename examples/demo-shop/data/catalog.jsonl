@@ -1,0 +1,41 @@
+{"id":"TNT-001","category_path":"outdoor/camping/tent","name_tr":"Kubbe Çadır 2 Kişilik","name_en":"Dome Tent, 2-Person","price":2499.9,"currency":"TRY","stock":12,"color":"green"}
+{"id":"TNT-002","category_path":"outdoor/camping/tent","name_tr":"Ultra Hafif Çadır 1 Kişilik","name_en":"Ultralight Tent, 1-Person","price":4250,"currency":"TRY","stock":null,"color":"grey"}
+{"id":"TNT-003","category_path":"outdoor/camping/tent","name_tr":"Aile Çadırı 4 Kişilik","name_en":"Family Tent, 4-Person","price":5899.9,"currency":"TRY","stock":3,"color":"blue"}
+{"id":"TNT-004","category_path":"outdoor/camping/tent","name_tr":"Plaj Çadırı","name_en":"Beach Shelter","price":899.5,"currency":"TRY","stock":0,"color":"orange"}
+{"id":"TNT-005","category_path":"outdoor/camping/tent","name_tr":"Dört Mevsim Çadır 3 Kişilik","name_en":"Four-Season Tent, 3-Person","price":12750,"currency":"TRY","stock":2,"color":"red"}
+{"id":"SLB-001","category_path":"outdoor/camping/sleeping-bag","name_tr":"Yaz Uyku Tulumu +15°C","name_en":"Summer Sleeping Bag +15°C","price":749.9,"currency":"TRY","stock":20}
+{"id":"SLB-002","category_path":"outdoor/camping/sleeping-bag","name_tr":"Üç Mevsim Uyku Tulumu 0°C","name_en":"Three-Season Sleeping Bag 0°C","price":1849,"currency":"TRY","stock":null}
+{"id":"SLB-003","category_path":"outdoor/camping/sleeping-bag","name_tr":"Kış Uyku Tulumu -10°C","name_en":"Winter Sleeping Bag -10°C","price":3299.9,"currency":"TRY","stock":4}
+{"id":"SLB-004","category_path":"outdoor/camping/sleeping-bag","name_tr":"Kaz Tüyü Uyku Tulumu -20°C","name_en":"Down Sleeping Bag -20°C","price":8990,"currency":"TRY","stock":0}
+{"id":"BPK-001","category_path":"outdoor/bags/backpack","name_tr":"Günlük Sırt Çantası 20 L","name_en":"Daypack 20 L","price":649.9,"currency":"TRY","stock":30,"color":"black"}
+{"id":"BPK-002","category_path":"outdoor/bags/backpack","name_tr":"Yürüyüş Çantası 35 L","name_en":"Hiking Pack 35 L","price":1499.9,"currency":"TRY","stock":null,"color":"blue"}
+{"id":"BPK-003","category_path":"outdoor/bags/backpack","name_tr":"Trekking Çantası 50 L","name_en":"Trekking Pack 50 L","price":2799,"currency":"TRY","stock":6,"color":"green"}
+{"id":"BPK-004","category_path":"outdoor/bags/backpack","name_tr":"Sefer Çantası 70 L","name_en":"Expedition Pack 70 L","price":4499.9,"currency":"TRY","stock":1,"color":"red"}
+{"id":"BPK-005","category_path":"outdoor/bags/backpack","name_tr":"Hidrasyon Çantası 10 L","name_en":"Hydration Pack 10 L","price":899.9,"currency":"TRY","stock":0,"color":"black"}
+{"id":"JKT-001","category_path":"outdoor/clothing/jacket","name_tr":"Kadın Rüzgarlık","name_en":"Women's Windbreaker","price":899.9,"currency":"TRY","stock":15,"size":"S","color":"blue","gender":"women"}
+{"id":"JKT-002","category_path":"outdoor/clothing/jacket","name_tr":"Erkek Rüzgarlık","name_en":"Men's Windbreaker","price":899.9,"currency":"TRY","stock":null,"size":"L","color":"blue","gender":"men"}
+{"id":"JKT-003","category_path":"outdoor/clothing/jacket","name_tr":"Kadın Polar Ceket","name_en":"Women's Fleece Jacket","price":1199.9,"currency":"TRY","stock":8,"size":"M","color":"grey","gender":"women"}
+{"id":"JKT-004","category_path":"outdoor/clothing/jacket","name_tr":"Erkek Polar Ceket","name_en":"Men's Fleece Jacket","price":1199.9,"currency":"TRY","stock":0,"size":"XL","color":"black","gender":"men"}
+{"id":"JKT-005","category_path":"outdoor/clothing/jacket","name_tr":"Kadın Yağmurluk","name_en":"Women's Rain Jacket","price":2299,"currency":"TRY","stock":null,"size":"M","color":"red","gender":"women"}
+{"id":"JKT-006","category_path":"outdoor/clothing/jacket","name_tr":"Erkek Yağmurluk","name_en":"Men's Rain Jacket","price":2299,"currency":"TRY","stock":5,"size":"L","color":"green","gender":"men"}
+{"id":"JKT-007","category_path":"outdoor/clothing/jacket","name_tr":"Kadın Kaz Tüyü Mont","name_en":"Women's Down Jacket","price":4799.9,"currency":"TRY","stock":2,"size":"S","color":"black","gender":"women"}
+{"id":"JKT-008","category_path":"outdoor/clothing/jacket","name_tr":"Erkek Kaz Tüyü Mont","name_en":"Men's Down Jacket","price":4999.9,"currency":"TRY","stock":7,"size":"L","color":"black","gender":"men"}
+{"id":"FTW-001","category_path":"outdoor/clothing/footwear","name_tr":"Kadın Yürüyüş Ayakkabısı","name_en":"Women's Hiking Shoe","price":1899.9,"currency":"TRY","stock":10,"size":"38","color":"grey","gender":"women"}
+{"id":"FTW-002","category_path":"outdoor/clothing/footwear","name_tr":"Erkek Yürüyüş Ayakkabısı","name_en":"Men's Hiking Shoe","price":1899.9,"currency":"TRY","stock":null,"size":"43","color":"grey","gender":"men"}
+{"id":"FTW-003","category_path":"outdoor/clothing/footwear","name_tr":"Kadın Su Geçirmez Bot","name_en":"Women's Waterproof Boot","price":3299.9,"currency":"TRY","stock":4,"size":"39","color":"black","gender":"women"}
+{"id":"FTW-004","category_path":"outdoor/clothing/footwear","name_tr":"Erkek Su Geçirmez Bot","name_en":"Men's Waterproof Boot","price":3299.9,"currency":"TRY","stock":0,"size":"44","color":"black","gender":"men"}
+{"id":"FTW-005","category_path":"outdoor/clothing/footwear","name_tr":"Kadın Patika Koşu Ayakkabısı","name_en":"Women's Trail Running Shoe","price":2499.5,"currency":"TRY","stock":6,"size":"37","color":"blue","gender":"women"}
+{"id":"FTW-006","category_path":"outdoor/clothing/footwear","name_tr":"Erkek Patika Koşu Ayakkabısı","name_en":"Men's Trail Running Shoe","price":2499.5,"currency":"TRY","stock":9,"size":"42","color":"orange","gender":"men"}
+{"id":"FTW-007","category_path":"outdoor/clothing/footwear","name_tr":"Erkek Dağcılık Botu","name_en":"Men's Mountaineering Boot","price":6750,"currency":"TRY","stock":1,"size":"45","color":"red","gender":"men"}
+{"id":"FTW-008","category_path":"outdoor/clothing/footwear","name_tr":"Kadın Dağcılık Botu","name_en":"Women's Mountaineering Boot","price":6750,"currency":"TRY","stock":null,"size":"40","color":"red","gender":"women"}
+{"id":"HLP-001","category_path":"outdoor/lighting/headlamp","name_tr":"Kafa Lambası 200 Lümen","name_en":"Headlamp 200 lm","price":349.9,"currency":"TRY","stock":40}
+{"id":"HLP-002","category_path":"outdoor/lighting/headlamp","name_tr":"Şarjlı Kafa Lambası 400 Lümen","name_en":"Rechargeable Headlamp 400 lm","price":699,"currency":"TRY","stock":null}
+{"id":"HLP-003","category_path":"outdoor/lighting/headlamp","name_tr":"Kafa Lambası 1000 Lümen","name_en":"Headlamp 1000 lm","price":1449.9,"currency":"TRY","stock":0}
+{"id":"WTB-001","category_path":"outdoor/hydration/water-bottle","name_tr":"Alüminyum Matara 750 ml","name_en":"Aluminium Water Bottle 750 ml","price":279.9,"currency":"TRY","stock":50}
+{"id":"WTB-002","category_path":"outdoor/hydration/water-bottle","name_tr":"Çelik Termos Matara 1 L","name_en":"Steel Insulated Water Bottle 1 L","price":549.9,"currency":"TRY","stock":null}
+{"id":"WTB-003","category_path":"outdoor/hydration/water-bottle","name_tr":"Katlanabilir Matara 500 ml","name_en":"Collapsible Water Bottle 500 ml","price":199.9,"currency":"TRY","stock":12}
+{"id":"STV-001","category_path":"outdoor/camping/camping-stove","name_tr":"Kartuşlu Kamp Ocağı","name_en":"Canister Camping Stove","price":799.9,"currency":"TRY","stock":9}
+{"id":"STV-002","category_path":"outdoor/camping/camping-stove","name_tr":"Rüzgar Korumalı Kamp Ocağı","name_en":"Windproof Camping Stove","price":1599,"currency":"TRY","stock":null}
+{"id":"STV-003","category_path":"outdoor/camping/camping-stove","name_tr":"Çok Yakıtlı Kamp Ocağı","name_en":"Multi-Fuel Camping Stove","price":3899.9,"currency":"TRY","stock":0}
+{"id":"TRP-001","category_path":"outdoor/hiking/trekking-pole","name_tr":"Alüminyum Baton (Çift)","name_en":"Aluminium Trekking Poles (Pair)","price":999.9,"currency":"TRY","stock":14}
+{"id":"TRP-002","category_path":"outdoor/hiking/trekking-pole","name_tr":"Karbon Baton (Çift)","name_en":"Carbon Trekking Poles (Pair)","price":2199.9,"currency":"TRY","stock":null}
