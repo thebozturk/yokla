@@ -5,6 +5,9 @@
   "description": "Reference assistant with seeded defects, used to test yokla (design §19).",
   "license": "Apache-2.0",
   "type": "module",
+  "scripts": {
+    "start": "node src/main.ts"
+  },
   "engines": {
     "node": ">=24"
   }
