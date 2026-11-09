@@ -152,7 +152,8 @@ yokla uses models in two distinct roles, and the design keeps them apart:
 | `report`, `interop-*` | `core` | |
 | `cli` | everything | nothing depends on `cli` |
 
-These rules are enforced by a lint rule from the first commit. Keeping layer
+These rules are enforced from the first commit by a manifest check and lint
+rules ([ADR-0006](adr/0006-tooling-and-repository-layout.md)). Keeping layer
 rules is cheaper than restoring them later.
 
 ### Repository layout (pnpm workspace)
@@ -606,9 +607,12 @@ languages, SDK adapters.
 
 ## 22. Open questions
 
-1. **Monorepo tooling:** plain pnpm workspaces, or with a task runner? Decide
-   by ADR when scaffolding.
-2. **Config format:** YAML for people, validated by JSON Schema (likely).
+1. ~~**Monorepo tooling.**~~ Decided in
+   [ADR-0006](adr/0006-tooling-and-repository-layout.md): plain pnpm
+   workspaces with TypeScript project references, no task runner.
+2. ~~**Config format.**~~ Decided in
+   [ADR-0006](adr/0006-tooling-and-repository-layout.md): YAML 1.2, with JSON
+   accepted, validated by schemas generated from Zod.
 3. **Results schema:** extend another tool's results format, or only map to it?
 4. **Default attacker and judge model:** none (the user must choose), or a
    recommended local model?
