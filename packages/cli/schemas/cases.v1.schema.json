@@ -1,0 +1,228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "number",
+      "const": 1
+    },
+    "cases": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "suite": {
+            "type": "string",
+            "enum": [
+              "quality",
+              "factual",
+              "redteam",
+              "robustness",
+              "perf",
+              "resilience"
+            ]
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "tr",
+              "en"
+            ]
+          },
+          "turns": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "user": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "expect": {
+                  "description": "Expectations for the response to this turn.",
+                  "type": "object",
+                  "properties": {
+                    "filters": {
+                      "type": "object",
+                      "properties": {
+                        "maxPrice": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "minPrice": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "attributes": {
+                          "description": "Evidence field name → required value.",
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string",
+                            "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+                          },
+                          "additionalProperties": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      },
+                      "additionalProperties": false,
+                      "description": "The filters the user asked for."
+                    },
+                    "absentType": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "The requested product type is absent from the catalog."
+                    },
+                    "answerable": {
+                      "type": "boolean",
+                      "description": "The request is answerable; a refusal is over-refusal."
+                    },
+                    "policyTopic": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$",
+                      "description": "The turn asks about this policy."
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "user"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "samples": {
+            "description": "Defaults per suite (design §11).",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "checks": {
+            "description": "Run only these checks. By default every applicable check runs.",
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+            }
+          },
+          "knownGap": {
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "issue": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "reason"
+            ],
+            "additionalProperties": false
+          },
+          "tags": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+            }
+          },
+          "provenance": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "const": "human"
+                  },
+                  "evidence": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "status": {
+                    "default": "approved",
+                    "type": "string",
+                    "enum": [
+                      "proposed",
+                      "approved",
+                      "rejected"
+                    ]
+                  }
+                },
+                "required": [
+                  "source"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "doc",
+                      "prompt",
+                      "contract",
+                      "data",
+                      "code",
+                      "probe",
+                      "import"
+                    ]
+                  },
+                  "evidence": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "proposed",
+                      "approved",
+                      "rejected"
+                    ]
+                  }
+                },
+                "required": [
+                  "source",
+                  "evidence",
+                  "status"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "suite",
+          "language",
+          "turns"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "version",
+    "cases"
+  ],
+  "additionalProperties": false,
+  "title": "yokla cases v1"
+}

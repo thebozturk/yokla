@@ -1,2 +1,3 @@
-/* oxlint-disable unicorn/no-empty-file -- placeholder; remove with the first export */
-// Public API of @yokla/pack-lang-tr.
+import type { LanguagePack } from '@yokla/core';
+
+export const turkish: LanguagePack = { language: 'tr' };

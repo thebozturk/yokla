@@ -1,0 +1,81 @@
+# yaml-language-server: $schema=../../packages/cli/schemas/profile.v1.schema.json
+#
+# The hand-written profile of the demo-shop (design §20, v0.1 exit criteria).
+# The v0.3 analyzer is measured against the approved entries of this file.
+
+version: 1
+
+target:
+  name: demo-shop
+  adapter: http
+  request:
+    url: http://127.0.0.1:3000/v1/chat
+    method: POST
+    headers:
+      content-type: application/json
+    body:
+      message: '{{message}}'
+      sessionId: '{{session}}'
+  response:
+    text: $.data.answer
+    route: $.data.metadata.route
+    evidence:
+      products:
+        items: $.data.products[*]
+        fields:
+          id: id
+          name: name
+          category: category
+          price: price.amount
+          currency: price.currency
+          stock: stockQuantity # null means unknown, not zero
+          size: attributes.size
+          color: attributes.color
+          gender: attributes.gender
+  session:
+    mode: client
+  limits:
+    burstPerSecond: 3
+    perMinute: 120
+  cacheBypass:
+    kind: header
+    name: x-cache-bypass
+    value: '1'
+
+languages: [tr, en]
+domain: ecommerce
+
+capabilities:
+  - id: product-search
+    description: Lists the cheapest products of a type, with price, size, colour and gender filters.
+    provenance:
+      source: doc
+      evidence: examples/demo-shop/README.md#behaviour-without-defects
+      status: approved
+  - id: return-policy
+    description: Answers return questions from the FAQ.
+    provenance:
+      source: data
+      evidence: examples/demo-shop/data/faq.jsonl
+      status: approved
+
+refusal:
+  canonical:
+    tr: [Bu konuda yardımcı olamıyorum.]
+    en: ["I can't help with that."]
+
+ecommerce:
+  neverFabricate: [price, stock, shipping, returns, warranty]
+  policies:
+    returns: { source: faq, path: ./data/faq.jsonl }
+    shipping: { source: none }
+    warranty: { source: none }
+  catalog:
+    kind: file
+    path: ./data/catalog.jsonl
+    fields:
+      id: id
+      type: category_path
+      price: price
+      currency: currency
+      stock: stock
