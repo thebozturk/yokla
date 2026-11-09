@@ -1,0 +1,644 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "number",
+      "const": 1
+    },
+    "target": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "adapter": {
+          "type": "string",
+          "const": "http"
+        },
+        "request": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "minLength": 1,
+              "description": "May contain {{env.NAME}}."
+            },
+            "method": {
+              "default": "POST",
+              "type": "string",
+              "enum": [
+                "POST",
+                "PUT",
+                "PATCH"
+              ]
+            },
+            "headers": {
+              "description": "Values may contain {{env.NAME}}. Secrets belong in the environment.",
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "minLength": 1
+              },
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "body": {
+              "description": "JSON body. String values may contain {{message}}, {{session}} and {{env.NAME}}.",
+              "$ref": "#/$defs/__schema0"
+            },
+            "timeoutMs": {
+              "default": 30000,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "additionalProperties": false
+        },
+        "response": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$",
+              "description": "Where the assistant's answer text is."
+            },
+            "route": {
+              "type": "string",
+              "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+            },
+            "evidence": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+              },
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$",
+                    "description": "Where the items are in the response, e.g. $.data.products[*]."
+                  },
+                  "fields": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "pattern": "^[a-z][A-Za-z0-9]*$"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                    },
+                    "description": "Evidence field name → path inside each item, e.g. price: price.amount."
+                  }
+                },
+                "required": [
+                  "items",
+                  "fields"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        "session": {
+          "default": {
+            "mode": "client"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "const": "client"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "const": "none"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "const": "server"
+                },
+                "id": {
+                  "type": "string",
+                  "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$",
+                  "description": "Where the server returns the session id."
+                }
+              },
+              "required": [
+                "mode",
+                "id"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "burstPerSecond": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "perMinute": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "cacheBypass": {
+          "default": {
+            "kind": "none"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "header"
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "value": {
+                  "default": "1",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "name"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "none"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "adapter",
+        "request",
+        "response"
+      ],
+      "additionalProperties": false
+    },
+    "languages": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "tr",
+          "en"
+        ]
+      }
+    },
+    "domain": {
+      "type": "string",
+      "enum": [
+        "ecommerce"
+      ]
+    },
+    "capabilities": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "provenance": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "const": "human"
+                  },
+                  "evidence": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "status": {
+                    "default": "approved",
+                    "type": "string",
+                    "enum": [
+                      "proposed",
+                      "approved",
+                      "rejected"
+                    ]
+                  }
+                },
+                "required": [
+                  "source"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "doc",
+                      "prompt",
+                      "contract",
+                      "data",
+                      "code",
+                      "probe",
+                      "import"
+                    ]
+                  },
+                  "evidence": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "proposed",
+                      "approved",
+                      "rejected"
+                    ]
+                  }
+                },
+                "required": [
+                  "source",
+                  "evidence",
+                  "status"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "refusal": {
+      "type": "object",
+      "properties": {
+        "canonical": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": [
+              "tr",
+              "en"
+            ]
+          },
+          "additionalProperties": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "ecommerce": {
+      "type": "object",
+      "properties": {
+        "neverFabricate": {
+          "default": [
+            "price",
+            "stock",
+            "discount",
+            "shipping",
+            "returns",
+            "warranty"
+          ],
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "price",
+              "stock",
+              "discount",
+              "shipping",
+              "returns",
+              "warranty"
+            ]
+          }
+        },
+        "policies": {
+          "default": {},
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+          },
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "const": "none"
+                  }
+                },
+                "required": [
+                  "source"
+                ],
+                "additionalProperties": false,
+                "description": "No source: any concrete claim about this policy is a finding."
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "const": "faq"
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "JSON Lines file, relative to the profile."
+                  },
+                  "topic": {
+                    "description": "The FAQ topic to read; defaults to the policy key.",
+                    "type": "string",
+                    "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+                  }
+                },
+                "required": [
+                  "source",
+                  "path"
+                ],
+                "additionalProperties": false,
+                "description": "FAQ rows carry topic, lang and answer."
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "const": "text"
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "source",
+                  "text"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "catalog": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "file"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "description": "JSON Lines file, relative to the profile."
+            },
+            "fields": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                },
+                "type": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                },
+                "price": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                },
+                "currency": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                },
+                "stock": {
+                  "description": "null in the data means unknown, not zero.",
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                }
+              },
+              "required": [
+                "id",
+                "type",
+                "price"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "kind",
+            "path",
+            "fields"
+          ],
+          "additionalProperties": false
+        },
+        "campaigns": {
+          "default": [],
+          "description": "Amounts an answer may show besides product prices (design §10).",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+              },
+              "amount": {
+                "type": "number",
+                "minimum": 0
+              },
+              "currency": {
+                "type": "string",
+                "minLength": 1
+              },
+              "provenance": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "source": {
+                        "type": "string",
+                        "const": "human"
+                      },
+                      "evidence": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "status": {
+                        "default": "approved",
+                        "type": "string",
+                        "enum": [
+                          "proposed",
+                          "approved",
+                          "rejected"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "source"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "source": {
+                        "type": "string",
+                        "enum": [
+                          "doc",
+                          "prompt",
+                          "contract",
+                          "data",
+                          "code",
+                          "probe",
+                          "import"
+                        ]
+                      },
+                      "evidence": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "proposed",
+                          "approved",
+                          "rejected"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "evidence",
+                      "status"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "amount",
+              "currency"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "version",
+    "target",
+    "languages",
+    "domain"
+  ],
+  "additionalProperties": false,
+  "title": "yokla profile v1",
+  "$defs": {
+    "__schema0": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema0"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema0"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -32,6 +32,9 @@ change a decision, propose a new ADR. Never edit an accepted one.
   and 26.
 - **Single steps:** `pnpm build`, `pnpm typecheck`, `pnpm lint`, `pnpm test`,
   `pnpm format`.
+- **JSON Schemas are generated.** The files in `packages/cli/schemas/` come
+  from the Zod schemas. After a schema change, regenerate them with
+  `pnpm test -u` and review the diff. CI fails when they drift.
 - **Markdown is hand-formatted.** Prettier skips `*.md`, so accepted ADRs are
   never rewritten.
 - **Empty entry points carry an `oxlint-disable unicorn/no-empty-file`

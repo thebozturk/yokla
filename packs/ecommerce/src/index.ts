@@ -1,2 +1,7 @@
-/* oxlint-disable unicorn/no-empty-file -- placeholder; remove with the first export */
-// Public API of @yokla/pack-ecommerce.
+export {
+  ecommerceExpectations,
+  ecommerceProfile,
+  ecommerceSchemas,
+  FACT_KINDS,
+  type EcommerceProfile,
+} from './schema.ts';

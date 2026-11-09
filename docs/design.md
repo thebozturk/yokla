@@ -173,72 +173,76 @@ docs/
 ## 7. The system profile
 
 The profile is the contract between the analyzer, the generators, the checks
-and the runner. Every entry carries:
+and the runner. Entries that come from somewhere carry a `provenance` with:
 
-- `source`: one of `doc | prompt | contract | data | code | probe | human`,
+- `source`: one of `doc | prompt | contract | data | code | probe | human | import`,
 - `evidence`: a `file:line` or a probe transcript,
 - `status`: one of `proposed | approved | rejected`.
+
+An entry without `provenance` was written by a person: it counts as
+`source: human` and `status: approved`. Any other source must state its
+evidence and status explicitly, so a machine-made entry can never be approved
+by default.
+
+The core fields are domain-neutral. A domain pack adds its own section under
+its id, here `ecommerce` (§17). The v1 schema is
+`packages/cli/schemas/profile.v1.schema.json`. The demo-shop's profile,
+`examples/demo-shop/yokla.profile.yaml`, is a complete example.
 
 ```yaml
 version: 1
 target:
-  name: demo-shop-assistant
+  name: demo-shop
   adapter: http
   request:
-    url: http://localhost:3000/v1/chat
+    url: http://127.0.0.1:3000/v1/chat      # may contain {{env.NAME}}
     method: POST
     body: { message: "{{message}}", sessionId: "{{session}}" }
   response:
     text: $.data.answer
     route: $.data.metadata.route            # optional
     evidence:
-      products: $.data.products[*]
-      productFields:
-        id: id
-        name: name
-        price: price.amount                 # authoritative
-        currency: price.currency
-        stock: stockQuantity                # nullable: null means UNKNOWN, not 0
+      products:
+        items: $.data.products[*]
+        fields:
+          id: id
+          name: name
+          price: price.amount               # authoritative
+          currency: price.currency
+          stock: stockQuantity              # nullable: null means UNKNOWN, not 0
   session: { mode: client }                 # client | server | none
   limits: { burstPerSecond: 3, perMinute: 120 }
-  cacheBypass: { kind: header, name: x-cache-bypass }   # header | command | none
+  cacheBypass: { kind: header, name: x-cache-bypass }   # header | none
 languages: [tr, en]
 domain: ecommerce
 
 capabilities:
   - id: product-search
-    source: doc
-    evidence: README.md#search
-    status: approved
+    provenance: { source: doc, evidence: README.md#search, status: approved }
   - id: faq
-    source: contract
-    evidence: openapi.json#/paths/~1v1~1chat
-    status: proposed
-
-facts:
-  neverFabricate: [price, stock, discount, shipping, returns, warranty]
-
-policies:
-  shipping: { source: none }                # no source: any concrete claim is a finding
-  returns:  { source: faq, path: ./yokla-data/faq.jsonl }
+    provenance: { source: contract, evidence: "openapi.json#/paths/~1v1~1chat", status: proposed }
 
 refusal:
   canonical:
     tr: ["Bu konuda yardımcı olamıyorum."]
-  classifier: lang-pack
 
-data:
+ecommerce:
+  neverFabricate: [price, stock, discount, shipping, returns, warranty]
+  policies:
+    shipping: { source: none }              # no source: any concrete claim is a finding
+    returns:  { source: faq, path: ./yokla-data/faq.jsonl }
   catalog:
-    kind: file                              # file | postgres (read-only) | http
+    kind: file                              # later: postgres (read-only), http
     path: ./yokla-data/catalog.jsonl
     fields: { id: id, type: category_path, price: price, currency: currency, stock: stock }
 
-modelProxy:
-  upstreams:
-    - id: openai
-      kind: openai-compatible
-      appBaseUrlEnv: OPENAI_BASE_URL        # how the app is pointed at the proxy
-      upstream: https://api.openai.com/v1
+# From v0.2:
+# modelProxy:
+#   upstreams:
+#     - id: openai
+#       kind: openai-compatible
+#       appBaseUrlEnv: OPENAI_BASE_URL      # how the app is pointed at the proxy
+#       upstream: https://api.openai.com/v1
 ```
 
 ## 8. Analyzer
@@ -539,6 +543,7 @@ explicitly from the config; there is no auto-discovery.
 - **Import.** Another tool's results can be imported into yokla results for
   reporting and gating. Its test cases can be imported as yokla cases with
   status `proposed`.
+- Each mapping lives in its own `interop-<tool>` package (ADR-0007).
 - **OpenTelemetry (later).** OTLP spans are accepted as an alternative to proxy
   correlation.
 
@@ -619,7 +624,9 @@ languages, SDK adapters.
 2. ~~**Config format.**~~ Decided in
    [ADR-0006](adr/0006-tooling-and-repository-layout.md): YAML 1.2, with JSON
    accepted, validated by schemas generated from Zod.
-3. **Results schema:** extend another tool's results format, or only map to it?
+3. ~~**Results schema.**~~ Decided in
+   [ADR-0007](adr/0007-results-schema-and-interop.md): yokla owns
+   `results.v1`; other tools are reached by mapping in `interop-*` packages.
 4. **Default attacker and judge model:** none (the user must choose), or a
    recommended local model?
 5. **HTML report:** static, with or without a framework?

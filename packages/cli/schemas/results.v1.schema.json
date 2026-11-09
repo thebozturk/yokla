@@ -1,0 +1,541 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "yokla.results/v1"
+    },
+    "yokla": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "run": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "finishedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+        },
+        "durationMs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "profile": {
+          "type": "object",
+          "properties": {
+            "target": {
+              "type": "string"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
+          "required": [
+            "target",
+            "sha256"
+          ],
+          "additionalProperties": false
+        },
+        "environment": {
+          "type": "object",
+          "properties": {
+            "node": {
+              "type": "string"
+            },
+            "platform": {
+              "type": "string"
+            },
+            "arch": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "node",
+            "platform",
+            "arch"
+          ],
+          "additionalProperties": false
+        },
+        "correlation": {
+          "type": "string",
+          "enum": [
+            "none",
+            "serial",
+            "header",
+            "traceparent"
+          ]
+        },
+        "partial": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "startedAt",
+        "finishedAt",
+        "durationMs",
+        "profile",
+        "environment",
+        "correlation",
+        "partial"
+      ],
+      "additionalProperties": false
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+          },
+          "suite": {
+            "type": "string",
+            "enum": [
+              "quality",
+              "factual",
+              "redteam",
+              "robustness",
+              "perf",
+              "resilience"
+            ]
+          },
+          "language": {
+            "type": "string",
+            "pattern": "^[a-z]{2}$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail",
+              "error",
+              "fixture-missing",
+              "known-gap",
+              "gap-closed"
+            ]
+          },
+          "unstable": {
+            "type": "boolean"
+          },
+          "knownGap": {
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string"
+              },
+              "issue": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "reason"
+            ],
+            "additionalProperties": false
+          },
+          "dimensions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "dimension": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+                },
+                "policy": {
+                  "type": "string",
+                  "enum": [
+                    "worst-of-n",
+                    "majority-of-n",
+                    "percentile",
+                    "mean"
+                  ]
+                },
+                "verdict": {
+                  "type": "string",
+                  "enum": [
+                    "pass",
+                    "fail",
+                    "unmeasured"
+                  ]
+                },
+                "samples": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "failed": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "interval": {
+                  "type": "object",
+                  "properties": {
+                    "level": {
+                      "type": "number",
+                      "const": 0.95
+                    },
+                    "lower": {
+                      "type": "number"
+                    },
+                    "upper": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "level",
+                    "lower",
+                    "upper"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "dimension",
+                "policy",
+                "verdict",
+                "samples",
+                "failed"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "samples": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "cache": {
+                  "type": "string",
+                  "enum": [
+                    "cold",
+                    "warm"
+                  ]
+                },
+                "turns": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "user": {
+                        "type": "string"
+                      },
+                      "response": {
+                        "type": "object",
+                        "properties": {
+                          "status": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "latencyMs": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "text": {
+                            "type": "string"
+                          },
+                          "route": {
+                            "type": "string"
+                          },
+                          "evidence": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {
+                              "type": "array",
+                              "items": {
+                                "$ref": "#/$defs/__schema0"
+                              }
+                            }
+                          }
+                        },
+                        "required": [
+                          "status",
+                          "latencyMs",
+                          "evidence"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "error": {
+                        "type": "string"
+                      },
+                      "checks": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "check": {
+                              "type": "string",
+                              "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+                            },
+                            "applicable": {
+                              "type": "boolean"
+                            },
+                            "findings": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "dimension": {
+                                    "type": "string",
+                                    "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+                                  },
+                                  "verdict": {
+                                    "type": "string",
+                                    "enum": [
+                                      "pass",
+                                      "fail",
+                                      "error"
+                                    ]
+                                  },
+                                  "severity": {
+                                    "type": "string",
+                                    "enum": [
+                                      "info",
+                                      "low",
+                                      "medium",
+                                      "high",
+                                      "critical"
+                                    ]
+                                  },
+                                  "message": {
+                                    "type": "string"
+                                  },
+                                  "evidence": {
+                                    "$ref": "#/$defs/__schema1"
+                                  }
+                                },
+                                "required": [
+                                  "dimension",
+                                  "verdict",
+                                  "severity",
+                                  "message"
+                                ],
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "required": [
+                            "check",
+                            "applicable",
+                            "findings"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "user",
+                      "checks"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "index",
+                "cache",
+                "turns"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "id",
+          "suite",
+          "language",
+          "status",
+          "unstable",
+          "dimensions",
+          "samples"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "check": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+          },
+          "applied": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "notApplicable": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "passed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "failed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "errors": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "check",
+          "applied",
+          "notApplicable",
+          "passed",
+          "failed",
+          "errors"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "cases": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "statuses": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail",
+              "error",
+              "fixture-missing",
+              "known-gap",
+              "gap-closed"
+            ]
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "required": [
+        "cases",
+        "statuses"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema",
+    "yokla",
+    "run",
+    "cases",
+    "checks",
+    "summary"
+  ],
+  "additionalProperties": false,
+  "title": "yokla results v1",
+  "$defs": {
+    "__schema0": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema0"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema0"
+          }
+        }
+      ]
+    },
+    "__schema1": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema1"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema1"
+          }
+        }
+      ]
+    }
+  }
+}

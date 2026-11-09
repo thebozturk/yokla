@@ -1,2 +1,3 @@
-/* oxlint-disable unicorn/no-empty-file -- placeholder; remove with the first export */
-// Public API of @yokla/pack-lang-en.
+import type { LanguagePack } from '@yokla/core';
+
+export const english: LanguagePack = { language: 'en' };

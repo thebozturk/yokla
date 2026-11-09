@@ -1,0 +1,151 @@
+# yaml-language-server: $schema=../../../packages/cli/schemas/cases.v1.schema.json
+#
+# Acceptance cases for the demo-shop (design §19). The same questions are the
+# probes in src/assistant.test.ts, which records the defects each one exposes.
+
+version: 1
+cases:
+  - id: tents-tr
+    suite: factual
+    language: tr
+    turns:
+      - user: Çadır önerir misin?
+        expect: { answerable: true }
+
+  - id: tents-under-1000-tr
+    suite: factual
+    language: tr
+    turns:
+      - user: 1000 TL altında çadır var mı?
+        expect:
+          answerable: true
+          filters: { maxPrice: 1000 }
+
+  - id: tents-under-500-tr
+    title: No tent is that cheap; the answer must disclose the relaxed filter
+    suite: factual
+    language: tr
+    turns:
+      - user: 500 TL altı çadır
+        expect:
+          answerable: true
+          filters: { maxPrice: 500 }
+
+  - id: black-women-jacket-tr
+    suite: factual
+    language: tr
+    turns:
+      - user: Siyah kadın mont arıyorum
+        expect:
+          answerable: true
+          filters: { attributes: { color: black, gender: women } }
+
+  - id: women-jackets-m-en
+    suite: factual
+    language: en
+    turns:
+      - user: Do you have women's jackets in size M?
+        expect:
+          answerable: true
+          filters: { attributes: { gender: women, size: M } }
+
+  - id: black-backpack-en
+    suite: factual
+    language: en
+    turns:
+      - user: Black backpack under 1000
+        expect:
+          answerable: true
+          filters: { maxPrice: 1000, attributes: { color: black } }
+
+  - id: water-bottle-en
+    suite: factual
+    language: en
+    turns:
+      - user: Do you have a water bottle under 300?
+        expect:
+          answerable: true
+          filters: { maxPrice: 300 }
+
+  - id: sleeping-pad-tr
+    suite: factual
+    language: tr
+    turns:
+      - user: Uyku matı var mı?
+        expect: { answerable: true, absentType: sleeping-pad }
+
+  - id: hammock-en
+    suite: factual
+    language: en
+    turns:
+      - user: Do you sell hammocks?
+        expect: { answerable: true, absentType: hammock }
+
+  - id: stoves-tr
+    suite: quality
+    language: tr
+    turns:
+      - user: Kamp ocağı önerir misin?
+        expect: { answerable: true }
+
+  - id: headlamps-en
+    suite: factual
+    language: en
+    turns:
+      - user: Show me headlamps
+        expect: { answerable: true }
+
+  - id: returns-tr
+    suite: factual
+    language: tr
+    turns:
+      - user: İade koşulları neler?
+        expect: { answerable: true, policyTopic: returns }
+
+  - id: returns-en
+    suite: factual
+    language: en
+    turns:
+      - user: What is your return policy?
+        expect: { answerable: true, policyTopic: returns }
+
+  - id: shipping-tr
+    title: No shipping source; the answer must not make a concrete claim
+    suite: factual
+    language: tr
+    turns:
+      - user: Kargo ücretsiz mi?
+        expect: { policyTopic: shipping }
+
+  - id: warranty-en
+    suite: factual
+    language: en
+    turns:
+      - user: Do your tents have a warranty?
+        expect: { policyTopic: warranty }
+
+  - id: invest-en
+    title: Out of scope; refusing is correct
+    suite: quality
+    language: en
+    turns:
+      - user: Can you recommend a stock to invest in?
+        expect: { answerable: false }
+
+  - id: greeting-tr
+    suite: quality
+    language: tr
+    turns:
+      - user: Merhaba
+
+  - id: cheaper-follow-up-en
+    title: The follow-up refers to the previous answer
+    suite: quality
+    language: en
+    turns:
+      - user: Do you have women's jackets in size M?
+        expect:
+          answerable: true
+          filters: { attributes: { gender: women, size: M } }
+      - user: the cheaper one?
+        expect: { answerable: true }
