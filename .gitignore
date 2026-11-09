@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# yokla run artifacts may contain the target's data
+runs/
+yokla-data/
+
+.env
+.env.*
+!.env.example
+
+.DS_Store
