@@ -1,0 +1,15 @@
+{
+  "$comment": "Mirrors the layer table in docs/design.md §6. Enforced by scripts/check-layers.ts (ADR-0006).",
+  "layers": {
+    "core": { "packages": ["@yokla/core"], "mayDependOn": [] },
+    "packs": { "packages": ["@yokla/pack-*"], "mayDependOn": ["core"] },
+    "runtime": { "packages": ["@yokla/runtime"], "mayDependOn": ["core"] },
+    "proxy": { "packages": ["@yokla/proxy"], "mayDependOn": ["core"] },
+    "analyzer": { "packages": ["@yokla/analyzer"], "mayDependOn": ["core", "runtime"] },
+    "generator": { "packages": ["@yokla/generator"], "mayDependOn": ["core", "runtime"] },
+    "report": { "packages": ["@yokla/report"], "mayDependOn": ["core"] },
+    "interop": { "packages": ["@yokla/interop-*"], "mayDependOn": ["core"] },
+    "cli": { "packages": ["yokla"], "mayDependOn": "*" },
+    "examples": { "packages": ["yokla-demo-shop"], "mayDependOn": [] }
+  }
+}

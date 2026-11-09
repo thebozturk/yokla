@@ -1,0 +1,29 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": ["node"]
+  },
+  "include": ["src"],
+  "references": [
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../runtime"
+    },
+    {
+      "path": "../report"
+    },
+    {
+      "path": "../../packs/ecommerce"
+    },
+    {
+      "path": "../../packs/lang-tr"
+    },
+    {
+      "path": "../../packs/lang-en"
+    }
+  ]
+}

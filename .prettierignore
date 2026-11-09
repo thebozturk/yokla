@@ -1,0 +1,6 @@
+pnpm-lock.yaml
+**/dist/
+coverage/
+LICENSE
+# Markdown is hand-formatted; accepted ADRs are never rewritten.
+*.md

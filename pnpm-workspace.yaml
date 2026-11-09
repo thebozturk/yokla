@@ -1,0 +1,9 @@
+packages:
+  - packages/*
+  - packs/*
+  - examples/*
+
+# ADR-0006: supply-chain settings.
+# A release must be at least 7 days old before it can be installed.
+minimumReleaseAge: 10080
+engineStrict: true
