@@ -68,6 +68,12 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
 
+  packages/proxy:
+    dependencies:
+      '@yokla/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/report:
     dependencies:
       '@yokla/core':

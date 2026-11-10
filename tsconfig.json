@@ -11,6 +11,9 @@
       "path": "./packages/report"
     },
     {
+      "path": "./packages/proxy"
+    },
+    {
       "path": "./packs/ecommerce"
     },
     {

@@ -1,0 +1,26 @@
+{
+  "name": "@yokla/proxy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The model proxy between an app and its model providers (ADR-0012).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": {
+      "@yokla/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*"
+  ],
+  "sideEffects": false,
+  "dependencies": {
+    "@yokla/core": "workspace:*"
+  }
+}

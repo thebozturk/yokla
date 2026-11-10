@@ -178,6 +178,34 @@ const Target = z.strictObject({
   observe: z.strictObject({ logs: LogSource.optional() }).optional(),
 });
 
+const Upstream = z.strictObject({
+  id: Id.meta({ description: 'The app reaches this upstream at http://127.0.0.1:<port>/<id>.' }),
+  kind: z.enum(['openai-compatible', 'anthropic']),
+  upstream: z
+    .url({ protocol: /^https?$/u })
+    .meta({ description: 'The real provider base URL, e.g. https://api.openai.com/v1.' }),
+  appBaseUrlEnv: z
+    .string()
+    .min(1)
+    .optional()
+    .meta({ description: "The app's setting that points it at the proxy; for people to read." }),
+});
+
+/** ADR-0012: the model proxy between the app and its providers. */
+const ModelProxy = z.strictObject({
+  port: z.int().min(1).max(65_535).default(8787),
+  upstreams: z
+    .array(Upstream)
+    .min(1)
+    .refine((list) => new Set(list.map((u) => u.id)).size === list.length, {
+      message: 'upstream ids must be unique',
+    }),
+  correlation: z.enum(['serial', 'header']).default('serial').meta({
+    description:
+      'serial: one request in flight; header: the app forwards x-yokla-trace to its provider calls.',
+  }),
+});
+
 const Capability = z.strictObject({
   id: Id,
   description: z.string().min(1).optional(),
@@ -191,6 +219,7 @@ export const profileShape = {
   languages: z.array(LanguageCode).min(1),
   domain: Id,
   capabilities: z.array(Capability).default([]),
+  modelProxy: ModelProxy.optional(),
   refusal: z
     .strictObject({
       canonical: z.partialRecord(LanguageCode, z.array(z.string().min(1)).min(1)).optional(),
@@ -203,4 +232,5 @@ const BaseProfile = z.strictObject(profileShape);
 /** A validated profile. Domain packs read their own section by key. */
 export type Profile = z.output<typeof BaseProfile> & { readonly [section: string]: unknown };
 export type ProfileTarget = z.output<typeof Target>;
+export type ModelProxyConfig = z.output<typeof ModelProxy>;
 export type FieldSpec = z.output<typeof FieldSpec>;

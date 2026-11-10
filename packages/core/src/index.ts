@@ -50,7 +50,13 @@ export {
   Suite,
   SUITES,
 } from './schema/common.ts';
-export { FieldSpec, type Profile, type ProfileTarget } from './schema/profile.ts';
+export {
+  FieldSpec,
+  type ModelProxyConfig,
+  type Profile,
+  type ProfileTarget,
+} from './schema/profile.ts';
+export { ProxyRecord, ProxyUsage } from './schema/proxy.ts';
 export { GateConfig, YoklaConfig } from './schema/config.ts';
 export { evaluateGate, type GateBreach, type GateOutcome } from './gate/gate.ts';
 export { Baseline, BASELINE_SCHEMA_ID } from './schema/baseline.ts';
