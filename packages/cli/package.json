@@ -1,6 +1,6 @@
 {
   "name": "yokla",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Test conversational AI assistants end to end.",
   "license": "Apache-2.0",
