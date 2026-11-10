@@ -26,6 +26,18 @@ export const coreExpectations = {
     .int()
     .min(1)
     .meta({ description: 'The answer must arrive within this many milliseconds.' }),
+  budget: z
+    .strictObject({
+      costUsd: z.number().nonnegative().optional(),
+      modelCalls: z.int().min(0).optional(),
+    })
+    .refine((budget) => budget.costUsd !== undefined || budget.modelCalls !== undefined, {
+      message: 'a budget needs costUsd or modelCalls',
+    })
+    .meta({
+      description:
+        "The most the turn's model calls may cost, and how many there may be (ADR-0014).",
+    }),
   evidence: z
     .record(
       Id,

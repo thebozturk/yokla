@@ -28,6 +28,7 @@ export function turnView(
     observed: undefined,
     clarifying: false,
     faults: undefined,
+    proxy: undefined,
     ...rest,
     response: {
       status: 200,

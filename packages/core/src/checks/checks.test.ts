@@ -232,3 +232,135 @@ describe('advisory dimensions', () => {
     expect(aggregateCase([both, passing], policies, false).unstable).toBe(false);
   });
 });
+
+/** A check result that couldn't measure `dimension`. */
+const gap = (dimension: string) => ({
+  check: 'budget',
+  applicable: true,
+  findings: [],
+  unmeasured: [{ dimension, reason: 'no data' }],
+});
+
+describe('unmeasured dimensions (ADR-0014)', () => {
+  it('makes a case with an unmeasured deciding dimension unmeasured, never a pass', () => {
+    const result = aggregateCase(
+      [sample(turn([applied(finding('price', 'pass')), gap('cost')]))],
+      {},
+      false,
+    );
+    expect(result.status).toBe('unmeasured');
+    expect(result.dimensions).toEqual([
+      { dimension: 'cost', policy: 'worst-of-n', verdict: 'unmeasured', samples: 0, failed: 0 },
+      { dimension: 'price', policy: 'worst-of-n', verdict: 'pass', samples: 1, failed: 0 },
+    ]);
+  });
+
+  it('lets a failure win over an unmeasured dimension', () => {
+    const result = aggregateCase(
+      [sample(turn([applied(finding('price', 'fail')), gap('cost')]))],
+      {},
+      false,
+    );
+    expect(result.status).toBe('fail');
+    const known = aggregateCase(
+      [sample(turn([applied(finding('price', 'fail')), gap('cost')]))],
+      {},
+      true,
+    );
+    expect(known.status).toBe('known-gap');
+  });
+
+  it('treats a dimension measured on one turn or sample but not another as unmeasured', () => {
+    const turns = aggregateCase(
+      [sample(turn([applied(finding('cost', 'pass'))]), turn([gap('cost')]))],
+      {},
+      false,
+    );
+    expect(turns.dimensions[0]).toMatchObject({
+      dimension: 'cost',
+      verdict: 'unmeasured',
+      samples: 0,
+    });
+    const samples = aggregateCase(
+      [sample(turn([applied(finding('cost', 'pass'))])), sample(turn([gap('cost')]))],
+      {},
+      false,
+    );
+    expect(samples.dimensions[0]).toMatchObject({ verdict: 'unmeasured', samples: 1 });
+    expect(samples.status).toBe('unmeasured');
+    // A failure measured anywhere still fails the dimension.
+    const failed = aggregateCase(
+      [sample(turn([applied(finding('cost', 'fail'))]), turn([gap('cost')]))],
+      {},
+      false,
+    );
+    expect(failed.dimensions[0]).toMatchObject({ verdict: 'fail' });
+  });
+
+  it("can't close a known gap it didn't measure", () => {
+    expect(aggregateCase([sample(turn([gap('cost')]))], {}, true).status).toBe('unmeasured');
+  });
+
+  it('ignores an advisory unmeasured dimension, and counts unmeasured results apart in the summary', () => {
+    const advisory = aggregateCase(
+      [sample(turn([applied(finding('price', 'pass')), gap('style')]))],
+      { style: 'advisory' },
+      false,
+    );
+    expect(advisory.status).toBe('pass');
+    const results = aggregateCase([sample(turn([gap('cost')]))], {}, false);
+    const summary = summariseChecks([
+      {
+        id: 'c',
+        suite: 'perf',
+        language: 'tr',
+        status: results.status,
+        unstable: false,
+        dimensions: results.dimensions,
+        samples: [sample(turn([gap('cost')]))],
+      },
+    ]);
+    expect(summary).toEqual([
+      {
+        check: 'budget',
+        applied: 1,
+        notApplicable: 0,
+        passed: 0,
+        failed: 0,
+        errors: 0,
+        unmeasured: 1,
+      },
+    ]);
+  });
+
+  it('records the unmeasured dimensions a check reports', () => {
+    const results = runChecks(
+      [
+        {
+          id: 'budget',
+          description: 'x',
+          run: () => ({
+            applicable: true,
+            findings: [],
+            unmeasured: [{ dimension: 'cost', reason: 'no data' }],
+          }),
+        },
+        {
+          id: 'plain',
+          description: 'y',
+          run: () => ({ applicable: true, findings: [], unmeasured: [] }),
+        },
+      ],
+      checkContext(turnView()),
+    );
+    expect(results).toEqual([
+      {
+        check: 'budget',
+        applicable: true,
+        findings: [],
+        unmeasured: [{ dimension: 'cost', reason: 'no data' }],
+      },
+      { check: 'plain', applicable: true, findings: [] },
+    ]);
+  });
+});

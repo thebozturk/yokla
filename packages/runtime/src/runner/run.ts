@@ -328,6 +328,7 @@ async function runSample(
               observed: undefined,
               clarifying,
               faults: faults === undefined ? undefined : { failure },
+              proxy: undefined,
             }
           : undefined;
       outcome = {
@@ -374,6 +375,7 @@ async function runSample(
                 observed: undefined,
                 clarifying: false,
                 faults: { failure },
+                proxy: undefined,
               },
               ...(tag === undefined ? {} : { tag }),
             };
@@ -518,7 +520,12 @@ function judgeCase(
       const proxy = proxyByTurn?.get(exchange);
       if (proxy !== undefined) turn = { ...turn, proxy };
       if (exchange.view === undefined) return turn;
-      const view: TurnView = { ...exchange.view, observed: fields };
+      const view: TurnView = {
+        ...exchange.view,
+        observed: fields,
+        proxy:
+          proxy === undefined ? undefined : { calls: proxy.calls.length, costUsd: proxy.costUsd },
+      };
       // A turn with no usable answer under faults is judged only by the fault judges.
       const applicable =
         view.faults?.failure === undefined

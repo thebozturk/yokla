@@ -82,6 +82,7 @@ export {
 export { aggregateCase, summariseChecks, wilson, type CaseAggregate } from './checks/aggregate.ts';
 export { runChecks } from './checks/run.ts';
 export type {
+  UnmeasuredDimension,
   AggregationPolicy,
   Check,
   CheckContext,
@@ -102,6 +103,7 @@ export {
   answerText,
   answeredWithinDeadline,
   CORE_CHECKS,
+  costBudget,
   FAULT_JUDGES,
   gracefulUnderFault,
   evidenceCount,

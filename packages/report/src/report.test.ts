@@ -190,6 +190,28 @@ describe('terminalSummary', () => {
     );
   });
 
+  it('says which threshold went unmeasured, and why', () => {
+    const gap = {
+      check: 'cost-budget',
+      applicable: true,
+      findings: [],
+      unmeasured: [{ dimension: 'cost', reason: 'no model proxy data for this turn' }],
+    };
+    const { out } = terminalSummary(
+      results([
+        kase('budgeted', 'unmeasured', {
+          dimensions: [dimension('cost', { verdict: 'unmeasured', samples: 0, failed: 0 })],
+          samples: [
+            { index: 0, cache: 'cold', turns: [turn({ checks: [gap] }), turn({ checks: [gap] })] },
+          ],
+        }),
+      ]),
+    );
+    expect(out).toContain(
+      '  unmeasured  budgeted  unmeasured cost: no model proxy data for this turn',
+    );
+  });
+
   it('shows one line for a clean run and never the answers', () => {
     const { out, err } = terminalSummary(results([kase('a', 'pass')]));
     expect(out).toEqual(['1 cases: pass 1']);
