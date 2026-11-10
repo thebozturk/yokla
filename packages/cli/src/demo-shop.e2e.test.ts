@@ -39,7 +39,7 @@ afterAll(() => {
 });
 
 describe('yokla run against the demo-shop', () => {
-  it('runs every acceptance case and writes valid results.v1', { timeout: 60_000 }, async () => {
+  it('runs every acceptance case, checks it and writes valid results.v1', { timeout: 60_000 }, async () => {
     const out = join(mkdtempSync(join(tmpdir(), 'yokla-e2e-')), 'results.json');
     const lines: string[] = [];
     const io = { out: (line: string) => lines.push(line), err: (line: string) => lines.push(line) };
@@ -61,7 +61,12 @@ describe('yokla run against the demo-shop', () => {
 
     const results = Results.parse(JSON.parse(readFileSync(out, 'utf8')));
     expect(results.cases).toHaveLength(18);
-    expect(results.summary.statuses).toEqual({ unmeasured: 18 });
+    // Without defects nothing fails; cases whose checks don't exist yet stay unmeasured.
+    expect(results.summary.statuses.fail).toBeUndefined();
+    expect(results.summary.statuses.error).toBeUndefined();
+    expect(results.cases.find((c) => c.id === 'tents-tr')?.status).toBe('pass');
+    expect(results.checks.find((c) => c.check === 'price-grounded')).toMatchObject({ failed: 0 });
+    expect(results.checks.find((c) => c.check === 'price-grounded')?.applied).toBeGreaterThan(0);
 
     const relaxed = results.cases.find((c) => c.id === 'tents-under-500-tr')?.samples[0]?.turns[0];
     expect(relaxed?.response?.text).toMatch(/^Bu kriterlere \(500,00 TL altı\)/u);

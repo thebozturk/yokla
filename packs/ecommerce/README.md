@@ -1,0 +1,44 @@
+# @yokla/pack-ecommerce
+
+The ecommerce domain pack. It adds an `ecommerce` section to the profile, keys
+to a turn's `expect`, and checks that read the target's own data (design §9,
+§10).
+
+## What the pack reads
+
+**Evidence.** The checks read the evidence collection named `products`. Map
+it in the profile's `target.response.evidence`. Every field is optional, but a
+check needs the fields it reads.
+
+| Field | Used by | Notes |
+|---|---|---|
+| `id` | all checks; joins the catalog | |
+| `name` | stock-claim (ties a claim to a product) | |
+| `price` | price-grounded | Use `{ from: [...], as: number }` for decimal strings or fallbacks. |
+| `currency` | price-grounded | |
+| `stock` | stock-claim | `null` means unknown, not zero. |
+| `category` | absence and filter checks | |
+
+**Catalog.** `ecommerce.catalog` points to a JSON Lines snapshot. It fills in
+the fields a response doesn't carry, joined by `id`. For example, the stock of
+products whose cards show no stock comes from the snapshot.
+
+**Policies.** `ecommerce.policies` gives each policy topic a source:
+- `faq`: a JSON Lines file with `topic`, `lang` and `answer` fields,
+- `text`: an inline text,
+- `none`: no source, so any concrete claim about the topic is a finding.
+
+## Checks
+
+| Check | Dimension | Rule |
+|---|---|---|
+| `price-grounded` | fabrication | Every amount in the answer is one of: a price of a product returned in this or an earlier turn, a declared campaign amount, or an amount the user wrote. |
+| `stock-claim` | fabrication | No in-stock or out-of-stock claim for a product with unknown stock; claims match known stock. A claim is tied to the product named in the same line or sentence. |
+| `no-duplicates` | duplicates | Each product id appears once per answer. |
+
+- **What doesn't count as a stock claim.** A sentence like "stock not
+  confirmed" or "stok durumu doğrulanamadı" doesn't claim anything.
+- **Overlapping wording.** "Not in stock" is one out-of-stock claim, not also
+  an in-stock one.
+- **Products yokla can't see.** When yokla can't learn a product's stock from
+  either the response or the catalog, it doesn't judge claims about it.
