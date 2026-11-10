@@ -1,7 +1,8 @@
 // The demo-shop's model over HTTP: both calls of a turn go to an
 // OpenAI-compatible chat completions endpoint, such as the fake provider or a
 // model proxy in front of it. The request carries the app's own key, and the
-// trace id of the turn when there is one.
+// trace id of the turn when there is one. It retries once after a 429 or 503,
+// gives up after a timeout, and refuses empty output: the app then falls back.
 
 import type {
   AnswerDraft,
@@ -10,9 +11,13 @@ import type {
   Interpretation,
   ModelCall,
 } from './model.ts';
+import type { Defect } from './defects.ts';
 import { isInterpretation } from './wire.ts';
 
 export interface RemoteModelOptions {
+  /** How long a model call may take, unless the no-model-timeout defect is on. Default 3 s. */
+  readonly timeoutMs?: number;
+  readonly defect?: Defect | null;
   /** The provider base URL, e.g. http://127.0.0.1:8787/fake/v1. */
   readonly url: string;
   readonly key: string;
@@ -61,26 +66,47 @@ export class RemoteModel implements ChatModel {
     this.#options = options;
   }
 
-  async #complete(role: string, payload: unknown, call: ModelCall | undefined): Promise<string> {
-    const stream = this.#options.stream === true;
-    const response = await fetch(`${this.#options.url.replace(/\/$/u, '')}/chat/completions`, {
+  async #send(body: string, call: ModelCall | undefined): Promise<Response> {
+    const timeout =
+      this.#options.defect === 'no-model-timeout' ? undefined : (this.#options.timeoutMs ?? 3_000);
+    return fetch(`${this.#options.url.replace(/\/$/u, '')}/chat/completions`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
         authorization: `Bearer ${this.#options.key}`,
         ...(call?.trace === undefined ? {} : { 'x-yokla-trace': call.trace }),
       },
-      body: JSON.stringify({
-        model: this.#options.model ?? 'demo-writer-1',
-        messages: [
-          { role: 'system', content: role },
-          { role: 'user', content: JSON.stringify(payload) },
-        ],
-        ...(stream ? { stream: true, stream_options: { include_usage: true } } : {}),
-      }),
+      body,
+      ...(timeout === undefined ? {} : { signal: AbortSignal.timeout(timeout) }),
     });
+  }
+
+  async #complete(role: string, payload: unknown, call: ModelCall | undefined): Promise<string> {
+    const stream = this.#options.stream === true;
+    const body = JSON.stringify({
+      model: this.#options.model ?? 'demo-writer-1',
+      messages: [
+        { role: 'system', content: role },
+        { role: 'user', content: JSON.stringify(payload) },
+      ],
+      ...(stream ? { stream: true, stream_options: { include_usage: true } } : {}),
+    });
+    let response = await this.#send(body, call);
+    if (response.status === 429 || response.status === 503) {
+      // One retry, after the wait the provider asks for, capped at 2 s.
+      const seconds = Number(response.headers.get('retry-after') ?? '1');
+      await response.body?.cancel();
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(2_000, Math.max(0, seconds * 1000))),
+      );
+      response = await this.#send(body, call);
+    }
     if (!response.ok) throw new Error(`the model answered ${String(response.status)}`);
-    return stream ? streamed(await response.text()) : contentOf(await response.json());
+    const content = stream ? streamed(await response.text()) : contentOf(await response.json());
+    if (content.trim() === '' && this.#options.defect !== 'unchecked-model-output') {
+      throw new Error('the model answered with empty content');
+    }
+    return content;
   }
 
   async interpret(

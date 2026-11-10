@@ -26,6 +26,7 @@ pnpm --filter yokla-demo-shop start --list-defects
 | `--rate-limit` | | `on` | `off` disables the rate limiter. |
 | `--model-url` | `DEMO_SHOP_MODEL_URL` | in process | An OpenAI-compatible base URL for the model calls. |
 | `--model-stream` | | off | Ask the model for event streams, with usage in the last chunk. |
+| `--model-timeout-ms` | | `3000` | How long a model call may take before the demo-shop falls back. |
 | | `DEMO_SHOP_MODEL_KEY` | `demo-key` | The key sent with the model calls. |
 
 demo-shop binds to `127.0.0.1` only.
@@ -47,6 +48,13 @@ can sit in between (ADR-0012).
   the demo-shop.
 - **Trace.** The demo-shop passes an incoming `x-yokla-trace` header on to both
   model calls of the turn, the one-line change `header` correlation needs.
+- **Resilience.** The model client retries once after a `429` or `503`,
+  honouring `Retry-After`. It gives up after `--model-timeout-ms` and refuses
+  empty output. When the model fails, the demo-shop answers from a template on
+  the `fallback` route, with no products. That answer is never cached.
+  `cases-resilience/` holds the cases that inject the faults (ADR-0013). They
+  need the model proxy, so the resilience matrix runs in
+  `packages/cli/src/proxy.e2e.test.ts`.
 
 ```sh
 node examples/demo-shop/src/provider-main.ts --port 0 --usage-log runs/provider-usage.jsonl
@@ -139,6 +147,9 @@ pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml \
 | `duplicate-products` | The first product appears twice. | `no-duplicates` |
 | `absence-substitution` | For an absent type, another type is presented as that type. | `absence-correct` |
 | `type-padding` | A short result is filled up with other types that satisfy the filters, under the requested type's heading. | `type-matched-or-disclosed` |
+| `no-model-fallback` | With the model over HTTP, a model failure becomes a `500` instead of a fallback answer. | `graceful-under-fault` (v0.2) |
+| `no-model-timeout` | With the model over HTTP, a stalled model stalls the answer. | `answered-within-deadline` (v0.2) |
+| `unchecked-model-output` | With the model over HTTP, empty model output reaches the user. | `route-expected` (v0.2) |
 
 `src/assistant.test.ts` holds a fixed set of probe questions. For each defect,
 it asserts that the defect changes exactly the listed probes and nothing else.

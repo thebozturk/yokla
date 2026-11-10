@@ -85,6 +85,10 @@ const EXPECTED_CHANGES: Record<Defect, Probe[]> = {
   'absence-substitution': ['sleeping-pad-tr', 'hammock-en'],
   // Probes whose result is short and has other types that satisfy its filters.
   'type-padding': ['tents-under-1000-tr', 'black-women-jacket-tr'],
+  // The model runs in process here, so the defects of the model over HTTP change nothing.
+  'no-model-fallback': [],
+  'no-model-timeout': [],
+  'unchecked-model-output': [],
 };
 
 const PROBE_NAMES: Probe[] = Object.keys(PROBES).filter((name): name is Probe => name in PROBES);

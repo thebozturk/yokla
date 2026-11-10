@@ -2,7 +2,9 @@
 // the fake provider through `yokla proxy`, and what the proxy measured must
 // reconcile with the provider's own usage records, call for call and token
 // for token. One run correlates serially with JSON answers, the other by
-// header with event streams. Everything runs behind the network guard.
+// header with event streams. Then the resilience cases run against a
+// demo-shop for each resilience defect (ADR-0013). Everything runs behind the
+// network guard.
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -82,7 +84,10 @@ function profileFor(correlation: 'serial' | 'header', providerUrl: string): stri
   return path;
 }
 
-const runs = new Map<string, { code: number; output: string; results: Results; before: number }>();
+const runs = new Map<
+  string,
+  { code: number; output: string; results: Results; before: number; after: number }
+>();
 
 async function run(correlation: 'serial' | 'header', shop: string, providerUrl: string) {
   const out = join(dir, `${correlation}.results.json`);
@@ -117,7 +122,73 @@ async function run(correlation: 'serial' | 'header', shop: string, providerUrl: 
     output: lines.join('\n'),
     results: Results.parse(JSON.parse(readFileSync(out, 'utf8'))),
     before,
+    after: usageEntries().length,
   });
+}
+
+/** Resilience defect → the one check that must catch it → the cases it must fail. */
+const RESILIENCE: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
+  none: {},
+  'no-model-fallback': {
+    'graceful-under-fault': [
+      'empty-model-output',
+      'malformed-interpretation',
+      'provider-down',
+      'provider-stalls',
+    ],
+  },
+  'no-model-timeout': { 'answered-within-deadline': ['provider-stalls'] },
+  'unchecked-model-output': { 'route-expected': ['empty-model-output'] },
+};
+const resilience = new Map<string, Results>();
+
+/** check → the cases where it reported a failing finding. */
+function failingByCheck(results: Results | undefined): Record<string, string[]> {
+  const failing: Record<string, Set<string>> = {};
+  for (const c of results?.cases ?? []) {
+    for (const turn of c.samples.flatMap((sample) => sample.turns)) {
+      for (const check of turn.checks) {
+        if (check.findings.some((f) => f.verdict === 'fail'))
+          (failing[check.check] ??= new Set()).add(c.id);
+      }
+    }
+  }
+  return Object.fromEntries(
+    Object.entries(failing).map(([check, ids]) => [check, [...ids].toSorted()]),
+  );
+}
+
+async function runResilience(defect: string, providerUrl: string): Promise<void> {
+  const shop = await start('src/main.ts', [
+    '--port',
+    '0',
+    '--model-url',
+    `${proxyUrl}/fake`,
+    '--model-timeout-ms',
+    '300',
+    '--defect',
+    defect,
+  ]);
+  const out = join(dir, `resilience-${defect}.json`);
+  const quiet = { out: () => undefined, err: () => undefined };
+  const code = await main(
+    [
+      'run',
+      '--profile',
+      profileFor('serial', providerUrl),
+      '--cases',
+      join(DEMO, 'cases-resilience'),
+      '--target-url',
+      `${shop}/v1/chat`,
+      '--proxy-url',
+      proxyUrl,
+      '--out',
+      out,
+    ],
+    quiet,
+  );
+  expect(code, defect).toBe(0);
+  resilience.set(defect, Results.parse(JSON.parse(readFileSync(out, 'utf8'))));
 }
 
 beforeAll(async () => {
@@ -145,7 +216,8 @@ beforeAll(async () => {
   // One recording at a time: the runs go one after the other.
   await run('serial', serialShop, providerUrl);
   await run('header', headerShop, providerUrl);
-}, 120_000);
+  for (const defect of Object.keys(RESILIENCE)) await runResilience(defect, providerUrl);
+}, 180_000);
 
 afterAll(async () => {
   stopProxy.abort();
@@ -170,7 +242,7 @@ describe('the model proxy against the demo-shop', () => {
     (name) => {
       const result = runs.get(name);
       const before = result?.before ?? 0;
-      const after = name === 'serial' ? (runs.get('header')?.before ?? 0) : usageEntries().length;
+      const after = result?.after ?? 0;
       const provider = usageEntries().slice(before, after);
       const input = provider.reduce((total, entry) => total + entry.promptTokens, 0);
       const output = provider.reduce((total, entry) => total + entry.completionTokens, 0);
@@ -214,12 +286,42 @@ describe('the model proxy against the demo-shop', () => {
     const lines = readFileSync(proxyLog, 'utf8')
       .split('\n')
       .filter((line) => line !== '');
-    const recorded = ['serial', 'header'].reduce(
-      (total, name) => total + (runs.get(name)?.results.run.proxy?.records ?? 0),
-      0,
-    );
+    const recorded = [
+      ...[...runs.values()].map((done) => done.results),
+      ...resilience.values(),
+    ].reduce((total, results) => total + (results.run.proxy?.records ?? 0), 0);
     expect(lines).toHaveLength(recorded);
     expect(lines.join('\n')).not.toMatch(/authorization|demo-key/iu);
+  });
+
+  it.each(Object.entries(RESILIENCE))(
+    'resilience, %s: exactly the expected check fails, on exactly the expected cases',
+    (defect, expected) => {
+      const results = resilience.get(defect);
+      expect(results?.cases).toHaveLength(6);
+      const wanted = Object.fromEntries(
+        Object.entries(expected).map(([check, ids]) => [check, [...ids].toSorted()]),
+      );
+      expect(failingByCheck(results)).toEqual(wanted);
+      const failed = new Set(Object.values(wanted).flat());
+      for (const c of results?.cases ?? [])
+        expect(c.status, `${defect} ${c.id}`).toBe(failed.has(c.id) ? 'fail' : 'pass');
+    },
+  );
+
+  it('resilience: the faults reached the provider only when they had to', () => {
+    const calls = (resilience.get('none')?.cases ?? []).map((c) => ({
+      id: c.id,
+      calls: c.samples[0]?.turns[0]?.proxy?.calls.map((call) => call.fault?.kind ?? 'none'),
+    }));
+    expect(calls).toEqual([
+      { id: 'provider-503-once', calls: ['status', 'none', 'none'] },
+      { id: 'provider-down', calls: ['status'] },
+      { id: 'provider-stalls', calls: ['timeout'] },
+      { id: 'empty-model-output', calls: ['none', 'empty-content'] },
+      { id: 'malformed-interpretation', calls: ['malformed-json'] },
+      { id: 'slow-provider', calls: ['latency', 'latency'] },
+    ]);
   });
 
   // Last, so it sees the traffic of everything above.

@@ -1,4 +1,9 @@
-import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
+import {
+  createServer,
+  type IncomingHttpHeaders,
+  type Server,
+  type ServerResponse,
+} from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Assistant } from './assistant.ts';
 import { loadShopData } from './catalog.ts';
@@ -196,5 +201,111 @@ describe('the fake provider', () => {
     ).toBe(400);
     expect((await fetch(`${url}/models`)).status).toBe(404);
     expect(usage).toEqual([]);
+  });
+});
+
+/** A provider that answers each call with the next reply in the list. */
+async function scriptedProvider(
+  answers: ((response: ServerResponse) => void)[],
+): Promise<{ url: string; calls: () => number }> {
+  let count = 0;
+  const url = await listen(
+    createServer((request, response) => {
+      request.resume();
+      request.on('end', () => {
+        const reply = answers[Math.min(count, answers.length - 1)];
+        count += 1;
+        reply?.(response);
+      });
+    }),
+  );
+  return { url, calls: () => count };
+}
+const ok = (content: string) => (response: ServerResponse) => {
+  response.writeHead(200, { 'content-type': 'application/json' });
+  response.end(JSON.stringify({ choices: [{ message: { content } }] }));
+};
+const status = (code: number) => (response: ServerResponse) => {
+  response.writeHead(code, { 'content-type': 'application/json', 'retry-after': '0' });
+  response.end('{"error":{}}');
+};
+const stall = () => undefined;
+
+describe('the demo-shop under model failures', () => {
+  const fallbackDraft = { kind: 'fallback', language: 'en' } as const;
+
+  it('retries once after a 429 or 503, and gives up after a second one', async () => {
+    const once = await scriptedProvider([status(503), ok('Merhaba')]);
+    expect(await new RemoteModel({ url: once.url, key: 'k' }).write(fallbackDraft)).toBe('Merhaba');
+    expect(once.calls()).toBe(2);
+    const twice = await scriptedProvider([status(429), status(503), ok('never')]);
+    await expect(
+      new RemoteModel({ url: twice.url, key: 'k' }).write(fallbackDraft),
+    ).rejects.toThrow('the model answered 503');
+    expect(twice.calls()).toBe(2);
+    const down = await scriptedProvider([status(500)]);
+    await expect(new RemoteModel({ url: down.url, key: 'k' }).write(fallbackDraft)).rejects.toThrow(
+      'the model answered 500',
+    );
+    expect(down.calls()).toBe(1);
+  });
+
+  it('gives up on a stalled model after its timeout, unless the defect is on', async () => {
+    const stalled = await scriptedProvider([stall]);
+    const started = performance.now();
+    await expect(
+      new RemoteModel({ url: stalled.url, key: 'k', timeoutMs: 50 }).write(fallbackDraft),
+    ).rejects.toThrow(/aborted|timeout/iu);
+    expect(performance.now() - started).toBeLessThan(1_000);
+    const waiting = new RemoteModel({
+      url: stalled.url,
+      key: 'k',
+      timeoutMs: 50,
+      defect: 'no-model-timeout',
+    })
+      .write(fallbackDraft)
+      .then(
+        () => 'answered',
+        () => 'gave up',
+      );
+    const outcome = await Promise.race([
+      waiting,
+      new Promise((resolve) => setTimeout(() => resolve('still waiting'), 200)),
+    ]);
+    expect(outcome).toBe('still waiting');
+  });
+
+  it('refuses empty output, unless the defect is on', async () => {
+    const empty = await scriptedProvider([ok('  ')]);
+    await expect(
+      new RemoteModel({ url: empty.url, key: 'k' }).write(fallbackDraft),
+    ).rejects.toThrow('the model answered with empty content');
+    expect(
+      await new RemoteModel({ url: empty.url, key: 'k', defect: 'unchecked-model-output' }).write(
+        fallbackDraft,
+      ),
+    ).toBe('  ');
+  });
+
+  it('answers from a template on the fallback route when the model fails, and caches nothing', async () => {
+    let calls = 0;
+    const failing: ChatModel = {
+      interpret: () => {
+        calls += 1;
+        return Promise.reject(new Error('provider down'));
+      },
+      write: () => Promise.reject(new Error('provider down')),
+    };
+    const shop = new Assistant({ data, model: failing, defect: null });
+    const first = await shop.reply('s', 'Çadır önerir misin?');
+    expect(first.reply).toEqual({
+      answer: 'Şu anda yanıt hazırlayamıyorum. Lütfen biraz sonra tekrar deneyin.',
+      products: [],
+      metadata: { route: 'fallback', language: 'tr' },
+    });
+    await shop.reply('s2', 'Çadır önerir misin?');
+    expect(calls).toBe(2);
+    const broken = new Assistant({ data, model: failing, defect: 'no-model-fallback' });
+    await expect(broken.reply('s', 'Show me headlamps')).rejects.toThrow('provider down');
   });
 });

@@ -220,6 +220,7 @@ const TEXT = {
     },
     refusal: 'Bu konuda yardımcı olamıyorum.',
     fallback: 'Ürünler, fiyatlar ve iade koşulları hakkında yardımcı olabilirim. Ne aramıştınız?',
+    unavailable: 'Şu anda yanıt hazırlayamıyorum. Lütfen biraz sonra tekrar deneyin.',
   },
   en: {
     inStock: 'in stock',
@@ -242,8 +243,14 @@ const TEXT = {
     },
     refusal: "I can't help with that.",
     fallback: 'I can help with products, prices and return terms. What are you looking for?',
+    unavailable: "I can't put an answer together right now. Please try again in a moment.",
   },
 } as const;
+
+/** The template answer when the model can't be used: it states no product or price. */
+export function unavailableAnswer(language: Language): string {
+  return TEXT[language].unavailable;
+}
 
 export class ScriptedModel implements ChatModel {
   readonly #defect: Defect | null;

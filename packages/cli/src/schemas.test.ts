@@ -22,7 +22,10 @@ function parse<T>(path: string, schema: z.ZodType<T>): T {
 
 describe('the demo-shop config', () => {
   const profile = parse('yokla.profile.yaml', schemas.profile);
-  const cases = parse('cases/acceptance.yaml', schemas.caseFile).cases;
+  const cases = [
+    ...parse('cases/acceptance.yaml', schemas.caseFile).cases,
+    ...parse('cases-resilience/resilience.yaml', schemas.caseFile).cases,
+  ];
 
   it('has a valid profile', () => {
     expect(profile.target.name).toBe('demo-shop');
