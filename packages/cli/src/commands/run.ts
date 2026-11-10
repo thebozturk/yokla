@@ -33,6 +33,28 @@ function positiveInt(value: string | undefined, name: string): number | undefine
   return number;
 }
 
+function turns(count: number): string {
+  return `${String(count)} turn${count === 1 ? '' : 's'}`;
+}
+
+/** "costUsd 0.0123 (no value on 2 turns), modelCalls 4" */
+function observedTotals(
+  totals: Readonly<Record<string, number>>,
+  missing: Readonly<Record<string, number>>,
+): string {
+  const names = [...new Set([...Object.keys(totals), ...Object.keys(missing)])];
+  return names
+    .map((name) => {
+      const total = totals[name];
+      const gap = missing[name];
+      const value = total === undefined ? '' : String(Math.round(total * 1e6) / 1e6);
+      if (gap === undefined) return `${name} ${value}`;
+      if (total === undefined) return `${name} no value on ${turns(gap)}`;
+      return `${name} ${value} (no value on ${turns(gap)})`;
+    })
+    .join(', ');
+}
+
 export function printSummary(results: Results, outPath: string, io: Output): void {
   const statuses = Object.entries(results.summary.statuses)
     .map(([status, count]) => `${status} ${String(count)}`)
@@ -48,9 +70,7 @@ export function printSummary(results: Results, outPath: string, io: Output): voi
   }
   const observation = results.run.observation;
   if (observation !== undefined) {
-    const totals = Object.entries(observation.totals)
-      .map(([name, total]) => `${name} ${String(Math.round(total * 1e6) / 1e6)}`)
-      .join(', ');
+    const totals = observedTotals(observation.totals, observation.missing);
     io.out(
       `target logs: ${String(observation.matched)} of ${String(observation.matched + observation.unmatched)} turns matched` +
         (totals === '' ? '' : `; ${totals}`),

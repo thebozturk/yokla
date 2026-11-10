@@ -161,6 +161,7 @@ describe('the run summary', () => {
             matched: 2,
             unmatched: 1,
             totals: { costUsd: 0.0012345678, modelCalls: 3 },
+            missing: { costUsd: 1, route: 2 },
           },
           issues: ['something broke'],
         },
@@ -168,7 +169,9 @@ describe('the run summary', () => {
       'runs/r.json',
       io,
     );
-    expect(out).toContain('target logs: 2 of 3 turns matched; costUsd 0.001235, modelCalls 3');
+    expect(out).toContain(
+      'target logs: 2 of 3 turns matched; costUsd 0.001235 (no value on 1 turn), modelCalls 3, route no value on 2 turns',
+    );
     expect(err).toEqual(['  run: something broke']);
   });
 

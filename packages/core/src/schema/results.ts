@@ -131,6 +131,8 @@ export const Results = z
           unmatched: z.int().nonnegative(),
           /** Sums of the numeric observed fields over matched turns. */
           totals: z.record(z.string(), z.number()),
+          /** Per field, the matched turns where it had no value; a total leaves them out. */
+          missing: z.record(z.string(), z.int().positive()),
         })
         .optional(),
       /** Problems that affect the whole run, e.g. logs that couldn't be read. */

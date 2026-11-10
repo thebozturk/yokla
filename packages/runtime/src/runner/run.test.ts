@@ -521,7 +521,7 @@ describe('runSuite with packs', () => {
   });
 });
 
-const telemetry = (requestId: unknown, costs: number[]) =>
+const telemetry = (requestId: unknown, costs: (number | null)[]) =>
   `[Telemetry] ${JSON.stringify({
     requestId,
     modelCallUsage: costs.map((costUsd) => ({ costUsd })),
@@ -588,6 +588,7 @@ describe('runSuite with target logs', () => {
       matched: 2,
       unmatched: 0,
       totals: { costUsd: 1.5 },
+      missing: {},
     });
     expect(results.run.issues).toBeUndefined();
   });
@@ -641,6 +642,34 @@ describe('runSuite with target logs', () => {
       { source: 'target-logs', correlation: 'order', fields: { costUsd: 2, cacheHit: false } },
       { source: 'target-logs', correlation: 'order', fields: { costUsd: 3, cacheHit: false } },
     ]);
+  });
+
+  it('counts the fields a line has no value for, and leaves them out of the totals', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'yokla-logs-'));
+    const log = join(dir, 'app.log');
+    writeFileSync(log, '');
+    const t = await target((received, index, response) => {
+      appendFileSync(
+        log,
+        telemetry(received.headers['x-request-id'], index === 0 ? [null] : [0.3]),
+      );
+      json(response, answer());
+    });
+    const results = await runSuite(
+      options(logged(t.url), cases({ turns: [{ user: 'a' }, { user: 'b' }] }), {
+        profileDir: dir,
+        logSettleMs: 0,
+      }),
+    );
+    expect(results.cases[0]?.samples[0]?.turns.map((turn) => turn.observed?.fields)).toEqual([
+      { costUsd: null, cacheHit: false },
+      { costUsd: 0.3, cacheHit: false },
+    ]);
+    expect(results.run.observation).toMatchObject({
+      matched: 2,
+      totals: { costUsd: 0.3 },
+      missing: { costUsd: 1 },
+    });
   });
 
   it('leaves out turns the target never answered', async () => {

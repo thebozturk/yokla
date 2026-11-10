@@ -83,7 +83,8 @@ describe('parseLogLines', () => {
 describe('readField', () => {
   const line = {
     id: 'r1',
-    calls: [{ costUsd: 0.25 }, { costUsd: 0.5 }, { costUsd: 'n/a' }],
+    calls: [{ costUsd: 0.25 }, { costUsd: 0.5 }],
+    unpriced: [{ costUsd: 0.25 }, { costUsd: null }],
     flags: [true, false],
     yes: [true, true],
   };
@@ -96,11 +97,16 @@ describe('readField', () => {
 
   it('reduces the selected values', () => {
     expect(readField(line, { from: '$.calls[*].costUsd', reduce: 'sum' })).toBe(0.75);
-    expect(readField(line, { from: '$.calls[*]', reduce: 'count' })).toBe(3);
+    expect(readField(line, { from: '$.calls[*]', reduce: 'count' })).toBe(2);
     expect(readField(line, { from: '$.calls[*].costUsd', reduce: 'first' })).toBe(0.25);
     expect(readField(line, { from: '$.flags[*]', reduce: 'any' })).toBe(true);
     expect(readField(line, { from: '$.flags[*]', reduce: 'all' })).toBe(false);
     expect(readField(line, { from: '$.yes[*]', reduce: 'all' })).toBe(true);
+  });
+
+  it('sums to null when any selected value is not a number', () => {
+    expect(readField(line, { from: '$.unpriced[*].costUsd', reduce: 'sum' })).toBeNull();
+    expect(readField(line, { from: '$.calls[*]', reduce: 'sum' })).toBeNull();
   });
 
   it('reduces nothing to a neutral value, never to a pass', () => {
