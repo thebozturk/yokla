@@ -13,10 +13,20 @@ export { getFieldPath, parseJsonPath, queryJsonPath, type Segment } from './extr
 export {
   extractField,
   extractResponse,
+  toJson,
   type EvidenceItem,
   type ExtractedResponse,
   type JsonValue,
 } from './extract/response.ts';
+export {
+  buildRequest,
+  checkTemplates,
+  mergeJson,
+  TemplateError,
+  type BuiltRequest,
+  type TemplateCheck,
+  type TemplateValues,
+} from './request/build.ts';
 export { buildSchemas, type DomainPackSchemas, type SchemaOptions } from './schema/build.ts';
 export {
   coreExpectations,
