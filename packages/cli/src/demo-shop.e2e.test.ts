@@ -67,7 +67,10 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
 };
 
 const children: ChildProcess[] = [];
-const runs = new Map<string, { code: number; output: string; results: Results; junit: string }>();
+const runs = new Map<
+  string,
+  { code: number; output: string; results: Results; junit: string; out: string }
+>();
 
 async function startShop(defect: string): Promise<string> {
   const child = spawn(
@@ -114,6 +117,7 @@ async function runAgainst(defect: string): Promise<void> {
     output: lines.join('\n'),
     results: Results.parse(JSON.parse(readFileSync(out, 'utf8'))),
     junit: readFileSync(junit, 'utf8'),
+    out,
   });
 }
 
@@ -200,4 +204,26 @@ describe('the demo-shop acceptance', () => {
       expect(run?.junit).toContain(`failures="${String(failed.size)}"`);
     },
   );
+
+  it('passes the gate without defects, and breaks it with each defect against that baseline', async () => {
+    const baseline = runs.get('none')?.out ?? '';
+    const gate = async (defect: string) => {
+      const lines: string[] = [];
+      const io = {
+        out: (line: string) => lines.push(line),
+        err: (line: string) => lines.push(line),
+      };
+      const results = runs.get(defect)?.out ?? '';
+      const code = await main(['gate', '--results', results, '--baseline', baseline], io);
+      return { code, output: lines.join('\n') };
+    };
+    expect(await gate('none')).toMatchObject({ code: 0 });
+    for (const [defect, expected] of Object.entries(EXPECTED)) {
+      const outcome = await gate(defect);
+      expect(outcome.code, defect).toBe(1);
+      for (const id of Object.values(expected).flat()) {
+        expect(outcome.output, defect).toContain(`${id} passed in the baseline and is now fail`);
+      }
+    }
+  });
 });

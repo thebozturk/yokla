@@ -44,6 +44,8 @@ pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml \
 - **JUnit XML.** `--junit <file>` also writes a JUnit XML report for CI.
 - **Earlier runs.** `pnpm yokla report --results runs/<run id>.json` prints the
   summary of a results file and can write the same JUnit report.
+- **Gate.** `pnpm yokla gate --results <file> [--baseline <file>]` exits with
+  `0` passed, `1` broken or `2` when the run can't be judged (ADR-0010).
 
 ## API
 

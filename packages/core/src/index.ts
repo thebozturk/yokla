@@ -51,6 +51,8 @@ export {
   SUITES,
 } from './schema/common.ts';
 export { FieldSpec, type Profile, type ProfileTarget } from './schema/profile.ts';
+export { GateConfig, YoklaConfig } from './schema/config.ts';
+export { evaluateGate, type GateBreach, type GateOutcome } from './gate/gate.ts';
 export {
   CASE_STATUSES,
   CaseResult,

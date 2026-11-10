@@ -4,7 +4,16 @@
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync, type Stats } from 'node:fs';
 import { dirname, extname, join, relative, resolve } from 'node:path';
-import { formatIssue, parseConfig, type Case, type Profile, type z } from '@yokla/core';
+import {
+  formatIssue,
+  parseConfig,
+  Results,
+  RESULTS_SCHEMA_ID,
+  YoklaConfig,
+  type Case,
+  type Profile,
+  type z,
+} from '@yokla/core';
 import { schemas } from './schemas.ts';
 
 export class LoadError extends Error {
@@ -80,4 +89,42 @@ export function loadCases(paths: readonly string[]): Case[] {
   }
   if (problems.length > 0) throw new LoadError(problems.join('\n'));
   return cases;
+}
+
+/** Loads yokla.config.yaml (ADR-0010). */
+export function loadConfig(path: string): YoklaConfig {
+  return parseFile(resolve(path), YoklaConfig).value;
+}
+
+export class ResultsError extends Error {
+  override readonly name = 'ResultsError';
+}
+
+/** Reads and validates a results file; any problem is a ResultsError. */
+export function readResults(path: string): Results {
+  let value: unknown;
+  try {
+    value = JSON.parse(readFileSync(path, 'utf8'));
+  } catch (error) {
+    throw new ResultsError(`${path}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const schema =
+    typeof value === 'object' && value !== null && 'schema' in value ? value.schema : undefined;
+  if (schema !== RESULTS_SCHEMA_ID) {
+    throw new ResultsError(
+      `${path}: not a ${RESULTS_SCHEMA_ID} file (schema: ${JSON.stringify(schema) ?? 'missing'})`,
+    );
+  }
+  const parsed = Results.safeParse(value);
+  if (!parsed.success) {
+    throw new ResultsError(
+      [
+        `${path}: invalid results`,
+        ...parsed.error.issues
+          .slice(0, 10)
+          .map((issue) => `  ${issue.path.map(String).join('.') || '(root)'}: ${issue.message}`),
+      ].join('\n'),
+    );
+  }
+  return parsed.data;
 }
