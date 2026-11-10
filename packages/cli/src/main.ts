@@ -1,6 +1,7 @@
 // The yokla command line.
 
 import { readFileSync } from 'node:fs';
+import { REPORT_HELP, reportCommand } from './commands/report.ts';
 import { RUN_HELP, runCommand, type Output } from './commands/run.ts';
 import { jsonSchemas } from './schemas.ts';
 
@@ -8,10 +9,13 @@ const HELP = `yokla — test conversational AI assistants end to end
 
 Usage:
   yokla run [options]        run cases against the profile's target
+  yokla report [options]     render the reports of a results file
   yokla schema <name>        print the JSON Schema of profile, cases or results
   yokla --version
 
-${RUN_HELP}`;
+${RUN_HELP}
+
+${REPORT_HELP}`;
 
 export function version(): string {
   const manifest: unknown = JSON.parse(
@@ -36,6 +40,8 @@ export async function main(argv: readonly string[], io: Output): Promise<number>
   switch (command) {
     case 'run':
       return runCommand(rest, io, version());
+    case 'report':
+      return reportCommand(rest, io);
     case 'schema': {
       const file = SCHEMA_FILES[rest[0] ?? ''];
       if (file === undefined) {

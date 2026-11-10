@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { RESULTS_SCHEMA_ID, type Results } from '@yokla/core';
@@ -180,5 +180,88 @@ describe('the run summary', () => {
     printSummary(results, 'runs/r.json', io);
     expect(out.join('\n')).not.toMatch(/target logs/u);
     expect(err).toEqual([]);
+  });
+});
+
+describe('yokla report', () => {
+  const valid = {
+    schema: RESULTS_SCHEMA_ID,
+    yokla: { version: '0.0.0-test' },
+    run: {
+      id: 'r',
+      startedAt: '2026-11-10T12:00:00.000Z',
+      finishedAt: '2026-11-10T12:00:01.000Z',
+      durationMs: 1000,
+      profile: { target: 't', sha256: 'a'.repeat(64) },
+      environment: { node: 'v24.0.0', platform: 'darwin', arch: 'arm64' },
+      correlation: 'none',
+      partial: false,
+    },
+    cases: [
+      {
+        id: 'a',
+        suite: 'quality',
+        language: 'tr',
+        status: 'unmeasured',
+        unstable: false,
+        dimensions: [],
+        samples: [{ index: 0, cache: 'cold', turns: [{ user: 'u', checks: [] }] }],
+      },
+    ],
+    checks: [],
+    summary: { cases: 1, statuses: { unmeasured: 1 } },
+  };
+
+  it('prints the summary of a results file and writes JUnit XML', async () => {
+    const dir = workspace({ 'run.json': JSON.stringify(valid) });
+    const junit = join(dir, 'reports', 'junit.xml');
+    const { io, out, err } = capture();
+    expect(await main(['report', '--results', join(dir, 'run.json'), '--junit', junit], io)).toBe(
+      0,
+    );
+    expect(out).toEqual([
+      '1 cases: unmeasured 1',
+      '  unmeasured  a  no check applied to any turn',
+      `junit: ${junit}`,
+    ]);
+    expect(err).toEqual([]);
+    expect(readFileSync(junit, 'utf8')).toContain(
+      '<testsuites name="yokla" tests="1" failures="0" errors="0" skipped="1"',
+    );
+  });
+
+  it('refuses a file it cannot read, another schema or invalid results', async () => {
+    const dir = workspace({
+      'broken.json': '{',
+      'other.json': JSON.stringify({ ...valid, schema: 'yokla.results/v2' }),
+      'bad.json': JSON.stringify({ ...valid, summary: { cases: 'one' } }),
+    });
+    const report = async (file: string) => {
+      const { io, err } = capture();
+      return {
+        code: await main(['report', '--results', join(dir, file)], io),
+        err: err.join('\n'),
+      };
+    };
+    const expectRefusal = async (file: string, message: RegExp) => {
+      const outcome = await report(file);
+      expect(outcome.code).toBe(2);
+      expect(outcome.err).toMatch(message);
+    };
+    await expectRefusal('missing.json', /ENOENT/u);
+    await expectRefusal('broken.json', /JSON/u);
+    await expectRefusal(
+      'other.json',
+      /not a yokla\.results\/v1 file \(schema: "yokla\.results\/v2"\)/u,
+    );
+    await expectRefusal('bad.json', /invalid results\n  summary\.cases: /u);
+  });
+
+  it('needs --results and rejects unknown options', async () => {
+    expect(await main(['report'], capture().io)).toBe(2);
+    expect(await main(['report', '--nope'], capture().io)).toBe(2);
+    const { io, out } = capture();
+    expect(await main(['report', '--help'], io)).toBe(0);
+    expect(out[0]).toMatch(/^Usage: yokla report/u);
   });
 });

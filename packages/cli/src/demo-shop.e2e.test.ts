@@ -67,7 +67,7 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
 };
 
 const children: ChildProcess[] = [];
-const runs = new Map<string, { code: number; output: string; results: Results }>();
+const runs = new Map<string, { code: number; output: string; results: Results; junit: string }>();
 
 async function startShop(defect: string): Promise<string> {
   const child = spawn(
@@ -93,7 +93,9 @@ async function startShop(defect: string): Promise<string> {
 
 async function runAgainst(defect: string): Promise<void> {
   const base = await startShop(defect);
-  const out = join(mkdtempSync(join(tmpdir(), `yokla-e2e-${defect}-`)), 'results.json');
+  const dir = mkdtempSync(join(tmpdir(), `yokla-e2e-${defect}-`));
+  const out = join(dir, 'results.json');
+  const junit = join(dir, 'junit.xml');
   const lines: string[] = [];
   const io = { out: (line: string) => lines.push(line), err: (line: string) => lines.push(line) };
   const args = [
@@ -103,11 +105,15 @@ async function runAgainst(defect: string): Promise<void> {
     '--cases',
     join(DEMO, 'cases'),
   ];
-  const code = await main([...args, '--target-url', `${base}/v1/chat`, '--out', out], io);
+  const code = await main(
+    [...args, '--target-url', `${base}/v1/chat`, '--out', out, '--junit', junit],
+    io,
+  );
   runs.set(defect, {
     code,
     output: lines.join('\n'),
     results: Results.parse(JSON.parse(readFileSync(out, 'utf8'))),
+    junit: readFileSync(junit, 'utf8'),
   });
 }
 
@@ -156,6 +162,9 @@ describe('the demo-shop acceptance', () => {
     expect(run?.code, run?.output).toBe(0);
     expect(run?.results.cases).toHaveLength(18);
     expect(run?.results.summary.statuses).toEqual({ pass: 18 });
+    expect(run?.junit).toMatch(
+      /<testsuites name="yokla" tests="18" failures="0" errors="0" skipped="0"/u,
+    );
   });
 
   it('keeps the evidence and the conversation of every turn', () => {
@@ -188,6 +197,7 @@ describe('the demo-shop acceptance', () => {
       for (const c of run?.results.cases ?? []) {
         expect(c.status, c.id).toBe(failed.has(c.id) ? 'fail' : 'pass');
       }
+      expect(run?.junit).toContain(`failures="${String(failed.size)}"`);
     },
   );
 });

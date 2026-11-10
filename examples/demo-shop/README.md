@@ -41,6 +41,10 @@ pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml \
 
 `packages/cli/src/demo-shop.e2e.test.ts` does the same in CI.
 
+- **JUnit XML.** `--junit <file>` also writes a JUnit XML report for CI.
+- **Earlier runs.** `pnpm yokla report --results runs/<run id>.json` prints the
+  summary of a results file and can write the same JUnit report.
+
 ## API
 
 `POST /v1/chat` with `{"message": string, "sessionId": string}` returns:
