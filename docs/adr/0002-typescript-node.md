@@ -4,9 +4,9 @@ Status: Accepted · Date: 2026-11-09
 
 ## Context
 
-Most LLM evaluation and red-teaming tools are written in Python (Giskard,
-DeepEval, garak, PyRIT). yokla tests assistants through their external interface, starting with HTTP,
-and runs a local model proxy.
+Most LLM evaluation and red-teaming tools are written in Python. yokla tests
+assistants through their external interface, starting with HTTP, and runs a
+local model proxy.
 
 ## Decision
 
@@ -39,3 +39,9 @@ and runs a local model proxy.
 - **Go or Rust.** They give a single binary and a fast proxy, but have a small
   LLM-tooling ecosystem and fewer potential contributors in this space.
   Rejected.
+
+## Note
+
+2026-11-10: the names of other tools were removed from the context at the
+maintainer's request, as a one-time exception to the rule that accepted ADRs
+are never edited. The decision is unchanged.
