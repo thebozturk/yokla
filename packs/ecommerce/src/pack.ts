@@ -1,7 +1,10 @@
-// The ecommerce domain pack (design §17). Its checks arrive one by one; until
-// then the pack contributes its schemas and its aggregation policies.
+// The ecommerce domain pack (design §17).
 
 import type { DomainPack } from '@yokla/core';
+import { noDuplicates } from './checks/no-duplicates.ts';
+import { priceGrounded } from './checks/price-grounded.ts';
+import { stockClaim } from './checks/stock-claim.ts';
+import { loadData } from './data.ts';
 import { ecommerceExpectations, ecommerceProfile } from './schema.ts';
 
 export const ecommercePack: DomainPack = {
@@ -16,5 +19,8 @@ export const ecommercePack: DomainPack = {
     duplicates: 'worst-of-n',
     absence: 'worst-of-n',
   },
-  prepare: () => ({ checks: [] }),
+  prepare(profile, io) {
+    const data = loadData(profile, io);
+    return { checks: [priceGrounded(data), noDuplicates(data), stockClaim(data)] };
+  },
 };
