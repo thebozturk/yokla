@@ -12,8 +12,24 @@ const Thresholds = z.strictObject({
     .meta({ description: 'Cases with status fail a suite may have. Default 0.' }),
   allowUnmeasured: z.boolean().optional().meta({
     description:
-      'Whether a suite may have unmeasured cases. Default false: unmeasured is never a pass.',
+      'Whether a suite may have unmeasured cases and thresholds. Default false: unmeasured is never a pass.',
   }),
+  latencyP50Ms: z.number().nonnegative().optional().meta({
+    description: 'The median latency of the answered turns, every sample included (ADR-0014).',
+  }),
+  latencyP95Ms: z.number().nonnegative().optional().meta({
+    description: 'The 95th percentile latency of the answered turns, every sample included.',
+  }),
+  costPerTurnUsd: z
+    .number()
+    .nonnegative()
+    .optional()
+    .meta({ description: 'The mean model cost of an answered turn, from the model proxy.' }),
+  costUsd: z
+    .number()
+    .nonnegative()
+    .optional()
+    .meta({ description: "The suite's total model cost, from the model proxy." }),
 });
 
 export const GateConfig = Thresholds.extend({
