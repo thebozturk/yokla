@@ -75,9 +75,13 @@ export type {
   CheckFinding,
   CheckOutcome,
   DomainPack,
+  DurationMention,
   FindingSeverity,
   LanguagePack,
+  MoneyMention,
   PackIo,
+  PhraseKind,
   PreparedPack,
   TurnView,
 } from './checks/types.ts';
+export { findPhrases, hasPhrase, type PhraseMatch } from './text/phrases.ts';

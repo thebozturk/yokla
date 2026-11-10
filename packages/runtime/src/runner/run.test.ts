@@ -16,6 +16,7 @@ import {
   type DomainPack,
   type Profile,
 } from '@yokla/core';
+import { stubLanguagePack } from '@yokla/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ConfigError, runSuite, type RunOptions } from './run.ts';
 
@@ -429,7 +430,11 @@ describe('runSuite with packs', () => {
       options(
         profile(t.url),
         cases({ turns: [{ user: 'a', expect: { answerable: true } }, { user: 'b' }] }),
-        { packs: [shopPack('tent')], languages: [{ language: 'tr' }], profileDir: dirWithWord('') },
+        {
+          packs: [shopPack('tent')],
+          languages: [stubLanguagePack('tr')],
+          profileDir: dirWithWord(''),
+        },
       ),
     );
     expect(seen).toEqual([

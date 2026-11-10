@@ -32,6 +32,7 @@
     "unicorn/prefer-node-protocol": "error",
     "import/no-cycle": "error",
     "vitest/valid-expect": ["error", { "maxArgs": 2 }],
+    "vitest/expect-expect": ["error", { "assertFunctionNames": ["expect", "fc.assert"] }],
 
     "no-restricted-imports": [
       "error",

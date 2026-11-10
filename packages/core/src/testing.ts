@@ -3,7 +3,7 @@
 // mutation that silently did nothing can't make a test pass.
 
 import type { Case } from './schema/cases.ts';
-import type { CheckContext, TurnView } from './checks/types.ts';
+import type { CheckContext, LanguagePack, TurnView } from './checks/types.ts';
 import type { Profile } from './schema/profile.ts';
 
 /**
@@ -74,5 +74,17 @@ export function checkContext(
     lang: undefined,
     ...change,
     turn,
+  };
+}
+
+/** A language pack that finds nothing, for tests that don't depend on a language. */
+export function stubLanguagePack(language: string): LanguagePack {
+  return {
+    language,
+    fold: (text) => text.toLowerCase(),
+    findMoney: () => [],
+    findDurations: () => [],
+    formatMoney: (amount, currency) => `${String(amount)} ${currency}`,
+    phrases: { refusal: [], inability: [], absence: [], alternative: [], free: [] },
   };
 }
