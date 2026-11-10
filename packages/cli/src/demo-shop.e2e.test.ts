@@ -39,48 +39,57 @@ afterAll(() => {
 });
 
 describe('yokla run against the demo-shop', () => {
-  it('runs every acceptance case, checks it and writes valid results.v1', { timeout: 60_000 }, async () => {
-    const out = join(mkdtempSync(join(tmpdir(), 'yokla-e2e-')), 'results.json');
-    const lines: string[] = [];
-    const io = { out: (line: string) => lines.push(line), err: (line: string) => lines.push(line) };
-    const code = await main(
-      [
-        'run',
-        '--profile',
-        join(DEMO, 'yokla.profile.yaml'),
-        '--cases',
-        join(DEMO, 'cases'),
-        '--target-url',
-        `${base}/v1/chat`,
-        '--out',
-        out,
-      ],
-      io,
-    );
-    expect(code, lines.join('\n')).toBe(0);
+  it(
+    'runs every acceptance case, checks it and writes valid results.v1',
+    { timeout: 60_000 },
+    async () => {
+      const out = join(mkdtempSync(join(tmpdir(), 'yokla-e2e-')), 'results.json');
+      const lines: string[] = [];
+      const io = {
+        out: (line: string) => lines.push(line),
+        err: (line: string) => lines.push(line),
+      };
+      const code = await main(
+        [
+          'run',
+          '--profile',
+          join(DEMO, 'yokla.profile.yaml'),
+          '--cases',
+          join(DEMO, 'cases'),
+          '--target-url',
+          `${base}/v1/chat`,
+          '--out',
+          out,
+        ],
+        io,
+      );
+      expect(code, lines.join('\n')).toBe(0);
 
-    const results = Results.parse(JSON.parse(readFileSync(out, 'utf8')));
-    expect(results.cases).toHaveLength(18);
-    // Without defects nothing fails; cases whose checks don't exist yet stay unmeasured.
-    expect(results.summary.statuses.fail).toBeUndefined();
-    expect(results.summary.statuses.error).toBeUndefined();
-    expect(results.cases.find((c) => c.id === 'tents-tr')?.status).toBe('pass');
-    expect(results.checks.find((c) => c.check === 'price-grounded')).toMatchObject({ failed: 0 });
-    expect(results.checks.find((c) => c.check === 'price-grounded')?.applied).toBeGreaterThan(0);
+      const results = Results.parse(JSON.parse(readFileSync(out, 'utf8')));
+      expect(results.cases).toHaveLength(18);
+      // Without defects nothing fails; cases whose checks don't exist yet stay unmeasured.
+      expect(results.summary.statuses.fail).toBeUndefined();
+      expect(results.summary.statuses.error).toBeUndefined();
+      expect(results.cases.find((c) => c.id === 'tents-tr')?.status).toBe('pass');
+      expect(results.checks.find((c) => c.check === 'price-grounded')).toMatchObject({ failed: 0 });
+      expect(results.checks.find((c) => c.check === 'price-grounded')?.applied).toBeGreaterThan(0);
 
-    const relaxed = results.cases.find((c) => c.id === 'tents-under-500-tr')?.samples[0]?.turns[0];
-    expect(relaxed?.response?.text).toMatch(/^Bu kriterlere \(500,00 TL altı\)/u);
-    expect(relaxed?.response?.evidence['products']?.[0]).toMatchObject({
-      id: 'TNT-004',
-      price: 899.5,
-      stock: 0,
-    });
+      const relaxed = results.cases.find((c) => c.id === 'tents-under-500-tr')?.samples[0]
+        ?.turns[0];
+      expect(relaxed?.response?.text).toMatch(/^Bu kriterlere \(500,00 TL altı\)/u);
+      expect(relaxed?.response?.evidence['products']?.[0]).toMatchObject({
+        id: 'TNT-004',
+        price: 899.5,
+        stock: 0,
+      });
 
-    const followUp = results.cases.find((c) => c.id === 'cheaper-follow-up-en')?.samples[0]?.turns;
-    expect(followUp?.map((turn) => turn.response?.route)).toEqual([
-      'product-search',
-      'follow-up-cheapest',
-    ]);
-    expect(followUp?.[1]?.response?.evidence['products']).toMatchObject([{ id: 'JKT-003' }]);
-  });
+      const followUp = results.cases.find((c) => c.id === 'cheaper-follow-up-en')?.samples[0]
+        ?.turns;
+      expect(followUp?.map((turn) => turn.response?.route)).toEqual([
+        'product-search',
+        'follow-up-cheapest',
+      ]);
+      expect(followUp?.[1]?.response?.evidence['products']).toMatchObject([{ id: 'JKT-003' }]);
+    },
+  );
 });
