@@ -3,12 +3,16 @@
 // Without defects every case passes. With each defect, exactly the expected
 // check fails on exactly the expected cases, and nothing else fails.
 // yokla never imports the demo-shop (layer rules).
+//
+// The egress test (ADR-0003, design §15): every run, gate and baseline here
+// runs behind a network guard that allows only the demo-shops' own ports.
 
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Results } from '@yokla/core';
+import { installNetworkGuard, type NetworkGuard } from '@yokla/runtime/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { main } from './main.ts';
 
@@ -67,6 +71,8 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
 };
 
 const children: ChildProcess[] = [];
+const shopPorts = new Set<number>();
+let guard: NetworkGuard | undefined;
 const runs = new Map<
   string,
   { code: number; output: string; results: Results; junit: string; out: string }
@@ -86,7 +92,10 @@ async function startShop(defect: string): Promise<string> {
     child.stdout?.on('data', (chunk: Buffer) => {
       output += chunk.toString('utf8');
       const url = /http:\/\/127\.0\.0\.1:\d+/u.exec(output)?.[0];
-      if (url !== undefined) resolve(url);
+      if (url !== undefined) {
+        shopPorts.add(Number(new URL(url).port));
+        resolve(url);
+      }
     });
     child.on('exit', (code) => {
       reject(new Error(`demo-shop (${defect}) exited early with ${String(code)}`));
@@ -141,11 +150,15 @@ function failingByCheck(results: Results | undefined): Record<string, string[]> 
 }
 
 beforeAll(async () => {
+  guard = installNetworkGuard(
+    (host, port) => host === '127.0.0.1' && port !== undefined && shopPorts.has(port),
+  );
   // Each defect gets its own demo-shop process and port, so the runs go in parallel.
   await Promise.all(['none', ...Object.keys(EXPECTED)].map((defect) => runAgainst(defect)));
 }, 120_000);
 
 afterAll(() => {
+  guard?.uninstall();
   // Stop exactly the processes these tests started, by their handles.
   for (const child of children) child.kill();
 });
@@ -236,5 +249,17 @@ describe('the demo-shop acceptance', () => {
         expect(outcome.output, defect).toContain(`${id} passed in the baseline and is now fail`);
       }
     }
+  });
+
+  // Last, so it sees the traffic of every test above.
+  it('contacts no host but the demo-shops (ADR-0003)', () => {
+    const attempts = guard?.attempts ?? [];
+    expect(attempts.filter((attempt) => !attempt.allowed)).toEqual([]);
+    expect(new Set(attempts.map((attempt) => `${attempt.kind} ${attempt.host}`))).toEqual(
+      new Set(['tcp 127.0.0.1']),
+    );
+    // Not vacuous: the guard saw every demo-shop the runs talked to.
+    expect(new Set(attempts.map((attempt) => attempt.port))).toEqual(shopPorts);
+    expect(shopPorts.size).toBe(Object.keys(EXPECTED).length + 1);
   });
 });
