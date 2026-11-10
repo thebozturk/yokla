@@ -434,10 +434,15 @@ The proxy has three jobs:
 - Anthropic Messages: `/v1/messages`.
 - Streaming (SSE) passes through.
 
-**Setup.** The app's provider base-URL variable points at the proxy
+**Setup (ADR-0012).** `yokla proxy` runs as its own process, started before the
+app. The app's provider base-URL variable points at it
 (`http://127.0.0.1:<port>/<upstream-id>`). The proxy forwards to the real
 upstream with the app's own credentials. It holds no keys and binds to
 localhost only.
+- It never changes a request or a response; usage a provider didn't report
+  stays unmeasured.
+- `yokla run` reads the records of its own time window from the proxy's local
+  control endpoint.
 
 **Correlation: which provider calls belong to which test request?**
 1. `serial`: one request in flight; every call in its window belongs to it.
