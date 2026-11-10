@@ -1,6 +1,6 @@
 # 0012. The model proxy: a standalone process, routing, records and correlation
 
-Status: Proposed · Date: 2026-11-10
+Status: Accepted · Date: 2026-11-10
 
 ## Context
 
@@ -75,6 +75,11 @@ Its cost is observed through its logs (ADR-0009).
   a deterministic fake provider that answers, reports usage and keeps its own
   usage log. "Reconciles with the provider's usage records" is checked against
   that log, at no cost.
+- **v0.2's real target.** For the exit criterion, the real target is an
+  open-source assistant whose provider is OpenAI-compatible or Anthropic. The
+  target examined so far stays observed through its logs. Running another
+  project's code needs the maintainer's explicit approval, because
+  downloaded code is otherwise never executed.
 - **Out of scope for this ADR.** Fault plans and inspection checks get their
   own ADR. So do other protocols, such as cloud providers' own APIs and AI
   gateways. Until such an adapter exists, targets that use those protocols
@@ -89,9 +94,8 @@ Its cost is observed through its logs (ADR-0009).
   runs. It records them only while recording is on; outside that, it only
   forwards.
 - **v0.2's real target needs an OpenAI-compatible or Anthropic provider with a
-  configurable base URL.** The target examined so far needs either:
-  - a protocol adapter, and a base-URL setting in the app, or
-  - to be replaced, for this criterion, by another target.
+  configurable base URL.** A protocol adapter could later bring the target
+  examined so far behind the proxy, given a base-URL setting in that app.
 - **Unmeasured stays visible.** Missing usage never becomes a lower cost.
 
 ## Alternatives considered
