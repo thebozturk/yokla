@@ -85,3 +85,4 @@ export type {
   TurnView,
 } from './checks/types.ts';
 export { findPhrases, hasPhrase, type PhraseMatch } from './text/phrases.ts';
+export { answerText, CORE_CHECKS, evidenceCount, routeExpected } from './checks/generic.ts';

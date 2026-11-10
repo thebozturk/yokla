@@ -5,7 +5,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import type { Results } from '@yokla/core';
+import { CORE_CHECKS, type Results } from '@yokla/core';
 import { ConfigError, runSuite } from '@yokla/runtime';
 import { LoadError, loadCases, loadProfile } from '../load.ts';
 import { DOMAIN_PACKS, LANGUAGE_PACKS } from '../packs.ts';
@@ -94,6 +94,7 @@ export async function runCommand(
       cases,
       env: process.env,
       yoklaVersion: version,
+      checks: CORE_CHECKS,
       packs: DOMAIN_PACKS,
       languages: LANGUAGE_PACKS,
       ...(samples === undefined ? {} : { samples }),

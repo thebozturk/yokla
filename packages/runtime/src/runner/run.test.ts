@@ -301,6 +301,17 @@ describe('runSuite', () => {
     expect(t.received).toHaveLength(0);
   });
 
+  it('refuses an expectation on an evidence collection the profile does not map', async () => {
+    const t = await target((_r, _i, response) => {
+      json(response, answer());
+    });
+    const c = cases({ turns: [{ user: 'a', expect: { evidence: { offers: { min: 1 } } } }] });
+    await expect(runSuite(options(profile(t.url), c))).rejects.toThrow(
+      /expects evidence "offers", which the profile doesn't map/u,
+    );
+    expect(t.received).toHaveLength(0);
+  });
+
   it('sends a TEST-NET client address per case when configured', async () => {
     const t = await target((_r, _i, response) => {
       json(response, answer());
