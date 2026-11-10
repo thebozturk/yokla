@@ -21,7 +21,7 @@ export interface ExtractedResponse {
 
 const DECIMAL = /^-?\d+(?:\.\d+)?$/u;
 
-function toJson(value: unknown): JsonValue {
+export function toJson(value: unknown): JsonValue {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   if (Array.isArray(value)) return value.map(toJson);
