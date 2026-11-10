@@ -23,11 +23,12 @@
   "sideEffects": false,
   "dependencies": {
     "@yokla/core": "workspace:*",
-    "@yokla/runtime": "workspace:*",
-    "@yokla/report": "workspace:*",
     "@yokla/pack-ecommerce": "workspace:*",
+    "@yokla/pack-lang-en": "workspace:*",
     "@yokla/pack-lang-tr": "workspace:*",
-    "@yokla/pack-lang-en": "workspace:*"
+    "@yokla/proxy": "workspace:*",
+    "@yokla/report": "workspace:*",
+    "@yokla/runtime": "workspace:*"
   },
   "bin": {
     "yokla": "./dist/bin.js"
