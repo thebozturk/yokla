@@ -2,10 +2,10 @@
 // (ADR-0007) and rejects a schema version it doesn't know. Exit codes: 0 the
 // report was written; 2 the results file can't be read.
 
-import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import { Results, RESULTS_SCHEMA_ID } from '@yokla/core';
+import type { Results } from '@yokla/core';
 import { junitXml, terminalSummary } from '@yokla/report';
+import { readResults, ResultsError } from '../load.ts';
 import { writeReport, type Output } from './run.ts';
 
 export const REPORT_HELP = `Usage: yokla report --results <file> [options]
@@ -19,39 +19,6 @@ const REPORT_OPTIONS = {
   junit: { type: 'string' },
   help: { type: 'boolean' },
 } as const;
-
-export class ResultsError extends Error {
-  override readonly name = 'ResultsError';
-}
-
-/** Reads and validates a results file; any problem is a ResultsError. */
-export function readResults(path: string): Results {
-  let value: unknown;
-  try {
-    value = JSON.parse(readFileSync(path, 'utf8'));
-  } catch (error) {
-    throw new ResultsError(`${path}: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  const schema =
-    typeof value === 'object' && value !== null && 'schema' in value ? value.schema : undefined;
-  if (schema !== RESULTS_SCHEMA_ID) {
-    throw new ResultsError(
-      `${path}: not a ${RESULTS_SCHEMA_ID} file (schema: ${JSON.stringify(schema) ?? 'missing'})`,
-    );
-  }
-  const parsed = Results.safeParse(value);
-  if (!parsed.success) {
-    throw new ResultsError(
-      [
-        `${path}: invalid results`,
-        ...parsed.error.issues
-          .slice(0, 10)
-          .map((issue) => `  ${issue.path.map(String).join('.') || '(root)'}: ${issue.message}`),
-      ].join('\n'),
-    );
-  }
-  return parsed.data;
-}
 
 export function reportCommand(args: readonly string[], io: Output): number {
   let values: ReturnType<

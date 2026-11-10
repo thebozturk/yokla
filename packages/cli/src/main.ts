@@ -1,6 +1,7 @@
 // The yokla command line.
 
 import { readFileSync } from 'node:fs';
+import { GATE_HELP, gateCommand } from './commands/gate.ts';
 import { REPORT_HELP, reportCommand } from './commands/report.ts';
 import { RUN_HELP, runCommand, type Output } from './commands/run.ts';
 import { jsonSchemas } from './schemas.ts';
@@ -10,12 +11,15 @@ const HELP = `yokla — test conversational AI assistants end to end
 Usage:
   yokla run [options]        run cases against the profile's target
   yokla report [options]     render the reports of a results file
-  yokla schema <name>        print the JSON Schema of profile, cases or results
+  yokla gate [options]       judge a results file; exit 0, 1 or 2
+  yokla schema <name>        print the JSON Schema of profile, cases, config or results
   yokla --version
 
 ${RUN_HELP}
 
-${REPORT_HELP}`;
+${REPORT_HELP}
+
+${GATE_HELP}`;
 
 export function version(): string {
   const manifest: unknown = JSON.parse(
@@ -32,6 +36,7 @@ export function version(): string {
 const SCHEMA_FILES: Readonly<Record<string, string>> = {
   profile: 'profile.v1.schema.json',
   cases: 'cases.v1.schema.json',
+  config: 'config.v1.schema.json',
   results: 'results.v1.schema.json',
 };
 
@@ -42,10 +47,12 @@ export async function main(argv: readonly string[], io: Output): Promise<number>
       return runCommand(rest, io, version());
     case 'report':
       return reportCommand(rest, io);
+    case 'gate':
+      return gateCommand(rest, io);
     case 'schema': {
       const file = SCHEMA_FILES[rest[0] ?? ''];
       if (file === undefined) {
-        io.err('usage: yokla schema <profile|cases|results>');
+        io.err('usage: yokla schema <profile|cases|config|results>');
         return 2;
       }
       io.out(JSON.stringify(jsonSchemas()[file], null, 2));

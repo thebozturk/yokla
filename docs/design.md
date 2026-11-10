@@ -547,8 +547,13 @@ them `unobserved`, and the cost suite reports `unmeasured` instead of guessing.
   - aggregates, costs and timings.
 - **Reports:** a terminal summary, a single-file offline HTML report, JUnit
   XML, and a Markdown summary for pull requests.
-- **Gate.** `yokla gate` applies the thresholds per suite from
+- **Gate (ADR-0010).** `yokla gate` applies the thresholds per suite from
   `yokla.config.yaml`. Exit codes: `0` passed, `1` gate broken, `2` run error.
+  - By default a suite allows no `fail` and no `unmeasured` case;
+    `maxFailures` and `allowUnmeasured` relax that per suite.
+  - A case that passed in the baseline and no longer passes always breaks it.
+  - A run with an `error` or `fixture-missing` case, or a partial run, can't
+    be judged and exits with `2`.
 
 ## 17. Packs
 

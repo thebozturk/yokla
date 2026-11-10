@@ -22,6 +22,7 @@ old one.
 | [0007](0007-results-schema-and-interop.md) | yokla owns its results schema; other tools are reached by mapping | Accepted |
 | [0008](0008-schema-files-in-cli.md) | Generated JSON Schemas live where packs are assembled | Accepted |
 | [0009](0009-observation-from-target-logs.md) | Observing the target through its own logs | Accepted |
+| [0010](0010-gate-thresholds-and-baseline.md) | The gate: thresholds per suite, a baseline, and three exit codes | Accepted |
 
 ## Template
 

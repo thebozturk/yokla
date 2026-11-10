@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { RESULTS_SCHEMA_ID, type Results } from '@yokla/core';
 import { describe, expect, it } from 'vitest';
 import { LoadError, loadCases, loadProfile } from './load.ts';
+import { gateCommand } from './commands/gate.ts';
 import { printSummary } from './commands/run.ts';
 import { main } from './main.ts';
 
@@ -263,5 +264,122 @@ describe('yokla report', () => {
     const { io, out } = capture();
     expect(await main(['report', '--help'], io)).toBe(0);
     expect(out[0]).toMatch(/^Usage: yokla report/u);
+  });
+});
+
+function resultsJson(statuses: Record<string, string>, suite = 'factual'): string {
+  const ids = Object.keys(statuses);
+  const counts: Record<string, number> = {};
+  for (const status of Object.values(statuses)) counts[status] = (counts[status] ?? 0) + 1;
+  return JSON.stringify({
+    schema: RESULTS_SCHEMA_ID,
+    yokla: { version: '0.0.0-test' },
+    run: {
+      id: 'r',
+      startedAt: '2026-11-10T12:00:00.000Z',
+      finishedAt: '2026-11-10T12:00:01.000Z',
+      durationMs: 1000,
+      profile: { target: 't', sha256: 'a'.repeat(64) },
+      environment: { node: 'v24.0.0', platform: 'darwin', arch: 'arm64' },
+      correlation: 'none',
+      partial: false,
+    },
+    cases: ids.map((id) => ({
+      id,
+      suite,
+      language: 'tr',
+      status: statuses[id],
+      unstable: false,
+      dimensions: [],
+      samples: [],
+    })),
+    checks: [],
+    summary: { cases: ids.length, statuses: counts },
+  });
+}
+
+describe('yokla gate', () => {
+  const dir = workspace({
+    'pass.json': resultsJson({ a: 'pass', b: 'pass' }),
+    'fail.json': resultsJson({ a: 'pass', b: 'fail' }),
+    'error.json': resultsJson({ a: 'error', b: 'fail' }),
+    'lenient.yaml': 'version: 1\ngate: { maxFailures: 1 }\n',
+    'broken.yaml': 'version: 1\ngate:\n  maxFailure: 1\n',
+  });
+  const gate = async (...args: string[]) => {
+    const { io, out, err } = capture();
+    const code = await main(
+      ['gate', ...args.map((a) => (a.startsWith('--') ? a : join(dir, a)))],
+      io,
+    );
+    return { code, out, err };
+  };
+
+  it('passes with 0 and says when the default thresholds apply', async () => {
+    expect(await gate('--results', 'pass.json')).toEqual({
+      code: 0,
+      out: [
+        'gate: passed',
+        '  notice: no yokla.config.yaml; the defaults apply: no failing or unmeasured case',
+      ],
+      err: [],
+    });
+  });
+
+  it('breaks with 1, unless the config allows the failure', async () => {
+    expect(await gate('--results', 'fail.json')).toMatchObject({
+      code: 1,
+      out: ['gate: broken', '  factual: 1 failing case, 0 allowed: b', expect.any(String)],
+    });
+    expect(await gate('--results', 'fail.json', '--config', 'lenient.yaml')).toEqual({
+      code: 0,
+      out: ['gate: passed'],
+      err: [],
+    });
+  });
+
+  it('breaks on a regression against the baseline, whatever the config allows', async () => {
+    const outcome = await gate(
+      '--results',
+      'fail.json',
+      '--config',
+      'lenient.yaml',
+      '--baseline',
+      'pass.json',
+    );
+    expect(outcome).toEqual({
+      code: 1,
+      out: ['gate: broken', '  b passed in the baseline and is now fail'],
+      err: [],
+    });
+  });
+
+  it('reads yokla.config.yaml from the working directory by default', () => {
+    const project = workspace({
+      'yokla.config.yaml': 'version: 1\ngate: { maxFailures: 1 }\n',
+      'fail.json': resultsJson({ a: 'pass', b: 'fail' }),
+    });
+    const { io, out } = capture();
+    expect(gateCommand(['--results', join(project, 'fail.json')], io, project)).toBe(0);
+    expect(out).toEqual(['gate: passed']);
+  });
+
+  it("exits with 2 when the run can't be judged or a file can't be read", async () => {
+    expect(await gate('--results', 'error.json')).toMatchObject({
+      code: 2,
+      out: [
+        "gate: the run can't be judged",
+        '  factual: 1 failing case, 0 allowed: b',
+        expect.any(String),
+      ],
+      err: ['  1 error case: a'],
+    });
+    const badConfig = await gate('--results', 'pass.json', '--config', 'broken.yaml');
+    expect(badConfig.code).toBe(2);
+    expect(badConfig.err.join('\n')).toMatch(/broken\.yaml:3:3: gate\.maxFailure: /u);
+    expect((await gate('--results', 'pass.json', '--baseline', 'missing.json')).code).toBe(2);
+    expect((await gate('--results', 'pass.json', '--config', 'missing.yaml')).code).toBe(2);
+    expect((await gate()).code).toBe(2);
+    expect((await gate('--frobnicate')).code).toBe(2);
   });
 });

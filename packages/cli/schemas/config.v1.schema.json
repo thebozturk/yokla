@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "number",
+      "const": 1
+    },
+    "gate": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "maxFailures": {
+          "description": "Cases with status fail a suite may have. Default 0.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "allowUnmeasured": {
+          "description": "Whether a suite may have unmeasured cases. Default false: unmeasured is never a pass.",
+          "type": "boolean"
+        },
+        "suites": {
+          "description": "Overrides per suite of the thresholds above.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": [
+              "quality",
+              "factual",
+              "redteam",
+              "robustness",
+              "perf",
+              "resilience"
+            ]
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "maxFailures": {
+                "description": "Cases with status fail a suite may have. Default 0.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "allowUnmeasured": {
+                "description": "Whether a suite may have unmeasured cases. Default false: unmeasured is never a pass.",
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "version"
+  ],
+  "additionalProperties": false
+}
