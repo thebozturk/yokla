@@ -83,6 +83,11 @@ export interface RunOptions {
   }) => void;
 }
 
+/** The SHA-256 of what decides a case's verdict (ADR-0011). */
+export function definitionSha256(testCase: Case): string {
+  return createHash('sha256').update(caseDefinition(testCase)).digest('hex');
+}
+
 export class ConfigError extends Error {
   override readonly name = 'ConfigError';
 }
@@ -549,7 +554,7 @@ function judgeCase(
     id: testCase.id,
     suite: testCase.suite,
     language: testCase.language,
-    definitionSha256: createHash('sha256').update(caseDefinition(testCase)).digest('hex'),
+    definitionSha256: definitionSha256(testCase),
     status: aggregate.status,
     unstable: aggregate.unstable,
     ...(testCase.knownGap === undefined ? {} : { knownGap: testCase.knownGap }),

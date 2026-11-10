@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { BASELINE_HELP, baselineCommand } from './commands/baseline.ts';
 import { GATE_HELP, gateCommand } from './commands/gate.ts';
+import { PLAN_HELP, planCommand } from './commands/plan.ts';
 import { PROXY_HELP, proxyCommand } from './commands/proxy.ts';
 import { REPORT_HELP, reportCommand } from './commands/report.ts';
 import { RUN_HELP, runCommand, type Output } from './commands/run.ts';
@@ -16,6 +17,7 @@ Usage:
   yokla gate [options]       judge a results file; exit 0, 1 or 2
   yokla baseline [options]   accept a run as the baseline
   yokla proxy [options]      run the model proxy until stopped
+  yokla plan [options]       estimate the cost of a run from a calibration
   yokla schema <name>        print a JSON Schema: profile, cases, config, results, baseline
   yokla --version
 
@@ -27,7 +29,9 @@ ${GATE_HELP}
 
 ${BASELINE_HELP}
 
-${PROXY_HELP}`;
+${PROXY_HELP}
+
+${PLAN_HELP}`;
 
 export function version(): string {
   const manifest: unknown = JSON.parse(
@@ -62,6 +66,8 @@ export async function main(argv: readonly string[], io: Output): Promise<number>
       return baselineCommand(rest, io);
     case 'proxy':
       return proxyCommand(rest, io);
+    case 'plan':
+      return planCommand(rest, io);
     case 'schema': {
       const file = SCHEMA_FILES[rest[0] ?? ''];
       if (file === undefined) {

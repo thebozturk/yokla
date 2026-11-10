@@ -68,5 +68,14 @@ export const YoklaConfig = z.strictObject({
       description:
         'Per upstream id, per model as the provider reports it (ADR-0012). A model without a price has no cost.',
     }),
+  plan: z
+    .strictObject({
+      upperBoundFactor: z
+        .number()
+        .min(1)
+        .default(2)
+        .meta({ description: 'yokla plan prints the estimate times this as the upper bound.' }),
+    })
+    .default({ upperBoundFactor: 2 }),
 });
 export type YoklaConfig = z.output<typeof YoklaConfig>;

@@ -212,7 +212,12 @@ describe('evaluateGate with a baseline', () => {
 
 describe('YoklaConfig', () => {
   it('defaults the gate and rejects unknown keys and suites', () => {
-    expect(YoklaConfig.parse({ version: 1 })).toEqual({ version: 1, gate: {}, prices: {} });
+    expect(YoklaConfig.parse({ version: 1 })).toEqual({
+      version: 1,
+      gate: {},
+      prices: {},
+      plan: { upperBoundFactor: 2 },
+    });
     expect(YoklaConfig.safeParse({ version: 1, gate: { maxFailure: 1 } }).success).toBe(false);
     expect(
       YoklaConfig.safeParse({ version: 1, gate: { suites: { smoke: { maxFailures: 1 } } } })
