@@ -9,6 +9,14 @@ export {
   type ConfigIssue,
   type ParseResult,
 } from './config/parse.ts';
+export { getFieldPath, parseJsonPath, queryJsonPath, type Segment } from './extract/jsonpath.ts';
+export {
+  extractField,
+  extractResponse,
+  type EvidenceItem,
+  type ExtractedResponse,
+  type JsonValue,
+} from './extract/response.ts';
 export { buildSchemas, type DomainPackSchemas, type SchemaOptions } from './schema/build.ts';
 export {
   coreExpectations,
