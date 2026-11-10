@@ -1,6 +1,8 @@
 // The ecommerce domain pack (design §17).
 
 import type { DomainPack } from '@yokla/core';
+import { absenceCorrect } from './checks/absence.ts';
+import { filterHonoured } from './checks/filters.ts';
 import { noDuplicates } from './checks/no-duplicates.ts';
 import { policyClaim } from './checks/policy-claim.ts';
 import { priceGrounded } from './checks/price-grounded.ts';
@@ -32,6 +34,8 @@ export const ecommercePack: DomainPack = {
         stockClaim(data),
         policyClaim(data),
         overRefusal(),
+        filterHonoured(data),
+        absenceCorrect(data),
       ],
     };
   },

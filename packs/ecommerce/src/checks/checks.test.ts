@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { loadData } from '../data.ts';
 import { ecommerceProfile } from '../schema.ts';
 import { answer, data, fakeEnglish, fakeTurkish } from './fixtures.ts';
+import { absenceCorrect } from './absence.ts';
+import { filterHonoured } from './filters.ts';
 import { noDuplicates } from './no-duplicates.ts';
 import { policyClaim } from './policy-claim.ts';
 import { priceGrounded } from './price-grounded.ts';
@@ -450,5 +452,206 @@ describe('over-refusal', () => {
       response: { ...view.response, text: 'Bu konuda yardımcı olamıyorum.' },
     }));
     expect(verdicts(check.run(checkContext(mutated, { lang: fakeTurkish })))).toEqual(['fail']);
+  });
+});
+
+describe('filter-honoured-or-disclosed', () => {
+  const check = filterHonoured(data());
+  const jackets = [
+    { id: 'J1', name: 'Rüzgarlık', price: 899.9, color: 'blue' },
+    { id: 'J2', name: 'Polar', price: 1199.9, color: 'black' },
+  ];
+  const run = (
+    text: string,
+    filters: unknown,
+    products: EvidenceItem[] = tents,
+    lang: LanguagePack = fakeTurkish,
+  ) =>
+    verdicts(check.run(checkContext({ ...answer(text, products), expect: { filters } }, { lang })));
+
+  it('passes when every product satisfies the filters', () => {
+    expect(run('Plaj Çadırı: 899,50 TL', { maxPrice: 1000 }, tents.slice(0, 1))).toEqual(['pass']);
+    expect(run('Polar', { attributes: { color: 'black' } }, jackets.slice(1))).toEqual(['pass']);
+  });
+
+  it('passes a relaxation that is disclosed and names the price bound', () => {
+    const text =
+      'Bu kriterlere (500,00 TL altı) uyan çadır bulamadım. Bunun yerine şunlara bakabilirsiniz:';
+    expect(run(text, { maxPrice: 500 })).toEqual(['pass']);
+  });
+
+  it('fails a silent relaxation', () => {
+    expect(run('Kriterlerinize (500,00 TL altı) uyan çadırlar:', { maxPrice: 500 })).toEqual([
+      'fail',
+    ]);
+    expect(run('Siyah montlar:', { attributes: { color: 'black' } }, jackets)).toEqual(['fail']);
+  });
+
+  it('fails a disclosure that does not name the relaxed price bound', () => {
+    const outcome = check.run(
+      checkContext(
+        {
+          ...answer('Aradığınızı bulamadım. Bunun yerine:', tents),
+          expect: { filters: { maxPrice: 500 } },
+        },
+        { lang: fakeTurkish },
+      ),
+    );
+    expect(verdicts(outcome)).toEqual(['fail']);
+    expect(outcome.applicable && outcome.findings[0]?.evidence).toEqual({
+      violated: ['maxPrice'],
+      unnamed: ['maxPrice'],
+    });
+  });
+
+  it('accepts disclosure wording alone for an attribute it relaxed', () => {
+    expect(
+      run('Siyah bulamadım, bunun yerine mavi:', { attributes: { color: 'black' } }, jackets),
+    ).toEqual(['pass']);
+  });
+
+  it('says which filters it could not check', () => {
+    const outcome = check.run(
+      checkContext(
+        { ...answer('Montlar', jackets), expect: { filters: { attributes: { size: 'M' } } } },
+        { lang: fakeTurkish },
+      ),
+    );
+    expect(outcome.applicable && outcome.findings[0]?.message).toMatch(/not checked: size/u);
+  });
+
+  it('does not apply without filters or products', () => {
+    expect(run('x', undefined)[0]).toMatch(/no filters/u);
+    expect(run('x', { maxPrice: 1 }, [])[0]).toMatch(/no products/u);
+  });
+
+  it('catches an unfiltered product slipped into the result', () => {
+    const base = {
+      ...answer('1.000,00 TL altı çadırlar:', tents.slice(0, 1)),
+      expect: { filters: { maxPrice: 1000 } },
+    };
+    const mutated = mutate(base, (view) => ({
+      ...view,
+      response: { ...view.response, evidence: { products: tents } },
+    }));
+    expect(verdicts(check.run(checkContext(mutated, { lang: fakeTurkish })))).toEqual(['fail']);
+  });
+});
+
+describe('absence-correct', () => {
+  const check = absenceCorrect(data());
+  const bags = [{ id: 'S1', name: 'Yaz Uyku Tulumu', price: 749.9 }];
+  const run = (text: string, products: EvidenceItem[] = bags, lang: LanguagePack = fakeTurkish) =>
+    verdicts(
+      check.run(
+        checkContext(
+          { ...answer(text, products), expect: { absentType: 'sleeping-pad' } },
+          { lang },
+        ),
+      ),
+    );
+
+  it('passes an absence statement with alternatives labelled as such', () => {
+    expect(
+      run('Kataloğumuzda uyku matı bulunmuyor. Farklı bir ürün olarak şu uyku tulumlarına bakın:'),
+    ).toEqual(['pass', 'pass']);
+    expect(
+      run("We don't carry sleeping pads. As a different product, see these:", bags, fakeEnglish),
+    ).toEqual(['pass', 'pass']);
+    expect(run('Kataloğumuzda uyku matı bulunmuyor.', [])).toEqual(['pass']);
+  });
+
+  it('fails other products presented as the requested type', () => {
+    expect(run('Uyku matı seçeneklerimiz:')).toEqual(['fail', 'fail']);
+  });
+
+  it('fails alternatives that are not labelled', () => {
+    expect(run('Uyku matı bulunmuyor. İşte uyku matları:')).toEqual(['pass', 'fail']);
+  });
+
+  it('does not apply without an absent type', () => {
+    expect(verdicts(check.run(checkContext(answer('x'), { lang: fakeTurkish })))[0]).toMatch(
+      /no absent type/u,
+    );
+  });
+
+  it('catches the absence statement removed from the answer', () => {
+    const base = {
+      ...answer('Kataloğumuzda uyku matı bulunmuyor. Farklı bir ürün olarak şunlar:', bags),
+      expect: { absentType: 'sleeping-pad' },
+    };
+    const mutated = mutate(base, (view) => ({
+      ...view,
+      response: { ...view.response, text: 'Uyku matlarımız:' },
+    }));
+    expect(verdicts(check.run(checkContext(mutated, { lang: fakeTurkish })))).toEqual([
+      'fail',
+      'fail',
+    ]);
+  });
+});
+
+// Regressions found by running the demo-shop's defects (2026-11-10). The texts
+// are the demo-shop's real answers.
+describe('regressions from the demo-shop defect runs', () => {
+  it('filter: "stokta yok" in a product line is not a disclosure of a relaxed filter', () => {
+    const text = [
+      'Kriterlerinize (1.000,00 TL altı) uyan çadır seçenekleri:',
+      '- Plaj Çadırı: 899,50 TL (stokta yok)',
+      '- Kubbe Çadır 2 Kişilik: 2.499,90 TL (stokta var)',
+      '- Ultra Hafif Çadır 1 Kişilik: 4.250,00 TL (stok durumu doğrulanamadı)',
+    ].join('\n');
+    const outcome = filterHonoured(data()).run(
+      checkContext(
+        { ...answer(text, tents), expect: { filters: { maxPrice: 1000 } } },
+        { lang: fakeTurkish },
+      ),
+    );
+    expect(verdicts(outcome)).toEqual(['fail']);
+  });
+
+  it('absence: "stokta yok" in a product line is not an absence statement', () => {
+    const text = 'Uyku matı seçeneklerimiz:\n- Yaz Uyku Tulumu: 749,90 TL (stokta yok)';
+    const outcome = absenceCorrect(data()).run(
+      checkContext(
+        {
+          ...answer(text, [{ id: 'S1', name: 'Yaz Uyku Tulumu', stock: 0 }]),
+          expect: { absentType: 'sleeping-pad' },
+        },
+        { lang: fakeTurkish },
+      ),
+    );
+    expect(verdicts(outcome)).toEqual(['fail', 'fail']);
+  });
+
+  it('stock: a claim on "Women\'s Windbreaker" is not about "Men\'s Windbreaker"', () => {
+    const text = [
+      "Here are jackets matching your criteria (women's, size: M):",
+      "- Women's Windbreaker: TRY 899.90 (in stock)",
+      "- Men's Windbreaker: TRY 899.90 (stock not confirmed)",
+      "- Women's Fleece Jacket: TRY 1,199.90 (in stock)",
+    ].join('\n');
+    const products = [
+      { id: 'JKT-001', name: "Women's Windbreaker", stock: 15 },
+      { id: 'JKT-002', name: "Men's Windbreaker", stock: null },
+      { id: 'JKT-003', name: "Women's Fleece Jacket", stock: 8 },
+    ];
+    const outcome = stockClaim(data()).run(
+      checkContext(answer(text, products), { lang: fakeEnglish }),
+    );
+    expect(verdicts(outcome)).toEqual(['pass', 'pass']);
+  });
+
+  it('stock: the longest product name wins where names overlap', () => {
+    const products = [
+      { id: 'A', name: 'Kubbe Çadır', stock: null },
+      { id: 'B', name: 'Kubbe Çadır 2 Kişilik', stock: 12 },
+    ];
+    const outcome = stockClaim(data()).run(
+      checkContext(answer('- Kubbe Çadır 2 Kişilik: 2.499,90 TL (stokta var)', products), {
+        lang: fakeTurkish,
+      }),
+    );
+    expect(verdicts(outcome)).toEqual(['pass']);
   });
 });
