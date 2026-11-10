@@ -39,6 +39,11 @@ export interface TurnView {
   readonly observed: Readonly<Record<string, JsonValue>> | undefined;
   /** The target answered with a clarifying question (see response.clarification). */
   readonly clarifying: boolean;
+  /**
+   * Set when the turn injected provider faults (ADR-0013). `failure` says why the
+   * target gave no usable answer under them; the text is then empty.
+   */
+  readonly faults: { readonly failure: string | undefined } | undefined;
 }
 
 /** A money amount mentioned in text, e.g. "1.299,90 TL". */

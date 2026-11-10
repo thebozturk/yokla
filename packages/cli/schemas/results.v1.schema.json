@@ -590,6 +590,22 @@
                                       "type": "null"
                                     }
                                   ]
+                                },
+                                "fault": {
+                                  "type": "object",
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string"
+                                    },
+                                    "applied": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "applied"
+                                  ],
+                                  "additionalProperties": false
                                 }
                               },
                               "required": [

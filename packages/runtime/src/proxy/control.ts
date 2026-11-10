@@ -2,7 +2,7 @@
 // that the proxy answers, and open and close a recording around a run. It
 // talks only to the proxy's own local address.
 
-import { ProxyRecord, z } from '@yokla/core';
+import { ProxyRecord, z, type FaultPlan } from '@yokla/core';
 
 export class ProxyControlError extends Error {
   override readonly name = 'ProxyControlError';
@@ -15,7 +15,7 @@ const Health = z.object({
 });
 const Opened = z.object({ id: z.string().min(1), startedAt: z.iso.datetime() });
 const Closed = z.object({ id: z.string().min(1), records: z.array(ProxyRecord) });
-const Marked = z.object({ id: z.string().min(1), mark: z.string().min(1) });
+const Armed = z.object({ id: z.string().min(1), turn: z.string().min(1) });
 
 export class ProxyControl {
   readonly #base: string;
@@ -30,12 +30,20 @@ export class ProxyControl {
     this.#timeoutMs = timeoutMs;
   }
 
-  async #call<T>(method: string, path: string, schema: z.ZodType<T>): Promise<T> {
+  async #call<T>(
+    method: string,
+    path: string,
+    schema: z.ZodType<T>,
+    payload?: unknown,
+  ): Promise<T> {
     let response: Response;
     try {
       response = await fetch(`${this.#base}${path}`, {
         method,
         signal: AbortSignal.timeout(this.#timeoutMs),
+        ...(payload === undefined
+          ? {}
+          : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }),
       });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
@@ -62,12 +70,20 @@ export class ProxyControl {
     return this.#call('POST', '/_yokla/recordings', Opened);
   }
 
-  /** Tells the proxy which turn is in flight; its calls carry this mark. */
-  async mark(id: string, turn: string): Promise<void> {
+  /**
+   * Tells the proxy about a turn: in flight (serial correlation, its calls carry
+   * this mark), and the faults to inject into its calls (ADR-0013).
+   */
+  async turn(
+    id: string,
+    turn: string,
+    arming: { readonly inFlight: boolean; readonly faults?: readonly FaultPlan[] },
+  ): Promise<void> {
     await this.#call(
       'PUT',
-      `/_yokla/recordings/${encodeURIComponent(id)}/mark?turn=${encodeURIComponent(turn)}`,
-      Marked,
+      `/_yokla/recordings/${encodeURIComponent(id)}/turns/${encodeURIComponent(turn)}`,
+      Armed,
+      { inFlight: arming.inFlight, faults: arming.faults ?? [] },
     );
   }
 

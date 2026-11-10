@@ -797,6 +797,8 @@ interface FakeProxy {
   readonly calls: string[];
   /** The turn the runner last marked as in flight. */
   readonly mark: () => string | null;
+  /** What the runner told the proxy about each turn. */
+  readonly armed: { turn: string; body: unknown }[];
 }
 
 /** A stand-in for the proxy's control endpoint; the fake target adds its records. */
@@ -806,6 +808,7 @@ async function fakeProxy(
   const records: ProxyRecord[] = [];
   const calls: string[] = [];
   let mark: string | null = null;
+  const armed: { turn: string; body: unknown }[] = [];
   const server = createServer((request, response) => {
     const key = `${request.method ?? ''} ${(request.url ?? '').split('?')[0] ?? ''}`;
     calls.push(key);
@@ -821,9 +824,16 @@ async function fakeProxy(
         status,
         status === 201 ? { id: 'rec-1', startedAt: new Date().toISOString() } : { error: 'busy' },
       );
-    } else if (key === 'PUT /_yokla/recordings/rec-1/mark') {
-      mark = new URL(request.url ?? '/', 'http://x').searchParams.get('turn');
-      reply(200, { id: 'rec-1', mark });
+    } else if (key.startsWith('PUT /_yokla/recordings/rec-1/turns/')) {
+      const turn = decodeURIComponent(key.slice('PUT /_yokla/recordings/rec-1/turns/'.length));
+      const chunks: Buffer[] = [];
+      request.on('data', (chunk: Buffer) => chunks.push(chunk));
+      request.on('end', () => {
+        const body: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        armed.push({ turn, body });
+        if (Reflect.get(Object(body), 'inFlight') === true) mark = turn;
+        reply(200, { id: 'rec-1', turn });
+      });
     } else if (key === 'DELETE /_yokla/recordings/rec-1') {
       const status = answers.close ?? 200;
       reply(status, status === 200 ? { id: 'rec-1', startedAt: 'x', records } : { error: 'gone' });
@@ -835,7 +845,13 @@ async function fakeProxy(
   });
   const address = server.address();
   if (typeof address !== 'object' || address === null) throw new Error('no address');
-  return { url: `http://127.0.0.1:${String(address.port)}`, records, calls, mark: () => mark };
+  return {
+    url: `http://127.0.0.1:${String(address.port)}`,
+    records,
+    calls,
+    mark: () => mark,
+    armed,
+  };
 }
 
 function call(trace: string | null, mark: string | null, model = 'm'): ProxyRecord {
@@ -899,12 +915,16 @@ describe('runSuite with the model proxy', () => {
       totals: { calls: 4, inputTokens: 4000, outputTokens: 400, costUsd: 0.004 },
       missing: { cachedInputTokens: 4, cacheWriteTokens: 4, reasoningTokens: 4, costUsd: 2 },
     });
-    expect(proxy.calls).toEqual([
+    expect(proxy.calls.map((c) => c.replace(/turns\/.+$/u, 'turns/<turn>'))).toEqual([
       'GET /_yokla/health',
       'POST /_yokla/recordings',
-      'PUT /_yokla/recordings/rec-1/mark',
-      'PUT /_yokla/recordings/rec-1/mark',
+      'PUT /_yokla/recordings/rec-1/turns/<turn>',
+      'PUT /_yokla/recordings/rec-1/turns/<turn>',
       'DELETE /_yokla/recordings/rec-1',
+    ]);
+    expect(proxy.armed.map((a) => a.body)).toEqual([
+      { inFlight: true, faults: [] },
+      { inFlight: true, faults: [] },
     ]);
     // Each turn was marked with its own request id.
     expect(turns.map((turn) => turn.requestId)).not.toContain(undefined);
@@ -940,7 +960,7 @@ describe('runSuite with the model proxy', () => {
       attributed: 2,
       unattributed: 2,
     });
-    expect(proxy.calls.filter((c) => c.endsWith('/mark'))).toEqual([]);
+    expect(proxy.armed).toEqual([]);
   });
 
   it("refuses to run when the proxy doesn't answer, routes other upstreams or is busy", async () => {
@@ -978,5 +998,94 @@ describe('runSuite with the model proxy', () => {
     expect(results.run.issues).toEqual([
       expect.stringMatching(/^the model proxy's records could not be read: .*500/u),
     ]);
+  });
+
+  it('judges a failed answer under faults as a finding, with only the fault judges', async () => {
+    const proxy = await fakeProxy();
+    const t = await target((_r, index, response) => {
+      if (index === 0) json(response, { error: 'model failed' }, 500);
+      else json(response, answer());
+    });
+    const ran: string[] = [];
+    const watcher: Check = {
+      id: 'watcher',
+      description: 'records the turns it sees',
+      run: (context) => {
+        ran.push(context.turn.user);
+        return { applicable: false, reason: 'records only' };
+      },
+    };
+    const faults = [{ fault: { kind: 'status', status: 503 } }];
+    const results = await runSuite(
+      options(
+        proxied(t.url, 'serial'),
+        cases({
+          turns: [
+            { user: 'a', faults, expect: { deadlineMs: 60_000 } },
+            { user: 'b', faults },
+          ],
+        }),
+        { proxyUrl: proxy.url, checks: [...CORE_CHECKS, watcher] },
+      ),
+    );
+    expect(Results.safeParse(results).success).toBe(true);
+    const [failed, answered] = results.cases[0]?.samples[0]?.turns ?? [];
+    expect(failed?.error).toBeUndefined();
+    expect(failed?.issues).toContain('gave no usable answer under the injected faults: HTTP 500');
+    expect(failed?.checks.filter((c) => c.applicable).map((c) => c.check)).toEqual([
+      'graceful-under-fault',
+      'answered-within-deadline',
+    ]);
+    expect(
+      failed?.checks.find((c) => c.check === 'graceful-under-fault')?.findings[0]?.verdict,
+    ).toBe('fail');
+    // The case goes on, and the second turn, answered, is judged by every check.
+    expect(
+      answered?.checks.find((c) => c.check === 'graceful-under-fault')?.findings[0]?.verdict,
+    ).toBe('pass');
+    expect(ran).toEqual(['b']);
+    expect(results.cases[0]?.status).toBe('fail');
+    expect(proxy.armed.map((a) => a.body)).toEqual([
+      { inFlight: true, faults },
+      { inFlight: true, faults },
+    ]);
+  });
+
+  it('judges no answer at all under faults the same way', async () => {
+    const proxy = await fakeProxy();
+    const t = await target((_r, _i, response) => {
+      response.socket?.destroy();
+    });
+    const results = await runSuite(
+      options(
+        proxied(t.url, 'serial'),
+        cases({ turns: [{ user: 'a', faults: [{ fault: { kind: 'timeout', holdMs: 10 } }] }] }),
+        { proxyUrl: proxy.url, checks: CORE_CHECKS },
+      ),
+    );
+    const turn = results.cases[0]?.samples[0]?.turns[0];
+    expect(turn?.error).toBeUndefined();
+    expect(turn?.response).toBeUndefined();
+    expect(turn?.issues?.[0]).toMatch(/^gave no usable answer under the injected faults: /u);
+    expect(results.cases[0]?.status).toBe('fail');
+  });
+
+  it('arms faults without marking in header correlation, and refuses faults without a proxy', async () => {
+    const proxy = await fakeProxy();
+    const t = await target((_r, _i, response) => {
+      json(response, answer());
+    });
+    const faults = [{ fault: { kind: 'latency', ms: 1 } }];
+    await runSuite(
+      options(proxied(t.url, 'header'), cases({ turns: [{ user: 'a', faults }, { user: 'b' }] }), {
+        proxyUrl: proxy.url,
+      }),
+    );
+    expect(proxy.armed.map((a) => a.body)).toEqual([
+      { inFlight: false, faults: [{ fault: { kind: 'latency', ms: 1, jitterMs: 0 } }] },
+    ]);
+    await expect(
+      runSuite(options(profile(t.url), cases({ id: 'faulty', turns: [{ user: 'a', faults }] }))),
+    ).rejects.toThrow(/case "faulty" injects faults, which needs a modelProxy in the profile/u);
   });
 });

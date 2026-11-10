@@ -2,7 +2,8 @@
 // providers. A call to /<upstream-id>/<rest> goes to <upstream>/<rest> with
 // the app's own headers, and the response comes back byte for byte. Nothing
 // is changed in either direction. While a recording is open, every call
-// yields a ProxyRecord, tagged with the turn the runner marked as in flight.
+// yields a ProxyRecord, tagged with the turn the runner marked as in flight,
+// and a turn the runner armed with faults gets them (ADR-0013).
 // Paths under /_yokla/ are the local control endpoint
 // and are never forwarded. The proxy contacts only its configured upstreams.
 
@@ -17,7 +18,16 @@ import {
 } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { brotliDecompressSync, gunzipSync, inflateSync } from 'node:zlib';
-import type { ProxyRecord } from '@yokla/core';
+import { FaultPlan, z, type ProxyRecord, type ProxyUsage } from '@yokla/core';
+import {
+  armTurn,
+  changeAnswer,
+  errorBody,
+  isChanging,
+  jitter,
+  nextFault,
+  type ArmedTurn,
+} from './faults.ts';
 import { readUsage, UNMEASURED, type UpstreamKind } from './usage.ts';
 
 export interface ProxyUpstream {
@@ -122,12 +132,28 @@ async function readBody(request: IncomingMessage, max: number): Promise<Buffer |
   return Buffer.concat(chunks);
 }
 
+const TurnArming = z.object({
+  inFlight: z.boolean().default(false),
+  faults: z.array(FaultPlan).default([]),
+});
+
+/** A call the proxy answered itself made no provider call: zero is a measurement. */
+const NOTHING_SPENT: ProxyUsage = {
+  input: 0,
+  output: 0,
+  cachedInput: 0,
+  cacheWrite: 0,
+  reasoning: 0,
+};
+
 interface Recording {
   readonly id: string;
   readonly startedAt: string;
   readonly records: ProxyRecord[];
   /** The turn the runner says is in flight (serial correlation). */
   mark: string | null;
+  /** The turns the runner armed, with their fault plans (ADR-0013). */
+  readonly turns: Map<string, ArmedTurn>;
 }
 
 export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
@@ -136,7 +162,11 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
   const maxRequest = options.maxRequestBytes ?? 32 * 1024 * 1024;
   let recording: Recording | undefined;
 
-  function control(request: IncomingMessage, response: ServerResponse, path: string): void {
+  async function control(
+    request: IncomingMessage,
+    response: ServerResponse,
+    path: string,
+  ): Promise<void> {
     if (request.method === 'GET' && path === '/_yokla/health') {
       sendJson(response, 200, {
         ok: true,
@@ -155,24 +185,39 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
         startedAt: new Date().toISOString(),
         records: [],
         mark: null,
+        turns: new Map(),
       };
       sendJson(response, 201, { id: recording.id, startedAt: recording.startedAt });
       return;
     }
-    const marked = /^\/_yokla\/recordings\/([\w-]+)\/mark$/u.exec(path);
-    if (marked !== null && request.method === 'PUT') {
+    const turned = /^\/_yokla\/recordings\/([\w-]+)\/turns\/([^/]+)$/u.exec(path);
+    if (turned !== null && request.method === 'PUT') {
       const open = recording;
-      const mark = new URL(request.url ?? '/', 'http://localhost').searchParams.get('turn');
-      if (open?.id !== marked[1] || open === undefined) {
+      if (open?.id !== turned[1] || open === undefined) {
         sendJson(response, 404, { error: 'no such recording' });
         return;
       }
-      if (mark === null || mark === '') {
-        sendJson(response, 400, { error: 'a mark needs ?turn=<id>' });
+      const body = await readBody(request, 1024 * 1024);
+      let value: unknown;
+      try {
+        value = JSON.parse(body?.toString('utf8') ?? '');
+      } catch {
+        value = undefined;
+      }
+      const parsed = TurnArming.safeParse(value);
+      if (!parsed.success) {
+        sendJson(response, 400, { error: 'expected {"inFlight"?: boolean, "faults"?: [...]}' });
         return;
       }
-      open.mark = mark;
-      sendJson(response, 200, { id: open.id, mark });
+      const turn = decodeURIComponent(turned[2] ?? '');
+      if (parsed.data.inFlight) open.mark = turn;
+      open.turns.set(turn, armTurn(parsed.data.faults));
+      sendJson(response, 200, {
+        id: open.id,
+        turn,
+        inFlight: parsed.data.inFlight,
+        faults: parsed.data.faults.length,
+      });
       return;
     }
     const match = /^\/_yokla\/recordings\/([\w-]+)$/u.exec(path);
@@ -211,19 +256,26 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
     let overflow = false;
     const open = recording;
     const mark = open?.mark ?? null;
+    // The turn this call belongs to: the one its trace names, else the one in flight.
+    const turnId = typeof trace === 'string' && open?.turns.has(trace) === true ? trace : mark;
+    const armed = turnId === null ? undefined : open?.turns.get(turnId);
+    const fault = armed === undefined ? undefined : nextFault(armed, upstream.id);
 
     const finish = (
       status: number | null,
       encoding: string | undefined,
       stream: boolean,
       error?: string,
+      extra: { usage?: ProxyUsage; forwarded?: false; applied?: boolean } = {},
     ) => {
       if (open === undefined || recording !== open) return;
       const raw = overflow ? undefined : decoded(Buffer.concat(captured), encoding);
       const read =
-        raw === undefined
-          ? { usage: UNMEASURED, model: null }
-          : readUsage(upstream.kind, raw, stream);
+        extra.usage !== undefined
+          ? { usage: extra.usage, model: null }
+          : raw === undefined
+            ? { usage: UNMEASURED, model: null }
+            : readUsage(upstream.kind, raw, stream);
       const record: ProxyRecord = {
         id: randomUUID(),
         upstream: upstream.id,
@@ -238,11 +290,47 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
         usage: read.usage,
         trace: typeof trace === 'string' ? trace : null,
         mark,
+        ...(fault === undefined
+          ? {}
+          : { fault: { kind: fault.kind, applied: extra.applied ?? true } }),
+        ...(extra.forwarded === false ? { forwarded: false } : {}),
         ...(error === undefined ? {} : { error }),
       };
       open.records.push(record);
       options.onRecord?.(record);
     };
+
+    if (fault?.kind === 'status') {
+      response.writeHead(fault.status, {
+        'content-type': 'application/json',
+        ...(fault.retryAfterS === undefined ? {} : { 'retry-after': String(fault.retryAfterS) }),
+      });
+      response.end(errorBody(upstream.kind, fault.status));
+      finish(fault.status, undefined, facts.stream, undefined, {
+        usage: NOTHING_SPENT,
+        forwarded: false,
+      });
+      return;
+    }
+    if (fault?.kind === 'timeout') {
+      // Never answer: the app gives up, or the hold ends the connection.
+      const hold = setTimeout(() => {
+        response.destroy();
+      }, fault.holdMs);
+      response.on('close', () => {
+        clearTimeout(hold);
+        finish(null, undefined, facts.stream, 'held without an answer (timeout fault)', {
+          usage: NOTHING_SPENT,
+          forwarded: false,
+        });
+      });
+      return;
+    }
+    if (fault?.kind === 'latency') {
+      const seed = `${turnId ?? ''}|${upstream.id}|${(armed?.matched ?? []).join(',')}`;
+      await new Promise((resolve) => setTimeout(resolve, fault.ms + jitter(seed, fault.jitterMs)));
+    }
+    const changing = fault !== undefined && isChanging(fault.kind) ? fault.kind : undefined;
 
     const send = base.protocol === 'https:' ? httpsRequest : httpRequest;
     const outgoing = send(
@@ -257,6 +345,39 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
       (upstreamResponse) => {
         const type = upstreamResponse.headers['content-type'] ?? '';
         const stream = type.includes('text/event-stream') || facts.stream;
+        if (changing !== undefined) {
+          // A changing fault needs the whole answer: hold it, change it, send it uncompressed.
+          const held: Buffer[] = [];
+          upstreamResponse.on('data', (chunk: Buffer) => held.push(chunk));
+          upstreamResponse.on('end', () => {
+            const original = Buffer.concat(held);
+            captured.push(original);
+            const encoding = upstreamResponse.headers['content-encoding'];
+            const raw = decoded(original, encoding);
+            const status = upstreamResponse.statusCode ?? 502;
+            const {
+              'content-encoding': _encoding,
+              'content-length': _length,
+              ...headers
+            } = endToEnd(upstreamResponse.headers);
+            const changed =
+              raw === undefined
+                ? { body: undefined, applied: false }
+                : changeAnswer(changing, upstream.kind, raw, stream);
+            const out = changed.body === undefined ? original : Buffer.from(changed.body, 'utf8');
+            response.writeHead(status, {
+              ...(changed.body === undefined ? endToEnd(upstreamResponse.headers) : headers),
+              'content-length': out.length,
+            });
+            response.end(out);
+            finish(status, encoding, stream, undefined, { applied: changed.applied });
+          });
+          upstreamResponse.on('error', (error) => {
+            response.destroy(error);
+            finish(upstreamResponse.statusCode ?? null, undefined, stream, error.message);
+          });
+          return;
+        }
         response.writeHead(upstreamResponse.statusCode ?? 502, endToEnd(upstreamResponse.headers));
         upstreamResponse.on('data', (chunk: Buffer) => {
           if (!overflow) {
@@ -295,7 +416,10 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
     const url = request.url ?? '/';
     const path = url.split('?')[0] ?? '/';
     if (path === '/_yokla' || path.startsWith('/_yokla/')) {
-      control(request, response, path);
+      control(request, response, path).catch((error: unknown) => {
+        if (!response.headersSent) sendJson(response, 500, { error: String(error) });
+        else response.destroy();
+      });
       return;
     }
     const match = /^\/([^/?]+)(.*)$/u.exec(url);

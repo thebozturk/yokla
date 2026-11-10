@@ -27,6 +27,7 @@ export function turnView(
     expect: {},
     observed: undefined,
     clarifying: false,
+    faults: undefined,
     ...rest,
     response: {
       status: 200,

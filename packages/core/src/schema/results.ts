@@ -77,6 +77,8 @@ export const TurnResult = z.object({
           usage: ProxyUsage,
           /** null without a price or with unmeasured tokens. */
           costUsd: z.number().nonnegative().nullable(),
+          /** The fault the proxy injected, and whether it could apply (ADR-0013). */
+          fault: z.object({ kind: z.string(), applied: z.boolean() }).optional(),
         }),
       ),
       /** The sum of the calls' cost; null when any call has none. */

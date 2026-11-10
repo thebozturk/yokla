@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { checkContext, mutate, stubLanguagePack, turnView } from '../testing.ts';
-import { answerText, evidenceCount, routeExpected } from './generic.ts';
+import {
+  answeredWithinDeadline,
+  answerText,
+  evidenceCount,
+  FAULT_JUDGES,
+  gracefulUnderFault,
+  routeExpected,
+} from './generic.ts';
 import type { CheckOutcome, LanguagePack, TurnView } from './types.ts';
 
 function verdicts(outcome: CheckOutcome): string[] {
@@ -158,6 +165,60 @@ describe('clarifying turns', () => {
     });
     expect(verdicts(evidenceCount.run(checkContext(view)))).toEqual([
       'n/a: the target asked a clarifying question',
+    ]);
+  });
+});
+
+const runGraceful = (faults: TurnView['faults']) =>
+  gracefulUnderFault.run(checkContext(turnView({ faults })));
+
+const runDeadline = (latencyMs: number, deadlineMs: unknown) =>
+  answeredWithinDeadline.run(
+    checkContext(turnView({ expect: { deadlineMs }, response: { latencyMs } })),
+  );
+
+describe('graceful-under-fault', () => {
+  it('passes an answer under faults, fails no usable answer, and says why', () => {
+    expect(runGraceful({ failure: undefined })).toMatchObject({ findings: [{ verdict: 'pass' }] });
+    expect(runGraceful({ failure: 'HTTP 500' })).toMatchObject({
+      findings: [
+        {
+          dimension: 'resilience',
+          verdict: 'fail',
+          message: 'gave no usable answer under the injected faults: HTTP 500',
+        },
+      ],
+    });
+  });
+
+  it('does not apply to a turn without faults', () => {
+    expect(runGraceful(undefined)).toEqual({
+      applicable: false,
+      reason: 'the turn injects no faults',
+    });
+  });
+});
+
+describe('answered-within-deadline', () => {
+  it('passes an answer within the deadline, the deadline itself included, and fails a later one', () => {
+    expect(runDeadline(4999, 5000)).toMatchObject({
+      findings: [{ verdict: 'pass', dimension: 'deadline' }],
+    });
+    expect(runDeadline(5000, 5000)).toMatchObject({ findings: [{ verdict: 'pass' }] });
+    expect(runDeadline(5001, 5000)).toMatchObject({
+      findings: [{ verdict: 'fail', message: 'answered in 5001 ms, deadline 5000 ms' }],
+    });
+  });
+
+  it('does not apply without a valid deadline', () => {
+    expect(runDeadline(10, undefined)).toMatchObject({ applicable: false });
+    expect(runDeadline(10, 0)).toMatchObject({ applicable: false });
+  });
+
+  it('is one of the fault judges, with graceful-under-fault', () => {
+    expect([...FAULT_JUDGES].toSorted()).toEqual([
+      'answered-within-deadline',
+      'graceful-under-fault',
     ]);
   });
 });

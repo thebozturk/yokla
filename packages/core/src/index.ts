@@ -57,6 +57,7 @@ export {
   type ProfileTarget,
 } from './schema/profile.ts';
 export { ProxyRecord, ProxyUsage } from './schema/proxy.ts';
+export { Fault, FAULT_KINDS, FaultPlan } from './schema/fault.ts';
 export { callCost } from './proxy/cost.ts';
 export { GateConfig, YoklaConfig, type Price } from './schema/config.ts';
 export { evaluateGate, type GateBreach, type GateOutcome } from './gate/gate.ts';
@@ -97,4 +98,12 @@ export type {
   TurnView,
 } from './checks/types.ts';
 export { findPhrases, hasPhrase, type PhraseMatch } from './text/phrases.ts';
-export { answerText, CORE_CHECKS, evidenceCount, routeExpected } from './checks/generic.ts';
+export {
+  answerText,
+  answeredWithinDeadline,
+  CORE_CHECKS,
+  FAULT_JUDGES,
+  gracefulUnderFault,
+  evidenceCount,
+  routeExpected,
+} from './checks/generic.ts';

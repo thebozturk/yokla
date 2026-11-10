@@ -123,4 +123,63 @@ export const evidenceCount: Check = {
 };
 
 /** The checks that run for every case, whatever the domain. */
-export const CORE_CHECKS: readonly Check[] = [routeExpected, answerText, evidenceCount];
+/** Under injected provider faults, the target still gives an answer (ADR-0013). */
+export const gracefulUnderFault: Check = {
+  id: 'graceful-under-fault',
+  description: 'Under injected provider faults, the target still gives a usable answer.',
+  run(context) {
+    const { faults } = context.turn;
+    if (faults === undefined) return { applicable: false, reason: 'the turn injects no faults' };
+    const ok = faults.failure === undefined;
+    return {
+      applicable: true,
+      findings: [
+        {
+          dimension: 'resilience',
+          verdict: ok ? 'pass' : 'fail',
+          severity: 'high',
+          message: ok
+            ? 'answered despite the injected faults'
+            : `gave no usable answer under the injected faults: ${faults.failure ?? ''}`,
+        },
+      ],
+    };
+  },
+};
+
+export const answeredWithinDeadline: Check = {
+  id: 'answered-within-deadline',
+  description: "The answer arrived within the turn's deadlineMs.",
+  run(context) {
+    const parsed = coreExpectations.deadlineMs.safeParse(context.turn.expect['deadlineMs']);
+    if (!parsed.success) return { applicable: false, reason: 'the turn has no deadline' };
+    const took = context.turn.response.latencyMs;
+    const ok = took <= parsed.data;
+    return {
+      applicable: true,
+      findings: [
+        {
+          dimension: 'deadline',
+          verdict: ok ? 'pass' : 'fail',
+          severity: 'high',
+          message: `answered in ${String(Math.round(took))} ms, deadline ${String(parsed.data)} ms`,
+          evidence: { latencyMs: took, deadlineMs: parsed.data },
+        },
+      ],
+    };
+  },
+};
+
+/** The checks that judge a turn the target couldn't answer under faults; others need an answer. */
+export const FAULT_JUDGES: ReadonlySet<string> = new Set([
+  gracefulUnderFault.id,
+  answeredWithinDeadline.id,
+]);
+
+export const CORE_CHECKS: readonly Check[] = [
+  routeExpected,
+  answerText,
+  evidenceCount,
+  gracefulUnderFault,
+  answeredWithinDeadline,
+];

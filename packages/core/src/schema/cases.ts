@@ -2,6 +2,7 @@
 
 import { z } from 'zod';
 import { Id, LanguageCode, Provenance, Suite } from './common.ts';
+import { FaultPlan } from './fault.ts';
 
 export const KnownGap = z.strictObject({
   reason: z.string().min(1),
@@ -21,6 +22,10 @@ export const coreExpectations = {
     .meta({
       description: "Text the answer must or must not contain, after the language pack's folding.",
     }),
+  deadlineMs: z
+    .int()
+    .min(1)
+    .meta({ description: 'The answer must arrive within this many milliseconds.' }),
   evidence: z
     .record(
       Id,
@@ -59,6 +64,10 @@ export function caseShape<E extends z.ZodType>(language: z.ZodType<string>, expe
         z.strictObject({
           user: z.string().min(1),
           request: TurnRequest.optional(),
+          faults: z.array(FaultPlan).min(1).optional().meta({
+            description:
+              'Provider faults the model proxy injects into this turn (ADR-0013); the first plan that matches a call applies.',
+          }),
           expect: expect
             .optional()
             .meta({ description: 'Expectations for the response to this turn.' }),

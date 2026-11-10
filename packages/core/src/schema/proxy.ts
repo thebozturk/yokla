@@ -40,6 +40,10 @@ export const ProxyRecord = z.object({
   trace: z.string().nullable(),
   /** The turn the runner marked as in flight when the call started, or null (serial correlation). */
   mark: z.string().nullable().optional(),
+  /** The fault injected into this call, and whether it could apply (ADR-0013). */
+  fault: z.object({ kind: z.string(), applied: z.boolean() }).optional(),
+  /** false when the proxy answered without calling the provider. */
+  forwarded: z.boolean().optional(),
   error: z.string().optional(),
 });
 export type ProxyRecord = z.output<typeof ProxyRecord>;
