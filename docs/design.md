@@ -481,7 +481,8 @@ them `unobserved`, and the cost suite reports `unmeasured` instead of guessing.
   samples disagree is flagged `unstable`.
 - **Status precedence:** `error` (a precondition or measurement failed) →
   `fixture-missing` → `known-gap` / `gap-closed` → `pass` / `fail`.
-- **`unmeasured`** marks a threshold with no data. It never counts as a pass.
+- **`unmeasured`** marks a threshold with no data, or a case where no check
+  applied to any turn. It never counts as a pass.
 - **`known-gap`** documents the desired behaviour of a case without breaking the
   gate. When such a case starts passing it becomes `gap-closed`, which signals
   that the marker should be removed and the baseline updated. A `gap-closed`

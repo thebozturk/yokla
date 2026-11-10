@@ -14,6 +14,8 @@ export const CASE_STATUSES = [
   'fixture-missing',
   'known-gap',
   'gap-closed',
+  // No check applied to any turn: never counted as a pass (design P5).
+  'unmeasured',
 ] as const;
 export const CaseStatus = z.enum(CASE_STATUSES);
 
@@ -55,8 +57,10 @@ export const TurnResult = z.object({
       fields: z.record(z.string(), z.json()),
     })
     .optional(),
-  /** Set when the request or the response mapping failed. */
+  /** Set when the request failed or the answer couldn't be read; later turns don't run. */
   error: z.string().optional(),
+  /** Non-fatal mapping problems, e.g. a route the profile maps but the response lacks. */
+  issues: z.array(z.string()).optional(),
   checks: z.array(CheckResult),
 });
 

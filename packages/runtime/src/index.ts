@@ -17,3 +17,4 @@ export {
   type CommandOptions,
   type CommandResult,
 } from './process/command.ts';
+export { ConfigError, preflight, runSuite, type RunOptions } from './runner/run.ts';
