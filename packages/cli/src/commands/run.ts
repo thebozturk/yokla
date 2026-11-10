@@ -6,6 +6,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { CORE_CHECKS, type Results } from '@yokla/core';
+import { junitXml, terminalSummary } from '@yokla/report';
 import { ConfigError, runSuite } from '@yokla/runtime';
 import { LoadError, loadCases, loadProfile } from '../load.ts';
 import { DOMAIN_PACKS, LANGUAGE_PACKS } from '../packs.ts';
@@ -23,7 +24,8 @@ Options:
   --out <file>          where to write results (default: runs/<run id>.json)
   --samples <n>         samples per case when the case doesn't say (default: 1)
   --concurrency <n>     cases run in parallel (default: 1)
-  --target-url <url>    use this url instead of the profile's request url`;
+  --target-url <url>    use this url instead of the profile's request url
+  --junit <file>        also write a JUnit XML report`;
 
 function positiveInt(value: string | undefined, name: string): number | undefined {
   if (value === undefined) return undefined;
@@ -33,51 +35,19 @@ function positiveInt(value: string | undefined, name: string): number | undefine
   return number;
 }
 
-function turns(count: number): string {
-  return `${String(count)} turn${count === 1 ? '' : 's'}`;
-}
-
-/** "costUsd 0.0123 (no value on 2 turns), modelCalls 4" */
-function observedTotals(
-  totals: Readonly<Record<string, number>>,
-  missing: Readonly<Record<string, number>>,
-): string {
-  const names = [...new Set([...Object.keys(totals), ...Object.keys(missing)])];
-  return names
-    .map((name) => {
-      const total = totals[name];
-      const gap = missing[name];
-      const value = total === undefined ? '' : String(Math.round(total * 1e6) / 1e6);
-      if (gap === undefined) return `${name} ${value}`;
-      if (total === undefined) return `${name} no value on ${turns(gap)}`;
-      return `${name} ${value} (no value on ${turns(gap)})`;
-    })
-    .join(', ');
-}
-
 export function printSummary(results: Results, outPath: string, io: Output): void {
-  const statuses = Object.entries(results.summary.statuses)
-    .map(([status, count]) => `${status} ${String(count)}`)
-    .join(', ');
-  io.out(`${String(results.summary.cases)} cases: ${statuses}`);
-  for (const c of results.cases) {
-    for (const sample of c.samples) {
-      for (const turn of sample.turns) {
-        if (turn.error !== undefined)
-          io.err(`  ${c.id} [sample ${String(sample.index)}]: ${turn.error}`);
-      }
-    }
-  }
-  const observation = results.run.observation;
-  if (observation !== undefined) {
-    const totals = observedTotals(observation.totals, observation.missing);
-    io.out(
-      `target logs: ${String(observation.matched)} of ${String(observation.matched + observation.unmatched)} turns matched` +
-        (totals === '' ? '' : `; ${totals}`),
-    );
-  }
-  for (const issue of results.run.issues ?? []) io.err(`  run: ${issue}`);
+  const summary = terminalSummary(results);
+  for (const line of summary.out) io.out(line);
+  for (const line of summary.err) io.err(line);
   io.out(`results: ${outPath}`);
+}
+
+/** Writes a file, creating its directory. */
+export function writeReport(path: string, content: string): string {
+  const full = resolve(path);
+  mkdirSync(dirname(full), { recursive: true });
+  writeFileSync(full, content);
+  return full;
 }
 
 const RUN_OPTIONS = {
@@ -87,6 +57,7 @@ const RUN_OPTIONS = {
   samples: { type: 'string' },
   concurrency: { type: 'string' },
   'target-url': { type: 'string' },
+  junit: { type: 'string' },
   help: { type: 'boolean' },
 } as const;
 
@@ -132,10 +103,13 @@ export async function runCommand(
       ...(concurrency === undefined ? {} : { concurrency }),
       ...(values['target-url'] === undefined ? {} : { targetUrl: values['target-url'] }),
     });
-    const outPath = resolve(values.out ?? `runs/${results.run.id}.json`);
-    mkdirSync(dirname(outPath), { recursive: true });
-    writeFileSync(outPath, `${JSON.stringify(results, null, 2)}\n`);
+    const outPath = writeReport(
+      values.out ?? `runs/${results.run.id}.json`,
+      `${JSON.stringify(results, null, 2)}\n`,
+    );
     printSummary(results, outPath, io);
+    if (values.junit !== undefined)
+      io.out(`junit: ${writeReport(values.junit, junitXml(results))}`);
     return results.cases.some((c) => c.status === 'error') ? 2 : 0;
   } catch (error) {
     if (error instanceof LoadError || error instanceof ConfigError) {
