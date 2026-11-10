@@ -1,6 +1,6 @@
 # 0013. Fault plans: provider faults per turn, injected by the model proxy
 
-Status: Proposed · Date: 2026-11-10
+Status: Accepted · Date: 2026-11-10
 
 ## Context
 

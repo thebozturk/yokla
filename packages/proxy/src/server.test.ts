@@ -245,17 +245,27 @@ describe('startProxy recordings', () => {
     const { running, records } = await proxy(up.url);
     const opened = parse(await call(running, 'POST', '/_yokla/recordings'));
     const id = String(Reflect.get(Object(opened), 'id'));
+    const turn = (name: string, body: string) =>
+      call(running, 'PUT', `/_yokla/recordings/${id}/turns/${name}`, body);
     await call(running, 'POST', '/openai/chat/completions', '{}');
-    expect(parse(await call(running, 'PUT', `/_yokla/recordings/${id}/mark?turn=turn-1`))).toEqual({
+    expect(parse(await turn('turn-1', '{"inFlight":true}'))).toEqual({
       id,
-      mark: 'turn-1',
+      turn: 'turn-1',
+      inFlight: true,
+      faults: 0,
     });
     await call(running, 'POST', '/openai/chat/completions', '{}');
-    await call(running, 'PUT', `/_yokla/recordings/${id}/mark?turn=turn-2`);
+    await turn('turn-2', '{"inFlight":true}');
     await call(running, 'POST', '/openai/chat/completions', '{}');
-    expect(records.map((record) => record.mark)).toEqual([null, 'turn-1', 'turn-2']);
-    expect((await call(running, 'PUT', `/_yokla/recordings/${id}/mark`)).status).toBe(400);
-    expect((await call(running, 'PUT', '/_yokla/recordings/other/mark?turn=x')).status).toBe(404);
+    // Arming a turn without marking it in flight leaves the mark where it was.
+    await turn('turn-3', '{}');
+    await call(running, 'POST', '/openai/chat/completions', '{}');
+    expect(records.map((record) => record.mark)).toEqual([null, 'turn-1', 'turn-2', 'turn-2']);
+    expect((await turn('turn-4', '{"inFlight":"yes"}')).status).toBe(400);
+    expect((await turn('turn-4', 'not json')).status).toBe(400);
+    expect(
+      (await call(running, 'PUT', '/_yokla/recordings/other/turns/x', '{"inFlight":true}')).status,
+    ).toBe(404);
   });
 
   it('records calls only while a recording is open, without credentials', async () => {
@@ -302,5 +312,167 @@ describe('startProxy recordings', () => {
 
     await call(running, 'POST', '/openai/chat/completions', '{}');
     expect(records).toHaveLength(2);
+  });
+});
+
+/** A proxy with an open recording and one turn armed. */
+async function armed(up: { url: string }, turn: string, body: unknown) {
+  const { running, records } = await proxy(up.url);
+  const opened = parse(await call(running, 'POST', '/_yokla/recordings'));
+  const id = String(Reflect.get(Object(opened), 'id'));
+  const res = await call(
+    running,
+    'PUT',
+    `/_yokla/recordings/${id}/turns/${turn}`,
+    JSON.stringify(body),
+  );
+  expect(res.status).toBe(200);
+  const arm = (next: string, value: unknown) =>
+    call(running, 'PUT', `/_yokla/recordings/${id}/turns/${next}`, JSON.stringify(value));
+  return { running, records, arm };
+}
+
+describe('startProxy faults', () => {
+  const zero = { input: 0, output: 0, cachedInput: 0, cacheWrite: 0, reasoning: 0 };
+
+  it('answers a status fault itself, in the provider shape, without calling the provider', async () => {
+    const up = await upstream();
+    const { running, records, arm } = await armed(up, 'turn-1', {
+      inFlight: true,
+      faults: [{ fault: { kind: 'status', status: 503, retryAfterS: 2 } }],
+    });
+    const res = await call(running, 'POST', '/openai/chat/completions', '{"model":"gpt-x"}');
+    expect(res.status).toBe(503);
+    expect(res.headers['retry-after']).toBe('2');
+    expect(parse(res)).toMatchObject({ error: { type: 'server_error' } });
+    expect(up.received).toEqual([]);
+    expect(records).toMatchObject([
+      {
+        status: 503,
+        forwarded: false,
+        usage: zero,
+        model: 'gpt-x',
+        fault: { kind: 'status', applied: true },
+      },
+    ]);
+    // The next turn, armed without faults, gets the real answer.
+    await arm('turn-2', { inFlight: true });
+    expect(
+      (await call(running, 'POST', '/openai/chat/completions', '{}')).body.toString('utf8'),
+    ).toBe(CHAT);
+    expect(records[1]).not.toHaveProperty('fault');
+  });
+
+  it('breaks only the listed call, and reads usage from the real answer', async () => {
+    const up = await upstream();
+    const { running, records } = await armed(up, 'turn-1', {
+      inFlight: true,
+      faults: [{ fault: { kind: 'malformed-json' }, calls: [2] }],
+    });
+    const first = await call(running, 'POST', '/openai/chat/completions', '{}');
+    const second = await call(running, 'POST', '/openai/chat/completions', '{}');
+    expect(first.body.toString('utf8')).toBe(CHAT);
+    expect(second.body.toString('utf8')).toBe(CHAT.slice(0, Math.floor(CHAT.length / 2)));
+    expect(Number(second.headers['content-length'])).toBe(second.body.length);
+    expect(up.received).toHaveLength(2);
+    expect(records.map((r) => r.fault)).toEqual([
+      undefined,
+      { kind: 'malformed-json', applied: true },
+    ]);
+    expect(records[1]?.usage).toMatchObject({ input: 11, output: 4 });
+  });
+
+  it('decodes a compressed answer to change it, and sends it uncompressed', async () => {
+    const up = await upstream();
+    const { running } = await armed(up, 't', {
+      inFlight: true,
+      faults: [{ fault: { kind: 'malformed-json' } }],
+    });
+    const res = await call(running, 'POST', '/openai/gzip', '{}', { 'accept-encoding': 'gzip' });
+    expect(res.headers['content-encoding']).toBeUndefined();
+    expect(res.body.toString('utf8')).toBe(CHAT.slice(0, Math.floor(CHAT.length / 2)));
+  });
+
+  it('empties or cuts a stream, keeping its usage on record', async () => {
+    const up = await upstream();
+    const empty = await armed(up, 'e', {
+      inFlight: true,
+      faults: [{ fault: { kind: 'empty-content' } }],
+    });
+    const emptied = (
+      await call(empty.running, 'POST', '/openai/stream', '{"stream":true}')
+    ).body.toString('utf8');
+    expect(emptied).not.toContain('Mer');
+    expect(emptied).toContain('[DONE]');
+    expect(empty.records).toMatchObject([
+      { usage: { input: 3, output: 2 }, fault: { applied: true } },
+    ]);
+    const cut = await armed(up, 'c', {
+      inFlight: true,
+      faults: [{ fault: { kind: 'truncated-stream' } }],
+    });
+    const body = (
+      await call(cut.running, 'POST', '/openai/stream', '{"stream":true}')
+    ).body.toString('utf8');
+    expect(body).toContain('Mer');
+    expect(body).not.toContain('[DONE]');
+  });
+
+  it('records a fault that cannot apply as not applied, and passes the answer on', async () => {
+    const up = await upstream();
+    const { running, records } = await armed(up, 't', {
+      inFlight: true,
+      faults: [{ fault: { kind: 'invalid-tool-call' } }],
+    });
+    expect(
+      (await call(running, 'POST', '/openai/chat/completions', '{}')).body.toString('utf8'),
+    ).toBe(JSON.stringify(JSON.parse(CHAT)));
+    expect(records[0]?.fault).toEqual({ kind: 'invalid-tool-call', applied: false });
+  });
+
+  it('delays a latency fault, and holds a timeout fault without an answer', async () => {
+    const up = await upstream();
+    const slow = await armed(up, 'l', {
+      inFlight: true,
+      faults: [{ fault: { kind: 'latency', ms: 60 } }],
+    });
+    const startedAt = performance.now();
+    await call(slow.running, 'POST', '/openai/chat/completions', '{}');
+    expect(performance.now() - startedAt).toBeGreaterThanOrEqual(55);
+    expect(slow.records[0]?.fault).toEqual({ kind: 'latency', applied: true });
+
+    const held = await armed(up, 'h', {
+      inFlight: true,
+      faults: [{ fault: { kind: 'timeout', holdMs: 80 } }],
+    });
+    const heldAt = performance.now();
+    const outcome = await call(held.running, 'POST', '/openai/chat/completions', '{}').then(
+      () => 'answered',
+      () => 'no answer',
+    );
+    expect(outcome).toBe('no answer');
+    // The client sees the connection close before the proxy's own close event runs.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(performance.now() - heldAt).toBeGreaterThanOrEqual(75);
+    expect(up.received).toHaveLength(1);
+    expect(held.records).toMatchObject([
+      { status: null, forwarded: false, usage: zero, fault: { kind: 'timeout', applied: true } },
+    ]);
+    expect(held.records[0]?.error).toMatch(/timeout fault/u);
+  });
+
+  it('finds a header-correlated turn by its trace', async () => {
+    const up = await upstream();
+    const { running } = await armed(up, 'trace-1', {
+      inFlight: false,
+      faults: [{ fault: { kind: 'status', status: 500 } }],
+    });
+    const faulted = await call(running, 'POST', '/openai/chat/completions', '{}', {
+      'x-yokla-trace': 'trace-1',
+    });
+    const other = await call(running, 'POST', '/openai/chat/completions', '{}', {
+      'x-yokla-trace': 'trace-2',
+    });
+    expect([faulted.status, other.status]).toEqual([500, 200]);
   });
 });

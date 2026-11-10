@@ -12,6 +12,7 @@ import {
   caseDefinition,
   checkTemplates,
   extractResponse,
+  FAULT_JUDGES,
   queryJsonPath,
   RESULTS_SCHEMA_ID,
   runChecks,
@@ -25,6 +26,7 @@ import {
   type TurnView,
   type JsonValue,
   type Profile,
+  type FaultPlan,
   type ProxyRecord,
   type Results,
   type YoklaConfig,
@@ -154,6 +156,13 @@ export function preflight(options: RunOptions): void {
   if (options.profile.modelProxy?.correlation === 'serial' && (options.concurrency ?? 1) > 1) {
     problems.push('modelProxy correlates serially, which needs a concurrency of 1');
   }
+  if (options.profile.modelProxy === undefined) {
+    for (const c of options.cases) {
+      if (c.turns.some((turn) => turn.faults !== undefined)) {
+        problems.push(`case "${c.id}" injects faults, which needs a modelProxy in the profile`);
+      }
+    }
+  }
   const languages = new Set<string>(options.profile.languages);
   const seen = new Set<string>();
   for (const c of options.cases) {
@@ -185,6 +194,12 @@ interface Exchange {
   readonly tag?: TurnTag;
 }
 
+/** Tells the model proxy about a turn: in flight, and its faults (ADR-0012, ADR-0013). */
+type Arm = (
+  turn: string,
+  arming: { readonly inFlight: boolean; readonly faults?: readonly FaultPlan[] },
+) => Promise<void>;
+
 interface ExchangedSample {
   readonly index: number;
   readonly exchanges: Exchange[];
@@ -201,7 +216,7 @@ async function runSample(
   testCase: Case,
   caseIndex: number,
   sampleIndex: number,
-  mark: ((turn: string) => Promise<void>) | undefined,
+  arm: Arm | undefined,
 ): Promise<ExchangedSample> {
   const target = options.profile.target;
   const ids = options.ids ?? randomUUID;
@@ -248,8 +263,15 @@ async function runSample(
     const trace = correlation === 'header' ? tag?.id : undefined;
     const base = { user: turn.user, ...(requestId === undefined ? {} : { requestId }), checks: [] };
     let outcome: Exchange;
+    const faults = turn.faults;
+    const started = performance.now();
     try {
-      if (correlation === 'serial' && tag !== undefined) await mark?.(tag.id);
+      if (tag !== undefined && (correlation === 'serial' || faults !== undefined)) {
+        await arm?.(tag.id, {
+          inFlight: correlation === 'serial',
+          ...(faults === undefined ? {} : { faults }),
+        });
+      }
       const built = buildRequest(
         request,
         turn,
@@ -281,24 +303,31 @@ async function runSample(
       if (result.status < 200 || result.status > 299) error = `HTTP ${String(result.status)}`;
       else if (extracted === undefined) error = 'the response is not JSON';
       else if (extracted.text === undefined) error = issues.shift() ?? 'answer text not found';
+      // Under injected faults, a failed answer is what the case judges, not a run error (ADR-0013).
+      const failure = faults === undefined ? undefined : error;
+      if (failure !== undefined) {
+        error = undefined;
+        issues.push(`gave no usable answer under the injected faults: ${failure}`);
+      }
       const clarifying =
         extracted?.route !== undefined &&
         (target.response.clarification?.routes.includes(extracted.route) ?? false);
       const view: TurnView | undefined =
-        error === undefined && extracted?.text !== undefined
+        error === undefined && (extracted?.text !== undefined || failure !== undefined)
           ? {
               user: turn.user,
               expect: turn.expect ?? NO_EXPECTATIONS,
               response: {
                 status: result.status,
                 latencyMs: response.latencyMs,
-                text: extracted.text,
-                route: extracted.route,
-                id: extracted.id,
-                evidence: extracted.evidence,
+                text: failure === undefined ? (extracted?.text ?? '') : '',
+                route: extracted?.route,
+                id: extracted?.id,
+                evidence: extracted?.evidence ?? {},
               },
               observed: undefined,
               clarifying,
+              faults: faults === undefined ? undefined : { failure },
             }
           : undefined;
       outcome = {
@@ -317,11 +346,37 @@ async function runSample(
         carry[entry.name] = value === undefined ? null : toJson(value);
       }
     } catch (error) {
-      outcome = {
-        turn: { ...base, error: errorMessage(error) },
-        view: undefined,
-        ...(tag === undefined ? {} : { tag }),
-      };
+      const failure = errorMessage(error);
+      outcome =
+        faults === undefined
+          ? {
+              turn: { ...base, error: failure },
+              view: undefined,
+              ...(tag === undefined ? {} : { tag }),
+            }
+          : {
+              // No answer at all under faults: judged, like any other failure under them.
+              turn: {
+                ...base,
+                issues: [`gave no usable answer under the injected faults: ${failure}`],
+              },
+              view: {
+                user: turn.user,
+                expect: turn.expect ?? NO_EXPECTATIONS,
+                response: {
+                  status: 0,
+                  latencyMs: Math.round((performance.now() - started) * 100) / 100,
+                  text: '',
+                  route: undefined,
+                  id: undefined,
+                  evidence: {},
+                },
+                observed: undefined,
+                clarifying: false,
+                faults: { failure },
+              },
+              ...(tag === undefined ? {} : { tag }),
+            };
     }
     exchanges.push(outcome);
     options.onTurn?.({
@@ -340,12 +395,12 @@ async function exchangeCase(
   client: HttpClient,
   testCase: Case,
   caseIndex: number,
-  mark: ((turn: string) => Promise<void>) | undefined,
+  arm: Arm | undefined,
 ): Promise<ExchangedCase> {
   const samples: ExchangedSample[] = [];
   const count = testCase.samples ?? options.samples ?? 1;
   for (let index = 0; index < count; index += 1) {
-    samples.push(await runSample(options, client, testCase, caseIndex, index, mark));
+    samples.push(await runSample(options, client, testCase, caseIndex, index, arm));
   }
   return { testCase, samples };
 }
@@ -464,7 +519,12 @@ function judgeCase(
       if (proxy !== undefined) turn = { ...turn, proxy };
       if (exchange.view === undefined) return turn;
       const view: TurnView = { ...exchange.view, observed: fields };
-      const checks = runChecks(prepared.checks, {
+      // A turn with no usable answer under faults is judged only by the fault judges.
+      const applicable =
+        view.faults?.failure === undefined
+          ? prepared.checks
+          : prepared.checks.filter((check) => FAULT_JUDGES.has(check.id));
+      const checks = runChecks(applicable, {
         case: testCase,
         turnIndex,
         turn: view,
@@ -550,17 +610,17 @@ export async function runSuite(options: RunOptions): Promise<Results> {
   });
 
   const recording = await openRecording(options);
-  const mark =
+  const arm: Arm | undefined =
     recording === undefined
       ? undefined
-      : (turn: string) => recording.control.mark(recording.id, turn);
+      : (turn, arming) => recording.control.turn(recording.id, turn, arming);
   let exchanged: ExchangedCase[] = [];
   // Undefined when there is no proxy, or its records couldn't be read.
   let records: ProxyRecord[] | undefined;
   const proxyIssues: string[] = [];
   try {
     exchanged = await pool(options.cases, options.concurrency ?? 1, (testCase, index) =>
-      exchangeCase(options, client, testCase, index, mark),
+      exchangeCase(options, client, testCase, index, arm),
     );
   } finally {
     if (recording !== undefined) {
