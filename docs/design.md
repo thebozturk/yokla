@@ -87,6 +87,11 @@ What it does that existing tools don't do together:
   e-commerce or Turkish.
 - **P8. Interoperable.** yokla imports from and exports to the formats of other
   evaluation tools, so users don't have to choose between tools.
+- **P9. Configuration, not code, adapts yokla to a target.** Everything
+  specific to a target lives in its profile: the request and response shape,
+  sessions, rate-limit headers, cache control and log format. yokla never
+  contains code for one particular assistant; a target that doesn't fit shows a
+  missing configuration option, which is added for every target.
 
 ## 4. Prior art and positioning
 
@@ -210,9 +215,12 @@ target:
           price: price.amount               # authoritative
           currency: price.currency
           stock: stockQuantity              # nullable: null means UNKNOWN, not 0
-  session: { mode: client }                 # client | server | none
+  session:
+    mode: client                            # client | none
+    carry:                                  # values sent back on the next turn
+      - { name: conversationId, from: $.data.metadata.conversationId }
   limits: { burstPerSecond: 3, perMinute: 120 }
-  cacheBypass: { kind: header, name: x-cache-bypass }   # header | none
+  cacheBypass: { kind: header, name: x-cache-bypass }   # header | command | none
 languages: [tr, en]
 domain: ecommerce
 
@@ -379,15 +387,22 @@ These are lessons from building a production harness.
 ## 11. Runner
 
 - **Adapters:** HTTP in v1; in-process function / SDK from v0.3; CLI later.
-- **Multi-turn:** session modes `client | server | none`. Turns run
-  sequentially within a case; cases run in parallel up to the configured
-  concurrency.
-- **Rate limits:** a token bucket built from the profile's limits. The runner
-  honours `429` and `Retry-After`. It can optionally send a per-case client
+- **Multi-turn:** session modes `client | none`. A server-issued id, such as a
+  conversation id, is carried from each response into the next turn
+  (`session.carry`). Turns run sequentially within a case; cases run in
+  parallel up to the configured concurrency.
+- **Requests:** a case turn can add body fields and headers to the profile's
+  request. With `request.requestId`, every request carries a unique id in a
+  header, for correlating the target's logs (ADR-0009).
+- **Rate limits:** a token bucket built from the profile's limits (per second,
+  minute and hour). The runner honours `429` and the retry headers the profile
+  names, in seconds or milliseconds (`Retry-After` by default; prefixes such as
+  `retry-after-*` for tiered limits). It can optionally send a per-case client
   identity header (addresses from the TEST-NET ranges) when the target limits
   per IP and the operator allows it.
 - **Cache bypass:** applied before every cold sample, as the profile defines it
-  (header, command or endpoint). Warm samples are reported separately.
+  (a header, or a local command given as an argument list, never a shell).
+  Warm samples are reported separately.
 - **Warm-up:** warm-up requests are excluded from latency statistics.
 - **Deadlines:** a timeout per request and a deadline per run.
 - **Samples:** N per case, with defaults per suite: 1 for deterministic paths,
@@ -442,9 +457,11 @@ these records:
 - seeded PII present in prompts,
 - prompt size against the declared budget.
 
-**Limits.** Providers that sign requests (AWS SigV4) and SDK-only transports
-can't be proxied transparently in v1. The profile marks them `unobserved`, and
-the cost suite reports `unmeasured` instead of guessing.
+**Limits.** When the proxy can't see a target's calls, the target's own
+structured logs are the other source of cost and path signals (ADR-0009).
+Providers that sign requests (AWS SigV4) and SDK-only transports
+can't be proxied transparently in v1. Without a log source, the profile marks
+them `unobserved`, and the cost suite reports `unmeasured` instead of guessing.
 
 **Data.** Records stay local. Stored prompts can be redacted or hashed.
 
@@ -594,7 +611,7 @@ Each version is usable on its own. A version ships when its exit criteria hold.
 
 | Version | Scope | Exit criteria |
 |---|---|---|
-| **0.1 — core** | core schemas (profile, case, results); HTTP adapter; runner with rate limiting and cache bypass; e-commerce checks (price, stock, policy, filter, duplicates, absence, over-refusal); `lang-tr`, `lang-en`; aggregation policies; JSON, terminal and JUnit reports; gate; demo-shop | every demo-shop defect detected; a real assistant tested with a hand-written profile |
+| **0.1 — core** | core schemas (profile, case, results); HTTP adapter; runner with rate limiting and cache bypass; observation from the target's logs (ADR-0009); e-commerce checks (price, stock, policy, filter, duplicates, absence, over-refusal); `lang-tr`, `lang-en`; aggregation policies; JSON, terminal and JUnit reports; gate; demo-shop | every demo-shop defect detected; a real assistant tested with a hand-written profile |
 | **0.2 — proxy** | OpenAI-compatible and Anthropic proxy; `serial` and `header` correlation; cost and latency per request; fault plans; inspection checks; perf, cost and resilience suites; `yokla plan` | cost on demo-shop and on one real target reconciles with the provider's usage records; resilience defects detected |
 | **0.3 — analyzer** | inventory, LLM extraction with evidence, probe mode, profile review and diff; e-commerce data generators; freshness and `fixture-missing` | on demo-shop the analyzer reproduces the approved entries of the hand-written profile (precision and recall reported); on the private target it rediscovers the known issue classes |
 | **0.4 — red team** | local attack generation (templates plus attacker model), native TR and EN; e-commerce attacks; canary-based deterministic detection; multi-turn strategies; calibrated judge | demo-shop injection, leakage and BOLA defects detected deterministically; the egress test passes |

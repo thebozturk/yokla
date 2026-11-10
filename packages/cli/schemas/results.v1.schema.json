@@ -248,6 +248,9 @@
                       "user": {
                         "type": "string"
                       },
+                      "requestId": {
+                        "type": "string"
+                      },
                       "response": {
                         "type": "object",
                         "properties": {
@@ -259,6 +262,9 @@
                           "latencyMs": {
                             "type": "number",
                             "minimum": 0
+                          },
+                          "id": {
+                            "type": "string"
                           },
                           "text": {
                             "type": "string"
@@ -283,6 +289,38 @@
                           "status",
                           "latencyMs",
                           "evidence"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "observed": {
+                        "type": "object",
+                        "properties": {
+                          "source": {
+                            "type": "string",
+                            "const": "target-logs"
+                          },
+                          "correlation": {
+                            "type": "string",
+                            "enum": [
+                              "request-id",
+                              "target-id",
+                              "order"
+                            ]
+                          },
+                          "fields": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {
+                              "$ref": "#/$defs/__schema1"
+                            }
+                          }
+                        },
+                        "required": [
+                          "source",
+                          "correlation",
+                          "fields"
                         ],
                         "additionalProperties": false
                       },
@@ -332,7 +370,7 @@
                                     "type": "string"
                                   },
                                   "evidence": {
-                                    "$ref": "#/$defs/__schema1"
+                                    "$ref": "#/$defs/__schema2"
                                   }
                                 },
                                 "required": [
@@ -533,6 +571,37 @@
           },
           "additionalProperties": {
             "$ref": "#/$defs/__schema1"
+          }
+        }
+      ]
+    },
+    "__schema2": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema2"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema2"
           }
         }
       ]

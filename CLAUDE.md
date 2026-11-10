@@ -20,6 +20,9 @@ change a decision, propose a new ADR. Never edit an accepted one.
   doesn't gate by default (ADR-0005).
 - **Tooling.** ADR-0006 sets it: oxlint with type-aware rules, Prettier,
   Vitest, Zod 4 and YAML 1.2.
+- **Target specifics are configuration (P9).** Never write code for one
+  particular assistant. When a target doesn't fit, add a general profile
+  option instead.
 - **Documentation language.** Everything committed is written in English. The
   conversation with the maintainer may be in Turkish.
 

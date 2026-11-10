@@ -9,6 +9,7 @@ old one.
 - `Proposed`: written, not yet accepted.
 - `Accepted`: in force.
 - `Superseded by NNNN`: replaced by a later ADR.
+- `Amended by NNNN`: a later ADR replaces part of it; the rest stands.
 
 | ADR | Title | Status |
 |---|---|---|
@@ -17,8 +18,10 @@ old one.
 | [0003](0003-zero-egress-by-default.md) | Zero data egress by default | Accepted |
 | [0004](0004-expectations-from-claims-and-data.md) | Expectations come from claims and data, not the implementation | Accepted |
 | [0005](0005-deterministic-checks-first.md) | Deterministic checks first; the LLM judge is calibrated and non-gating | Accepted |
-| [0006](0006-tooling-and-repository-layout.md) | Tooling and repository layout | Accepted |
+| [0006](0006-tooling-and-repository-layout.md) | Tooling and repository layout | Accepted; amended by 0008 |
 | [0007](0007-results-schema-and-interop.md) | yokla owns its results schema; other tools are reached by mapping | Accepted |
+| [0008](0008-schema-files-in-cli.md) | Generated JSON Schemas live where packs are assembled | Accepted |
+| [0009](0009-observation-from-target-logs.md) | Observing the target through its own logs | Accepted |
 
 ## Template
 
