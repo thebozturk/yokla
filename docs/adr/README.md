@@ -25,6 +25,7 @@ old one.
 | [0010](0010-gate-thresholds-and-baseline.md) | The gate: thresholds per suite, a baseline, and three exit codes | Accepted; amended by 0011 |
 | [0011](0011-baseline-file-and-case-definitions.md) | The baseline file, and cases compared only while their definition holds | Accepted |
 | [0012](0012-model-proxy-process-routing-and-records.md) | The model proxy: a standalone process, routing, records and correlation | Accepted |
+| [0013](0013-fault-plans.md) | Fault plans: provider faults per turn, injected by the model proxy | Proposed |
 
 ## Template
 
