@@ -87,6 +87,11 @@ export const CaseResult = z.object({
   id: Id,
   suite: Suite,
   language: LanguageCode,
+  /** SHA-256 of what decides the verdict (ADR-0011); the gate compares a case only while it holds. */
+  definitionSha256: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/u)
+    .optional(),
   status: CaseStatus,
   /** true when samples disagree. */
   unstable: z.boolean(),

@@ -5,6 +5,9 @@ import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync, type Stats } from 'node:fs';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 import {
+  Baseline,
+  BASELINE_SCHEMA_ID,
+  baselineOf,
   formatIssue,
   parseConfig,
   Results,
@@ -100,31 +103,54 @@ export class ResultsError extends Error {
   override readonly name = 'ResultsError';
 }
 
-/** Reads and validates a results file; any problem is a ResultsError. */
-export function readResults(path: string): Results {
-  let value: unknown;
+function readJson(path: string): unknown {
   try {
-    value = JSON.parse(readFileSync(path, 'utf8'));
+    return JSON.parse(readFileSync(path, 'utf8'));
   } catch (error) {
     throw new ResultsError(`${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
-  const schema =
-    typeof value === 'object' && value !== null && 'schema' in value ? value.schema : undefined;
+}
+
+function schemaOf(value: unknown): unknown {
+  return typeof value === 'object' && value !== null && 'schema' in value
+    ? value.schema
+    : undefined;
+}
+
+function validated<T>(path: string, what: string, schema: z.ZodType<T>, value: unknown): T {
+  const parsed = schema.safeParse(value);
+  if (parsed.success) return parsed.data;
+  throw new ResultsError(
+    [
+      `${path}: invalid ${what}`,
+      ...parsed.error.issues
+        .slice(0, 10)
+        .map((issue) => `  ${issue.path.map(String).join('.') || '(root)'}: ${issue.message}`),
+    ].join('\n'),
+  );
+}
+
+/** Reads and validates a results file; any problem is a ResultsError. */
+export function readResults(path: string): Results {
+  const value = readJson(path);
+  const schema = schemaOf(value);
   if (schema !== RESULTS_SCHEMA_ID) {
     throw new ResultsError(
       `${path}: not a ${RESULTS_SCHEMA_ID} file (schema: ${JSON.stringify(schema) ?? 'missing'})`,
     );
   }
-  const parsed = Results.safeParse(value);
-  if (!parsed.success) {
+  return validated(path, 'results', Results, value);
+}
+
+/** A baseline file, or a results file reduced to its baseline (ADR-0011). */
+export function readBaseline(path: string): Baseline {
+  const value = readJson(path);
+  const schema = schemaOf(value);
+  if (schema === RESULTS_SCHEMA_ID) return baselineOf(validated(path, 'results', Results, value));
+  if (schema !== BASELINE_SCHEMA_ID) {
     throw new ResultsError(
-      [
-        `${path}: invalid results`,
-        ...parsed.error.issues
-          .slice(0, 10)
-          .map((issue) => `  ${issue.path.map(String).join('.') || '(root)'}: ${issue.message}`),
-      ].join('\n'),
+      `${path}: not a ${BASELINE_SCHEMA_ID} or ${RESULTS_SCHEMA_ID} file (schema: ${JSON.stringify(schema) ?? 'missing'})`,
     );
   }
-  return parsed.data;
+  return validated(path, 'baseline', Baseline, value);
 }

@@ -509,6 +509,10 @@ them `unobserved`, and the cost suite reports `unmeasured` instead of guessing.
 - **Regression.** A case that passed in the baseline and no longer passes breaks
   the gate. Updating the baseline is an explicit command, and its diff is
   reviewed.
+  - The baseline is `yokla.baseline.json`: per case only its status and a hash
+    of its definition, so it can be committed (ADR-0011).
+  - A case whose definition changed since the baseline isn't compared with
+    it; its own status still counts against the thresholds.
 - **Reference runs.** When comparing candidates (models, prompts), the
   recommended method is a reference run in the same environment, so that reds
   caused by the environment can be told apart from reds caused by the change.
@@ -551,7 +555,10 @@ them `unobserved`, and the cost suite reports `unmeasured` instead of guessing.
   `yokla.config.yaml`. Exit codes: `0` passed, `1` gate broken, `2` run error.
   - By default a suite allows no `fail` and no `unmeasured` case;
     `maxFailures` and `allowUnmeasured` relax that per suite.
-  - A case that passed in the baseline and no longer passes always breaks it.
+  - A case that passed in the baseline and no longer passes always breaks it,
+    unless its definition changed (ADR-0011).
+  - `yokla baseline --results <file>` accepts a run as the baseline and
+    prints what changed.
   - A run with an `error` or `fixture-missing` case, or a partial run, can't
     be judged and exits with `2`.
 

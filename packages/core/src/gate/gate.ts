@@ -2,6 +2,7 @@
 // regressions against a baseline run. It reads results.v1 alone (ADR-0007).
 // A run that couldn't be measured is never judged as broken or passed.
 
+import type { Baseline } from '../schema/baseline.ts';
 import type { GateConfig } from '../schema/config.ts';
 import type { Results } from '../schema/results.ts';
 
@@ -38,7 +39,7 @@ function ids(cases: readonly CaseResult[]): string {
 export function evaluateGate(
   results: Results,
   config: GateConfig = {},
-  baseline?: Results,
+  baseline?: Baseline,
 ): GateOutcome {
   const problems: string[] = [];
   const breaches: GateBreach[] = [];
@@ -90,6 +91,12 @@ export function evaluateGate(
       const now = current.get(before.id);
       if (now === undefined) {
         notices.push(`${before.id} passed in the baseline but is not in this run`);
+      } else if (
+        before.definitionSha256 !== undefined &&
+        now.definitionSha256 !== undefined &&
+        before.definitionSha256 !== now.definitionSha256
+      ) {
+        notices.push(`${now.id} changed since the baseline, so it isn't compared with it`);
       } else if (!STILL_PASSING.has(now.status)) {
         breaches.push({
           rule: 'regression',
