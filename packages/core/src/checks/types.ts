@@ -39,9 +39,46 @@ export interface TurnView {
   readonly observed: Readonly<Record<string, JsonValue>> | undefined;
 }
 
-/** What a language pack provides. Grows with the language-dependent checks. */
+/** A money amount mentioned in text, e.g. "1.299,90 TL". */
+export interface MoneyMention {
+  readonly amount: number;
+  /** ISO 4217 code, e.g. TRY; undefined when the text names no currency. */
+  readonly currency: string | undefined;
+  readonly raw: string;
+  readonly start: number;
+  readonly end: number;
+}
+
+/** A duration mentioned in text, e.g. "14 gün" or "30 days". */
+export interface DurationMention {
+  readonly amount: number;
+  readonly unit: 'day' | 'week' | 'month' | 'year';
+  readonly raw: string;
+  readonly start: number;
+  readonly end: number;
+}
+
+/**
+ * General phrases of a language, folded (see LanguagePack.fold). Domain
+ * phrases, such as stock or shipping wording, belong to domain packs.
+ */
+export type PhraseKind =
+  | 'refusal' // the assistant declines: "I can't help with that"
+  | 'inability' // it can't verify or doesn't know: "I can't verify"
+  | 'absence' // something isn't there: "we don't carry", "bulamadım"
+  | 'alternative' // it offers something else: "instead", "bunun yerine"
+  | 'free'; // something costs nothing: "free of charge", "ücretsiz"
+
+/** What a language pack provides (design §17). */
 export interface LanguagePack {
   readonly language: string;
+  /** Lower-cases with the language's rules and removes diacritics. */
+  fold(text: string): string;
+  /** Money amounts with a currency marker; bare numbers are not money. */
+  findMoney(text: string): MoneyMention[];
+  findDurations(text: string): DurationMention[];
+  formatMoney(amount: number, currency: string): string;
+  readonly phrases: Readonly<Record<PhraseKind, readonly string[]>>;
 }
 
 export interface CheckContext {
