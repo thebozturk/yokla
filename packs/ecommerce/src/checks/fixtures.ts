@@ -28,6 +28,7 @@ export const fakeTurkish: LanguagePack = {
     absence: ['bulunmuyor', 'bulamadim', 'yok$'],
     alternative: ['bunun yerine', 'farkli bir urun'],
     free: ['ucretsiz'],
+    deflection: ['musteri hizmetlerimize'],
   },
   findMoney: (text) =>
     [...text.matchAll(/(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?) ?TL/gu)].map((m) => ({
@@ -56,6 +57,7 @@ export const fakeEnglish: LanguagePack = {
     absence: ["don't carry"],
     alternative: ['instead', 'as a different product'],
     free: ['free of charge', 'free$'],
+    deflection: ['contact customer service'],
   },
   findMoney: (text) =>
     [...text.matchAll(/(TRY |\$)(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)/gu)].map((m) => ({

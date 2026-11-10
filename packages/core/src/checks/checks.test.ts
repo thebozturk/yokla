@@ -204,3 +204,31 @@ describe('mutate', () => {
     expect(() => mutate({ a: 1 }, (value) => ({ ...value }))).toThrow(/did not change anything/u);
   });
 });
+
+describe('advisory dimensions', () => {
+  const advisoryFail = sample(turn([applied(finding('deflection', 'fail'))]));
+  const both = sample(
+    turn([applied(finding('fabrication', 'pass'), finding('deflection', 'fail'))]),
+  );
+  const policies = { deflection: 'advisory' } as const;
+
+  it('are reported but never fail the case', () => {
+    const result = aggregateCase([both], policies, false);
+    expect(result.status).toBe('pass');
+    expect(result.dimensions.find((d) => d.dimension === 'deflection')).toMatchObject({
+      policy: 'advisory',
+      verdict: 'fail',
+    });
+  });
+
+  it('do not count as a measurement on their own', () => {
+    expect(aggregateCase([advisoryFail], policies, false).status).toBe('unmeasured');
+  });
+
+  it('do not make a case unstable', () => {
+    const passing = sample(
+      turn([applied(finding('fabrication', 'pass'), finding('deflection', 'pass'))]),
+    );
+    expect(aggregateCase([both, passing], policies, false).unstable).toBe(false);
+  });
+});

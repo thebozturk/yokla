@@ -6,7 +6,7 @@ import { filterHonoured } from './checks/filters.ts';
 import { noDuplicates } from './checks/no-duplicates.ts';
 import { policyClaim } from './checks/policy-claim.ts';
 import { priceGrounded } from './checks/price-grounded.ts';
-import { overRefusal } from './checks/refusal.ts';
+import { deflection, overRefusal } from './checks/refusal.ts';
 import { stockClaim } from './checks/stock-claim.ts';
 import { loadData } from './data.ts';
 import { ecommerceExpectations, ecommerceProfile } from './schema.ts';
@@ -24,6 +24,8 @@ export const ecommercePack: DomainPack = {
     'filter-honesty': 'worst-of-n',
     duplicates: 'worst-of-n',
     absence: 'worst-of-n',
+    // Reported, never decides a case: sending users to support may be intended.
+    deflection: 'advisory',
   },
   prepare(profile, io) {
     const data = loadData(profile, io);
@@ -36,6 +38,7 @@ export const ecommercePack: DomainPack = {
         overRefusal(),
         filterHonoured(data),
         absenceCorrect(data),
+        deflection(),
       ],
     };
   },

@@ -476,11 +476,16 @@ them `unobserved`, and the cost suite reports `unmeasured` instead of guessing.
   | refusal correctness | **majority-of-N** |
   | latency | percentile across samples |
   | judge rubric | mean, with interval |
+  | deflection (sent to customer service) | **advisory**: reported, never decides the case |
 
 - **Statistics.** Rates are reported with Wilson 95 % intervals. A case whose
   samples disagree is flagged `unstable`.
 - **Status precedence:** `error` (a precondition or measurement failed) →
   `fixture-missing` → `known-gap` / `gap-closed` → `pass` / `fail`.
+- **Clarifying questions.** A profile can name the routes that mean the target
+  asked a clarifying question (`response.clarification`). Product expectations
+  don't apply to such a turn, so a target that asks before it answers isn't
+  failed for showing no products.
 - **`unmeasured`** marks a threshold with no data, or a case where no check
   applied to any turn. It never counts as a pass.
 - **`known-gap`** documents the desired behaviour of a case without breaking the

@@ -225,6 +225,9 @@ async function runSample(
       if (result.status < 200 || result.status > 299) error = `HTTP ${String(result.status)}`;
       else if (extracted === undefined) error = 'the response is not JSON';
       else if (extracted.text === undefined) error = issues.shift() ?? 'answer text not found';
+      const clarifying =
+        extracted?.route !== undefined &&
+        (target.response.clarification?.routes.includes(extracted.route) ?? false);
       let checks: TurnResult['checks'] = [];
       if (error === undefined && extracted?.text !== undefined) {
         const view: TurnView = {
@@ -239,6 +242,7 @@ async function runSample(
             evidence: extracted.evidence,
           },
           observed: undefined,
+          clarifying,
         };
         checks = runChecks(prepared.checks, {
           case: testCase,
@@ -253,6 +257,7 @@ async function runSample(
       outcome = {
         ...base,
         checks,
+        ...(clarifying ? { clarifying } : {}),
         response,
         ...(error === undefined ? {} : { error }),
         ...(issues.length === 0 ? {} : { issues }),

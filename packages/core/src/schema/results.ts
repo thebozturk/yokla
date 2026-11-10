@@ -49,6 +49,8 @@ export const TurnResult = z.object({
       evidence: z.record(z.string(), z.array(z.json())),
     })
     .optional(),
+  /** true when the target answered with a clarifying question. */
+  clarifying: z.boolean().optional(),
   /** Fields read from the target's logs (ADR-0009), labelled by their source. */
   observed: z
     .object({
@@ -73,7 +75,7 @@ export const Sample = z.object({
 
 export const DimensionResult = z.object({
   dimension: Id,
-  policy: z.enum(['worst-of-n', 'majority-of-n', 'percentile', 'mean']),
+  policy: z.enum(['worst-of-n', 'majority-of-n', 'percentile', 'mean', 'advisory']),
   verdict: z.enum(['pass', 'fail', 'unmeasured']),
   samples: z.int().nonnegative(),
   failed: z.int().nonnegative(),

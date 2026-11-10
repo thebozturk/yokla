@@ -15,6 +15,7 @@ export function absenceCorrect(data: EcommerceData): Check {
     run(context) {
       const absentType = context.turn.expect['absentType'];
       if (typeof absentType !== 'string') return notApplicable('the turn expects no absent type');
+      if (context.turn.clarifying) return notApplicable('the target asked a clarifying question');
       const { lang } = context;
       if (lang === undefined)
         return notApplicable(`no language pack for "${context.case.language}"`);

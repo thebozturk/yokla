@@ -9,7 +9,7 @@ import { filterHonoured } from './filters.ts';
 import { noDuplicates } from './no-duplicates.ts';
 import { policyClaim } from './policy-claim.ts';
 import { priceGrounded } from './price-grounded.ts';
-import { overRefusal } from './refusal.ts';
+import { deflection, overRefusal } from './refusal.ts';
 import { stockClaim } from './stock-claim.ts';
 
 function verdicts(outcome: CheckOutcome): string[] {
@@ -653,5 +653,39 @@ describe('regressions from the demo-shop defect runs', () => {
       }),
     );
     expect(verdicts(outcome)).toEqual(['pass']);
+  });
+});
+
+describe('clarifying turns and deflection', () => {
+  it('absence-correct does not apply to a clarifying question', () => {
+    const view = {
+      ...answer('Hangi bedeni arıyorsunuz?', []),
+      expect: { absentType: 'x' },
+      clarifying: true,
+    };
+    expect(
+      verdicts(absenceCorrect(data()).run(checkContext(view, { lang: fakeTurkish })))[0],
+    ).toMatch(/clarifying question/u);
+  });
+
+  it('deflection flags an answerable turn sent only to customer service', () => {
+    const check = deflection();
+    const sent = {
+      ...answer('Bu konuda müşteri hizmetlerimize başvurabilirsiniz.', []),
+      expect: { answerable: true },
+    };
+    expect(verdicts(check.run(checkContext(sent, { lang: fakeTurkish })))).toEqual(['fail']);
+    const withProducts = {
+      ...answer('Müşteri hizmetlerimize de sorabilirsiniz. Ürünler:', tents),
+      expect: { answerable: true },
+    };
+    expect(verdicts(check.run(checkContext(withProducts, { lang: fakeTurkish })))).toEqual([
+      'pass',
+    ]);
+    const answered = { ...answer('İade süresi 14 gündür.', []), expect: { answerable: true } };
+    expect(verdicts(check.run(checkContext(answered, { lang: fakeTurkish })))).toEqual(['pass']);
+    expect(verdicts(check.run(checkContext(answer('x'), { lang: fakeTurkish })))[0]).toMatch(
+      /not marked answerable/u,
+    );
   });
 });

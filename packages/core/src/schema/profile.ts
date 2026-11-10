@@ -59,6 +59,13 @@ const HttpResponse = z.strictObject({
   text: JsonPath.meta({ description: "Where the assistant's answer text is." }),
   route: JsonPath.optional(),
   id: JsonPath.optional().meta({ description: "Where the target's own request id is." }),
+  clarification: z
+    .strictObject({ routes: z.array(z.string().min(1)).min(1) })
+    .optional()
+    .meta({
+      description:
+        'Routes that mean the target asked a clarifying question; product expectations then do not apply to that turn.',
+    }),
   evidence: z.record(Id, EvidenceCollection).optional(),
 });
 

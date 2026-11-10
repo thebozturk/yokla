@@ -75,8 +75,8 @@ export function aggregateCase(
     const policy = policies[dimension] ?? 'worst-of-n';
     const measured = verdicts.filter((v) => v.failed.has(dimension) || v.passed.has(dimension));
     const failed = measured.filter((v) => v.failed.has(dimension)).length;
-    if (failed > 0 && failed < measured.length) unstable = true;
-    const fails = policy === 'worst-of-n' ? failed > 0 : failed * 2 > measured.length;
+    if (policy !== 'advisory' && failed > 0 && failed < measured.length) unstable = true;
+    const fails = policy === 'majority-of-n' ? failed * 2 > measured.length : failed > 0;
     return {
       dimension,
       policy,
@@ -87,11 +87,13 @@ export function aggregateCase(
     };
   });
 
+  // Advisory dimensions are reported but never decide the status.
+  const deciding = dimensions.filter((d) => d.policy !== 'advisory');
   let status: CaseResult['status'];
   if (verdicts.some((v) => v.error)) status = 'error';
-  else if (dimensions.length === 0) status = 'unmeasured';
+  else if (deciding.length === 0) status = 'unmeasured';
   else {
-    const failing = dimensions.some((d) => d.verdict === 'fail');
+    const failing = deciding.some((d) => d.verdict === 'fail');
     if (knownGap) status = failing ? 'known-gap' : 'gap-closed';
     else status = failing ? 'fail' : 'pass';
   }

@@ -54,6 +54,15 @@ export const english: LanguagePack = {
       'as a different product',
     ],
     free: ['free of charge', 'free$', 'no charge', 'at no cost', 'without charge', 'complimentary'],
+    deflection: [
+      'contact customer service',
+      'contact our customer service',
+      'contact our support',
+      'contact support',
+      'customer support team',
+      'help center',
+      'live chat',
+    ],
   },
 };
 

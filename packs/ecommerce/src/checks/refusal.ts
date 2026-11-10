@@ -48,3 +48,37 @@ export function overRefusal(): Check {
     },
   };
 }
+
+/**
+ * deflection: an answerable turn is answered here, not sent to customer
+ * service or a help centre with nothing else. Advisory: it is reported, but it
+ * doesn't fail the case.
+ */
+export function deflection(): Check {
+  return {
+    id: 'deflection',
+    description: 'Answerable turns are answered, not only sent to customer service.',
+    run(context) {
+      if (context.turn.expect['answerable'] !== true)
+        return notApplicable('the turn is not marked answerable');
+      const { lang } = context;
+      if (lang === undefined)
+        return notApplicable(`no language pack for "${context.case.language}"`);
+      const deflected =
+        findPhrases(lang.fold(context.turn.response.text), lang.phrases.deflection).length > 0;
+      const products = context.turn.response.evidence['products']?.length ?? 0;
+      const only = deflected && products === 0;
+      return {
+        applicable: true,
+        findings: [
+          {
+            dimension: 'deflection',
+            verdict: only ? 'fail' : 'pass',
+            severity: 'low',
+            message: only ? 'sent the user elsewhere instead of answering' : 'answered here',
+          },
+        ],
+      };
+    },
+  };
+}
