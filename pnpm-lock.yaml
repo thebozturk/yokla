@@ -52,6 +52,9 @@ importers:
       '@yokla/pack-lang-tr':
         specifier: workspace:*
         version: link:../../packs/lang-tr
+      '@yokla/proxy':
+        specifier: workspace:*
+        version: link:../proxy
       '@yokla/report':
         specifier: workspace:*
         version: link:../report

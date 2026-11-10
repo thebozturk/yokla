@@ -2,10 +2,12 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { RESULTS_SCHEMA_ID, type Results } from '@yokla/core';
+import { ProxyControl } from '@yokla/runtime';
 import { describe, expect, it } from 'vitest';
 import { LoadError, loadCases, loadProfile } from './load.ts';
 import { baselineCommand } from './commands/baseline.ts';
 import { gateCommand } from './commands/gate.ts';
+import { proxyCommand } from './commands/proxy.ts';
 import { printSummary } from './commands/run.ts';
 import { main } from './main.ts';
 
@@ -440,5 +442,64 @@ describe('yokla baseline', () => {
     expect(baselineCommand(['--results', join(project, 'ok.json')], broken.io, project)).toBe(2);
     expect(broken.err.join('\n')).toMatch(/yokla\.baseline\.json: invalid baseline/u);
     expect(baselineCommand([], capture().io, project)).toBe(2);
+  });
+});
+
+const PROXY_PROFILE = `${PROFILE}modelProxy:
+  upstreams:
+    - { id: openai, kind: openai-compatible, upstream: 'https://api.openai.com/v1', appBaseUrlEnv: OPENAI_BASE_URL }
+`;
+
+/** Starts \`yokla proxy\` and waits for its address. */
+async function startedProxy(args: string[]) {
+  const { io, out, err } = capture();
+  const stop = new AbortController();
+  const done = proxyCommand(args, io, stop.signal);
+  for (let i = 0; i < 100 && !out.some((line) => line.startsWith('proxy: http')); i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  const url = /http:\/\/127\.0\.0\.1:\d+/u.exec(out[0] ?? '')?.[0] ?? '';
+  return { url, out, err, stop, done };
+}
+
+/** Runs \`yokla proxy\` with a signal that is already aborted, for refusals. */
+async function refusedProxy(...args: string[]) {
+  const { io, err } = capture();
+  return { code: await proxyCommand(args, io, AbortSignal.abort()), err: err.join('\n') };
+}
+
+describe('yokla proxy', () => {
+  it('listens on 127.0.0.1, answers its control endpoint and stops on request', async () => {
+    const dir = workspace({ 'yokla.profile.yaml': PROXY_PROFILE });
+    const proxy = await startedProxy(['--profile', join(dir, 'yokla.profile.yaml'), '--port', '0']);
+    expect(proxy.out).toEqual([
+      `proxy: ${proxy.url} (127.0.0.1 only)`,
+      `  ${proxy.url}/openai → https://api.openai.com/v1 (OPENAI_BASE_URL=${proxy.url}/openai)`,
+    ]);
+    const control = new ProxyControl(proxy.url);
+    expect(await control.health()).toEqual({ ok: true, upstreams: ['openai'], recording: null });
+    const { id } = await control.open();
+    expect(await control.close(id)).toEqual([]);
+    proxy.stop.abort();
+    expect(await proxy.done).toBe(0);
+    expect(proxy.out.at(-1)).toBe('proxy: stopped');
+  });
+
+  it('refuses a profile without modelProxy, a bad port, and a port in use', async () => {
+    const dir = workspace({ 'plain.yaml': PROFILE, 'yokla.profile.yaml': PROXY_PROFILE });
+    const profile = join(dir, 'yokla.profile.yaml');
+    const plain = await refusedProxy('--profile', join(dir, 'plain.yaml'));
+    expect(plain.code).toBe(2);
+    expect(plain.err).toMatch(/has no modelProxy section/u);
+    expect(await refusedProxy('--profile', profile, '--port', '70000')).toEqual({
+      code: 2,
+      err: '--port must be an integer from 0 to 65535',
+    });
+    const first = await startedProxy(['--profile', profile, '--port', '0']);
+    const inUse = await refusedProxy('--profile', profile, '--port', new URL(first.url).port);
+    expect(inUse.code).toBe(2);
+    expect(inUse.err).toMatch(/can't listen on 127\.0\.0\.1:\d+/u);
+    first.stop.abort();
+    await first.done;
   });
 });
