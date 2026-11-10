@@ -68,6 +68,11 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
   'type-padding': {
     'type-matched-or-disclosed': ['tents-under-1000-tr', 'black-women-jacket-tr'],
   },
+  // The model runs in process here; these defects show with the model over
+  // HTTP, in the resilience matrix of proxy.e2e.test.ts.
+  'no-model-fallback': {},
+  'no-model-timeout': {},
+  'unchecked-model-output': {},
 };
 
 const children: ChildProcess[] = [];
@@ -244,7 +249,9 @@ describe('the demo-shop acceptance', () => {
     expect(await gate('none')).toMatchObject({ code: 0 });
     for (const [defect, expected] of Object.entries(EXPECTED)) {
       const outcome = await gate(defect);
-      expect(outcome.code, defect).toBe(1);
+      // A defect that fails no case here leaves the gate passed.
+      const breaks = Object.values(expected).flat().length > 0;
+      expect(outcome.code, defect).toBe(breaks ? 1 : 0);
       for (const id of Object.values(expected).flat()) {
         expect(outcome.output, defect).toContain(`${id} passed in the baseline and is now fail`);
       }

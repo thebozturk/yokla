@@ -87,6 +87,22 @@ describe('attributeCalls', () => {
     expect(byTurn.get('b')?.costUsd).toBeCloseTo(0.0003, 12);
   });
 
+  it("keeps a call's fault on the turn", () => {
+    const { byTurn } = attributeCalls(
+      [
+        record('1', { mark: 'turn-a', fault: { kind: 'status', applied: true } }),
+        record('2', { mark: 'turn-a' }),
+      ],
+      turns,
+      'serial',
+      prices,
+    );
+    expect(byTurn.get('a')?.calls.map((call) => call.fault)).toEqual([
+      { kind: 'status', applied: true },
+      undefined,
+    ]);
+  });
+
   it('gives a turn without calls zero cost, a measurement, not a gap', () => {
     const { byTurn } = attributeCalls([], turns, 'serial', prices);
     expect(byTurn.get('a')).toEqual({ correlation: 'serial', calls: [], costUsd: 0 });

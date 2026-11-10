@@ -64,6 +64,7 @@ export function attributeCalls<K>(
       stream: record.stream,
       usage: record.usage,
       costUsd,
+      ...(record.fault === undefined ? {} : { fault: record.fault }),
     });
   }
 

@@ -2,7 +2,7 @@
 
 import type { Product, ShopData } from './catalog.ts';
 import type { Defect } from './defects.ts';
-import type { Language } from './language.ts';
+import { detectLanguage, type Language } from './language.ts';
 import {
   hasFilters,
   type AnswerDraft,
@@ -11,6 +11,7 @@ import {
   type Filters,
   type Interpretation,
   type Route,
+  unavailableAnswer,
 } from './model.ts';
 import { ABSENT_TYPES } from './vocabulary.ts';
 
@@ -117,9 +118,29 @@ export class Assistant {
     }
 
     const call = options.trace === undefined ? {} : { trace: options.trace };
-    const interpretation = await this.#model.interpret(message, context, call);
-    const { draft, next } = this.#plan(interpretation, context);
-    const answer = await this.#model.write(draft, call);
+    let interpretation: Interpretation;
+    let draft: AnswerDraft;
+    let next: ConversationContext;
+    let answer: string;
+    try {
+      interpretation = await this.#model.interpret(message, context, call);
+      ({ draft, next } = this.#plan(interpretation, context));
+      answer = await this.#model.write(draft, call);
+    } catch (error) {
+      if (this.#defect === 'no-model-fallback') throw error;
+      // The model failed: answer from a template on the fallback route. The
+      // failure is passing, so the session stays as it was and nothing is cached.
+      const language = detectLanguage(message);
+      if (context !== undefined) remember(this.#sessions, sessionId, context, MAX_SESSIONS);
+      return {
+        reply: {
+          answer: unavailableAnswer(language),
+          products: [],
+          metadata: { route: 'fallback', language },
+        },
+        cache: bypass ? 'bypass' : 'miss',
+      };
+    }
     const shown =
       draft.kind === 'cheapest' ? [draft.product] : 'products' in draft ? draft.products : [];
     const reply: ChatReply = {

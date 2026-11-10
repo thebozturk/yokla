@@ -1,0 +1,75 @@
+# yaml-language-server: $schema=../../../packages/cli/schemas/cases.v1.schema.json
+#
+# Resilience cases for the demo-shop (ADR-0013). Their faults are injected by
+# the model proxy, so they need the model over HTTP behind it; see
+# packages/cli/src/proxy.e2e.test.ts. The demo-shop runs there with a model
+# timeout of 300 ms.
+
+version: 1
+cases:
+  - id: provider-503-once
+    title: One 503 from the provider; one retry answers it
+    suite: resilience
+    language: tr
+    turns:
+      - user: Çadır önerir misin?
+        faults:
+          - fault: { kind: status, status: 503, retryAfterS: 0 }
+            calls: [1]
+        expect:
+          answerable: true
+          route: product-search
+          productType: outdoor/camping/tent
+          deadlineMs: 1500
+
+  - id: provider-down
+    title: The provider fails every call; the fallback answers
+    suite: resilience
+    language: tr
+    turns:
+      - user: Çadır önerir misin?
+        faults:
+          - fault: { kind: status, status: 500 }
+        expect: { route: fallback, deadlineMs: 1500 }
+
+  - id: provider-stalls
+    title: The provider never answers; the model timeout lets the fallback answer in time
+    suite: resilience
+    language: en
+    turns:
+      - user: Show me headlamps
+        faults:
+          - fault: { kind: timeout, holdMs: 1200 }
+        expect: { route: fallback, deadlineMs: 1000 }
+
+  - id: empty-model-output
+    title: The answer the model writes, its second call, comes back empty
+    suite: resilience
+    language: en
+    turns:
+      - user: Show me headlamps
+        faults:
+          - fault: { kind: empty-content }
+            calls: [2]
+        expect: { route: fallback, deadlineMs: 1500 }
+
+  - id: malformed-interpretation
+    title: The model's first answer is cut in half
+    suite: resilience
+    language: tr
+    turns:
+      - user: Kamp ocağı önerir misin?
+        faults:
+          - fault: { kind: malformed-json }
+            calls: [1]
+        expect: { route: fallback, deadlineMs: 1500 }
+
+  - id: slow-provider
+    title: A slow provider is still answered in time
+    suite: resilience
+    language: en
+    turns:
+      - user: Show me headlamps
+        faults:
+          - fault: { kind: latency, ms: 150, jitterMs: 100 }
+        expect: { answerable: true, route: product-search, deadlineMs: 1500 }
