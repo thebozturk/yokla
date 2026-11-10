@@ -2,7 +2,8 @@
 // providers. A call to /<upstream-id>/<rest> goes to <upstream>/<rest> with
 // the app's own headers, and the response comes back byte for byte. Nothing
 // is changed in either direction. While a recording is open, every call
-// yields a ProxyRecord. Paths under /_yokla/ are the local control endpoint
+// yields a ProxyRecord, tagged with the turn the runner marked as in flight.
+// Paths under /_yokla/ are the local control endpoint
 // and are never forwarded. The proxy contacts only its configured upstreams.
 
 import { randomUUID } from 'node:crypto';
@@ -125,6 +126,8 @@ interface Recording {
   readonly id: string;
   readonly startedAt: string;
   readonly records: ProxyRecord[];
+  /** The turn the runner says is in flight (serial correlation). */
+  mark: string | null;
 }
 
 export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
@@ -147,8 +150,29 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
         sendJson(response, 409, { error: `recording ${recording.id} is already open` });
         return;
       }
-      recording = { id: randomUUID(), startedAt: new Date().toISOString(), records: [] };
+      recording = {
+        id: randomUUID(),
+        startedAt: new Date().toISOString(),
+        records: [],
+        mark: null,
+      };
       sendJson(response, 201, { id: recording.id, startedAt: recording.startedAt });
+      return;
+    }
+    const marked = /^\/_yokla\/recordings\/([\w-]+)\/mark$/u.exec(path);
+    if (marked !== null && request.method === 'PUT') {
+      const open = recording;
+      const mark = new URL(request.url ?? '/', 'http://localhost').searchParams.get('turn');
+      if (open?.id !== marked[1] || open === undefined) {
+        sendJson(response, 404, { error: 'no such recording' });
+        return;
+      }
+      if (mark === null || mark === '') {
+        sendJson(response, 400, { error: 'a mark needs ?turn=<id>' });
+        return;
+      }
+      open.mark = mark;
+      sendJson(response, 200, { id: open.id, mark });
       return;
     }
     const match = /^\/_yokla\/recordings\/([\w-]+)$/u.exec(path);
@@ -186,6 +210,7 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
     let capturedBytes = 0;
     let overflow = false;
     const open = recording;
+    const mark = open?.mark ?? null;
 
     const finish = (
       status: number | null,
@@ -212,6 +237,7 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
         stream,
         usage: read.usage,
         trace: typeof trace === 'string' ? trace : null,
+        mark,
         ...(error === undefined ? {} : { error }),
       };
       open.records.push(record);

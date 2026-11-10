@@ -795,6 +795,8 @@ interface FakeProxy {
   readonly url: string;
   readonly records: ProxyRecord[];
   readonly calls: string[];
+  /** The turn the runner last marked as in flight. */
+  readonly mark: () => string | null;
 }
 
 /** A stand-in for the proxy's control endpoint; the fake target adds its records. */
@@ -803,8 +805,9 @@ async function fakeProxy(
 ): Promise<FakeProxy> {
   const records: ProxyRecord[] = [];
   const calls: string[] = [];
+  let mark: string | null = null;
   const server = createServer((request, response) => {
-    const key = `${request.method ?? ''} ${request.url ?? ''}`;
+    const key = `${request.method ?? ''} ${(request.url ?? '').split('?')[0] ?? ''}`;
     calls.push(key);
     const reply = (status: number, body: unknown) => {
       response.writeHead(status, { 'content-type': 'application/json' });
@@ -818,6 +821,9 @@ async function fakeProxy(
         status,
         status === 201 ? { id: 'rec-1', startedAt: new Date().toISOString() } : { error: 'busy' },
       );
+    } else if (key === 'PUT /_yokla/recordings/rec-1/mark') {
+      mark = new URL(request.url ?? '/', 'http://x').searchParams.get('turn');
+      reply(200, { id: 'rec-1', mark });
     } else if (key === 'DELETE /_yokla/recordings/rec-1') {
       const status = answers.close ?? 200;
       reply(status, status === 200 ? { id: 'rec-1', startedAt: 'x', records } : { error: 'gone' });
@@ -829,10 +835,10 @@ async function fakeProxy(
   });
   const address = server.address();
   if (typeof address !== 'object' || address === null) throw new Error('no address');
-  return { url: `http://127.0.0.1:${String(address.port)}`, records, calls };
+  return { url: `http://127.0.0.1:${String(address.port)}`, records, calls, mark: () => mark };
 }
 
-function call(trace: string | null, model = 'm'): ProxyRecord {
+function call(trace: string | null, mark: string | null, model = 'm'): ProxyRecord {
   return {
     id: `call-${String((counter += 1))}`,
     upstream: 'fake',
@@ -846,6 +852,7 @@ function call(trace: string | null, model = 'm'): ProxyRecord {
     stream: false,
     usage: { input: 1000, output: 100, cachedInput: null, cacheWrite: null, reasoning: null },
     trace,
+    mark,
   };
 }
 
@@ -866,11 +873,9 @@ describe('runSuite with the model proxy', () => {
   it('ties the calls made while each request was in flight to its turn, and prices them', async () => {
     const proxy = await fakeProxy();
     const t = await target((_r, _i, response) => {
-      // Like an app, answer only after its model calls: a call never ends with the turn.
-      proxy.records.push(call(null), call(null, 'unpriced'));
-      setTimeout(() => {
-        json(response, answer());
-      }, 3);
+      // The proxy tags each call with the turn marked when it arrives.
+      proxy.records.push(call(null, proxy.mark()), call(null, proxy.mark(), 'unpriced'));
+      json(response, answer());
     });
     const results = await runSuite(
       options(proxied(t.url, 'serial'), cases({ turns: [{ user: 'a' }, { user: 'b' }] }), {
@@ -897,15 +902,19 @@ describe('runSuite with the model proxy', () => {
     expect(proxy.calls).toEqual([
       'GET /_yokla/health',
       'POST /_yokla/recordings',
+      'PUT /_yokla/recordings/rec-1/mark',
+      'PUT /_yokla/recordings/rec-1/mark',
       'DELETE /_yokla/recordings/rec-1',
     ]);
+    // Each turn was marked with its own request id.
+    expect(turns.map((turn) => turn.requestId)).not.toContain(undefined);
   });
 
   it('sends a trace per turn in header correlation and ties calls by it, in parallel too', async () => {
     const proxy = await fakeProxy();
     const t = await target((received, _i, response) => {
       const trace = received.headers['x-yokla-trace'];
-      proxy.records.push(call(typeof trace === 'string' ? trace : null), call(null));
+      proxy.records.push(call(typeof trace === 'string' ? trace : null, null), call(null, null));
       json(response, answer());
     });
     const results = await runSuite(
@@ -931,6 +940,7 @@ describe('runSuite with the model proxy', () => {
       attributed: 2,
       unattributed: 2,
     });
+    expect(proxy.calls.filter((c) => c.endsWith('/mark'))).toEqual([]);
   });
 
   it("refuses to run when the proxy doesn't answer, routes other upstreams or is busy", async () => {
