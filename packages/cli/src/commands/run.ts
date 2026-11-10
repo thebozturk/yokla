@@ -33,7 +33,7 @@ function positiveInt(value: string | undefined, name: string): number | undefine
   return number;
 }
 
-function summary(results: Results, outPath: string, io: Output): void {
+export function printSummary(results: Results, outPath: string, io: Output): void {
   const statuses = Object.entries(results.summary.statuses)
     .map(([status, count]) => `${status} ${String(count)}`)
     .join(', ');
@@ -46,6 +46,17 @@ function summary(results: Results, outPath: string, io: Output): void {
       }
     }
   }
+  const observation = results.run.observation;
+  if (observation !== undefined) {
+    const totals = Object.entries(observation.totals)
+      .map(([name, total]) => `${name} ${String(Math.round(total * 1e6) / 1e6)}`)
+      .join(', ');
+    io.out(
+      `target logs: ${String(observation.matched)} of ${String(observation.matched + observation.unmatched)} turns matched` +
+        (totals === '' ? '' : `; ${totals}`),
+    );
+  }
+  for (const issue of results.run.issues ?? []) io.err(`  run: ${issue}`);
   io.out(`results: ${outPath}`);
 }
 
@@ -104,7 +115,7 @@ export async function runCommand(
     const outPath = resolve(values.out ?? `runs/${results.run.id}.json`);
     mkdirSync(dirname(outPath), { recursive: true });
     writeFileSync(outPath, `${JSON.stringify(results, null, 2)}\n`);
-    summary(results, outPath, io);
+    printSummary(results, outPath, io);
     return results.cases.some((c) => c.status === 'error') ? 2 : 0;
   } catch (error) {
     if (error instanceof LoadError || error instanceof ConfigError) {

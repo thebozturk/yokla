@@ -407,6 +407,15 @@ These are lessons from building a production harness.
 - **Deadlines:** a timeout per request and a deadline per run.
 - **Samples:** N per case, with defaults per suite: 1 for deterministic paths,
   3–9 for paths that call a model.
+- **Log observation (ADR-0009):** after the last case, the runner waits
+  briefly and reads the profile's log source once: a file, or a local command
+  whose arguments may contain `{{startedAt}}`. It ties each answered turn to
+  its line by request id, target id or order, and only then runs the checks,
+  so checks see the observed fields.
+  - Correlating by order needs a concurrency of 1.
+  - A turn without a matching line carries an issue.
+  - Logs that can't be read are a run issue, not a failure.
+  - The results keep only the mapped fields and their totals.
 
 ## 12. Model proxy
 

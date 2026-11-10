@@ -441,9 +441,15 @@
                         "kind",
                         "run"
                       ],
-                      "additionalProperties": false
+                      "additionalProperties": false,
+                      "description": "Arguments may contain {{startedAt}}, the run start as an ISO 8601 time."
                     }
                   ]
+                },
+                "contains": {
+                  "description": "Only lines whose text (colour codes removed) contains this, e.g. a log context outside the JSON.",
+                  "type": "string",
+                  "minLength": 1
                 },
                 "match": {
                   "default": [],
