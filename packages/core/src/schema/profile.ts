@@ -178,7 +178,7 @@ export const profileShape = {
   capabilities: z.array(Capability).default([]),
   refusal: z
     .strictObject({
-      canonical: z.record(LanguageCode, z.array(z.string().min(1)).min(1)).optional(),
+      canonical: z.partialRecord(LanguageCode, z.array(z.string().min(1)).min(1)).optional(),
     })
     .optional(),
 };

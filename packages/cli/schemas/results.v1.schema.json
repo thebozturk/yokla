@@ -134,7 +134,8 @@
               "error",
               "fixture-missing",
               "known-gap",
-              "gap-closed"
+              "gap-closed",
+              "unmeasured"
             ]
           },
           "unstable": {
@@ -327,6 +328,12 @@
                       "error": {
                         "type": "string"
                       },
+                      "issues": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
                       "checks": {
                         "type": "array",
                         "items": {
@@ -485,7 +492,8 @@
               "error",
               "fixture-missing",
               "known-gap",
-              "gap-closed"
+              "gap-closed",
+              "unmeasured"
             ]
           },
           "additionalProperties": {
