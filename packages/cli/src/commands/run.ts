@@ -27,7 +27,8 @@ Options:
   --target-url <url>    use this url instead of the profile's request url
   --junit <file>        also write a JUnit XML report
   --config <file>       prices and thresholds (default: yokla.config.yaml, when present)
-  --proxy-url <url>     the model proxy, instead of 127.0.0.1 on modelProxy.port`;
+  --proxy-url <url>     the model proxy, instead of 127.0.0.1 on modelProxy.port
+  --max-cost <usd>      stop starting samples once the model cost reaches this; needs a proxy`;
 
 function positiveInt(value: string | undefined, name: string): number | undefined {
   if (value === undefined) return undefined;
@@ -62,6 +63,7 @@ const RUN_OPTIONS = {
   junit: { type: 'string' },
   config: { type: 'string' },
   'proxy-url': { type: 'string' },
+  'max-cost': { type: 'string' },
   help: { type: 'boolean' },
 } as const;
 
@@ -93,6 +95,10 @@ export async function runCommand(
     const cases = loadCases(values.cases ?? [resolve(loaded.dir, 'cases')]);
     const samples = positiveInt(values.samples, 'samples');
     const concurrency = positiveInt(values.concurrency, 'concurrency');
+    const maxCost = values['max-cost'] === undefined ? undefined : Number(values['max-cost']);
+    if (maxCost !== undefined && !(Number.isFinite(maxCost) && maxCost > 0)) {
+      throw new LoadError('--max-cost must be a positive number of USD');
+    }
     const configPath =
       values.config ?? (existsSync('yokla.config.yaml') ? 'yokla.config.yaml' : undefined);
     const config = configPath === undefined ? undefined : loadConfig(configPath);
@@ -110,6 +116,7 @@ export async function runCommand(
       ...(concurrency === undefined ? {} : { concurrency }),
       ...(values['target-url'] === undefined ? {} : { targetUrl: values['target-url'] }),
       ...(values['proxy-url'] === undefined ? {} : { proxyUrl: values['proxy-url'] }),
+      ...(maxCost === undefined ? {} : { maxCostUsd: maxCost }),
       ...(config === undefined ? {} : { prices: config.prices }),
     });
     const outPath = writeReport(

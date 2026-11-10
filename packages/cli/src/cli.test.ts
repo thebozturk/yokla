@@ -123,6 +123,15 @@ describe('yokla', () => {
     expect(err.join('\n')).toMatch(/unknown placeholder \{\{mesage\}\}/u);
   });
 
+  it('rejects a cost cap that is not a positive amount', async () => {
+    const dir = workspace({ 'yokla.profile.yaml': PROFILE, 'cases/a.yaml': CASES });
+    for (const cap of [['--max-cost', '0'], ['--max-cost=-1'], ['--max-cost', 'cheap']]) {
+      const { io, err } = capture();
+      expect(await main(['run', '--profile', join(dir, 'yokla.profile.yaml'), ...cap], io)).toBe(2);
+      expect(err[0]).toBe('--max-cost must be a positive number of USD');
+    }
+  });
+
   it('rejects a non-numeric sample count', async () => {
     const dir = workspace({ 'yokla.profile.yaml': PROFILE, 'cases/a.yaml': CASES });
     const { io, err } = capture();

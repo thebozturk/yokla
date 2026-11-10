@@ -834,6 +834,8 @@ async function fakeProxy(
         if (Reflect.get(Object(body), 'inFlight') === true) mark = turn;
         reply(200, { id: 'rec-1', turn });
       });
+    } else if (key === 'GET /_yokla/recordings/rec-1') {
+      reply(200, { id: 'rec-1', startedAt: 'x', records });
     } else if (key === 'DELETE /_yokla/recordings/rec-1') {
       const status = answers.close ?? 200;
       reply(status, status === 200 ? { id: 'rec-1', startedAt: 'x', records } : { error: 'gone' });
@@ -1139,5 +1141,78 @@ describe('runSuite with the model proxy', () => {
       unmeasured: [{ dimension: 'cost', reason: 'no model proxy data for this turn' }],
     });
     expect(plain.cases[0]?.status).toBe('unmeasured');
+  });
+
+  it('stops starting samples and cases at the cost cap, and says so', async () => {
+    const proxy = await fakeProxy();
+    const t = await target((_r, _i, response) => {
+      proxy.records.push(call(null, proxy.mark()), call(null, proxy.mark()));
+      json(response, answer());
+    });
+    // Each turn makes two calls of 0.002 $: 0.004 $ a turn.
+    const capped = await runSuite(
+      options(
+        proxied(t.url, 'serial'),
+        cases(
+          { turns: [{ user: 'a' }] },
+          { samples: 3, turns: [{ user: 'b' }] },
+          { turns: [{ user: 'c' }] },
+        ),
+        { proxyUrl: proxy.url, prices, maxCostUsd: 0.007 },
+      ),
+    );
+    expect(capped.run.partial).toBe(true);
+    expect(capped.run.issues).toEqual([
+      'stopped at the cost cap: 0.008 USD spent, 0.007 USD allowed',
+    ]);
+    expect(capped.cases.map((c) => [c.id, c.samples.length])).toEqual([
+      ['c0', 1],
+      ['c1', 1],
+    ]);
+    expect(t.received).toHaveLength(2);
+    // Reaching the cap exactly stops the run too.
+    proxy.records.length = 0;
+    const exact = await runSuite(
+      options(
+        proxied(t.url, 'serial'),
+        cases({ turns: [{ user: 'a' }] }, { turns: [{ user: 'b' }] }),
+        {
+          proxyUrl: proxy.url,
+          prices,
+          maxCostUsd: 0.004,
+        },
+      ),
+    );
+    expect(exact.cases).toHaveLength(1);
+    expect(exact.run.issues).toEqual([
+      'stopped at the cost cap: 0.004 USD spent, 0.004 USD allowed',
+    ]);
+  });
+
+  it('stops when a call has no cost, and runs to the end under the cap', async () => {
+    const proxy = await fakeProxy();
+    const t = await target((_r, _i, response) => {
+      proxy.records.push(call(null, proxy.mark()));
+      json(response, answer());
+    });
+    const twoCases = cases({ turns: [{ user: 'a' }] }, { turns: [{ user: 'b' }] });
+    const unpriced = await runSuite(
+      options(proxied(t.url, 'serial'), twoCases, { proxyUrl: proxy.url, maxCostUsd: 1 }),
+    );
+    expect(unpriced.run).toMatchObject({
+      partial: true,
+      issues: ["stopped: a model call has no cost, so the cost cap of 1 USD can't be enforced"],
+    });
+    expect(unpriced.cases).toHaveLength(1);
+    proxy.records.length = 0;
+    const under = await runSuite(
+      options(proxied(t.url, 'serial'), twoCases, { proxyUrl: proxy.url, prices, maxCostUsd: 1 }),
+    );
+    expect(under.run.partial).toBe(false);
+    expect(under.run.issues).toBeUndefined();
+    expect(under.cases).toHaveLength(2);
+    await expect(runSuite(options(profile(t.url), twoCases, { maxCostUsd: 1 }))).rejects.toThrow(
+      /a cost cap needs a modelProxy in the profile/u,
+    );
   });
 });

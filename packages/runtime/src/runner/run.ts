@@ -9,6 +9,7 @@ import { resolve } from 'node:path';
 import {
   aggregateCase,
   buildRequest,
+  callCost,
   caseDefinition,
   checkTemplates,
   extractResponse,
@@ -69,6 +70,8 @@ export interface RunOptions {
   readonly checks?: readonly Check[];
   /** Prices of the model calls the proxy records (yokla.config.yaml). */
   readonly prices?: YoklaConfig['prices'];
+  /** A hard cap on the model cost of the run, in USD; needs a model proxy (ADR-0014). */
+  readonly maxCostUsd?: number;
   /** The model proxy's address. Default: 127.0.0.1 on the profile's modelProxy.port. */
   readonly proxyUrl?: string;
   /** Wait before reading the target's logs, so the last lines are written. Default 1000 ms. */
@@ -160,6 +163,9 @@ export function preflight(options: RunOptions): void {
   }
   if (options.profile.modelProxy?.correlation === 'serial' && (options.concurrency ?? 1) > 1) {
     problems.push('modelProxy correlates serially, which needs a concurrency of 1');
+  }
+  if (options.maxCostUsd !== undefined && options.profile.modelProxy === undefined) {
+    problems.push('a cost cap needs a modelProxy in the profile: without one, spend is unknown');
   }
   if (options.profile.modelProxy === undefined) {
     for (const c of options.cases) {
@@ -403,11 +409,13 @@ async function exchangeCase(
   testCase: Case,
   caseIndex: number,
   arm: Arm | undefined,
+  cap: Cap | undefined,
 ): Promise<ExchangedCase> {
   const samples: ExchangedSample[] = [];
   const count = testCase.samples ?? options.samples ?? 1;
-  for (let index = 0; index < count; index += 1) {
+  for (let index = 0; index < count && cap?.stopped() !== true; index += 1) {
     samples.push(await runSample(options, client, testCase, caseIndex, index, arm));
+    await cap?.check();
   }
   return { testCase, samples };
 }
@@ -417,11 +425,12 @@ async function pool<T, R>(
   items: readonly T[],
   limit: number,
   worker: (item: T, index: number) => Promise<R>,
+  stopped: () => boolean = () => false,
 ) {
-  const results: R[] = Array.from({ length: items.length });
+  const results: (R | undefined)[] = Array.from({ length: items.length });
   let next = 0;
   async function lane(): Promise<void> {
-    for (let index = next++; index < items.length; index = next++) {
+    for (let index = next++; index < items.length && !stopped(); index = next++) {
       const item = items[index];
       if (item !== undefined) results[index] = await worker(item, index);
     }
@@ -429,7 +438,8 @@ async function pool<T, R>(
   await Promise.all(
     Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, () => lane()),
   );
-  return results;
+  // Items that never started, because the run stopped, are left out; the order stays.
+  return results.filter((result): result is R => result !== undefined);
 }
 
 interface Observation {
@@ -569,6 +579,42 @@ interface OpenRecording {
   readonly correlation: Correlation;
 }
 
+/** The cost cap of a run (ADR-0014): checked after each sample, from the open recording. */
+interface Cap {
+  check(): Promise<void>;
+  stopped(): boolean;
+  reason(): string | undefined;
+}
+
+function costCap(options: RunOptions, recording: OpenRecording): Cap | undefined {
+  const limit = options.maxCostUsd;
+  if (limit === undefined) return undefined;
+  let reason: string | undefined;
+  return {
+    async check() {
+      if (reason !== undefined) return;
+      const records = await recording.control.records(recording.id);
+      let spent = 0;
+      for (const record of records) {
+        const cost = callCost(
+          record.usage,
+          options.prices?.[record.upstream]?.[record.model ?? ''],
+        );
+        if (cost === null) {
+          reason = `stopped: a model call has no cost, so the cost cap of ${String(limit)} USD can't be enforced`;
+          return;
+        }
+        spent += cost;
+      }
+      if (spent >= limit) {
+        reason = `stopped at the cost cap: ${String(Math.round(spent * 1e6) / 1e6)} USD spent, ${String(limit)} USD allowed`;
+      }
+    },
+    stopped: () => reason !== undefined,
+    reason: () => reason,
+  };
+}
+
 /** Opens a recording on the model proxy the profile declares; a proxy that doesn't answer is a configuration problem. */
 async function openRecording(options: RunOptions): Promise<OpenRecording | undefined> {
   const config = options.profile.modelProxy;
@@ -622,6 +668,7 @@ export async function runSuite(options: RunOptions): Promise<Results> {
   });
 
   const recording = await openRecording(options);
+  const cap = recording === undefined ? undefined : costCap(options, recording);
   const arm: Arm | undefined =
     recording === undefined
       ? undefined
@@ -631,8 +678,11 @@ export async function runSuite(options: RunOptions): Promise<Results> {
   let records: ProxyRecord[] | undefined;
   const proxyIssues: string[] = [];
   try {
-    exchanged = await pool(options.cases, options.concurrency ?? 1, (testCase, index) =>
-      exchangeCase(options, client, testCase, index, arm),
+    exchanged = await pool(
+      options.cases,
+      options.concurrency ?? 1,
+      (testCase, index) => exchangeCase(options, client, testCase, index, arm, cap),
+      () => cap?.stopped() === true,
     );
   } finally {
     if (recording !== undefined) {
@@ -658,7 +708,8 @@ export async function runSuite(options: RunOptions): Promise<Results> {
         );
   const observation = await observe(options, startedAt, exchanged);
   const cases = exchanged.map((c) => judgeCase(options, prepared, c, observation, calls?.byTurn));
-  const issues = [...observation.issues, ...proxyIssues];
+  const stop = cap?.reason();
+  const issues = [...observation.issues, ...proxyIssues, ...(stop === undefined ? [] : [stop])];
   const statuses: Partial<Record<CaseResult['status'], number>> = {};
   for (const c of cases) statuses[c.status] = (statuses[c.status] ?? 0) + 1;
   const finishedAt = new Date();
@@ -673,7 +724,7 @@ export async function runSuite(options: RunOptions): Promise<Results> {
       profile: { target: target.name, sha256: options.profileSha256 },
       environment: { node: process.version, platform: process.platform, arch: process.arch },
       correlation: recording?.correlation ?? 'none',
-      partial: false,
+      partial: cap?.stopped() === true,
       ...(observation.summary === undefined ? {} : { observation: observation.summary }),
       ...(calls === undefined ? {} : { proxy: calls.summary }),
       ...(issues.length === 0 ? {} : { issues }),
