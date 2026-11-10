@@ -1,3 +1,4 @@
+export { ecommercePack } from './pack.ts';
 export {
   ecommerceExpectations,
   ecommerceProfile,

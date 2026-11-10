@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import {
   createServer,
   type IncomingHttpHeaders,
@@ -7,7 +7,15 @@ import {
 } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildSchemas, Results, type Case, type Profile } from '@yokla/core';
+import {
+  buildSchemas,
+  Results,
+  z,
+  type Case,
+  type Check,
+  type DomainPack,
+  type Profile,
+} from '@yokla/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ConfigError, runSuite, type RunOptions } from './run.ts';
 
@@ -66,7 +74,7 @@ function json(response: ServerResponse, body: unknown, status = 200): void {
 
 const { profile: profileSchema, caseFile } = buildSchemas({
   languages: ['tr', 'en'],
-  domainPacks: [{ id: 'shop' }],
+  domainPacks: [{ id: 'shop', expectations: { answerable: z.boolean() } }],
 });
 
 function profile(url: string, targetChange: Record<string, unknown> = {}): Profile {
@@ -340,5 +348,133 @@ describe('runSuite', () => {
     );
     expect(results.cases[0]?.status).toBe('unmeasured');
     expect(t.received).toHaveLength(1);
+  });
+});
+
+function dirWithWord(word: string): string {
+  const dir = mkdtempSync(join(tmpdir(), 'yokla-packs-'));
+  writeFileSync(join(dir, 'word.txt'), word);
+  return dir;
+}
+
+describe('runSuite with packs', () => {
+  const seen: { history: number; lang: string | undefined; expect: unknown }[] = [];
+
+  function shopPack(word: string | Error): DomainPack {
+    return {
+      id: 'shop',
+      dimensions: { mention: 'majority-of-n' },
+      prepare: (_profile, io) => {
+        if (word instanceof Error) throw word;
+        const expected = io.readText('word.txt').trim() || word;
+        const check: Check = {
+          id: 'mentions-word',
+          description: 'the answer mentions the word',
+          run: (context) => {
+            seen.push({
+              history: context.history.length,
+              lang: context.lang?.language,
+              expect: context.turn.expect['answerable'],
+            });
+            if (context.turn.response.text === 'skip')
+              return { applicable: false, reason: 'skipped' };
+            return {
+              applicable: true,
+              findings: [
+                {
+                  dimension: 'mention',
+                  verdict: context.turn.response.text.includes(expected) ? 'pass' : 'fail',
+                  severity: 'medium',
+                  message: `looked for ${expected}`,
+                },
+              ],
+            };
+          },
+        };
+        return { checks: [check] };
+      },
+    };
+  }
+
+  it('runs the pack checks, aggregates per dimension and summarises', async () => {
+    const t = await target((received, _i, response) => {
+      json(response, answer({ answer: String(received.body['message']) }));
+    });
+    const results = await runSuite(
+      options(
+        profile(t.url),
+        cases({ turns: [{ user: 'say tent' }] }, { turns: [{ user: 'say boot' }] }),
+        {
+          packs: [shopPack('unused')],
+          profileDir: dirWithWord('tent'),
+        },
+      ),
+    );
+    expect(results.cases.map((c) => c.status)).toEqual(['pass', 'fail']);
+    expect(results.cases[1]?.dimensions).toEqual([
+      { dimension: 'mention', policy: 'majority-of-n', verdict: 'fail', samples: 1, failed: 1 },
+    ]);
+    expect(results.checks).toEqual([
+      { check: 'mentions-word', applied: 2, notApplicable: 0, passed: 1, failed: 1, errors: 0 },
+    ]);
+    expect(results.summary.statuses).toEqual({ pass: 1, fail: 1 });
+  });
+
+  it('gives checks the earlier turns, the language pack and the expectations', async () => {
+    seen.length = 0;
+    const t = await target((_r, _i, response) => {
+      json(response, answer({ answer: 'tent' }));
+    });
+    await runSuite(
+      options(
+        profile(t.url),
+        cases({ turns: [{ user: 'a', expect: { answerable: true } }, { user: 'b' }] }),
+        { packs: [shopPack('tent')], languages: [{ language: 'tr' }], profileDir: dirWithWord('') },
+      ),
+    );
+    expect(seen).toEqual([
+      { history: 0, lang: 'tr', expect: true },
+      { history: 1, lang: 'tr', expect: undefined },
+    ]);
+  });
+
+  it('is unmeasured when the pack check never applies', async () => {
+    const t = await target((_r, _i, response) => {
+      json(response, answer({ answer: 'skip' }));
+    });
+    const results = await runSuite(
+      options(profile(t.url), cases({ turns: [{ user: 'a' }] }), {
+        packs: [shopPack('x')],
+        profileDir: dirWithWord(''),
+      }),
+    );
+    expect(results.cases[0]?.status).toBe('unmeasured');
+    expect(results.checks[0]).toMatchObject({ applied: 0, notApplicable: 1 });
+  });
+
+  it('refuses to run without the domain pack, with a failing pack, or with duplicate checks', async () => {
+    const t = await target((_r, _i, response) => {
+      json(response, answer());
+    });
+    const c = cases({ turns: [{ user: 'a' }] });
+    const other: DomainPack = { id: 'bank', dimensions: {}, prepare: () => ({ checks: [] }) };
+    await expect(runSuite(options(profile(t.url), c, { packs: [other] }))).rejects.toThrow(
+      /no domain pack "shop"/u,
+    );
+    await expect(
+      runSuite(options(profile(t.url), c, { packs: [shopPack(new Error('catalog missing'))] })),
+    ).rejects.toThrow(/pack "shop": catalog missing/u);
+    const pack = shopPack('x');
+    const prepared = pack.prepare(profile(t.url), { readText: () => 'x' });
+    await expect(
+      runSuite(
+        options(profile(t.url), c, {
+          packs: [pack],
+          checks: prepared.checks,
+          profileDir: dirWithWord('x'),
+        }),
+      ),
+    ).rejects.toThrow(/check "mentions-word" is defined twice/u);
+    expect(t.received).toHaveLength(0);
   });
 });

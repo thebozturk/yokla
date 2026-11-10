@@ -8,6 +8,7 @@ import { parseArgs } from 'node:util';
 import type { Results } from '@yokla/core';
 import { ConfigError, runSuite } from '@yokla/runtime';
 import { LoadError, loadCases, loadProfile } from '../load.ts';
+import { DOMAIN_PACKS, LANGUAGE_PACKS } from '../packs.ts';
 
 export interface Output {
   out(line: string): void;
@@ -93,6 +94,8 @@ export async function runCommand(
       cases,
       env: process.env,
       yoklaVersion: version,
+      packs: DOMAIN_PACKS,
+      languages: LANGUAGE_PACKS,
       ...(samples === undefined ? {} : { samples }),
       ...(concurrency === undefined ? {} : { concurrency }),
       ...(values['target-url'] === undefined ? {} : { targetUrl: values['target-url'] }),
