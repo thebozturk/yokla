@@ -25,8 +25,8 @@ export const fakeTurkish: LanguagePack = {
   phrases: {
     refusal: ['yardimci olamiyorum', 'oneri sunamiyorum'],
     inability: ['dogrulayamiyorum'],
-    absence: ['bulunmuyor', 'bulamadim'],
-    alternative: ['bunun yerine'],
+    absence: ['bulunmuyor', 'bulamadim', 'yok$'],
+    alternative: ['bunun yerine', 'farkli bir urun'],
     free: ['ucretsiz'],
   },
   findMoney: (text) =>
@@ -54,7 +54,7 @@ export const fakeEnglish: LanguagePack = {
     refusal: ["i can't help"],
     inability: ["i can't verify"],
     absence: ["don't carry"],
-    alternative: ['instead'],
+    alternative: ['instead', 'as a different product'],
     free: ['free of charge', 'free$'],
   },
   findMoney: (text) =>

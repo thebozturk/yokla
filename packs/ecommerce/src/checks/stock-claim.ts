@@ -11,7 +11,7 @@
 import { findPhrases, type Check, type CheckFinding } from '@yokla/core';
 import type { EcommerceData, Product } from '../data.ts';
 import { STOCK_PHRASES } from '../lexicon.ts';
-import { notApplicable, productsOf, segments } from './common.ts';
+import { namedProducts, notApplicable, productsOf, segments } from './common.ts';
 
 type Claim = 'in' | 'out';
 
@@ -76,12 +76,10 @@ export function stockClaim(data: EcommerceData): Check {
             ),
         );
         if (found.length === 0) continue;
-        const named = products
-          .map((product) => ({
-            product,
-            at: product.name === undefined ? -1 : folded.indexOf(lang.fold(product.name)),
-          }))
-          .filter((entry) => entry.at !== -1);
+        const named = namedProducts(folded, products, (text) => lang.fold(text)).map((m) => ({
+          product: m.product,
+          at: m.start,
+        }));
         for (const { claim, start } of found) {
           claims += 1;
           // The nearest product named before the claim, else the first one named, else all of them.

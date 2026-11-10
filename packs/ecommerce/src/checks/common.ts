@@ -1,6 +1,7 @@
 // Helpers shared by the ecommerce checks.
 
-import type { TurnView } from '@yokla/core';
+import { findPhrases, type TurnView } from '@yokla/core';
+import { STOCK_PHRASES } from '../lexicon.ts';
 import { productOf, type EcommerceData, type Product } from '../data.ts';
 
 /** The evidence collection the ecommerce checks read. */
@@ -43,4 +44,48 @@ export function userNumbers(text: string): number[] {
     }
   }
   return [...values];
+}
+
+/**
+ * Blanks out stock wording ("stokta yok", "out of stock"), so that its words
+ * don't read as an absence statement or an alternative. Positions stay the same.
+ */
+export function withoutStockWording(folded: string, language: string): string {
+  const phrases = STOCK_PHRASES[language];
+  if (phrases === undefined) return folded;
+  let result = folded;
+  for (const match of findPhrases(folded, [...phrases.inStock, ...phrases.outOfStock])) {
+    result = `${result.slice(0, match.start)}${' '.repeat(match.end - match.start)}${result.slice(match.end)}`;
+  }
+  return result;
+}
+
+/**
+ * Where product names occur in folded text, as whole words. Where names
+ * overlap ("Kubbe Çadır" inside "Kubbe Çadır 2 Kişilik"), the longest wins.
+ */
+export function namedProducts<T extends { readonly name: string | undefined }>(
+  folded: string,
+  products: readonly T[],
+  fold: (text: string) => string,
+): { product: T; start: number; end: number }[] {
+  const matches = products.flatMap((product) =>
+    product.name === undefined
+      ? []
+      : findPhrases(folded, [`${fold(product.name)}$`]).map((m) => ({
+          product,
+          start: m.start,
+          end: m.end,
+        })),
+  );
+  return matches.filter(
+    (match) =>
+      !matches.some(
+        (other) =>
+          other !== match &&
+          other.start <= match.start &&
+          other.end >= match.end &&
+          other.end - other.start > match.end - match.start,
+      ),
+  );
 }
