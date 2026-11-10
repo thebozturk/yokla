@@ -2,9 +2,7 @@ import type { ProxyRecord } from '@yokla/core';
 import { describe, expect, it } from 'vitest';
 import { attributeCalls } from './proxy.ts';
 
-const T0 = Date.parse('2026-11-10T12:00:00.000Z');
-
-function record(id: string, atMs: number, change: Partial<ProxyRecord> = {}): ProxyRecord {
+function record(id: string, change: Partial<ProxyRecord> = {}): ProxyRecord {
   return {
     id,
     upstream: 'fake',
@@ -12,26 +10,34 @@ function record(id: string, atMs: number, change: Partial<ProxyRecord> = {}): Pr
     method: 'POST',
     path: '/chat/completions',
     model: 'm',
-    startedAt: new Date(T0 + atMs).toISOString(),
+    startedAt: '2026-11-10T12:00:00.000Z',
     durationMs: 5,
     status: 200,
     stream: false,
     usage: { input: 100, output: 20, cachedInput: null, cacheWrite: null, reasoning: null },
     trace: null,
+    mark: null,
     ...change,
   };
 }
 
 const turns = [
-  { key: 'a', window: { start: T0, end: T0 + 100, trace: 'trace-a' } },
-  { key: 'b', window: { start: T0 + 200, end: T0 + 300, trace: 'trace-b' } },
+  { key: 'a', tag: { id: 'turn-a' } },
+  { key: 'b', tag: { id: 'turn-b' } },
 ];
 const prices = { fake: { m: { input: 1, output: 10 } } };
 
 describe('attributeCalls', () => {
-  it('ties a call to the turn in flight when it started, in serial correlation', () => {
+  it('ties a call to the turn marked in flight when it started, in serial correlation', () => {
     const { byTurn, summary } = attributeCalls(
-      [record('1', 0), record('2', 100), record('3', 250), record('4', 150), record('5', 301)],
+      [
+        record('1', { mark: 'turn-a' }),
+        record('2', { mark: 'turn-a', trace: 'turn-b' }),
+        record('3', { mark: 'turn-b' }),
+        record('4', { mark: null }),
+        record('5', { mark: 'an-earlier-run' }),
+        record('6', { mark: undefined }),
+      ],
       turns,
       'serial',
       prices,
@@ -40,48 +46,37 @@ describe('attributeCalls', () => {
     expect(byTurn.get('b')?.calls.map((call) => call.id)).toEqual(['3']);
     expect(summary).toMatchObject({
       correlation: 'serial',
-      records: 5,
+      records: 6,
       attributed: 3,
-      unattributed: 2,
+      unattributed: 3,
     });
     expect(byTurn.get('a')).not.toHaveProperty('trace');
-  });
-
-  it('gives a call in the millisecond one turn ends and the next starts to the later turn', () => {
-    const touching = [
-      { key: 'a', window: { start: T0, end: T0 + 100, trace: undefined } },
-      { key: 'b', window: { start: T0 + 100, end: T0 + 200, trace: undefined } },
-    ];
-    const { byTurn } = attributeCalls(
-      [record('1', 100), record('2', 99)],
-      touching,
-      'serial',
-      prices,
-    );
-    expect(byTurn.get('a')?.calls.map((call) => call.id)).toEqual(['2']);
-    expect(byTurn.get('b')?.calls.map((call) => call.id)).toEqual(['1']);
   });
 
   it('ties a call to the turn whose trace it carried, in header correlation', () => {
     const { byTurn, summary } = attributeCalls(
       [
-        record('1', 250, { trace: 'trace-a' }),
-        record('2', 0, { trace: 'trace-b' }),
-        record('3', 50, { trace: null }),
-        record('4', 50, { trace: 'someone-else' }),
+        record('1', { trace: 'turn-a', mark: 'turn-b' }),
+        record('2', { trace: 'turn-b' }),
+        record('3', { trace: null }),
+        record('4', { trace: 'someone-else' }),
       ],
       turns,
       'header',
       prices,
     );
-    expect(byTurn.get('a')).toMatchObject({ trace: 'trace-a', calls: [{ id: '1' }] });
-    expect(byTurn.get('b')).toMatchObject({ trace: 'trace-b', calls: [{ id: '2' }] });
+    expect(byTurn.get('a')).toMatchObject({ trace: 'turn-a', calls: [{ id: '1' }] });
+    expect(byTurn.get('b')).toMatchObject({ trace: 'turn-b', calls: [{ id: '2' }] });
     expect(summary).toMatchObject({ attributed: 2, unattributed: 2 });
   });
 
   it('prices each call, and a turn costs null when any of its calls has no cost', () => {
     const { byTurn } = attributeCalls(
-      [record('1', 0), record('2', 10, { model: 'unpriced' }), record('3', 210)],
+      [
+        record('1', { mark: 'turn-a' }),
+        record('2', { mark: 'turn-a', model: 'unpriced' }),
+        record('3', { mark: 'turn-b' }),
+      ],
       turns,
       'serial',
       prices,
@@ -100,9 +95,10 @@ describe('attributeCalls', () => {
   it('totals every recorded call, and counts the values it had to leave out', () => {
     const { summary } = attributeCalls(
       [
-        record('1', 0),
-        record('2', 999, { model: 'unpriced' }),
-        record('3', 210, {
+        record('1', { mark: 'turn-a' }),
+        record('2', { model: 'unpriced' }),
+        record('3', {
+          mark: 'turn-b',
           usage: { input: 50, output: null, cachedInput: 10, cacheWrite: null, reasoning: 0 },
         }),
       ],

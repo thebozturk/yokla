@@ -1,8 +1,8 @@
 // Ties the model proxy's records of a run to its turns (ADR-0012) and totals
-// them. serial: a call belongs to the turn whose request was in flight when
-// the call started, the later one at a shared millisecond. header: a call
-// belongs to the turn whose x-yokla-trace it carried. Calls tied to no turn are
-// counted as unattributed, never dropped.
+// them. serial: before each request the runner marks its turn as in flight on
+// the proxy, and a call belongs to the turn marked when it started. header: a
+// call belongs to the turn whose x-yokla-trace it carried. Neither needs a
+// clock. Calls tied to no turn are counted as unattributed, never dropped.
 
 import { callCost, type ProxyRecord, type Results, type YoklaConfig } from '@yokla/core';
 
@@ -11,11 +11,9 @@ export type TurnProxy = NonNullable<TurnResult['proxy']>;
 export type RunProxy = NonNullable<Results['run']['proxy']>;
 export type Correlation = RunProxy['correlation'];
 
-export interface TurnWindow {
-  /** Wall-clock milliseconds, when the request was sent and answered. */
-  readonly start: number;
-  readonly end: number;
-  readonly trace: string | undefined;
+/** What ties a turn's calls to it: the mark set while it was in flight, or the trace it sent. */
+export interface TurnTag {
+  readonly id: string;
 }
 
 const TOTALS = {
@@ -37,7 +35,7 @@ function sum(values: readonly (number | null)[]): number | null {
 
 export function attributeCalls<K>(
   records: readonly ProxyRecord[],
-  turns: readonly { readonly key: K; readonly window: TurnWindow }[],
+  turns: readonly { readonly key: K; readonly tag: TurnTag }[],
   correlation: Correlation,
   prices: YoklaConfig['prices'],
 ): { byTurn: Map<K, TurnProxy>; summary: RunProxy } {
@@ -45,22 +43,10 @@ export function attributeCalls<K>(
     record,
     costUsd: callCost(record.usage, prices[record.upstream]?.[record.model ?? '']),
   }));
+  const byId = new Map(turns.map((turn) => [turn.tag.id, turn]));
   const owner = (record: ProxyRecord) => {
-    if (correlation === 'header') {
-      // A record's trace is a string or null, so it never matches a turn without one.
-      return turns.find((turn) => turn.window.trace === record.trace);
-    }
-    // Timestamps are in milliseconds, so one turn may end in the millisecond the
-    // next one starts. A call there belongs to the later turn: a call of the
-    // earlier one starts at least its own duration before that turn ends.
-    const at = Date.parse(record.startedAt);
-    let latest: (typeof turns)[number] | undefined;
-    for (const turn of turns) {
-      if (turn.window.start <= at && at <= turn.window.end) {
-        if (latest === undefined || turn.window.start > latest.window.start) latest = turn;
-      }
-    }
-    return latest;
+    const id = correlation === 'header' ? record.trace : record.mark;
+    return id === null || id === undefined ? undefined : byId.get(id);
   };
 
   const calls = new Map<K, TurnProxy['calls'][number][]>(turns.map((turn) => [turn.key, []]));
@@ -88,9 +74,7 @@ export function attributeCalls<K>(
         turn.key,
         {
           correlation,
-          ...(correlation === 'header' && turn.window.trace !== undefined
-            ? { trace: turn.window.trace }
-            : {}),
+          ...(correlation === 'header' ? { trace: turn.tag.id } : {}),
           calls: list,
           costUsd: sum(list.map((call) => call.costUsd)),
         },

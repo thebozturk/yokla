@@ -240,6 +240,24 @@ describe('startProxy forwarding', () => {
 });
 
 describe('startProxy recordings', () => {
+  it('tags each call with the turn marked in flight when it started', async () => {
+    const up = await upstream();
+    const { running, records } = await proxy(up.url);
+    const opened = parse(await call(running, 'POST', '/_yokla/recordings'));
+    const id = String(Reflect.get(Object(opened), 'id'));
+    await call(running, 'POST', '/openai/chat/completions', '{}');
+    expect(parse(await call(running, 'PUT', `/_yokla/recordings/${id}/mark?turn=turn-1`))).toEqual({
+      id,
+      mark: 'turn-1',
+    });
+    await call(running, 'POST', '/openai/chat/completions', '{}');
+    await call(running, 'PUT', `/_yokla/recordings/${id}/mark?turn=turn-2`);
+    await call(running, 'POST', '/openai/chat/completions', '{}');
+    expect(records.map((record) => record.mark)).toEqual([null, 'turn-1', 'turn-2']);
+    expect((await call(running, 'PUT', `/_yokla/recordings/${id}/mark`)).status).toBe(400);
+    expect((await call(running, 'PUT', '/_yokla/recordings/other/mark?turn=x')).status).toBe(404);
+  });
+
   it('records calls only while a recording is open, without credentials', async () => {
     const up = await upstream();
     const { running, records } = await proxy(up.url);

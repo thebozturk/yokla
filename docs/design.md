@@ -447,7 +447,9 @@ localhost only.
 **Correlation: which provider calls belong to which test request?**
 1. `serial`: one request in flight; every call in its window belongs to it.
    This is the default for the cost and performance suites, and it forces
-   concurrency to 1.
+   concurrency to 1. The runner marks each turn on the proxy before its
+   request, and the proxy tags each call with the turn marked when it started,
+   so attribution needs no clock.
 2. `header`: the target forwards `x-yokla-trace` to its provider calls. This
    takes a one-line change in the app, or OTel baggage.
 3. `traceparent`: W3C trace context, if the app already propagates it.

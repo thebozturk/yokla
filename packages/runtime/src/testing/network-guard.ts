@@ -2,6 +2,8 @@
 // connection and DNS lookup of this process, and stops those to hosts that
 // aren't allowed before any packet or lookup leaves. TLS and fetch connect
 // through net.Socket, so they are covered too. Child processes are not.
+// Looking up an IP literal, as listen() does, resolves locally: it passes and
+// isn't recorded.
 
 import dns from 'node:dns';
 import net from 'node:net';
@@ -97,6 +99,7 @@ export function installNetworkGuard(allow: AllowRule): NetworkGuard {
     ...lookup.descriptor,
     value: function guardedLookup(host: unknown, ...rest: unknown[]): unknown {
       const name = String(host);
+      if (net.isIP(name) !== 0) return lookup.fn(host, ...rest);
       if (check('dns', name, undefined)) return lookup.fn(host, ...rest);
       const callback = rest.at(-1);
       if (isFunction(callback)) process.nextTick(() => callback(blocked(name, undefined)));
@@ -107,6 +110,10 @@ export function installNetworkGuard(allow: AllowRule): NetworkGuard {
     ...promisesLookup.descriptor,
     value: async function guardedPromisesLookup(host: unknown, ...rest: unknown[]) {
       const name = String(host);
+      if (net.isIP(name) !== 0) {
+        const literal: unknown = await promisesLookup.fn(host, ...rest);
+        return literal;
+      }
       if (!check('dns', name, undefined)) throw blocked(name, undefined);
       const found: unknown = await promisesLookup.fn(host, ...rest);
       return found;

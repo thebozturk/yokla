@@ -127,6 +127,20 @@ describe('installNetworkGuard', () => {
     ]);
   });
 
+  it('lets the local lookup of an IP literal pass unrecorded, as listen() needs', async () => {
+    guard = installNetworkGuard(() => false);
+    const viaCallback = await new Promise<string>((resolve) => {
+      dns.lookup('127.0.0.1', (error, address) => {
+        resolve(error?.message ?? address);
+      });
+    });
+    const viaPromise = await dns.promises.lookup('::1');
+    expect([viaCallback, viaPromise.address]).toEqual(['127.0.0.1', '::1']);
+    const port = await localServer();
+    expect(port).toBeGreaterThan(0);
+    expect(guard.attempts).toEqual([]);
+  });
+
   it('restores the original functions when uninstalled', () => {
     const before = guardedFunctions();
     const installed = installNetworkGuard(() => false);

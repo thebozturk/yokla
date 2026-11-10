@@ -15,6 +15,7 @@ const Health = z.object({
 });
 const Opened = z.object({ id: z.string().min(1), startedAt: z.iso.datetime() });
 const Closed = z.object({ id: z.string().min(1), records: z.array(ProxyRecord) });
+const Marked = z.object({ id: z.string().min(1), mark: z.string().min(1) });
 
 export class ProxyControl {
   readonly #base: string;
@@ -59,6 +60,15 @@ export class ProxyControl {
 
   open(): Promise<z.output<typeof Opened>> {
     return this.#call('POST', '/_yokla/recordings', Opened);
+  }
+
+  /** Tells the proxy which turn is in flight; its calls carry this mark. */
+  async mark(id: string, turn: string): Promise<void> {
+    await this.#call(
+      'PUT',
+      `/_yokla/recordings/${encodeURIComponent(id)}/mark?turn=${encodeURIComponent(turn)}`,
+      Marked,
+    );
   }
 
   async close(id: string): Promise<ProxyRecord[]> {

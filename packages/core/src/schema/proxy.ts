@@ -38,6 +38,8 @@ export const ProxyRecord = z.object({
   usage: ProxyUsage,
   /** The x-yokla-trace header the call carried, or null. */
   trace: z.string().nullable(),
+  /** The turn the runner marked as in flight when the call started, or null (serial correlation). */
+  mark: z.string().nullable().optional(),
   error: z.string().optional(),
 });
 export type ProxyRecord = z.output<typeof ProxyRecord>;

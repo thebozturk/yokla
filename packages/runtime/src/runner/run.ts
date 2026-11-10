@@ -36,7 +36,7 @@ import { cacheBypass } from '../process/cache-bypass.ts';
 import { CommandError } from '../process/command.ts';
 import { correlate, observedFields, parseLogLines, readLogText } from '../observe/logs.ts';
 import { ProxyControl, ProxyControlError } from '../proxy/control.ts';
-import { attributeCalls, type Correlation, type TurnProxy, type TurnWindow } from './proxy.ts';
+import { attributeCalls, type Correlation, type TurnProxy, type TurnTag } from './proxy.ts';
 
 type CaseResult = Results['cases'][number];
 type SampleResult = CaseResult['samples'][number];
@@ -181,8 +181,8 @@ interface Exchange {
   readonly turn: TurnResult;
   /** What the checks see; set when the answer could be read. */
   readonly view: TurnView | undefined;
-  /** When the request was in flight, for tying model calls to it. */
-  readonly window?: TurnWindow;
+  /** What ties the model proxy's calls to this turn. */
+  readonly tag?: TurnTag;
 }
 
 interface ExchangedSample {
@@ -201,6 +201,7 @@ async function runSample(
   testCase: Case,
   caseIndex: number,
   sampleIndex: number,
+  mark: ((turn: string) => Promise<void>) | undefined,
 ): Promise<ExchangedSample> {
   const target = options.profile.target;
   const ids = options.ids ?? randomUUID;
@@ -240,14 +241,15 @@ async function runSample(
 
   for (const [turnIndex, turn] of testCase.turns.entries()) {
     const requestId = request.requestId === undefined ? undefined : ids();
-    // In header correlation, the app passes this on to its model calls (ADR-0012).
-    const trace =
-      options.profile.modelProxy?.correlation === 'header' ? (requestId ?? ids()) : undefined;
+    // With a model proxy, the turn's id: marked on the proxy before the request
+    // (serial), or sent for the app to pass on to its model calls (header).
+    const correlation = options.profile.modelProxy?.correlation;
+    const tag = correlation === undefined ? undefined : { id: requestId ?? ids() };
+    const trace = correlation === 'header' ? tag?.id : undefined;
     const base = { user: turn.user, ...(requestId === undefined ? {} : { requestId }), checks: [] };
     let outcome: Exchange;
-    const sentAt = Date.now();
-    const windowNow = (): TurnWindow => ({ start: sentAt, end: Date.now(), trace });
     try {
+      if (correlation === 'serial' && tag !== undefined) await mark?.(tag.id);
       const built = buildRequest(
         request,
         turn,
@@ -259,7 +261,6 @@ async function runSample(
         },
       );
       const result = await client.send(built);
-      const window = windowNow();
       const extracted =
         result.json === undefined ? undefined : extractResponse(result.json, target.response);
       const response = {
@@ -309,7 +310,7 @@ async function runSample(
           ...(issues.length === 0 ? {} : { issues }),
         },
         view,
-        window,
+        ...(tag === undefined ? {} : { tag }),
       };
       for (const entry of target.session.carry) {
         const [value] = result.json === undefined ? [] : queryJsonPath(result.json, entry.from);
@@ -319,7 +320,7 @@ async function runSample(
       outcome = {
         turn: { ...base, error: errorMessage(error) },
         view: undefined,
-        window: windowNow(),
+        ...(tag === undefined ? {} : { tag }),
       };
     }
     exchanges.push(outcome);
@@ -339,11 +340,12 @@ async function exchangeCase(
   client: HttpClient,
   testCase: Case,
   caseIndex: number,
+  mark: ((turn: string) => Promise<void>) | undefined,
 ): Promise<ExchangedCase> {
   const samples: ExchangedSample[] = [];
   const count = testCase.samples ?? options.samples ?? 1;
   for (let index = 0; index < count; index += 1) {
-    samples.push(await runSample(options, client, testCase, caseIndex, index));
+    samples.push(await runSample(options, client, testCase, caseIndex, index, mark));
   }
   return { testCase, samples };
 }
@@ -548,13 +550,17 @@ export async function runSuite(options: RunOptions): Promise<Results> {
   });
 
   const recording = await openRecording(options);
+  const mark =
+    recording === undefined
+      ? undefined
+      : (turn: string) => recording.control.mark(recording.id, turn);
   let exchanged: ExchangedCase[] = [];
   // Undefined when there is no proxy, or its records couldn't be read.
   let records: ProxyRecord[] | undefined;
   const proxyIssues: string[] = [];
   try {
     exchanged = await pool(options.cases, options.concurrency ?? 1, (testCase, index) =>
-      exchangeCase(options, client, testCase, index),
+      exchangeCase(options, client, testCase, index, mark),
     );
   } finally {
     if (recording !== undefined) {
@@ -573,7 +579,7 @@ export async function runSuite(options: RunOptions): Promise<Results> {
           exchanged
             .flatMap((c) => c.samples.flatMap((sample) => sample.exchanges))
             .flatMap((exchange) =>
-              exchange.window === undefined ? [] : [{ key: exchange, window: exchange.window }],
+              exchange.tag === undefined ? [] : [{ key: exchange, tag: exchange.tag }],
             ),
           recording.correlation,
           options.prices ?? {},
