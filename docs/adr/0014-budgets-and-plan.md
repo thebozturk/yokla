@@ -1,6 +1,6 @@
 # 0014. Budgets: cost and latency thresholds, unmeasured thresholds, plan and cap
 
-Status: Proposed · Date: 2026-11-10
+Status: Accepted · Date: 2026-11-10
 
 ## Context
 

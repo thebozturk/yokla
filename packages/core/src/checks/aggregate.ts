@@ -2,7 +2,8 @@
 // (design §13). This is the decision point, so it is tested directly.
 //
 // Status precedence: error → known-gap / gap-closed → pass / fail, and
-// `unmeasured` when no check applied to any turn (never a silent pass).
+// `unmeasured` when no check applied to any turn, or a deciding dimension went
+// unmeasured and nothing failed (ADR-0014): never a silent pass.
 
 import type { Results } from '../schema/results.ts';
 import type { AggregationPolicy } from './types.ts';
@@ -32,14 +33,19 @@ export function wilson(failed: number, n: number): { level: 0.95; lower: number;
   };
 }
 
-/** Per sample: which dimensions failed, which only passed; and whether anything errored. */
+/**
+ * Per sample: which dimensions failed, which only passed, which a check couldn't
+ * measure without failing; and whether anything errored.
+ */
 function sampleVerdicts(sample: Sample): {
   failed: Set<string>;
   passed: Set<string>;
+  unmeasured: Set<string>;
   error: boolean;
 } {
   const failed = new Set<string>();
   const passed = new Set<string>();
+  const unmeasured = new Set<string>();
   let error = false;
   for (const turn of sample.turns) {
     if (turn.error !== undefined) error = true;
@@ -49,10 +55,14 @@ function sampleVerdicts(sample: Sample): {
         else if (finding.verdict === 'fail') failed.add(finding.dimension);
         else passed.add(finding.dimension);
       }
+      for (const gap of check.unmeasured ?? []) unmeasured.add(gap.dimension);
     }
   }
+  // A failure wins over a gap: the verdict below checks failures first.
   for (const dimension of failed) passed.delete(dimension);
-  return { failed, passed, error };
+  // Measured on one turn but not on another is not measured: never a pass.
+  for (const dimension of unmeasured) passed.delete(dimension);
+  return { failed, passed, unmeasured, error };
 }
 
 export interface CaseAggregate {
@@ -68,7 +78,9 @@ export function aggregateCase(
 ): CaseAggregate {
   const verdicts = samples.map(sampleVerdicts);
   const names = new Set<string>();
-  for (const v of verdicts) for (const name of [...v.failed, ...v.passed]) names.add(name);
+  for (const v of verdicts) {
+    for (const name of [...v.failed, ...v.passed, ...v.unmeasured]) names.add(name);
+  }
 
   let unstable = false;
   const dimensions: DimensionResult[] = [...names].toSorted().map((dimension) => {
@@ -77,10 +89,11 @@ export function aggregateCase(
     const failed = measured.filter((v) => v.failed.has(dimension)).length;
     if (policy !== 'advisory' && failed > 0 && failed < measured.length) unstable = true;
     const fails = policy === 'majority-of-n' ? failed * 2 > measured.length : failed > 0;
+    const gaps = verdicts.some((v) => v.unmeasured.has(dimension));
     return {
       dimension,
       policy,
-      verdict: fails ? 'fail' : 'pass',
+      verdict: fails ? 'fail' : gaps ? 'unmeasured' : 'pass',
       samples: measured.length,
       failed,
       ...(measured.length > 1 ? { interval: wilson(failed, measured.length) } : {}),
@@ -94,8 +107,10 @@ export function aggregateCase(
   else if (deciding.length === 0) status = 'unmeasured';
   else {
     const failing = deciding.some((d) => d.verdict === 'fail');
-    if (knownGap) status = failing ? 'known-gap' : 'gap-closed';
-    else status = failing ? 'fail' : 'pass';
+    const gap = deciding.some((d) => d.verdict === 'unmeasured');
+    if (failing) status = knownGap ? 'known-gap' : 'fail';
+    else if (gap) status = 'unmeasured';
+    else status = knownGap ? 'gap-closed' : 'pass';
   }
   return { status, unstable, dimensions };
 }
@@ -120,6 +135,8 @@ export function summariseChecks(cases: readonly CaseResult[]): CheckSummary[] {
             entry.applied += 1;
             if (check.findings.some((f) => f.verdict === 'error')) entry.errors += 1;
             else if (check.findings.some((f) => f.verdict === 'fail')) entry.failed += 1;
+            else if (check.findings.length === 0 && (check.unmeasured?.length ?? 0) > 0)
+              entry.unmeasured = (entry.unmeasured ?? 0) + 1;
             else entry.passed += 1;
           }
           byCheck.set(check.check, entry);

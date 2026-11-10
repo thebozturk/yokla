@@ -703,6 +703,26 @@
                                 ],
                                 "additionalProperties": false
                               }
+                            },
+                            "unmeasured": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "dimension": {
+                                    "type": "string",
+                                    "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "dimension",
+                                  "reason"
+                                ],
+                                "additionalProperties": false
+                              }
                             }
                           },
                           "required": [
@@ -773,6 +793,11 @@
             "maximum": 9007199254740991
           },
           "errors": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "unmeasured": {
             "type": "integer",
             "minimum": 0,
             "maximum": 9007199254740991

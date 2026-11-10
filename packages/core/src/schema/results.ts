@@ -33,6 +33,8 @@ export const CheckResult = z.object({
   /** false when the check's input was absent; then `findings` is empty (design §10). */
   applicable: z.boolean(),
   findings: z.array(Finding),
+  /** Dimensions the check applies to but couldn't measure (ADR-0014); never a pass. */
+  unmeasured: z.array(z.object({ dimension: Id, reason: z.string() })).optional(),
 });
 
 export const TurnResult = z.object({
@@ -133,6 +135,8 @@ export const CheckSummary = z.object({
   passed: z.int().nonnegative(),
   failed: z.int().nonnegative(),
   errors: z.int().nonnegative(),
+  /** Applied, but measured nothing it could judge (ADR-0014). */
+  unmeasured: z.int().nonnegative().optional(),
 });
 
 export const Results = z

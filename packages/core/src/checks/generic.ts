@@ -170,6 +170,51 @@ export const answeredWithinDeadline: Check = {
   },
 };
 
+/** The turn's model calls stay within its budget; without the data to judge it, unmeasured (ADR-0014). */
+export const costBudget: Check = {
+  id: 'cost-budget',
+  description: "The turn's model calls stay within its budget: their cost and their number.",
+  run(context) {
+    const parsed = coreExpectations.budget.safeParse(context.turn.expect['budget']);
+    if (!parsed.success) return { applicable: false, reason: 'the turn has no budget' };
+    const { proxy } = context.turn;
+    if (proxy === undefined) {
+      return {
+        applicable: true,
+        findings: [],
+        unmeasured: [{ dimension: 'cost', reason: 'no model proxy data for this turn' }],
+      };
+    }
+    const findings: CheckFinding[] = [];
+    const { costUsd, modelCalls } = parsed.data;
+    if (modelCalls !== undefined) {
+      findings.push({
+        dimension: 'cost',
+        verdict: proxy.calls <= modelCalls ? 'pass' : 'fail',
+        severity: 'medium',
+        message: `${String(proxy.calls)} model calls, budget ${String(modelCalls)}`,
+      });
+    }
+    if (costUsd !== undefined && proxy.costUsd === null) {
+      return {
+        applicable: true,
+        findings,
+        unmeasured: [{ dimension: 'cost', reason: 'a model call of the turn has no cost' }],
+      };
+    }
+    if (costUsd !== undefined && proxy.costUsd !== null) {
+      findings.push({
+        dimension: 'cost',
+        verdict: proxy.costUsd <= costUsd ? 'pass' : 'fail',
+        severity: 'medium',
+        message: `cost ${String(proxy.costUsd)} USD, budget ${String(costUsd)} USD`,
+        evidence: { costUsd: proxy.costUsd, budgetUsd: costUsd },
+      });
+    }
+    return { applicable: true, findings };
+  },
+};
+
 /** The checks that judge a turn the target couldn't answer under faults; others need an answer. */
 export const FAULT_JUDGES: ReadonlySet<string> = new Set([
   gracefulUnderFault.id,
@@ -182,4 +227,5 @@ export const CORE_CHECKS: readonly Check[] = [
   evidenceCount,
   gracefulUnderFault,
   answeredWithinDeadline,
+  costBudget,
 ];

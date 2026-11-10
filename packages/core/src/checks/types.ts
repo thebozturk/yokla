@@ -18,9 +18,20 @@ export interface CheckFinding {
   readonly evidence?: JsonValue;
 }
 
+/** A threshold the check couldn't measure on this turn (ADR-0014). */
+export interface UnmeasuredDimension {
+  readonly dimension: string;
+  readonly reason: string;
+}
+
 export type CheckOutcome =
   | { readonly applicable: false; readonly reason: string }
-  | { readonly applicable: true; readonly findings: readonly CheckFinding[] };
+  | {
+      readonly applicable: true;
+      readonly findings: readonly CheckFinding[];
+      /** Dimensions it applies to but couldn't measure: never a pass. */
+      readonly unmeasured?: readonly UnmeasuredDimension[];
+    };
 
 /** One answered turn, as checks see it. */
 export interface TurnView {
@@ -44,6 +55,8 @@ export interface TurnView {
    * target gave no usable answer under them; the text is then empty.
    */
   readonly faults: { readonly failure: string | undefined } | undefined;
+  /** The model calls the proxy tied to this turn; undefined without proxy data (ADR-0012). */
+  readonly proxy: { readonly calls: number; readonly costUsd: number | null } | undefined;
 }
 
 /** A money amount mentioned in text, e.g. "1.299,90 TL". */

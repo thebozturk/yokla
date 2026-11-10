@@ -1088,4 +1088,56 @@ describe('runSuite with the model proxy', () => {
       runSuite(options(profile(t.url), cases({ id: 'faulty', turns: [{ user: 'a', faults }] }))),
     ).rejects.toThrow(/case "faulty" injects faults, which needs a modelProxy in the profile/u);
   });
+
+  it('judges a turn budget with the proxy data, and leaves it unmeasured without a proxy', async () => {
+    const proxy = await fakeProxy();
+    const t = await target((_r, _i, response) => {
+      proxy.records.push(call(null, proxy.mark()), call(null, proxy.mark()));
+      json(response, answer());
+    });
+    const priced = await runSuite(
+      options(
+        proxied(t.url, 'serial'),
+        cases(
+          { turns: [{ user: 'a', expect: { budget: { costUsd: 0.005, modelCalls: 2 } } }] },
+          { turns: [{ user: 'b', expect: { budget: { costUsd: 0.003 } } }] },
+        ),
+        { proxyUrl: proxy.url, prices, checks: CORE_CHECKS },
+      ),
+    );
+    // Two calls of 1000 input and 100 output tokens at 1 and 10 $/MTok: 0.004 $ a turn.
+    expect(priced.cases.map((c) => c.status)).toEqual(['pass', 'fail']);
+    const unpriced = await runSuite(
+      options(
+        proxied(t.url, 'serial'),
+        cases({ turns: [{ user: 'a', expect: { budget: { costUsd: 1 } } }] }),
+        {
+          proxyUrl: proxy.url,
+          checks: CORE_CHECKS,
+        },
+      ),
+    );
+    expect(unpriced.cases[0]?.status).toBe('unmeasured');
+    expect(unpriced.cases[0]?.dimensions).toEqual([
+      { dimension: 'cost', policy: 'worst-of-n', verdict: 'unmeasured', samples: 0, failed: 0 },
+    ]);
+    const plain = await runSuite(
+      options(
+        profile(t.url),
+        cases({ turns: [{ user: 'a', expect: { budget: { modelCalls: 3 } } }] }),
+        {
+          checks: CORE_CHECKS,
+        },
+      ),
+    );
+    expect(
+      plain.cases[0]?.samples[0]?.turns[0]?.checks.find((c) => c.check === 'cost-budget'),
+    ).toEqual({
+      check: 'cost-budget',
+      applicable: true,
+      findings: [],
+      unmeasured: [{ dimension: 'cost', reason: 'no model proxy data for this turn' }],
+    });
+    expect(plain.cases[0]?.status).toBe('unmeasured');
+  });
 });

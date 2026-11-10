@@ -25,6 +25,14 @@ export function runChecks(checks: readonly Check[], context: CheckContext): Chec
             message: finding.message,
             ...(finding.evidence === undefined ? {} : { evidence: finding.evidence }),
           })),
+          ...(outcome.unmeasured === undefined || outcome.unmeasured.length === 0
+            ? {}
+            : {
+                unmeasured: outcome.unmeasured.map((u) => ({
+                  dimension: u.dimension,
+                  reason: u.reason,
+                })),
+              }),
         };
       } catch (error) {
         return {

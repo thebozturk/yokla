@@ -3,6 +3,7 @@ import { checkContext, mutate, stubLanguagePack, turnView } from '../testing.ts'
 import {
   answeredWithinDeadline,
   answerText,
+  costBudget,
   evidenceCount,
   FAULT_JUDGES,
   gracefulUnderFault,
@@ -220,5 +221,42 @@ describe('answered-within-deadline', () => {
       'answered-within-deadline',
       'graceful-under-fault',
     ]);
+  });
+});
+
+const runBudget = (budget: unknown, proxy: TurnView['proxy']) =>
+  costBudget.run(checkContext(turnView({ expect: { budget }, proxy })));
+
+describe('cost-budget', () => {
+  it('judges the cost and the number of model calls against the budget, boundaries included', () => {
+    expect(
+      runBudget({ costUsd: 0.002, modelCalls: 2 }, { calls: 2, costUsd: 0.002 }),
+    ).toMatchObject({
+      findings: [
+        { dimension: 'cost', verdict: 'pass', message: '2 model calls, budget 2' },
+        { dimension: 'cost', verdict: 'pass', message: 'cost 0.002 USD, budget 0.002 USD' },
+      ],
+    });
+    expect(verdicts(runBudget({ costUsd: 0.002 }, { calls: 1, costUsd: 0.0021 }))).toEqual([
+      'fail',
+    ]);
+    expect(verdicts(runBudget({ modelCalls: 1 }, { calls: 2, costUsd: null }))).toEqual(['fail']);
+  });
+
+  it('reports cost as unmeasured without proxy data or with a call that has no cost', () => {
+    expect(runBudget({ costUsd: 1 }, undefined)).toEqual({
+      applicable: true,
+      findings: [],
+      unmeasured: [{ dimension: 'cost', reason: 'no model proxy data for this turn' }],
+    });
+    expect(runBudget({ costUsd: 1, modelCalls: 5 }, { calls: 2, costUsd: null })).toMatchObject({
+      findings: [{ verdict: 'pass', message: '2 model calls, budget 5' }],
+      unmeasured: [{ dimension: 'cost', reason: 'a model call of the turn has no cost' }],
+    });
+  });
+
+  it('does not apply without a budget, and refuses an empty one', () => {
+    expect(runBudget(undefined, { calls: 1, costUsd: 0 })).toMatchObject({ applicable: false });
+    expect(runBudget({}, { calls: 1, costUsd: 0 })).toMatchObject({ applicable: false });
   });
 });
