@@ -10,8 +10,8 @@ export interface TerminalSummary {
   readonly err: readonly string[];
 }
 
-function turns(count: number): string {
-  return `${String(count)} turn${count === 1 ? '' : 's'}`;
+function counted(count: number, noun: string): string {
+  return `${String(count)} ${noun}${count === 1 ? '' : 's'}`;
 }
 
 function round(value: number): string {
@@ -22,6 +22,7 @@ function round(value: number): string {
 function observedTotals(
   totals: Readonly<Record<string, number>>,
   missing: Readonly<Record<string, number>>,
+  noun: string,
 ): string {
   const names = [...new Set([...Object.keys(totals), ...Object.keys(missing)])];
   return names
@@ -30,8 +31,8 @@ function observedTotals(
       const gap = missing[name];
       const value = total === undefined ? '' : round(total);
       if (gap === undefined) return `${name} ${value}`;
-      if (total === undefined) return `${name} no value on ${turns(gap)}`;
-      return `${name} ${value} (no value on ${turns(gap)})`;
+      if (total === undefined) return `${name} no value on ${counted(gap, noun)}`;
+      return `${name} ${value} (no value on ${counted(gap, noun)})`;
     })
     .join(', ');
 }
@@ -70,10 +71,19 @@ export function terminalSummary(results: Results): TerminalSummary {
 
   const observation = results.run.observation;
   if (observation !== undefined) {
-    const totals = observedTotals(observation.totals, observation.missing);
+    const totals = observedTotals(observation.totals, observation.missing, 'turn');
     const all = observation.matched + observation.unmatched;
     out.push(
       `target logs: ${String(observation.matched)} of ${String(all)} turns matched` +
+        (totals === '' ? '' : `; ${totals}`),
+    );
+  }
+  const proxy = results.run.proxy;
+  if (proxy !== undefined) {
+    const { calls: _calls, ...sums } = proxy.totals;
+    const totals = observedTotals(sums, proxy.missing, 'call');
+    out.push(
+      `model proxy (${proxy.correlation}): ${counted(proxy.records, 'call')}, ${String(proxy.unattributed)} unattributed` +
         (totals === '' ? '' : `; ${totals}`),
     );
   }

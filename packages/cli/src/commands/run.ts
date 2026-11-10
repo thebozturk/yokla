@@ -2,13 +2,13 @@
 // Exit codes (design §16): 0 the run completed; 2 a configuration problem or
 // a case that couldn't be measured. Exit code 1 is reserved for the gate.
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { CORE_CHECKS, type Results } from '@yokla/core';
 import { junitXml, terminalSummary } from '@yokla/report';
 import { ConfigError, runSuite } from '@yokla/runtime';
-import { LoadError, loadCases, loadProfile } from '../load.ts';
+import { LoadError, loadCases, loadConfig, loadProfile } from '../load.ts';
 import { DOMAIN_PACKS, LANGUAGE_PACKS } from '../packs.ts';
 
 export interface Output {
@@ -25,7 +25,9 @@ Options:
   --samples <n>         samples per case when the case doesn't say (default: 1)
   --concurrency <n>     cases run in parallel (default: 1)
   --target-url <url>    use this url instead of the profile's request url
-  --junit <file>        also write a JUnit XML report`;
+  --junit <file>        also write a JUnit XML report
+  --config <file>       prices and thresholds (default: yokla.config.yaml, when present)
+  --proxy-url <url>     the model proxy, instead of 127.0.0.1 on modelProxy.port`;
 
 function positiveInt(value: string | undefined, name: string): number | undefined {
   if (value === undefined) return undefined;
@@ -58,6 +60,8 @@ const RUN_OPTIONS = {
   concurrency: { type: 'string' },
   'target-url': { type: 'string' },
   junit: { type: 'string' },
+  config: { type: 'string' },
+  'proxy-url': { type: 'string' },
   help: { type: 'boolean' },
 } as const;
 
@@ -89,6 +93,9 @@ export async function runCommand(
     const cases = loadCases(values.cases ?? [resolve(loaded.dir, 'cases')]);
     const samples = positiveInt(values.samples, 'samples');
     const concurrency = positiveInt(values.concurrency, 'concurrency');
+    const configPath =
+      values.config ?? (existsSync('yokla.config.yaml') ? 'yokla.config.yaml' : undefined);
+    const config = configPath === undefined ? undefined : loadConfig(configPath);
     const results = await runSuite({
       profile: loaded.profile,
       profileSha256: loaded.sha256,
@@ -102,6 +109,8 @@ export async function runCommand(
       ...(samples === undefined ? {} : { samples }),
       ...(concurrency === undefined ? {} : { concurrency }),
       ...(values['target-url'] === undefined ? {} : { targetUrl: values['target-url'] }),
+      ...(values['proxy-url'] === undefined ? {} : { proxyUrl: values['proxy-url'] }),
+      ...(config === undefined ? {} : { prices: config.prices }),
     });
     const outPath = writeReport(
       values.out ?? `runs/${results.run.id}.json`,

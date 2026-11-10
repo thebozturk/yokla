@@ -25,7 +25,9 @@ import {
   type TurnView,
   type JsonValue,
   type Profile,
+  type ProxyRecord,
   type Results,
+  type YoklaConfig,
 } from '@yokla/core';
 import { HttpClient, HttpError } from '../http/client.ts';
 import { systemClock, type Clock } from '../http/rate-limit.ts';
@@ -33,6 +35,8 @@ import { testNetAddress } from '../http/test-net.ts';
 import { cacheBypass } from '../process/cache-bypass.ts';
 import { CommandError } from '../process/command.ts';
 import { correlate, observedFields, parseLogLines, readLogText } from '../observe/logs.ts';
+import { ProxyControl, ProxyControlError } from '../proxy/control.ts';
+import { attributeCalls, type Correlation, type TurnProxy, type TurnWindow } from './proxy.ts';
 
 type CaseResult = Results['cases'][number];
 type SampleResult = CaseResult['samples'][number];
@@ -61,6 +65,10 @@ export interface RunOptions {
   readonly languages?: readonly LanguagePack[];
   /** Checks that run for every case, whatever the domain. */
   readonly checks?: readonly Check[];
+  /** Prices of the model calls the proxy records (yokla.config.yaml). */
+  readonly prices?: YoklaConfig['prices'];
+  /** The model proxy's address. Default: 127.0.0.1 on the profile's modelProxy.port. */
+  readonly proxyUrl?: string;
   /** Wait before reading the target's logs, so the last lines are written. Default 1000 ms. */
   readonly logSettleMs?: number;
   /** Reads a file for a pack. Default: relative to profileDir. */
@@ -143,6 +151,9 @@ export function preflight(options: RunOptions): void {
   if (logs?.correlate.by === 'order' && (options.concurrency ?? 1) > 1) {
     problems.push('observe.logs correlates by order, which needs a concurrency of 1');
   }
+  if (options.profile.modelProxy?.correlation === 'serial' && (options.concurrency ?? 1) > 1) {
+    problems.push('modelProxy correlates serially, which needs a concurrency of 1');
+  }
   const languages = new Set<string>(options.profile.languages);
   const seen = new Set<string>();
   for (const c of options.cases) {
@@ -170,6 +181,8 @@ interface Exchange {
   readonly turn: TurnResult;
   /** What the checks see; set when the answer could be read. */
   readonly view: TurnView | undefined;
+  /** When the request was in flight, for tying model calls to it. */
+  readonly window?: TurnWindow;
 }
 
 interface ExchangedSample {
@@ -227,16 +240,26 @@ async function runSample(
 
   for (const [turnIndex, turn] of testCase.turns.entries()) {
     const requestId = request.requestId === undefined ? undefined : ids();
+    // In header correlation, the app passes this on to its model calls (ADR-0012).
+    const trace =
+      options.profile.modelProxy?.correlation === 'header' ? (requestId ?? ids()) : undefined;
     const base = { user: turn.user, ...(requestId === undefined ? {} : { requestId }), checks: [] };
     let outcome: Exchange;
+    const sentAt = Date.now();
+    const windowNow = (): TurnWindow => ({ start: sentAt, end: Date.now(), trace });
     try {
       const built = buildRequest(
         request,
         turn,
         { message: turn.user, session, requestId, carry, env: options.env },
-        { ...bypass.headers, ...identityHeaders },
+        {
+          ...bypass.headers,
+          ...identityHeaders,
+          ...(trace === undefined ? {} : { 'x-yokla-trace': trace }),
+        },
       );
       const result = await client.send(built);
+      const window = windowNow();
       const extracted =
         result.json === undefined ? undefined : extractResponse(result.json, target.response);
       const response = {
@@ -286,13 +309,18 @@ async function runSample(
           ...(issues.length === 0 ? {} : { issues }),
         },
         view,
+        window,
       };
       for (const entry of target.session.carry) {
         const [value] = result.json === undefined ? [] : queryJsonPath(result.json, entry.from);
         carry[entry.name] = value === undefined ? null : toJson(value);
       }
     } catch (error) {
-      outcome = { turn: { ...base, error: errorMessage(error) }, view: undefined };
+      outcome = {
+        turn: { ...base, error: errorMessage(error) },
+        view: undefined,
+        window: windowNow(),
+      };
     }
     exchanges.push(outcome);
     options.onTurn?.({
@@ -415,6 +443,7 @@ function judgeCase(
   prepared: Prepared,
   exchanged: ExchangedCase,
   observation: Observation,
+  proxyByTurn: ReadonlyMap<Exchange, TurnProxy> | undefined,
 ): CaseResult {
   const { testCase } = exchanged;
   const correlation = options.profile.target.observe?.logs?.correlate.by;
@@ -429,6 +458,8 @@ function judgeCase(
             ? { ...turn, issues: [...(turn.issues ?? []), 'no matching line in the target logs'] }
             : { ...turn, observed: { source: 'target-logs', correlation, fields } };
       }
+      const proxy = proxyByTurn?.get(exchange);
+      if (proxy !== undefined) turn = { ...turn, proxy };
       if (exchange.view === undefined) return turn;
       const view: TurnView = { ...exchange.view, observed: fields };
       const checks = runChecks(prepared.checks, {
@@ -458,6 +489,37 @@ function judgeCase(
   };
 }
 
+interface OpenRecording {
+  readonly control: ProxyControl;
+  readonly id: string;
+  readonly correlation: Correlation;
+}
+
+/** Opens a recording on the model proxy the profile declares; a proxy that doesn't answer is a configuration problem. */
+async function openRecording(options: RunOptions): Promise<OpenRecording | undefined> {
+  const config = options.profile.modelProxy;
+  if (config === undefined) return undefined;
+  try {
+    const control = new ProxyControl(options.proxyUrl ?? `http://127.0.0.1:${String(config.port)}`);
+    const health = await control.health();
+    const unrouted = config.upstreams
+      .map((upstream) => upstream.id)
+      .filter((id) => !health.upstreams.includes(id));
+    if (unrouted.length > 0) {
+      throw new ConfigError(
+        `the model proxy doesn't route ${unrouted.join(', ')}; start it with this profile`,
+      );
+    }
+    const { id } = await control.open();
+    return { control, id, correlation: config.correlation };
+  } catch (error) {
+    if (error instanceof ProxyControlError) {
+      throw new ConfigError(`${error.message}; start it with yokla proxy`);
+    }
+    throw error;
+  }
+}
+
 export async function runSuite(options: RunOptions): Promise<Results> {
   preflight(options);
   const prepared = prepare(options);
@@ -485,11 +547,40 @@ export async function runSuite(options: RunOptions): Promise<Results> {
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
 
-  const exchanged = await pool(options.cases, options.concurrency ?? 1, (testCase, index) =>
-    exchangeCase(options, client, testCase, index),
-  );
+  const recording = await openRecording(options);
+  let exchanged: ExchangedCase[] = [];
+  // Undefined when there is no proxy, or its records couldn't be read.
+  let records: ProxyRecord[] | undefined;
+  const proxyIssues: string[] = [];
+  try {
+    exchanged = await pool(options.cases, options.concurrency ?? 1, (testCase, index) =>
+      exchangeCase(options, client, testCase, index),
+    );
+  } finally {
+    if (recording !== undefined) {
+      try {
+        records = await recording.control.close(recording.id);
+      } catch (error) {
+        proxyIssues.push(`the model proxy's records could not be read: ${errorMessage(error)}`);
+      }
+    }
+  }
+  const calls =
+    recording === undefined || records === undefined
+      ? undefined
+      : attributeCalls(
+          records,
+          exchanged
+            .flatMap((c) => c.samples.flatMap((sample) => sample.exchanges))
+            .flatMap((exchange) =>
+              exchange.window === undefined ? [] : [{ key: exchange, window: exchange.window }],
+            ),
+          recording.correlation,
+          options.prices ?? {},
+        );
   const observation = await observe(options, startedAt, exchanged);
-  const cases = exchanged.map((c) => judgeCase(options, prepared, c, observation));
+  const cases = exchanged.map((c) => judgeCase(options, prepared, c, observation, calls?.byTurn));
+  const issues = [...observation.issues, ...proxyIssues];
   const statuses: Partial<Record<CaseResult['status'], number>> = {};
   for (const c of cases) statuses[c.status] = (statuses[c.status] ?? 0) + 1;
   const finishedAt = new Date();
@@ -503,10 +594,11 @@ export async function runSuite(options: RunOptions): Promise<Results> {
       durationMs: Math.round(performance.now() - started),
       profile: { target: target.name, sha256: options.profileSha256 },
       environment: { node: process.version, platform: process.platform, arch: process.arch },
-      correlation: 'none',
+      correlation: recording?.correlation ?? 'none',
       partial: false,
       ...(observation.summary === undefined ? {} : { observation: observation.summary }),
-      ...(observation.issues.length === 0 ? {} : { issues: [...observation.issues] }),
+      ...(calls === undefined ? {} : { proxy: calls.summary }),
+      ...(issues.length === 0 ? {} : { issues }),
     },
     cases,
     checks: summariseChecks(cases),
