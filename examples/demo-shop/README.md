@@ -27,6 +27,20 @@ pnpm --filter yokla-demo-shop start --list-defects
 
 demo-shop binds to `127.0.0.1` only.
 
+### Test it with yokla
+
+Start the demo-shop on a free port, then run the acceptance cases against it.
+The demo-shop is a target like any other: yokla reaches it over HTTP and
+imports nothing from it.
+
+```sh
+pnpm --filter yokla-demo-shop start --port 0       # prints the url
+pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml \
+  --target-url http://127.0.0.1:<port>/v1/chat
+```
+
+`packages/cli/src/demo-shop.e2e.test.ts` does the same in CI.
+
 ## API
 
 `POST /v1/chat` with `{"message": string, "sessionId": string}` returns:

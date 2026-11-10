@@ -28,5 +28,8 @@
     "@yokla/pack-ecommerce": "workspace:*",
     "@yokla/pack-lang-tr": "workspace:*",
     "@yokla/pack-lang-en": "workspace:*"
+  },
+  "bin": {
+    "yokla": "./dist/bin.js"
   }
 }

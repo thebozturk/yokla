@@ -35,6 +35,9 @@ change a decision, propose a new ADR. Never edit an accepted one.
   and 26.
 - **Single steps:** `pnpm build`, `pnpm typecheck`, `pnpm lint`, `pnpm test`,
   `pnpm format`.
+- **`pnpm yokla <command>`** runs the CLI from source, without a build. An
+  example is `pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml
+  --target-url http://127.0.0.1:<port>/v1/chat` against a running demo-shop.
 - **JSON Schemas are generated.** The files in `packages/cli/schemas/` come
   from the Zod schemas. After a schema change, regenerate them with
   `pnpm test -u` and review the diff. CI fails when they drift.

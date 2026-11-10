@@ -3,7 +3,7 @@
 > *yokla* (Turkish): to probe, to check by touch, as in *nabzını yoklamak*,
 > "to take someone's pulse".
 
-**Status: design phase. There is nothing to install yet.**
+**Status: early development (v0.1 in progress). Nothing is published yet.**
 
 yokla is an open-source tool for testing conversational AI assistants end to
 end: answer quality, factual safety, red teaming, robustness, performance and
