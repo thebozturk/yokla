@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   buildSchemas,
+  CORE_CHECKS,
   Results,
   z,
   type Case,
@@ -310,6 +311,31 @@ describe('runSuite', () => {
       /expects evidence "offers", which the profile doesn't map/u,
     );
     expect(t.received).toHaveLength(0);
+  });
+
+  it('marks a clarifying question and does not hold it to product expectations', async () => {
+    const t = await target((_r, _i, response) => {
+      json(response, { answer: 'Tek çocuk için mi?', route: 'clarification', items: [] });
+    });
+    const p = profile(t.url, {
+      response: {
+        text: '$.answer',
+        route: '$.route',
+        clarification: { routes: ['clarification'] },
+        evidence: { items: { items: '$.items[*]', fields: { id: 'id' } } },
+      },
+    });
+    const results = await runSuite(
+      options(p, cases({ turns: [{ user: 'a', expect: { evidence: { items: { min: 1 } } } }] }), {
+        checks: CORE_CHECKS,
+      }),
+    );
+    const turn = results.cases[0]?.samples[0]?.turns[0];
+    expect(turn?.clarifying).toBe(true);
+    expect(turn?.checks.find((c) => c.check === 'evidence-count')).toMatchObject({
+      applicable: false,
+    });
+    expect(results.cases[0]?.status).toBe('unmeasured');
   });
 
   it('sends a TEST-NET client address per case when configured', async () => {

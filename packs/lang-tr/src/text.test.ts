@@ -153,6 +153,8 @@ describe('phrases', () => {
     ['absence', 'Bu ürün yok.'],
     ['alternative', 'Bunun yerine şu seçeneklere bakabilirsiniz'],
     ['free', 'Kargo ücretsizdir.'],
+    ['deflection', 'Bu konuda müşteri hizmetlerimize başvurabilirsiniz.'],
+    ['deflection', 'Canlı destek ve yardım merkezi: https://example.test'],
   ] as const)('%s: %s', (kind, text) => {
     expect(hits(kind, text)).toBe(true);
   });

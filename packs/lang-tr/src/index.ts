@@ -44,6 +44,14 @@ export const turkish: LanguagePack = {
     ],
     alternative: ['bunun yerine', 'onun yerine', 'alternatif', 'farkli bir urun', 'benzer'],
     free: ['ucretsiz', 'bedava', 'ucret alinmaz', 'ucret odemeden'],
+    deflection: [
+      'musteri hizmetlerimize',
+      'musteri hizmetlerine',
+      'canli destek',
+      'yardim merkezi',
+      'destek ekibimize',
+      'cagri merkezi',
+    ],
   },
 };
 

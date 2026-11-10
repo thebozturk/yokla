@@ -39,6 +39,7 @@ products whose cards show no stock comes from the snapshot.
 | `over-refusal` | over-refusal, refusal | With `answerable: true`, the answer doesn't refuse. With `answerable: false`, it does (refusal correctness, majority of samples). A refusal is the language pack's refusal wording or a canonical refusal sentence from the profile. "I couldn't find it" is not a refusal. |
 | `filter-honoured-or-disclosed` | filter-honesty | Returned products satisfy the turn's `filters`, or the answer says it couldn't find them or offers something instead, and names every relaxed price bound. For an attribute, the disclosure wording is enough: the data says "black" while the answer may say "siyah". |
 | `absence-correct` | absence | With `absentType`, the answer says the type isn't there, and any products it shows are offered as something else ("instead", "a different product"). |
+| `deflection` | deflection (advisory) | An answerable turn answered only by sending the user to customer service or a help centre, with no products. Reported, but it never fails a case. |
 
 - **What doesn't count as a stock claim.** A sentence like "stock not
   confirmed" or "stok durumu doğrulanamadı" doesn't claim anything.

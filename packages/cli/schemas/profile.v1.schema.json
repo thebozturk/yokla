@@ -92,6 +92,24 @@
               "type": "string",
               "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
             },
+            "clarification": {
+              "description": "Routes that mean the target asked a clarifying question; product expectations then do not apply to that turn.",
+              "type": "object",
+              "properties": {
+                "routes": {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "required": [
+                "routes"
+              ],
+              "additionalProperties": false
+            },
             "evidence": {
               "type": "object",
               "propertyNames": {

@@ -37,6 +37,8 @@ export interface TurnView {
   };
   /** Fields read from the target's logs (ADR-0009). */
   readonly observed: Readonly<Record<string, JsonValue>> | undefined;
+  /** The target answered with a clarifying question (see response.clarification). */
+  readonly clarifying: boolean;
 }
 
 /** A money amount mentioned in text, e.g. "1.299,90 TL". */
@@ -67,7 +69,8 @@ export type PhraseKind =
   | 'inability' // it can't verify or doesn't know: "I can't verify"
   | 'absence' // something isn't there: "we don't carry", "bulamadım"
   | 'alternative' // it offers something else: "instead", "bunun yerine"
-  | 'free'; // something costs nothing: "free of charge", "ücretsiz"
+  | 'free' // something costs nothing: "free of charge", "ücretsiz"
+  | 'deflection'; // it sends the user elsewhere: "contact customer service"
 
 /** What a language pack provides (design §17). */
 export interface LanguagePack {
@@ -98,8 +101,12 @@ export interface Check {
   run(context: CheckContext): CheckOutcome;
 }
 
-/** How the findings of N samples become one verdict per dimension (design §13). */
-export type AggregationPolicy = 'worst-of-n' | 'majority-of-n';
+/**
+ * How the findings of N samples become one verdict per dimension (design §13).
+ * An `advisory` dimension is judged like worst-of-n and reported, but never
+ * decides the case status.
+ */
+export type AggregationPolicy = 'worst-of-n' | 'majority-of-n' | 'advisory';
 
 /** A domain pack bound to one profile: its checks, with their data already loaded. */
 export interface PreparedPack {

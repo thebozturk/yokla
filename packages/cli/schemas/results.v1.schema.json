@@ -171,7 +171,8 @@
                     "worst-of-n",
                     "majority-of-n",
                     "percentile",
-                    "mean"
+                    "mean",
+                    "advisory"
                   ]
                 },
                 "verdict": {
@@ -292,6 +293,9 @@
                           "evidence"
                         ],
                         "additionalProperties": false
+                      },
+                      "clarifying": {
+                        "type": "boolean"
                       },
                       "observed": {
                         "type": "object",

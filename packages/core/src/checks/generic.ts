@@ -81,6 +81,9 @@ export const evidenceCount: Check = {
     const parsed = coreExpectations.evidence.safeParse(context.turn.expect['evidence']);
     if (!parsed.success)
       return { applicable: false, reason: 'the turn expects nothing of the evidence' };
+    if (context.turn.clarifying) {
+      return { applicable: false, reason: 'the target asked a clarifying question' };
+    }
     const findings: CheckFinding[] = [];
     for (const [name, expectation] of Object.entries(parsed.data)) {
       const items = context.turn.response.evidence[name];

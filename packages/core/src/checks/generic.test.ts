@@ -148,3 +148,16 @@ describe('evidence-count', () => {
     expect(verdicts(evidenceCount.run(checkContext(mutated)))).toEqual(['fail']);
   });
 });
+
+describe('clarifying turns', () => {
+  it('evidence-count does not apply when the target asked a clarifying question', () => {
+    const view = turnView({
+      expect: { evidence: { products: { min: 1 } } },
+      response: { evidence: { products: [] } },
+      clarifying: true,
+    });
+    expect(verdicts(evidenceCount.run(checkContext(view)))).toEqual([
+      'n/a: the target asked a clarifying question',
+    ]);
+  });
+});

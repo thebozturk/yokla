@@ -128,6 +128,8 @@ describe('phrases', () => {
     ['alternative', 'Here are other tents instead'],
     ['free', 'Returns are free of charge'],
     ['free', 'Shipping is free.'],
+    ['deflection', 'Please contact customer service.'],
+    ['deflection', 'Visit our help center.'],
   ] as const)('%s: %s', (kind, text) => {
     expect(hits(kind, text)).toBe(true);
   });

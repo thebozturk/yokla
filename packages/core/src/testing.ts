@@ -26,6 +26,7 @@ export function turnView(
     user: 'message',
     expect: {},
     observed: undefined,
+    clarifying: false,
     ...rest,
     response: {
       status: 200,
@@ -85,6 +86,6 @@ export function stubLanguagePack(language: string): LanguagePack {
     findMoney: () => [],
     findDurations: () => [],
     formatMoney: (amount, currency) => `${String(amount)} ${currency}`,
-    phrases: { refusal: [], inability: [], absence: [], alternative: [], free: [] },
+    phrases: { refusal: [], inability: [], absence: [], alternative: [], free: [], deflection: [] },
   };
 }
