@@ -18,3 +18,4 @@ export {
   type CommandResult,
 } from './process/command.ts';
 export { ConfigError, preflight, runSuite, type RunOptions } from './runner/run.ts';
+export { correlate, parseLogLines, readField, stripAnsi } from './observe/logs.ts';

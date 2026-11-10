@@ -27,10 +27,11 @@ import {
   type Results,
 } from '@yokla/core';
 import { HttpClient, HttpError } from '../http/client.ts';
-import type { Clock } from '../http/rate-limit.ts';
+import { systemClock, type Clock } from '../http/rate-limit.ts';
 import { testNetAddress } from '../http/test-net.ts';
 import { cacheBypass } from '../process/cache-bypass.ts';
 import { CommandError } from '../process/command.ts';
+import { correlate, observedFields, parseLogLines, readLogText } from '../observe/logs.ts';
 
 type CaseResult = Results['cases'][number];
 type SampleResult = CaseResult['samples'][number];
@@ -59,6 +60,8 @@ export interface RunOptions {
   readonly languages?: readonly LanguagePack[];
   /** Checks that run for every case, whatever the domain. */
   readonly checks?: readonly Check[];
+  /** Wait before reading the target's logs, so the last lines are written. Default 1000 ms. */
+  readonly logSettleMs?: number;
   /** Reads a file for a pack. Default: relative to profileDir. */
   readonly readText?: (path: string) => string;
   readonly onTurn?: (event: {
@@ -129,6 +132,16 @@ export function preflight(options: RunOptions): void {
     ...check.issues,
     ...missingEnv.map((name) => `environment variable ${name} is not set`),
   ];
+  const logs = target.observe?.logs;
+  if (logs?.correlate.by === 'request-id' && target.request.requestId === undefined) {
+    problems.push('observe.logs correlates by request id, but request.requestId is not configured');
+  }
+  if (logs?.correlate.by === 'target-id' && target.response.id === undefined) {
+    problems.push('observe.logs correlates by target id, but response.id is not mapped');
+  }
+  if (logs?.correlate.by === 'order' && (options.concurrency ?? 1) > 1) {
+    problems.push('observe.logs correlates by order, which needs a concurrency of 1');
+  }
   const languages = new Set<string>(options.profile.languages);
   const seen = new Set<string>();
   for (const c of options.cases) {
@@ -151,14 +164,30 @@ export function preflight(options: RunOptions): void {
   if (problems.length > 0) throw new ConfigError(problems.join('\n'));
 }
 
+/** One turn as exchanged with the target, before any check ran. */
+interface Exchange {
+  readonly turn: TurnResult;
+  /** What the checks see; set when the answer could be read. */
+  readonly view: TurnView | undefined;
+}
+
+interface ExchangedSample {
+  readonly index: number;
+  readonly exchanges: Exchange[];
+}
+
+interface ExchangedCase {
+  readonly testCase: Case;
+  readonly samples: ExchangedSample[];
+}
+
 async function runSample(
   options: RunOptions,
-  prepared: Prepared,
   client: HttpClient,
   testCase: Case,
   caseIndex: number,
   sampleIndex: number,
-): Promise<SampleResult> {
+): Promise<ExchangedSample> {
   const target = options.profile.target;
   const ids = options.ids ?? randomUUID;
   const bypass = cacheBypass(target.cacheBypass, options.profileDir);
@@ -176,27 +205,29 @@ async function runSample(
           ),
         };
 
-  const turns: TurnResult[] = [];
+  const exchanges: Exchange[] = [];
   const session = target.session.mode === 'client' ? ids() : undefined;
   const carry: Record<string, JsonValue> = {};
-  const history: TurnView[] = [];
 
   try {
     await bypass.prepare();
   } catch (error) {
     const firstTurn = testCase.turns[0];
-    turns.push({
-      user: firstTurn?.user ?? '',
-      error: `cache bypass failed: ${errorMessage(error)}`,
-      checks: [],
+    exchanges.push({
+      turn: {
+        user: firstTurn?.user ?? '',
+        error: `cache bypass failed: ${errorMessage(error)}`,
+        checks: [],
+      },
+      view: undefined,
     });
-    return { index: sampleIndex, cache: 'cold', turns };
+    return { index: sampleIndex, exchanges };
   }
 
   for (const [turnIndex, turn] of testCase.turns.entries()) {
     const requestId = request.requestId === undefined ? undefined : ids();
     const base = { user: turn.user, ...(requestId === undefined ? {} : { requestId }), checks: [] };
-    let outcome: TurnResult;
+    let outcome: Exchange;
     try {
       const built = buildRequest(
         request,
@@ -228,82 +259,64 @@ async function runSample(
       const clarifying =
         extracted?.route !== undefined &&
         (target.response.clarification?.routes.includes(extracted.route) ?? false);
-      let checks: TurnResult['checks'] = [];
-      if (error === undefined && extracted?.text !== undefined) {
-        const view: TurnView = {
-          user: turn.user,
-          expect: turn.expect ?? NO_EXPECTATIONS,
-          response: {
-            status: result.status,
-            latencyMs: response.latencyMs,
-            text: extracted.text,
-            route: extracted.route,
-            id: extracted.id,
-            evidence: extracted.evidence,
-          },
-          observed: undefined,
-          clarifying,
-        };
-        checks = runChecks(prepared.checks, {
-          case: testCase,
-          turnIndex,
-          turn: view,
-          history: [...history],
-          profile: options.profile,
-          lang: prepared.languages.get(testCase.language),
-        });
-        history.push(view);
-      }
+      const view: TurnView | undefined =
+        error === undefined && extracted?.text !== undefined
+          ? {
+              user: turn.user,
+              expect: turn.expect ?? NO_EXPECTATIONS,
+              response: {
+                status: result.status,
+                latencyMs: response.latencyMs,
+                text: extracted.text,
+                route: extracted.route,
+                id: extracted.id,
+                evidence: extracted.evidence,
+              },
+              observed: undefined,
+              clarifying,
+            }
+          : undefined;
       outcome = {
-        ...base,
-        checks,
-        ...(clarifying ? { clarifying } : {}),
-        response,
-        ...(error === undefined ? {} : { error }),
-        ...(issues.length === 0 ? {} : { issues }),
+        turn: {
+          ...base,
+          ...(clarifying ? { clarifying } : {}),
+          response,
+          ...(error === undefined ? {} : { error }),
+          ...(issues.length === 0 ? {} : { issues }),
+        },
+        view,
       };
       for (const entry of target.session.carry) {
         const [value] = result.json === undefined ? [] : queryJsonPath(result.json, entry.from);
         carry[entry.name] = value === undefined ? null : toJson(value);
       }
     } catch (error) {
-      outcome = { ...base, error: errorMessage(error) };
+      outcome = { turn: { ...base, error: errorMessage(error) }, view: undefined };
     }
-    turns.push(outcome);
+    exchanges.push(outcome);
     options.onTurn?.({
       caseId: testCase.id,
       sample: sampleIndex,
       turn: turnIndex,
-      ...(outcome.error === undefined ? {} : { error: outcome.error }),
+      ...(outcome.turn.error === undefined ? {} : { error: outcome.turn.error }),
     });
-    if (outcome.error !== undefined) break;
+    if (outcome.turn.error !== undefined) break;
   }
-  return { index: sampleIndex, cache: 'cold', turns };
+  return { index: sampleIndex, exchanges };
 }
 
-async function runCase(
+async function exchangeCase(
   options: RunOptions,
-  prepared: Prepared,
   client: HttpClient,
   testCase: Case,
   caseIndex: number,
-): Promise<CaseResult> {
-  const samples: SampleResult[] = [];
+): Promise<ExchangedCase> {
+  const samples: ExchangedSample[] = [];
   const count = testCase.samples ?? options.samples ?? 1;
   for (let index = 0; index < count; index += 1) {
-    samples.push(await runSample(options, prepared, client, testCase, caseIndex, index));
+    samples.push(await runSample(options, client, testCase, caseIndex, index));
   }
-  const aggregate = aggregateCase(samples, prepared.policies, testCase.knownGap !== undefined);
-  return {
-    id: testCase.id,
-    suite: testCase.suite,
-    language: testCase.language,
-    status: aggregate.status,
-    unstable: aggregate.unstable,
-    ...(testCase.knownGap === undefined ? {} : { knownGap: testCase.knownGap }),
-    dimensions: aggregate.dimensions,
-    samples,
-  };
+  return { testCase, samples };
 }
 
 /** Runs `worker` over `items` with at most `limit` in flight, keeping the input order. */
@@ -324,6 +337,120 @@ async function pool<T, R>(
     Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, () => lane()),
   );
   return results;
+}
+
+interface Observation {
+  /** Per answered turn: its fields, or undefined when no line matched. */
+  readonly byExchange: ReadonlyMap<Exchange, Record<string, JsonValue> | undefined>;
+  readonly summary: Results['run']['observation'];
+  readonly issues: readonly string[];
+}
+
+const NOTHING_OBSERVED: Observation = { byExchange: new Map(), summary: undefined, issues: [] };
+
+/** Reads the target's logs once and ties each answered turn to its line (ADR-0009). */
+async function observe(
+  options: RunOptions,
+  startedAt: Date,
+  cases: readonly ExchangedCase[],
+): Promise<Observation> {
+  const config = options.profile.target.observe?.logs;
+  if (config === undefined) return NOTHING_OBSERVED;
+  await (options.clock ?? systemClock).sleep(options.logSettleMs ?? 1_000);
+  let lines: unknown[];
+  try {
+    lines = parseLogLines(
+      await readLogText(config, { startedAt, cwd: options.profileDir }),
+      config,
+    );
+  } catch (error) {
+    return {
+      ...NOTHING_OBSERVED,
+      issues: [`the target's logs could not be read: ${errorMessage(error)}`],
+    };
+  }
+
+  const answered = cases
+    .flatMap((c) => c.samples.flatMap((sample) => sample.exchanges))
+    .filter((exchange) => exchange.turn.response !== undefined);
+  const found = correlate(
+    lines,
+    config,
+    answered.map(({ turn }) => ({ requestId: turn.requestId, targetId: turn.response?.id })),
+  );
+  const byExchange = new Map<Exchange, Record<string, JsonValue> | undefined>();
+  const totals: Record<string, number> = {};
+  let matched = 0;
+  for (const [index, exchange] of answered.entries()) {
+    const line = found[index];
+    const fields = line === undefined ? undefined : observedFields(line, config);
+    byExchange.set(exchange, fields);
+    if (fields === undefined) continue;
+    matched += 1;
+    for (const [name, value] of Object.entries(fields)) {
+      if (typeof value === 'number') totals[name] = (totals[name] ?? 0) + value;
+    }
+  }
+  return {
+    byExchange,
+    summary: {
+      source: 'target-logs',
+      correlation: config.correlate.by,
+      lines: lines.length,
+      matched,
+      unmatched: answered.length - matched,
+      totals,
+    },
+    issues: [],
+  };
+}
+
+/** Runs the checks over a case's exchanges, with what the logs observed, and aggregates. */
+function judgeCase(
+  options: RunOptions,
+  prepared: Prepared,
+  exchanged: ExchangedCase,
+  observation: Observation,
+): CaseResult {
+  const { testCase } = exchanged;
+  const correlation = options.profile.target.observe?.logs?.correlate.by;
+  const samples: SampleResult[] = exchanged.samples.map((sample) => {
+    const history: TurnView[] = [];
+    const turns = sample.exchanges.map((exchange, turnIndex): TurnResult => {
+      let turn = exchange.turn;
+      const fields = observation.byExchange.get(exchange);
+      if (observation.byExchange.has(exchange) && correlation !== undefined) {
+        turn =
+          fields === undefined
+            ? { ...turn, issues: [...(turn.issues ?? []), 'no matching line in the target logs'] }
+            : { ...turn, observed: { source: 'target-logs', correlation, fields } };
+      }
+      if (exchange.view === undefined) return turn;
+      const view: TurnView = { ...exchange.view, observed: fields };
+      const checks = runChecks(prepared.checks, {
+        case: testCase,
+        turnIndex,
+        turn: view,
+        history: [...history],
+        profile: options.profile,
+        lang: prepared.languages.get(testCase.language),
+      });
+      history.push(view);
+      return { ...turn, checks };
+    });
+    return { index: sample.index, cache: 'cold', turns };
+  });
+  const aggregate = aggregateCase(samples, prepared.policies, testCase.knownGap !== undefined);
+  return {
+    id: testCase.id,
+    suite: testCase.suite,
+    language: testCase.language,
+    status: aggregate.status,
+    unstable: aggregate.unstable,
+    ...(testCase.knownGap === undefined ? {} : { knownGap: testCase.knownGap }),
+    dimensions: aggregate.dimensions,
+    samples,
+  };
 }
 
 export async function runSuite(options: RunOptions): Promise<Results> {
@@ -353,10 +480,11 @@ export async function runSuite(options: RunOptions): Promise<Results> {
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
 
-  const cases = await pool(options.cases, options.concurrency ?? 1, (testCase, index) =>
-    runCase(options, prepared, client, testCase, index),
+  const exchanged = await pool(options.cases, options.concurrency ?? 1, (testCase, index) =>
+    exchangeCase(options, client, testCase, index),
   );
-
+  const observation = await observe(options, startedAt, exchanged);
+  const cases = exchanged.map((c) => judgeCase(options, prepared, c, observation));
   const statuses: Partial<Record<CaseResult['status'], number>> = {};
   for (const c of cases) statuses[c.status] = (statuses[c.status] ?? 0) + 1;
   const finishedAt = new Date();
@@ -372,6 +500,8 @@ export async function runSuite(options: RunOptions): Promise<Results> {
       environment: { node: process.version, platform: process.platform, arch: process.arch },
       correlation: 'none',
       partial: false,
+      ...(observation.summary === undefined ? {} : { observation: observation.summary }),
+      ...(observation.issues.length === 0 ? {} : { issues: [...observation.issues] }),
     },
     cases,
     checks: summariseChecks(cases),

@@ -119,6 +119,22 @@ export const Results = z
       correlation: z.enum(['none', 'serial', 'header', 'traceparent']),
       /** true when the run stopped early, for example at the budget cap. */
       partial: z.boolean(),
+      /** Measurements read from the target's logs (ADR-0009). */
+      observation: z
+        .object({
+          source: z.literal('target-logs'),
+          correlation: z.enum(['request-id', 'target-id', 'order']),
+          /** Log lines that passed the filters. */
+          lines: z.int().nonnegative(),
+          /** Turns with a matching line, and turns without one. */
+          matched: z.int().nonnegative(),
+          unmatched: z.int().nonnegative(),
+          /** Sums of the numeric observed fields over matched turns. */
+          totals: z.record(z.string(), z.number()),
+        })
+        .optional(),
+      /** Problems that affect the whole run, e.g. logs that couldn't be read. */
+      issues: z.array(z.string()).optional(),
     }),
     cases: z.array(CaseResult),
     checks: z.array(CheckSummary),

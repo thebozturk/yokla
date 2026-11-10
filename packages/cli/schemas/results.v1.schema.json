@@ -88,6 +88,62 @@
         },
         "partial": {
           "type": "boolean"
+        },
+        "observation": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string",
+              "const": "target-logs"
+            },
+            "correlation": {
+              "type": "string",
+              "enum": [
+                "request-id",
+                "target-id",
+                "order"
+              ]
+            },
+            "lines": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "matched": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "unmatched": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "totals": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "number"
+              }
+            }
+          },
+          "required": [
+            "source",
+            "correlation",
+            "lines",
+            "matched",
+            "unmatched",
+            "totals"
+          ],
+          "additionalProperties": false
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "required": [

@@ -1,8 +1,10 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { RESULTS_SCHEMA_ID, type Results } from '@yokla/core';
 import { describe, expect, it } from 'vitest';
 import { LoadError, loadCases, loadProfile } from './load.ts';
+import { printSummary } from './commands/run.ts';
 import { main } from './main.ts';
 
 function capture() {
@@ -123,5 +125,57 @@ describe('yokla', () => {
       await main(['run', '--profile', join(dir, 'yokla.profile.yaml'), '--samples', 'many'], io),
     ).toBe(2);
     expect(err[0]).toBe('--samples must be a positive integer');
+  });
+});
+
+describe('the run summary', () => {
+  const results: Results = {
+    schema: RESULTS_SCHEMA_ID,
+    yokla: { version: '0.0.0-test' },
+    run: {
+      id: 'r',
+      startedAt: '2026-11-10T12:00:00.000Z',
+      finishedAt: '2026-11-10T12:00:01.000Z',
+      durationMs: 1000,
+      profile: { target: 't', sha256: 'a'.repeat(64) },
+      environment: { node: 'v24.0.0', platform: 'darwin', arch: 'arm64' },
+      correlation: 'none',
+      partial: false,
+    },
+    cases: [],
+    checks: [],
+    summary: { cases: 0, statuses: {} },
+  };
+
+  it('states what the target logs observed, and run issues', () => {
+    const { io, out, err } = capture();
+    printSummary(
+      {
+        ...results,
+        run: {
+          ...results.run,
+          observation: {
+            source: 'target-logs',
+            correlation: 'request-id',
+            lines: 3,
+            matched: 2,
+            unmatched: 1,
+            totals: { costUsd: 0.0012345678, modelCalls: 3 },
+          },
+          issues: ['something broke'],
+        },
+      },
+      'runs/r.json',
+      io,
+    );
+    expect(out).toContain('target logs: 2 of 3 turns matched; costUsd 0.001235, modelCalls 3');
+    expect(err).toEqual(['  run: something broke']);
+  });
+
+  it('says nothing about logs when none are configured', () => {
+    const { io, out, err } = capture();
+    printSummary(results, 'runs/r.json', io);
+    expect(out.join('\n')).not.toMatch(/target logs/u);
+    expect(err).toEqual([]);
   });
 });

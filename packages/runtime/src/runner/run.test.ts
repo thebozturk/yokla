@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import {
   createServer,
   type IncomingHttpHeaders,
@@ -518,5 +518,227 @@ describe('runSuite with packs', () => {
       ),
     ).rejects.toThrow(/check "mentions-word" is defined twice/u);
     expect(t.received).toHaveLength(0);
+  });
+});
+
+const telemetry = (requestId: unknown, costs: number[]) =>
+  `[Telemetry] ${JSON.stringify({
+    requestId,
+    modelCallUsage: costs.map((costUsd) => ({ costUsd })),
+    cacheHit: false,
+  })}\n`;
+
+const logs = (change: Record<string, unknown> = {}) => ({
+  source: { kind: 'file', path: 'app.log' },
+  contains: '[Telemetry]',
+  correlate: { by: 'request-id' },
+  fields: {
+    costUsd: { from: '$.modelCallUsage[*].costUsd', reduce: 'sum' },
+    cacheHit: '$.cacheHit',
+  },
+  ...change,
+});
+
+function logged(url: string, change: Record<string, unknown> = {}): Profile {
+  return profile(url, {
+    request: { url, body: { message: '{{message}}' }, requestId: { header: 'x-request-id' } },
+    observe: { logs: logs(change) },
+  });
+}
+
+describe('runSuite with target logs', () => {
+  const observedByChecks: unknown[] = [];
+  const observing: Check = {
+    id: 'sees-observed',
+    description: 'records what the logs observed',
+    run: (context) => {
+      observedByChecks.push(context.turn.observed);
+      return { applicable: false, reason: 'records only' };
+    },
+  };
+
+  it('ties each turn to its log line, totals the numbers and shows them to the checks', async () => {
+    observedByChecks.length = 0;
+    const dir = mkdtempSync(join(tmpdir(), 'yokla-logs-'));
+    const log = join(dir, 'app.log');
+    writeFileSync(log, 'booting\n');
+    const t = await target((received, _i, response) => {
+      appendFileSync(log, `[Http] {"requestId":"${String(received.headers['x-request-id'])}"}\n`);
+      appendFileSync(log, telemetry(received.headers['x-request-id'], [0.25, 0.5]));
+      json(response, answer());
+    });
+    const results = await runSuite(
+      options(logged(t.url), cases({ turns: [{ user: 'a' }, { user: 'b' }] }), {
+        profileDir: dir,
+        logSettleMs: 0,
+        checks: [observing],
+      }),
+    );
+    expect(Results.safeParse(results).success).toBe(true);
+    const fields = { costUsd: 0.75, cacheHit: false };
+    expect(results.cases[0]?.samples[0]?.turns.map((turn) => turn.observed)).toEqual([
+      { source: 'target-logs', correlation: 'request-id', fields },
+      { source: 'target-logs', correlation: 'request-id', fields },
+    ]);
+    expect(observedByChecks).toEqual([fields, fields]);
+    expect(results.run.observation).toEqual({
+      source: 'target-logs',
+      correlation: 'request-id',
+      lines: 2,
+      matched: 2,
+      unmatched: 0,
+      totals: { costUsd: 1.5 },
+    });
+    expect(results.run.issues).toBeUndefined();
+  });
+
+  it('reports a turn without a log line instead of skipping it', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'yokla-logs-'));
+    const log = join(dir, 'app.log');
+    writeFileSync(log, '');
+    const t = await target((received, index, response) => {
+      if (index === 0) appendFileSync(log, telemetry(received.headers['x-request-id'], [0.1]));
+      json(response, answer());
+    });
+    const results = await runSuite(
+      options(logged(t.url), cases({ turns: [{ user: 'a' }] }, { turns: [{ user: 'b' }] }), {
+        profileDir: dir,
+        logSettleMs: 0,
+      }),
+    );
+    const [first, second] = results.cases.map((c) => c.samples[0]?.turns[0]);
+    expect(first?.observed?.fields).toEqual({ costUsd: 0.1, cacheHit: false });
+    expect(first?.issues).toBeUndefined();
+    expect(second?.observed).toBeUndefined();
+    expect(second?.issues).toEqual(['no matching line in the target logs']);
+    expect(results.run.observation).toMatchObject({ lines: 1, matched: 1, unmatched: 1 });
+  });
+
+  it("ties turns by the target's id, or by order", async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'yokla-logs-'));
+    const log = join(dir, 'app.log');
+    writeFileSync(log, '');
+    const t = await target((_r, index, response) => {
+      appendFileSync(log, telemetry(`srv-${String(index)}`, [index]));
+      json(response, answer({ requestId: `srv-${String(index)}` }));
+    });
+    const twoCases = cases({ turns: [{ user: 'a' }] }, { turns: [{ user: 'b' }] });
+    const byTargetId = profile(t.url, {
+      response: { text: '$.answer', id: '$.requestId' },
+      observe: { logs: logs({ correlate: { by: 'target-id' } }) },
+    });
+    const first = await runSuite(
+      options(byTargetId, twoCases, { profileDir: dir, logSettleMs: 0 }),
+    );
+    expect(first.cases.map((c) => c.samples[0]?.turns[0]?.observed?.fields['costUsd'])).toEqual([
+      0, 1,
+    ]);
+
+    writeFileSync(log, '');
+    const byOrder = profile(t.url, { observe: { logs: logs({ correlate: { by: 'order' } }) } });
+    const second = await runSuite(options(byOrder, twoCases, { profileDir: dir, logSettleMs: 0 }));
+    expect(second.cases.map((c) => c.samples[0]?.turns[0]?.observed)).toEqual([
+      { source: 'target-logs', correlation: 'order', fields: { costUsd: 2, cacheHit: false } },
+      { source: 'target-logs', correlation: 'order', fields: { costUsd: 3, cacheHit: false } },
+    ]);
+  });
+
+  it('leaves out turns the target never answered', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'yokla-logs-'));
+    const log = join(dir, 'app.log');
+    writeFileSync(log, '');
+    const t = await target((_r, index, response) => {
+      if (index === 0) {
+        response.socket?.destroy();
+        return;
+      }
+      appendFileSync(log, telemetry('any', [0.4]));
+      json(response, answer());
+    });
+    const byOrder = profile(t.url, { observe: { logs: logs({ correlate: { by: 'order' } }) } });
+    const results = await runSuite(
+      options(byOrder, cases({ turns: [{ user: 'a' }] }, { turns: [{ user: 'b' }] }), {
+        profileDir: dir,
+        logSettleMs: 0,
+      }),
+    );
+    const [lost, answered] = results.cases.map((c) => c.samples[0]?.turns[0]);
+    expect(lost?.response).toBeUndefined();
+    expect(lost?.error).toBeDefined();
+    expect(lost?.issues).toBeUndefined();
+    expect(answered?.observed?.fields).toEqual({ costUsd: 0.4, cacheHit: false });
+    expect(results.run.observation).toMatchObject({ lines: 1, matched: 1, unmatched: 0 });
+  });
+
+  it('waits for the logs to settle before reading them', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'yokla-logs-'));
+    const log = join(dir, 'app.log');
+    const t = await target((_r, _i, response) => {
+      json(response, answer());
+    });
+    const slept: number[] = [];
+    const clock = {
+      now: () => performance.now(),
+      sleep: (ms: number) => {
+        slept.push(ms);
+        writeFileSync(log, telemetry(t.received[0]?.headers['x-request-id'], [0.2]));
+        return Promise.resolve();
+      },
+    };
+    const results = await runSuite(
+      options(logged(t.url), cases({ turns: [{ user: 'a' }] }), {
+        profileDir: dir,
+        logSettleMs: 250,
+        clock,
+      }),
+    );
+    expect(slept).toEqual([250]);
+    expect(results.run.observation?.matched).toBe(1);
+  });
+
+  it('keeps the run when the logs cannot be read, and says so', async () => {
+    const t = await target((_r, _i, response) => {
+      json(response, answer());
+    });
+    const results = await runSuite(
+      options(logged(t.url), cases({ turns: [{ user: 'a' }] }), {
+        profileDir: mkdtempSync(join(tmpdir(), 'yokla-logs-')),
+        logSettleMs: 0,
+      }),
+    );
+    expect(Results.safeParse(results).success).toBe(true);
+    expect(results.run.observation).toBeUndefined();
+    expect(results.run.issues).toEqual([
+      expect.stringMatching(/^the target's logs could not be read: .*ENOENT/u),
+    ]);
+    const turn = results.cases[0]?.samples[0]?.turns[0];
+    expect(turn?.observed).toBeUndefined();
+    expect(turn?.issues).toBeUndefined();
+    expect(results.cases[0]?.status).toBe('unmeasured');
+  });
+
+  it('refuses a correlation the profile cannot support, before any request', async () => {
+    const t = await target((_r, _i, response) => {
+      json(response, answer());
+    });
+    const c = cases({ turns: [{ user: 'a' }] });
+    const noRequestId = profile(t.url, { observe: { logs: logs() } });
+    await expect(runSuite(options(noRequestId, c))).rejects.toThrow(
+      /correlates by request id, but request.requestId is not configured/u,
+    );
+    const noTargetId = profile(t.url, {
+      observe: { logs: logs({ correlate: { by: 'target-id' } }) },
+    });
+    await expect(runSuite(options(noTargetId, c))).rejects.toThrow(
+      /correlates by target id, but response.id is not mapped/u,
+    );
+    const byOrder = profile(t.url, { observe: { logs: logs({ correlate: { by: 'order' } }) } });
+    await expect(runSuite(options(byOrder, c, { concurrency: 2 }))).rejects.toThrow(
+      /correlates by order, which needs a concurrency of 1/u,
+    );
+    await expect(
+      runSuite(options(byOrder, c, { concurrency: 1, logSettleMs: 0 })),
+    ).resolves.toBeDefined();
+    expect(t.received).toHaveLength(1);
   });
 });

@@ -139,12 +139,20 @@ const LogSource = z
   .strictObject({
     source: z.discriminatedUnion('kind', [
       z.strictObject({ kind: z.literal('file'), path: z.string().min(1) }),
-      z.strictObject({
-        kind: z.literal('command'),
-        run: Command,
-        timeoutMs: z.int().min(1).max(600_000).default(30_000),
-      }),
+      z
+        .strictObject({
+          kind: z.literal('command'),
+          run: Command,
+          timeoutMs: z.int().min(1).max(600_000).default(30_000),
+        })
+        .meta({
+          description: 'Arguments may contain {{startedAt}}, the run start as an ISO 8601 time.',
+        }),
     ]),
+    contains: z.string().min(1).optional().meta({
+      description:
+        'Only lines whose text (colour codes removed) contains this, e.g. a log context outside the JSON.',
+    }),
     match: z
       .array(
         z.strictObject({ path: JsonPath, equals: z.union([z.string(), z.number(), z.boolean()]) }),
