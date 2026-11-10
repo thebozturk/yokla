@@ -67,10 +67,8 @@ describe('yokla run against the demo-shop', () => {
 
       const results = Results.parse(JSON.parse(readFileSync(out, 'utf8')));
       expect(results.cases).toHaveLength(18);
-      // Without defects nothing fails; cases whose checks don't exist yet stay unmeasured.
-      expect(results.summary.statuses.fail).toBeUndefined();
-      expect(results.summary.statuses.error).toBeUndefined();
-      expect(results.cases.find((c) => c.id === 'tents-tr')?.status).toBe('pass');
+      // Without defects every acceptance case passes.
+      expect(results.summary.statuses).toEqual({ pass: 18 });
       expect(results.checks.find((c) => c.check === 'price-grounded')).toMatchObject({ failed: 0 });
       expect(results.checks.find((c) => c.check === 'price-grounded')?.applied).toBeGreaterThan(0);
 

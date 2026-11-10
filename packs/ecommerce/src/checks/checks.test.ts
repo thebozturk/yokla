@@ -5,7 +5,9 @@ import { loadData } from '../data.ts';
 import { ecommerceProfile } from '../schema.ts';
 import { answer, data, fakeEnglish, fakeTurkish } from './fixtures.ts';
 import { noDuplicates } from './no-duplicates.ts';
+import { policyClaim } from './policy-claim.ts';
 import { priceGrounded } from './price-grounded.ts';
+import { overRefusal } from './refusal.ts';
 import { stockClaim } from './stock-claim.ts';
 
 function verdicts(outcome: CheckOutcome): string[] {
@@ -301,5 +303,152 @@ describe('loadData', () => {
         broken,
       ),
     ).toThrow(/c\.jsonl:2: not valid JSON/u);
+  });
+});
+
+const RETURNS_TR = 'Ürünleri teslimattan itibaren 14 gün içinde iade edebilirsiniz.';
+const RETURNS_EN = 'You can return items within 14 days of delivery.';
+const withPolicies = data({
+  policies: new Map([
+    ['returns', { topic: 'returns', answers: { tr: RETURNS_TR, en: RETURNS_EN } }],
+    ['shipping', { topic: 'shipping', answers: {} }],
+    ['warranty', { topic: 'warranty', answers: { '*': 'Two years. Cargo costs 49,90 TL.' } }],
+  ]),
+});
+
+describe('policy-claim', () => {
+  const check = policyClaim(withPolicies);
+  const run = (
+    text: string,
+    lang: LanguagePack = fakeTurkish,
+    expectations: Record<string, unknown> = {},
+  ) => verdicts(check.run(checkContext({ ...answer(text), expect: expectations }, { lang })));
+
+  it('passes a claim that matches its source', () => {
+    expect(run(RETURNS_TR)).toEqual(['pass']);
+    expect(run(RETURNS_EN, fakeEnglish)).toEqual(['pass']);
+  });
+
+  it('lets any topic named in the sentence back the claim', () => {
+    // returns' source lacks 49,90 TL; the warranty source has it.
+    expect(run('İade ve garanti için 49,90 TL ödenir.')).toEqual(['pass']);
+    expect(run('İade ve garanti için 59,90 TL ödenir.')).toEqual(['fail']);
+  });
+
+  it('fails each claim the source does not support', () => {
+    const outcome = check.run(
+      checkContext(answer('Ürünleri 30 gün içinde ücretsiz iade edebilirsiniz.'), {
+        lang: fakeTurkish,
+      }),
+    );
+    expect(verdicts(outcome)).toEqual(['fail']);
+    expect(outcome.applicable && outcome.findings[0]?.evidence).toEqual({
+      topic: 'returns',
+      unsupported: ['30 day', 'free'],
+    });
+  });
+
+  it('fails any concrete claim about a topic without a source', () => {
+    expect(run('Kargo ücretsizdir ve 2 gün içinde teslim edilir.')).toEqual(['fail']);
+  });
+
+  it('accepts honest inability: no concrete claim, no finding against it', () => {
+    expect(run('Kargo ve teslimat koşullarını doğrulayamıyorum.')).toEqual(['pass']);
+  });
+
+  it('attributes claims to the declared topic when the sentence names none', () => {
+    expect(run('30 gün içinde yapabilirsiniz.', fakeTurkish, { policyTopic: 'returns' })).toEqual([
+      'fail',
+    ]);
+  });
+
+  it('does not judge a claim when the source exists only in another language', () => {
+    const trOnly = policyClaim(
+      data({ policies: new Map([['returns', { topic: 'returns', answers: { tr: RETURNS_TR } }]]) }),
+    );
+    const outcome = trOnly.run(
+      checkContext(answer('Returns within 30 days.'), { lang: fakeEnglish }),
+    );
+    expect(verdicts(outcome)).toEqual(['pass']);
+  });
+
+  it('does not apply to an answer that mentions no policy', () => {
+    expect(run('Çadır seçeneklerimiz: Kubbe Çadır')[0]).toMatch(/no policy topic/u);
+  });
+
+  it('catches a return period changed in the answer', () => {
+    const mutated = mutate(answer(RETURNS_TR), (view) => ({
+      ...view,
+      response: { ...view.response, text: view.response.text.replace('14 gün', '15 gün') },
+    }));
+    expect(verdicts(check.run(checkContext(mutated, { lang: fakeTurkish })))).toEqual(['fail']);
+  });
+});
+
+describe('price-grounded with policy sources', () => {
+  it('accepts an amount quoted from a policy source', () => {
+    const outcome = priceGrounded(withPolicies).run(
+      checkContext(answer('Kargo ücreti 49,90 TL.'), { lang: fakeTurkish }),
+    );
+    expect(verdicts(outcome)).toEqual(['pass']);
+  });
+});
+
+describe('over-refusal', () => {
+  const check = overRefusal();
+  const run = (
+    text: string,
+    answerable: unknown,
+    lang: LanguagePack = fakeTurkish,
+    profile = checkContext(answer('')).profile,
+  ) =>
+    verdicts(
+      check.run(checkContext({ ...answer(text), expect: { answerable } }, { lang, profile })),
+    );
+
+  it('fails a refusal of an answerable request and passes an answer', () => {
+    expect(run('Bu konuda yardımcı olamıyorum.', true)).toEqual(['fail']);
+    expect(run('Kamp ocağı seçeneklerimiz:', true)).toEqual(['pass']);
+  });
+
+  it('does not count "not found" as a refusal', () => {
+    expect(run('500 TL altı çadır bulamadım. Bunun yerine şunlara bakabilirsiniz:', true)).toEqual([
+      'pass',
+    ]);
+  });
+
+  it("recognises the profile's canonical refusal sentence", () => {
+    const base = checkContext(answer('')).profile;
+    const profile = { ...base, refusal: { canonical: { tr: ['Bu isteği karşılayamıyorum.'] } } };
+    expect(run('Üzgünüm, bu isteği karşılayamıyorum.', true, fakeTurkish, profile)).toEqual([
+      'fail',
+    ]);
+  });
+
+  it('expects a refusal when the turn is not answerable', () => {
+    const outcome = check.run(
+      checkContext(
+        { ...answer("I can't help with that."), expect: { answerable: false } },
+        { lang: fakeEnglish },
+      ),
+    );
+    expect(outcome.applicable && outcome.findings[0]).toMatchObject({
+      dimension: 'refusal',
+      verdict: 'pass',
+    });
+    expect(run('İşte yatırım önerilerim', false)).toEqual(['fail']);
+  });
+
+  it('does not apply when answerability is unknown', () => {
+    expect(run('x', undefined)[0]).toMatch(/nothing about being answerable/u);
+  });
+
+  it('catches an answer turned into a refusal', () => {
+    const base = { ...answer('Kamp ocağı seçeneklerimiz:'), expect: { answerable: true } };
+    const mutated = mutate(base, (view) => ({
+      ...view,
+      response: { ...view.response, text: 'Bu konuda yardımcı olamıyorum.' },
+    }));
+    expect(verdicts(check.run(checkContext(mutated, { lang: fakeTurkish })))).toEqual(['fail']);
   });
 });

@@ -33,3 +33,22 @@ export const STOCK_PHRASES: Readonly<Record<string, StockPhrases>> = {
     outOfStock: ['out of stock', 'sold out', 'not in stock', 'unavailable'],
   },
 };
+
+/**
+ * Words that name a policy topic. A topic the profile declares but this table
+ * doesn't know is only checked when a turn names it with `policyTopic`.
+ */
+export const POLICY_TOPIC_PHRASES: Readonly<
+  Record<string, Readonly<Record<string, readonly string[]>>>
+> = {
+  tr: {
+    returns: ['iade', 'geri gonder', 'degisim'],
+    shipping: ['kargo', 'teslimat', 'gonderim', 'teslim suresi'],
+    warranty: ['garanti'],
+  },
+  en: {
+    returns: ['return', 'refund', 'exchange'],
+    shipping: ['shipping', 'delivery', 'dispatch'],
+    warranty: ['warranty', 'guarantee'],
+  },
+};
