@@ -59,6 +59,7 @@ export {
 export { ProxyRecord, ProxyUsage } from './schema/proxy.ts';
 export { Fault, FAULT_KINDS, FaultPlan } from './schema/fault.ts';
 export { callCost } from './proxy/cost.ts';
+export { plan, type Plan, type PlannedCase } from './plan/plan.ts';
 export { GateConfig, YoklaConfig, type Price } from './schema/config.ts';
 export { evaluateGate, type GateBreach, type GateOutcome } from './gate/gate.ts';
 export { Baseline, BASELINE_SCHEMA_ID } from './schema/baseline.ts';

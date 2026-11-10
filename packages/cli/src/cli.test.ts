@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { LoadError, loadCases, loadProfile } from './load.ts';
 import { baselineCommand } from './commands/baseline.ts';
 import { gateCommand } from './commands/gate.ts';
+import { planCommand } from './commands/plan.ts';
 import { proxyCommand } from './commands/proxy.ts';
 import { printSummary } from './commands/run.ts';
 import { main } from './main.ts';
@@ -501,5 +502,110 @@ describe('yokla proxy', () => {
     expect(inUse.err).toMatch(/can't listen on 127\.0\.0\.1:\d+/u);
     first.stop.abort();
     await first.done;
+  });
+});
+
+/** A calibration results file with one answered turn of this cost. */
+const calibrationJson = (costUsd: number | null, proxy = true) =>
+  JSON.stringify({
+    schema: RESULTS_SCHEMA_ID,
+    yokla: { version: '0.1.0' },
+    run: {
+      id: 'cal',
+      startedAt: '2026-11-10T12:00:00.000Z',
+      finishedAt: '2026-11-10T12:00:01.000Z',
+      durationMs: 1000,
+      profile: { target: 't', sha256: 'a'.repeat(64) },
+      environment: { node: 'v24.0.0', platform: 'darwin', arch: 'arm64' },
+      correlation: 'serial',
+      partial: false,
+      ...(proxy
+        ? {
+            proxy: {
+              correlation: 'serial',
+              records: 1,
+              attributed: 1,
+              unattributed: 0,
+              totals: {},
+              missing: {},
+            },
+          }
+        : {}),
+    },
+    cases: [
+      {
+        id: 'other',
+        suite: 'quality',
+        language: 'tr',
+        status: 'pass',
+        unstable: false,
+        dimensions: [],
+        samples: [
+          {
+            index: 0,
+            cache: 'cold',
+            turns: [
+              {
+                user: 'u',
+                checks: [],
+                response: { status: 200, latencyMs: 5, evidence: {} },
+                proxy: { correlation: 'serial', calls: [], costUsd },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    checks: [],
+    summary: { cases: 1, statuses: { pass: 1 } },
+  });
+
+describe('yokla plan', () => {
+  it('estimates from the calibration with the configured upper bound factor', () => {
+    const dir = workspace({
+      'cases/a.yaml': CASES,
+      'cal.json': calibrationJson(0.002),
+      'yokla.config.yaml': 'version: 1\nplan: { upperBoundFactor: 3 }\n',
+    });
+    const { io, out, err } = capture();
+    const code = planCommand(
+      ['--cases', join(dir, 'cases'), '--calibration', join(dir, 'cal.json'), '--samples', '5'],
+      io,
+      dir,
+    );
+    expect({ code, err }).toEqual({ code: 0, err: [] });
+    expect(out).toEqual([
+      'plan: 1 cases, 5 turns with their samples',
+      '  0 of 1 cases priced from their own calibration; the rest at the mean, 0.002 USD a turn',
+      '  estimate: 0.01 USD; upper bound: 0.03 USD (3x)',
+      "  yokla's own model calls: none",
+    ]);
+  });
+
+  it('gives no figure without a calibration or with an unusable one', () => {
+    const dir = workspace({
+      'cases/a.yaml': CASES,
+      'unpriced.json': calibrationJson(null),
+      'plain.json': calibrationJson(0.001, false),
+    });
+    const run = (...args: string[]) => {
+      const { io, err } = capture();
+      return { code: planCommand(args, io, dir), err: err.join('\n') };
+    };
+    expect(run('--cases', join(dir, 'cases')).code).toBe(2);
+    const unpriced = run(
+      '--cases',
+      join(dir, 'cases'),
+      '--calibration',
+      join(dir, 'unpriced.json'),
+    );
+    expect(unpriced.code).toBe(2);
+    expect(unpriced.err).toMatch(/^plan: no estimate: 1 calibrated turn of 1 has no cost/u);
+    expect(
+      run('--cases', join(dir, 'cases'), '--calibration', join(dir, 'plain.json')).err,
+    ).toMatch(/no model proxy data/u);
+    expect(
+      run('--cases', join(dir, 'cases'), '--calibration', join(dir, 'missing.json')).code,
+    ).toBe(2);
   });
 });

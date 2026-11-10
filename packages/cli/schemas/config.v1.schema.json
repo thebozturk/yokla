@@ -138,6 +138,21 @@
           "description": "USD per million tokens."
         }
       }
+    },
+    "plan": {
+      "default": {
+        "upperBoundFactor": 2
+      },
+      "type": "object",
+      "properties": {
+        "upperBoundFactor": {
+          "default": 2,
+          "description": "yokla plan prints the estimate times this as the upper bound.",
+          "type": "number",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
     }
   },
   "required": [
