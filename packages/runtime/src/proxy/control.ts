@@ -87,6 +87,12 @@ export class ProxyControl {
     );
   }
 
+  /** The records of an open recording so far, without closing it. */
+  async records(id: string): Promise<ProxyRecord[]> {
+    const open = await this.#call('GET', `/_yokla/recordings/${encodeURIComponent(id)}`, Closed);
+    return open.records;
+  }
+
   async close(id: string): Promise<ProxyRecord[]> {
     const closed = await this.#call(
       'DELETE',
