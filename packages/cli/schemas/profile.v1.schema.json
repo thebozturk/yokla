@@ -832,6 +832,11 @@
           ],
           "additionalProperties": false
         },
+        "typeSeparator": {
+          "description": "Separates the levels of a product type, e.g. \"/\" in \"outdoor/camping/tent\". Without it, types match only exactly.",
+          "type": "string",
+          "minLength": 1
+        },
         "campaigns": {
           "default": [],
           "description": "Amounts an answer may show besides product prices (design §10).",

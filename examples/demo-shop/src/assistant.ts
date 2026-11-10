@@ -195,11 +195,21 @@ export class Assistant {
         ? all
         : all.filter((product) => satisfies(product, filters));
     const relaxed = matching.length === 0 && hasFilters(filters);
-    const products = this.#duplicate((relaxed ? all : matching).slice(0, RESULT_LIMIT));
+    const shown = (relaxed ? all : matching).slice(0, RESULT_LIMIT);
+    const products = this.#duplicate(relaxed ? shown : this.#pad(shown, productType, filters));
     return {
       draft: { kind: relaxed ? 'relaxed' : 'products', language, productType, filters, products },
       next: { productType, filters, products },
     };
+  }
+
+  /** The type-padding defect: fills a short result with other types that satisfy the filters. */
+  #pad(products: Product[], productType: string, filters: Filters): Product[] {
+    if (this.#defect !== 'type-padding' || products.length >= RESULT_LIMIT) return products;
+    const others = this.#data.catalog
+      .filter((product) => product.type !== productType && satisfies(product, filters))
+      .toSorted(byPriceThenId);
+    return [...products, ...others.slice(0, RESULT_LIMIT - products.length)];
   }
 
   #duplicate(products: Product[]): Product[] {

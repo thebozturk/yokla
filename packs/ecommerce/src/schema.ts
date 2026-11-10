@@ -50,6 +50,10 @@ export const ecommerceProfile = z.strictObject({
   neverFabricate: z.array(z.enum(FACT_KINDS)).default([...FACT_KINDS]),
   policies: z.record(Id, Policy).default({}),
   catalog: Catalog.optional(),
+  typeSeparator: z.string().min(1).optional().meta({
+    description:
+      'Separates the levels of a product type, e.g. "/" in "outdoor/camping/tent". Without it, types match only exactly.',
+  }),
   campaigns: z
     .array(Campaign)
     .default([])
@@ -68,6 +72,10 @@ export const ecommerceExpectations = {
         .meta({ description: 'Evidence field name → required value.' }),
     })
     .meta({ description: 'The filters the user asked for.' }),
+  productType: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]).meta({
+    description:
+      'The product type(s) the user asked for, as catalog types. A product of a type under one of them (by typeSeparator) matches.',
+  }),
   absentType: z
     .string()
     .min(1)

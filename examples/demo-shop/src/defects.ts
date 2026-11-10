@@ -9,6 +9,7 @@ export const DEFECTS = [
   'over-refusal',
   'duplicate-products',
   'absence-substitution',
+  'type-padding',
 ] as const;
 
 export type Defect = (typeof DEFECTS)[number];
@@ -22,6 +23,8 @@ export const DEFECT_DESCRIPTIONS: Readonly<Record<Defect, string>> = {
   'over-refusal': 'answerable camping-stove questions are refused',
   'duplicate-products': 'the first product appears twice in the result',
   'absence-substitution': 'when a product type is absent, another type is presented as that type',
+  'type-padding':
+    'a short result is filled up with other types that satisfy the filters, presented as the requested type',
 };
 
 /** Parses a defect name. Empty, undefined and "none" mean no defect. */

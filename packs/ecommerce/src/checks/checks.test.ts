@@ -1,7 +1,7 @@
 import type { CheckOutcome, EvidenceItem, LanguagePack } from '@yokla/core';
 import { checkContext, mutate } from '@yokla/core/testing';
 import { describe, expect, it } from 'vitest';
-import { loadData } from '../data.ts';
+import { loadData, type EcommerceData } from '../data.ts';
 import { ecommerceProfile } from '../schema.ts';
 import { answer, data, fakeEnglish, fakeTurkish } from './fixtures.ts';
 import { absenceCorrect } from './absence.ts';
@@ -11,6 +11,7 @@ import { policyClaim } from './policy-claim.ts';
 import { priceGrounded } from './price-grounded.ts';
 import { deflection, overRefusal } from './refusal.ts';
 import { stockClaim } from './stock-claim.ts';
+import { typeMatched } from './type-match.ts';
 
 function verdicts(outcome: CheckOutcome): string[] {
   return outcome.applicable ? outcome.findings.map((f) => f.verdict) : [`n/a: ${outcome.reason}`];
@@ -588,6 +589,129 @@ describe('absence-correct', () => {
       'fail',
       'fail',
     ]);
+  });
+});
+
+describe('type-matched-or-disclosed', () => {
+  const nested = data({ config: ecommerceProfile.parse({ typeSeparator: '/' }) });
+  const tent = { id: 'T1', name: 'Kubbe Çadır', category: 'outdoor/camping/tent' };
+  const stove = { id: 'S1', name: 'Kamp Ocağı', category: 'outdoor/camping/camping-stove' };
+  const bag = { id: 'B1', name: 'Sırt Çantası', category: 'outdoor/bags/backpack' };
+  const unknownType = { id: 'U1', name: 'Bilinmeyen' };
+  const run = (
+    text: string,
+    products: EvidenceItem[],
+    productType: unknown,
+    change: { d?: EcommerceData; lang?: LanguagePack; clarifying?: boolean } = {},
+  ) =>
+    typeMatched(change.d ?? nested).run(
+      checkContext(
+        {
+          ...answer(text, products),
+          expect: { productType },
+          clarifying: change.clarifying ?? false,
+        },
+        { lang: change.lang ?? fakeTurkish },
+      ),
+    );
+
+  it('passes products of the requested type, or of a type under it', () => {
+    expect(verdicts(run('Çadırlarımız:', [tent], 'outdoor/camping/tent'))).toEqual(['pass']);
+    expect(verdicts(run('Kamp ürünleri:', [tent, stove], 'outdoor/camping'))).toEqual(['pass']);
+    expect(verdicts(run('Ürünler:', [tent, bag], ['outdoor/camping', 'outdoor/bags']))).toEqual([
+      'pass',
+    ]);
+  });
+
+  it('matches whole levels only, and only exactly without a separator', () => {
+    const slug = { id: 'M1', name: 'Kılıf', category: 'arac-gerec/mama-sandalyesi-kilifi' };
+    expect(verdicts(run('Ürünler:', [slug], 'arac-gerec/mama'))).toEqual(['fail']);
+    expect(verdicts(run('Kamp ürünleri:', [tent], 'outdoor/camping', { d: data() }))).toEqual([
+      'fail',
+    ]);
+    expect(verdicts(run('Çadırlar:', [tent], 'outdoor/camping/tent', { d: data() }))).toEqual([
+      'pass',
+    ]);
+  });
+
+  it('fails products of other types presented as the requested type, and names them', () => {
+    const outcome = run('Çadır seçeneklerimiz:', [tent, stove, bag], 'outdoor/camping/tent');
+    expect(verdicts(outcome)).toEqual(['fail']);
+    expect(outcome.applicable && outcome.findings[0]).toMatchObject({
+      message: 'presents 2 product(s) of other types as outdoor/camping/tent',
+      evidence: {
+        products: ['S1', 'B1'],
+        types: ['outdoor/camping/camping-stove', 'outdoor/bags/backpack'],
+      },
+    });
+  });
+
+  it('accepts an absence statement or an alternative as the disclosure, each on its own', () => {
+    const products = [tent, bag];
+    expect(verdicts(run('Uygun çadır bulamadım. Şunlara bakın:', products, tent.category))).toEqual(
+      ['pass'],
+    );
+    expect(verdicts(run('Bunun yerine şunlara bakın:', products, tent.category))).toEqual(['pass']);
+    expect(
+      verdicts(run('Instead, see these:', products, tent.category, { lang: fakeEnglish })),
+    ).toEqual(['pass']);
+    expect(verdicts(run('Çadırlarımız:', products, tent.category))).toEqual(['fail']);
+  });
+
+  it('does not read stock wording as a disclosure', () => {
+    const text = 'Çadırlarımız:\n- Kubbe Çadır (stokta yok)\n- Sırt Çantası';
+    expect(verdicts(run(text, [tent, bag], tent.category))).toEqual(['fail']);
+  });
+
+  it('reads types from the catalog and does not judge products of unknown type', () => {
+    const catalog = new Map([
+      ['T1', { id: 'T1', type: 'outdoor/camping/tent', price: 1, currency: 'TRY', stock: 1 }],
+      ['B1', { id: 'B1', type: 'outdoor/bags/backpack', price: 1, currency: 'TRY', stock: 1 }],
+    ]);
+    const d = data({ config: nested.config, catalog });
+    const plain = [{ id: 'T1' }, { id: 'B1' }];
+    expect(verdicts(run('Çadırlar:', plain, 'outdoor/camping/tent', { d }))).toEqual(['fail']);
+    const outcome = run('Çadırlar:', [tent, unknownType], 'outdoor/camping/tent');
+    expect(outcome.applicable && outcome.findings[0]?.message).toBe(
+      'the returned products are of the requested type (type unknown for 1)',
+    );
+    expect(verdicts(run('x', [unknownType], 'outdoor/camping/tent'))[0]).toMatch(
+      /type of no returned product is known/u,
+    );
+  });
+
+  it('refuses a requested type that no catalog type matches', () => {
+    const catalog = new Map([
+      ['T1', { id: 'T1', type: 'outdoor/camping/tent', price: 1, currency: 'TRY', stock: 1 }],
+    ]);
+    const d = data({ config: nested.config, catalog });
+    expect(() => run('Çadırlar:', [{ id: 'T1' }], 'outdoor/camping/tnet', { d })).toThrow(
+      /productType "outdoor\/camping\/tnet" matches no catalog type/u,
+    );
+    expect(verdicts(run('Çadırlar:', [{ id: 'T1' }], 'outdoor/camping', { d }))).toEqual(['pass']);
+  });
+
+  it('does not apply without a product type, products or a language pack, or to a question', () => {
+    expect(verdicts(run('x', [tent], undefined))[0]).toMatch(/no product type/u);
+    expect(verdicts(run('x', [], tent.category))[0]).toMatch(/no products/u);
+    expect(verdicts(run('Hangisi?', [bag], tent.category, { clarifying: true }))[0]).toMatch(
+      /clarifying/u,
+    );
+    const noLang = typeMatched(nested).run(
+      checkContext({ ...answer('x', [bag]), expect: { productType: tent.category } }),
+    );
+    expect(verdicts(noLang)[0]).toMatch(/no language pack/u);
+  });
+
+  it('catches a product of another type slipped into the result', () => {
+    const base = { ...answer('Çadırlarımız:', [tent]), expect: { productType: tent.category } };
+    const mutated = mutate(base, (view) => ({
+      ...view,
+      response: { ...view.response, evidence: { products: [tent, bag] } },
+    }));
+    expect(verdicts(typeMatched(nested).run(checkContext(mutated, { lang: fakeTurkish })))).toEqual(
+      ['fail'],
+    );
   });
 });
 

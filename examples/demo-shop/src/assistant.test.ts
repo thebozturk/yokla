@@ -83,6 +83,8 @@ const EXPECTED_CHANGES: Record<Defect, Probe[]> = {
   'over-refusal': ['stoves-tr'],
   'duplicate-products': WITH_PRODUCTS,
   'absence-substitution': ['sleeping-pad-tr', 'hammock-en'],
+  // Probes whose result is short and has other types that satisfy its filters.
+  'type-padding': ['tents-under-1000-tr', 'black-women-jacket-tr'],
 };
 
 const PROBE_NAMES: Probe[] = Object.keys(PROBES).filter((name): name is Probe => name in PROBES);
@@ -241,6 +243,15 @@ describe('defect switchboard', () => {
     const reply = await ask(assistant('absence-substitution'), PROBES['sleeping-pad-tr']);
     expect(reply.answer).toMatch(/^Uyku matı seçeneklerimiz:/u);
     expect(reply.products.every((p) => p.category.endsWith('/sleeping-bag'))).toBe(true);
+  });
+
+  it('type-padding fills a short result with other types under the same heading', async () => {
+    const reply = await ask(assistant('type-padding'), PROBES['tents-under-1000-tr']);
+    expect(reply.answer).toMatch(/^Kriterlerinize \(1\.000,00 TL altı\) uyan çadır/u);
+    expect(reply.products).toHaveLength(3);
+    expect(reply.products[0]?.category).toBe('outdoor/camping/tent');
+    expect(reply.products.slice(1).every((p) => p.category !== 'outdoor/camping/tent')).toBe(true);
+    expect(reply.products.every((p) => p.price.amount <= 1000)).toBe(true);
   });
 
   it('invented-return-policy contradicts the FAQ', async () => {

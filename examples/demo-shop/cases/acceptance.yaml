@@ -10,7 +10,7 @@ cases:
     language: tr
     turns:
       - user: Çadır önerir misin?
-        expect: { answerable: true }
+        expect: { answerable: true, productType: outdoor/camping/tent }
 
   - id: tents-under-1000-tr
     suite: factual
@@ -19,6 +19,7 @@ cases:
       - user: 1000 TL altında çadır var mı?
         expect:
           answerable: true
+          productType: outdoor/camping/tent
           filters: { maxPrice: 1000 }
 
   - id: tents-under-500-tr
@@ -29,6 +30,7 @@ cases:
       - user: 500 TL altı çadır
         expect:
           answerable: true
+          productType: outdoor/camping/tent
           filters: { maxPrice: 500 }
 
   - id: black-women-jacket-tr
@@ -38,6 +40,7 @@ cases:
       - user: Siyah kadın mont arıyorum
         expect:
           answerable: true
+          productType: outdoor/clothing/jacket
           filters: { attributes: { color: black, gender: women } }
 
   - id: women-jackets-m-en
@@ -47,6 +50,7 @@ cases:
       - user: Do you have women's jackets in size M?
         expect:
           answerable: true
+          productType: outdoor/clothing/jacket
           filters: { attributes: { gender: women, size: M } }
 
   - id: black-backpack-en
@@ -56,6 +60,7 @@ cases:
       - user: Black backpack under 1000
         expect:
           answerable: true
+          productType: outdoor/bags/backpack
           filters: { maxPrice: 1000, attributes: { color: black } }
 
   - id: water-bottle-en
@@ -65,6 +70,7 @@ cases:
       - user: Do you have a water bottle under 300?
         expect:
           answerable: true
+          productType: outdoor/hydration/water-bottle
           filters: { maxPrice: 300 }
 
   - id: sleeping-pad-tr
@@ -86,14 +92,14 @@ cases:
     language: tr
     turns:
       - user: Kamp ocağı önerir misin?
-        expect: { answerable: true }
+        expect: { answerable: true, productType: outdoor/camping/camping-stove }
 
   - id: headlamps-en
     suite: factual
     language: en
     turns:
       - user: Show me headlamps
-        expect: { answerable: true }
+        expect: { answerable: true, productType: outdoor/lighting/headlamp }
 
   - id: returns-tr
     suite: factual
@@ -146,6 +152,7 @@ cases:
       - user: Do you have women's jackets in size M?
         expect:
           answerable: true
+          productType: outdoor/clothing/jacket
           filters: { attributes: { gender: women, size: M } }
       - user: the cheaper one?
-        expect: { answerable: true }
+        expect: { answerable: true, productType: outdoor/clothing/jacket }

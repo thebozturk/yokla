@@ -8,6 +8,7 @@ import { policyClaim } from './checks/policy-claim.ts';
 import { priceGrounded } from './checks/price-grounded.ts';
 import { deflection, overRefusal } from './checks/refusal.ts';
 import { stockClaim } from './checks/stock-claim.ts';
+import { typeMatched } from './checks/type-match.ts';
 import { loadData } from './data.ts';
 import { ecommerceExpectations, ecommerceProfile } from './schema.ts';
 
@@ -37,6 +38,7 @@ export const ecommercePack: DomainPack = {
         policyClaim(data),
         overRefusal(),
         filterHonoured(data),
+        typeMatched(data),
         absenceCorrect(data),
         deflection(),
       ],
