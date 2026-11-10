@@ -4,7 +4,7 @@
 // check fails on exactly the expected cases, and nothing else fails.
 // yokla never imports the demo-shop (layer rules).
 
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -60,6 +60,10 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
   'over-refusal': { 'over-refusal': ['stoves-tr'] },
   'duplicate-products': { 'no-duplicates': ALL_PRODUCT_CASES },
   'absence-substitution': { 'absence-correct': ['sleeping-pad-tr', 'hammock-en'] },
+  // Short results with other types that satisfy the filters.
+  'type-padding': {
+    'type-matched-or-disclosed': ['tents-under-1000-tr', 'black-women-jacket-tr'],
+  },
 };
 
 const children: ChildProcess[] = [];
@@ -137,6 +141,16 @@ afterAll(() => {
 });
 
 describe('the demo-shop acceptance', () => {
+  it('has an expectation for every defect the demo-shop lists', () => {
+    const listed = execFileSync(process.execPath, [join(DEMO, 'src/main.ts'), '--list-defects'], {
+      encoding: 'utf8',
+    })
+      .split('\n')
+      .filter((line) => line !== '')
+      .map((line) => line.slice(0, line.indexOf(':')));
+    expect(listed.toSorted()).toEqual(Object.keys(EXPECTED).toSorted());
+  });
+
   it('passes every case without defects', () => {
     const run = runs.get('none');
     expect(run?.code, run?.output).toBe(0);

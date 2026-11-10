@@ -79,3 +79,5 @@ ecommerce:
       price: price
       currency: currency
       stock: stock
+  # Types are category paths; a case may ask for a level, e.g. outdoor/camping.
+  typeSeparator: /

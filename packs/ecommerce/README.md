@@ -17,11 +17,16 @@ check needs the fields it reads.
 | `price` | price-grounded | Use `{ from: [...], as: number }` for decimal strings or fallbacks. |
 | `currency` | price-grounded | |
 | `stock` | stock-claim | `null` means unknown, not zero. |
-| `category` | absence and filter checks | |
+| `category` | type-matched-or-disclosed | The product type; without it, the type comes from the catalog. |
 
 **Catalog.** `ecommerce.catalog` points to a JSON Lines snapshot. It fills in
 the fields a response doesn't carry, joined by `id`. For example, the stock of
 products whose cards show no stock comes from the snapshot.
+
+**Product types.** Types are compared exactly. When they are paths such as
+`outdoor/camping/tent`, set `ecommerce.typeSeparator` (`/`): a case may then
+ask for a level such as `outdoor/camping`. Levels match whole:
+`arac-gerec/mama` is not a level of `arac-gerec/mama-sandalyesi`.
 
 **Policies.** `ecommerce.policies` gives each policy topic a source:
 - `faq`: a JSON Lines file with `topic`, `lang` and `answer` fields,
@@ -38,6 +43,7 @@ products whose cards show no stock comes from the snapshot.
 | `policy-claim` | fabrication | A concrete claim (a duration, "free", an amount) in a sentence about a policy topic has a source and matches it. With several topics in one sentence, any of their sources may back the claim. A turn's `policyTopic` names the topic for sentences that don't. |
 | `over-refusal` | over-refusal, refusal | With `answerable: true`, the answer doesn't refuse. With `answerable: false`, it does (refusal correctness, majority of samples). A refusal is the language pack's refusal wording or a canonical refusal sentence from the profile. "I couldn't find it" is not a refusal. |
 | `filter-honoured-or-disclosed` | filter-honesty | Returned products satisfy the turn's `filters`, or the answer says it couldn't find them or offers something instead, and names every relaxed price bound. For an attribute, the disclosure wording is enough: the data says "black" while the answer may say "siyah". |
+| `type-matched-or-disclosed` | filter-honesty | With `productType` (one type or a list), every returned product is of a requested type or of a type under one, or the answer says it couldn't find the type or offers the others instead. A requested type that no catalog type matches is a broken case, reported as an error. |
 | `absence-correct` | absence | With `absentType`, the answer says the type isn't there, and any products it shows are offered as something else ("instead", "a different product"). |
 | `deflection` | deflection (advisory) | An answerable turn answered only by sending the user to customer service or a help centre, with no products. Reported, but it never fails a case. |
 

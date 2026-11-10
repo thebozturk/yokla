@@ -173,6 +173,23 @@
                       "additionalProperties": false,
                       "description": "The filters the user asked for."
                     },
+                    "productType": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      ],
+                      "description": "The product type(s) the user asked for, as catalog types. A product of a type under one of them (by typeSeparator) matches."
+                    },
                     "absentType": {
                       "type": "string",
                       "minLength": 1,

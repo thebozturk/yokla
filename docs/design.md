@@ -347,6 +347,7 @@ A check has the signature `check(ctx) → Finding[]`. Its context `ctx` is
 | `stock-claim` | evidence has a stock field | No availability claim when stock is unknown. Claims must match known stock. |
 | `policy-claim` | the profile lists policies | Concrete claims (durations, fees, "free shipping") need a source and must match it. |
 | `filter-honoured-or-disclosed` | the case carries filters | Returned items satisfy the filters, or the answer discloses the relaxation. |
+| `type-matched-or-disclosed` | the case names the requested type | Returned items are of that type or a type under it, or the answer says it shows other types. |
 | `no-duplicates` | evidence has ids | |
 | `absence-correct` | the case expects absence | The answer states the absence and doesn't present other types as the requested one. |
 | `over-refusal` | the data says the request is answerable | The answer doesn't refuse. Uses the language pack's lexicon. |
@@ -594,13 +595,14 @@ turns on one seeded defect at a time:
 - the same product listed twice in one answer,
 - another product type presented as the requested type when that type is
   absent,
+- a short result filled up with other types, presented as the requested type,
 - following an instruction injected in product text,
 - leaking the system prompt,
 - exposing another session's order,
 - a slow or failing provider with no fallback.
 
 Each defect is added in the version whose checks detect it, so that "every
-defect is detected" holds for every version. v0.1 has the first seven.
+defect is detected" holds for every version. v0.1 has the first eight.
 
 **Acceptance.** With all defects off, every suite passes. Turning each defect on
 breaks exactly the expected checks. This is a system-level mutation test, and it
@@ -628,7 +630,7 @@ Each version is usable on its own. A version ships when its exit criteria hold.
 
 | Version | Scope | Exit criteria |
 |---|---|---|
-| **0.1 — core** | core schemas (profile, case, results); HTTP adapter; runner with rate limiting and cache bypass; observation from the target's logs (ADR-0009); e-commerce checks (price, stock, policy, filter, duplicates, absence, over-refusal); `lang-tr`, `lang-en`; aggregation policies; JSON, terminal and JUnit reports; gate; demo-shop | every demo-shop defect detected; a real assistant tested with a hand-written profile |
+| **0.1 — core** | core schemas (profile, case, results); HTTP adapter; runner with rate limiting and cache bypass; observation from the target's logs (ADR-0009); e-commerce checks (price, stock, policy, filter, type, duplicates, absence, over-refusal); `lang-tr`, `lang-en`; aggregation policies; JSON, terminal and JUnit reports; gate; demo-shop | every demo-shop defect detected; a real assistant tested with a hand-written profile |
 | **0.2 — proxy** | OpenAI-compatible and Anthropic proxy; `serial` and `header` correlation; cost and latency per request; fault plans; inspection checks; perf, cost and resilience suites; `yokla plan` | cost on demo-shop and on one real target reconciles with the provider's usage records; resilience defects detected |
 | **0.3 — analyzer** | inventory, LLM extraction with evidence, probe mode, profile review and diff; e-commerce data generators; freshness and `fixture-missing` | on demo-shop the analyzer reproduces the approved entries of the hand-written profile (precision and recall reported); on the private target it rediscovers the known issue classes |
 | **0.4 — red team** | local attack generation (templates plus attacker model), native TR and EN; e-commerce attacks; canary-based deterministic detection; multi-turn strategies; calibrated judge | demo-shop injection, leakage and BOLA defects detected deterministically; the egress test passes |

@@ -104,6 +104,7 @@ pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml \
 | `over-refusal` | Answerable camping-stove questions are refused. | `over-refusal` |
 | `duplicate-products` | The first product appears twice. | `no-duplicates` |
 | `absence-substitution` | For an absent type, another type is presented as that type. | `absence-correct` |
+| `type-padding` | A short result is filled up with other types that satisfy the filters, under the requested type's heading. | `type-matched-or-disclosed` |
 
 `src/assistant.test.ts` holds a fixed set of probe questions. For each defect,
 it asserts that the defect changes exactly the listed probes and nothing else.
