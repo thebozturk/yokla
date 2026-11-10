@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { Results } from '@yokla/core';
 import { installNetworkGuard, type NetworkGuard } from '@yokla/runtime/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { planCommand } from './commands/plan.ts';
 import { proxyCommand } from './commands/proxy.ts';
 import { main } from './main.ts';
 
@@ -322,6 +323,92 @@ describe('the model proxy against the demo-shop', () => {
       { id: 'malformed-interpretation', calls: ['malformed-json'] },
       { id: 'slow-provider', calls: ['latency', 'latency'] },
     ]);
+  });
+
+  it('budgets: plan estimates a repeat of the serial run exactly from it', () => {
+    const lines: string[] = [];
+    const io = { out: (line: string) => lines.push(line), err: (line: string) => lines.push(line) };
+    const code = planCommand(
+      [
+        '--cases',
+        join(DEMO, 'cases'),
+        '--calibration',
+        join(dir, 'serial.results.json'),
+        '--config',
+        join(dir, 'yokla.config.yaml'),
+      ],
+      io,
+      dir,
+    );
+    expect(code, lines.join('\n')).toBe(0);
+    const spent = runs.get('serial')?.results.run.proxy?.totals['costUsd'] ?? 0;
+    expect(spent).toBeGreaterThan(0);
+    // Same cases, same definitions, one sample: the estimate is what the run cost.
+    expect(lines[1]).toMatch(/^ {2}18 of 18 cases priced from their own calibration/u);
+    expect(lines[2]).toBe(
+      `  estimate: ${String(Math.round(spent * 1e6) / 1e6)} USD; upper bound: ${String(Math.round(spent * 2 * 1e6) / 1e6)} USD (2x)`,
+    );
+  });
+
+  it('budgets: the gate judges latency and cost thresholds on the serial run', async () => {
+    const results = join(dir, 'serial.results.json');
+    const gate = async (config: string) => {
+      const path = join(dir, `gate-${String(config.length)}.yaml`);
+      writeFileSync(path, config);
+      const lines: string[] = [];
+      const io = {
+        out: (line: string) => lines.push(line),
+        err: (line: string) => lines.push(line),
+      };
+      const code = await main(['gate', '--results', results, '--config', path], io);
+      return { code, output: lines.join('\n') };
+    };
+    expect(
+      await gate('version: 1\ngate: { latencyP95Ms: 60000, costPerTurnUsd: 1, costUsd: 10 }\n'),
+    ).toMatchObject({ code: 0 });
+    const tight = await gate('version: 1\ngate: { latencyP95Ms: 0, costPerTurnUsd: 0.0000001 }\n');
+    expect(tight.code).toBe(1);
+    expect(tight.output).toMatch(/factual: latency p95 [\d.]+ ms, 0 allowed/u);
+    expect(tight.output).toMatch(/factual: cost per turn [\d.e-]+ USD, 1e-7 allowed/u);
+  });
+
+  it('budgets: a capped run stops early, and the gate cannot judge it', async () => {
+    const out = join(dir, 'capped.results.json');
+    const quiet = { out: () => undefined, err: () => undefined };
+    const code = await main(
+      [
+        'run',
+        '--profile',
+        join(dir, 'serial.profile.yaml'),
+        '--cases',
+        join(DEMO, 'cases'),
+        '--target-url',
+        `${serialShop}/v1/chat`,
+        '--proxy-url',
+        proxyUrl,
+        '--config',
+        join(dir, 'yokla.config.yaml'),
+        '--max-cost',
+        '0.00001',
+        '--out',
+        out,
+      ],
+      quiet,
+    );
+    expect(code).toBe(0);
+    const capped = Results.parse(JSON.parse(readFileSync(out, 'utf8')));
+    expect(capped.run.partial).toBe(true);
+    expect(capped.run.issues?.[0]).toMatch(
+      /^stopped at the cost cap: [\d.e-]+ USD spent, 0\.00001 USD allowed$/u,
+    );
+    expect(capped.cases.length).toBeLessThan(18);
+    const lines: string[] = [];
+    const gateCode = await main(['gate', '--results', out], {
+      out: (line: string) => lines.push(line),
+      err: (line: string) => lines.push(line),
+    });
+    expect(gateCode).toBe(2);
+    expect(lines.join('\n')).toMatch(/the run is partial/u);
   });
 
   // Last, so it sees the traffic of everything above.
