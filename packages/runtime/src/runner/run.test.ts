@@ -162,6 +162,24 @@ describe('runSuite', () => {
     });
   });
 
+  it("records each case's definition hash, which follows what decides the verdict", async () => {
+    const t = await target((_r, _i, response) => {
+      json(response, answer());
+    });
+    const hashes = async (...list: Record<string, unknown>[]) =>
+      (await runSuite(options(profile(t.url), cases(...list)))).cases.map(
+        (c) => c.definitionSha256,
+      );
+    const plain = { turns: [{ user: 'a', expect: { answerable: true } }] };
+    const [first] = await hashes(plain);
+    expect(first).toMatch(/^[a-f0-9]{64}$/u);
+    expect(
+      await hashes(plain, { ...plain, title: 'Same case, other title', tags: ['smoke'] }),
+    ).toEqual([first, first]);
+    const [stricter] = await hashes({ turns: [{ user: 'a', expect: { answerable: false } }] });
+    expect(stricter).not.toBe(first);
+  });
+
   it('carries a server-issued id into the next turn and keeps the session', async () => {
     const t = await target((received, index, response) => {
       json(

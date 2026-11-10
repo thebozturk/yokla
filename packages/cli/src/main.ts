@@ -1,6 +1,7 @@
 // The yokla command line.
 
 import { readFileSync } from 'node:fs';
+import { BASELINE_HELP, baselineCommand } from './commands/baseline.ts';
 import { GATE_HELP, gateCommand } from './commands/gate.ts';
 import { REPORT_HELP, reportCommand } from './commands/report.ts';
 import { RUN_HELP, runCommand, type Output } from './commands/run.ts';
@@ -12,14 +13,17 @@ Usage:
   yokla run [options]        run cases against the profile's target
   yokla report [options]     render the reports of a results file
   yokla gate [options]       judge a results file; exit 0, 1 or 2
-  yokla schema <name>        print the JSON Schema of profile, cases, config or results
+  yokla baseline [options]   accept a run as the baseline
+  yokla schema <name>        print a JSON Schema: profile, cases, config, results, baseline
   yokla --version
 
 ${RUN_HELP}
 
 ${REPORT_HELP}
 
-${GATE_HELP}`;
+${GATE_HELP}
+
+${BASELINE_HELP}`;
 
 export function version(): string {
   const manifest: unknown = JSON.parse(
@@ -38,6 +42,7 @@ const SCHEMA_FILES: Readonly<Record<string, string>> = {
   cases: 'cases.v1.schema.json',
   config: 'config.v1.schema.json',
   results: 'results.v1.schema.json',
+  baseline: 'baseline.v1.schema.json',
 };
 
 export async function main(argv: readonly string[], io: Output): Promise<number> {
@@ -49,10 +54,12 @@ export async function main(argv: readonly string[], io: Output): Promise<number>
       return reportCommand(rest, io);
     case 'gate':
       return gateCommand(rest, io);
+    case 'baseline':
+      return baselineCommand(rest, io);
     case 'schema': {
       const file = SCHEMA_FILES[rest[0] ?? ''];
       if (file === undefined) {
-        io.err('usage: yokla schema <profile|cases|config|results>');
+        io.err('usage: yokla schema <profile|cases|config|results|baseline>');
         return 2;
       }
       io.out(JSON.stringify(jsonSchemas()[file], null, 2));

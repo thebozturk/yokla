@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { RESULTS_SCHEMA_ID, type Results } from '@yokla/core';
 import { describe, expect, it } from 'vitest';
 import { LoadError, loadCases, loadProfile } from './load.ts';
+import { baselineCommand } from './commands/baseline.ts';
 import { gateCommand } from './commands/gate.ts';
 import { printSummary } from './commands/run.ts';
 import { main } from './main.ts';
@@ -306,13 +307,16 @@ describe('yokla gate', () => {
     'lenient.yaml': 'version: 1\ngate: { maxFailures: 1 }\n',
     'broken.yaml': 'version: 1\ngate:\n  maxFailure: 1\n',
   });
-  const gate = async (...args: string[]) => {
+  // The workspace is the working directory, so no yokla.config.yaml or
+  // yokla.baseline.json from elsewhere is picked up.
+  const gate = (...args: string[]) => {
     const { io, out, err } = capture();
-    const code = await main(
-      ['gate', ...args.map((a) => (a.startsWith('--') ? a : join(dir, a)))],
+    const code = gateCommand(
+      args.map((a) => (a.startsWith('--') ? a : join(dir, a))),
       io,
+      dir,
     );
-    return { code, out, err };
+    return Promise.resolve({ code, out, err });
   };
 
   it('passes with 0 and says when the default thresholds apply', async () => {
@@ -381,5 +385,60 @@ describe('yokla gate', () => {
     expect((await gate('--results', 'pass.json', '--config', 'missing.yaml')).code).toBe(2);
     expect((await gate()).code).toBe(2);
     expect((await gate('--frobnicate')).code).toBe(2);
+  });
+});
+
+describe('yokla baseline', () => {
+  it('writes a first baseline, then shows what changed, and the gate reads it by default', () => {
+    const project = workspace({
+      'one.json': resultsJson({ a: 'pass', b: 'fail' }),
+      'two.json': resultsJson({ a: 'fail', b: 'pass', c: 'pass' }),
+    });
+    const accept = (file: string, ...extra: string[]) => {
+      const { io, out, err } = capture();
+      const code = baselineCommand(['--results', join(project, file), ...extra], io, project);
+      return { code, out, err };
+    };
+    const path = join(project, 'yokla.baseline.json');
+    expect(accept('one.json')).toEqual({
+      code: 0,
+      out: ['new baseline: 2 cases', `baseline: ${path}`],
+      err: [],
+    });
+    const written: unknown = JSON.parse(readFileSync(path, 'utf8'));
+    expect(written).toMatchObject({
+      schema: 'yokla.baseline/v1',
+      cases: [
+        { id: 'a', status: 'pass' },
+        { id: 'b', status: 'fail' },
+      ],
+    });
+
+    expect(accept('two.json', '--dry-run')).toEqual({
+      code: 0,
+      out: ['~ a: pass → fail', '~ b: fail → pass', '+ c (pass)', 'dry run: nothing written'],
+      err: [],
+    });
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual(written);
+
+    const { io, out } = capture();
+    expect(gateCommand(['--results', join(project, 'two.json')], io, project)).toBe(1);
+    expect(out).toContain('  a passed in the baseline and is now fail');
+    expect(out).toContain(`  notice: compared with the baseline in ${path}`);
+  });
+
+  it("refuses a run the gate can't judge, and a broken baseline file", () => {
+    const project = workspace({
+      'error.json': resultsJson({ a: 'error' }),
+      'ok.json': resultsJson({ a: 'pass' }),
+      'yokla.baseline.json': '{"schema":"yokla.baseline/v1"}',
+    });
+    const { io, err } = capture();
+    expect(baselineCommand(['--results', join(project, 'error.json')], io, project)).toBe(2);
+    expect(err).toEqual(["can't accept a run the gate can't judge:", '  1 error case: a']);
+    const broken = capture();
+    expect(baselineCommand(['--results', join(project, 'ok.json')], broken.io, project)).toBe(2);
+    expect(broken.err.join('\n')).toMatch(/yokla\.baseline\.json: invalid baseline/u);
+    expect(baselineCommand([], capture().io, project)).toBe(2);
   });
 });

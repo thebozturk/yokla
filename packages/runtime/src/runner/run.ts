@@ -3,12 +3,13 @@
 // profile (P9); everything domain-specific comes from the packs the caller
 // passes in (P7). A case where no check applied is `unmeasured`, never `pass`.
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   aggregateCase,
   buildRequest,
+  caseDefinition,
   checkTemplates,
   extractResponse,
   queryJsonPath,
@@ -448,6 +449,7 @@ function judgeCase(
     id: testCase.id,
     suite: testCase.suite,
     language: testCase.language,
+    definitionSha256: createHash('sha256').update(caseDefinition(testCase)).digest('hex'),
     status: aggregate.status,
     unstable: aggregate.unstable,
     ...(testCase.knownGap === undefined ? {} : { knownGap: testCase.knownGap }),

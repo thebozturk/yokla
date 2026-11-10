@@ -205,8 +205,19 @@ describe('the demo-shop acceptance', () => {
     },
   );
 
-  it('passes the gate without defects, and breaks it with each defect against that baseline', async () => {
-    const baseline = runs.get('none')?.out ?? '';
+  it('accepts the defect-free run as the baseline, and each defect breaks the gate against it', async () => {
+    const baseline = join(
+      mkdtempSync(join(tmpdir(), 'yokla-e2e-baseline-')),
+      'yokla.baseline.json',
+    );
+    const quiet = { out: () => undefined, err: () => undefined };
+    const none = runs.get('none')?.out ?? '';
+    expect(await main(['baseline', '--results', none, '--out', baseline], quiet)).toBe(0);
+    const written = readFileSync(baseline, 'utf8');
+    expect(JSON.parse(written)).toMatchObject({ schema: 'yokla.baseline/v1' });
+    expect(written).not.toContain('"answer"');
+    expect(written).not.toContain('latencyMs');
+
     const gate = async (defect: string) => {
       const lines: string[] = [];
       const io = {

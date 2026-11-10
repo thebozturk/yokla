@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { YoklaConfig, type GateConfig } from '../schema/config.ts';
 import { Results, RESULTS_SCHEMA_ID } from '../schema/results.ts';
+import { baselineOf } from '../baseline/baseline.ts';
 import { evaluateGate } from './gate.ts';
 
 type CaseResult = Results['cases'][number];
@@ -41,7 +42,7 @@ function run(cases: CaseResult[], change: Partial<Results['run']> = {}): Results
 }
 
 const gate = (results: Results, config?: GateConfig, baseline?: Results) =>
-  evaluateGate(results, config, baseline);
+  evaluateGate(results, config, baseline === undefined ? undefined : baselineOf(baseline));
 
 describe('evaluateGate thresholds', () => {
   it('passes a run where every case passes or is a known gap', () => {
@@ -153,17 +154,47 @@ describe('evaluateGate with a baseline', () => {
       {
         rule: 'regression',
         suite: 'factual',
-        cases: ['vacuous'],
-        message: 'vacuous passed in the baseline and is now unmeasured',
+        cases: ['hidden'],
+        message: 'hidden passed in the baseline and is now known-gap',
       },
       {
         rule: 'regression',
         suite: 'factual',
-        cases: ['hidden'],
-        message: 'hidden passed in the baseline and is now known-gap',
+        cases: ['vacuous'],
+        message: 'vacuous passed in the baseline and is now unmeasured',
       },
     ]);
     expect(outcome.notices).toContain('dropped passed in the baseline but is not in this run');
+  });
+
+  it('compares a case only while its definition holds', () => {
+    const defined = (id: string, status: CaseResult['status'], char: string) => ({
+      ...kase(id, status),
+      definitionSha256: char.repeat(64),
+    });
+    const before = run([
+      defined('stricter', 'pass', '1'),
+      defined('same', 'pass', '2'),
+      kase('undefined-before', 'pass'),
+    ]);
+    const now = run([
+      defined('stricter', 'fail', '9'),
+      defined('same', 'fail', '2'),
+      defined('undefined-before', 'fail', '3'),
+    ]);
+    const outcome = gate(now, { maxFailures: 10 }, before);
+    expect(outcome.breaches.map((b) => b.message)).toEqual([
+      'same passed in the baseline and is now fail',
+      'undefined-before passed in the baseline and is now fail',
+    ]);
+    expect(outcome.notices).toEqual([
+      "stricter changed since the baseline, so it isn't compared with it",
+    ]);
+    expect(gate(now, {}, before).breaches.map((b) => b.rule)).toEqual([
+      'failures',
+      'regression',
+      'regression',
+    ]);
   });
 
   it('passes when the baseline passes still pass, and notes another profile', () => {

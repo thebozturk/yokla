@@ -6,15 +6,16 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { evaluateGate, type Results, type YoklaConfig } from '@yokla/core';
-import { LoadError, loadConfig, readResults, ResultsError } from '../load.ts';
+import { evaluateGate, type Baseline, type Results, type YoklaConfig } from '@yokla/core';
+import { LoadError, loadConfig, readBaseline, readResults, ResultsError } from '../load.ts';
 import type { Output } from './run.ts';
 
 export const GATE_HELP = `Usage: yokla gate --results <file> [options]
 
 Options:
   --results <file>      the results file of a run
-  --baseline <file>     a results file whose passing cases must still pass
+  --baseline <file>     a baseline or results file whose passing cases must still pass
+                        (default: yokla.baseline.json, when present)
   --config <file>       the thresholds (default: yokla.config.yaml, when present)
 
 Exit codes: 0 the gate passed, 1 the gate is broken, 2 the run can't be judged.`;
@@ -27,6 +28,7 @@ const GATE_OPTIONS = {
 } as const;
 
 const DEFAULT_CONFIG = 'yokla.config.yaml';
+const DEFAULT_BASELINE = 'yokla.baseline.json';
 
 const VERDICT_LINES = {
   pass: 'gate: passed',
@@ -36,7 +38,7 @@ const VERDICT_LINES = {
 
 const EXIT_CODES = { pass: 0, broken: 1, unjudgeable: 2 } as const;
 
-/** `cwd` is where yokla.config.yaml is looked for by default. */
+/** `cwd` is where yokla.config.yaml and yokla.baseline.json are looked for by default. */
 export function gateCommand(
   args: readonly string[],
   io: Output,
@@ -68,11 +70,14 @@ export function gateCommand(
   }
 
   let results: Results;
-  let baseline: Results | undefined;
+  let baseline: Baseline | undefined;
+  let baselinePath: string | undefined;
   let config: YoklaConfig | undefined;
   try {
     results = readResults(values.results);
-    baseline = values.baseline === undefined ? undefined : readResults(values.baseline);
+    const defaultBaseline = join(cwd, DEFAULT_BASELINE);
+    baselinePath = values.baseline ?? (existsSync(defaultBaseline) ? defaultBaseline : undefined);
+    baseline = baselinePath === undefined ? undefined : readBaseline(baselinePath);
     const fallback = join(cwd, DEFAULT_CONFIG);
     const configPath = values.config ?? (existsSync(fallback) ? fallback : undefined);
     config = configPath === undefined ? undefined : loadConfig(configPath);
@@ -90,6 +95,9 @@ export function gateCommand(
   for (const breach of outcome.breaches) io.out(`  ${breach.message}`);
   if (config === undefined) {
     io.out(`  notice: no ${DEFAULT_CONFIG}; the defaults apply: no failing or unmeasured case`);
+  }
+  if (values.baseline === undefined && baselinePath !== undefined) {
+    io.out(`  notice: compared with the baseline in ${baselinePath}`);
   }
   for (const notice of outcome.notices) io.out(`  notice: ${notice}`);
   return EXIT_CODES[outcome.verdict];

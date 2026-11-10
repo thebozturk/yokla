@@ -46,6 +46,8 @@ pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml \
   summary of a results file and can write the same JUnit report.
 - **Gate.** `pnpm yokla gate --results <file> [--baseline <file>]` exits with
   `0` passed, `1` broken or `2` when the run can't be judged (ADR-0010).
+- **Baseline.** `pnpm yokla baseline --results <file>` accepts a run as
+  `yokla.baseline.json` and prints what changed since the last one (ADR-0011).
 
 ## API
 

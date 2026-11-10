@@ -53,6 +53,9 @@ export {
 export { FieldSpec, type Profile, type ProfileTarget } from './schema/profile.ts';
 export { GateConfig, YoklaConfig } from './schema/config.ts';
 export { evaluateGate, type GateBreach, type GateOutcome } from './gate/gate.ts';
+export { Baseline, BASELINE_SCHEMA_ID } from './schema/baseline.ts';
+export { baselineChanges, baselineOf } from './baseline/baseline.ts';
+export { caseDefinition, stableJson } from './baseline/definition.ts';
 export {
   CASE_STATUSES,
   CaseResult,
