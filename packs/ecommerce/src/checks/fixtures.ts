@@ -14,6 +14,21 @@ const foldTr = (text: string) =>
 export const fakeTurkish: LanguagePack = {
   ...stubLanguagePack('tr'),
   fold: foldTr,
+  findDurations: (text) =>
+    [...text.matchAll(/(\d+) ?(gün|hafta)/gu)].map((m) => ({
+      amount: Number(m[1]),
+      unit: m[2] === 'hafta' ? ('week' as const) : ('day' as const),
+      raw: m[0],
+      start: m.index,
+      end: m.index + m[0].length,
+    })),
+  phrases: {
+    refusal: ['yardimci olamiyorum', 'oneri sunamiyorum'],
+    inability: ['dogrulayamiyorum'],
+    absence: ['bulunmuyor', 'bulamadim'],
+    alternative: ['bunun yerine'],
+    free: ['ucretsiz'],
+  },
   findMoney: (text) =>
     [...text.matchAll(/(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?) ?TL/gu)].map((m) => ({
       amount: Number((m[1] ?? '').replaceAll('.', '').replace(',', '.')),
@@ -26,7 +41,22 @@ export const fakeTurkish: LanguagePack = {
 
 export const fakeEnglish: LanguagePack = {
   ...stubLanguagePack('en'),
-  fold: (text) => text.toLowerCase(),
+  fold: (text) => text.toLowerCase().replaceAll('’', "'"),
+  findDurations: (text) =>
+    [...text.matchAll(/(\d+)[ -]?days?/gu)].map((m) => ({
+      amount: Number(m[1]),
+      unit: 'day' as const,
+      raw: m[0],
+      start: m.index,
+      end: m.index + m[0].length,
+    })),
+  phrases: {
+    refusal: ["i can't help"],
+    inability: ["i can't verify"],
+    absence: ["don't carry"],
+    alternative: ['instead'],
+    free: ['free of charge', 'free$'],
+  },
   findMoney: (text) =>
     [...text.matchAll(/(TRY |\$)(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)/gu)].map((m) => ({
       amount: Number((m[2] ?? '').replaceAll(',', '')),

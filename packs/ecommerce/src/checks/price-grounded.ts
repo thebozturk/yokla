@@ -1,6 +1,6 @@
 // price-grounded (design §10): every money amount in the answer equals the
-// price of a returned product, a campaign amount the profile declares, or an
-// amount the user wrote. Products from earlier turns of the conversation count,
+// price of a returned product, a campaign amount the profile declares, an
+// amount in a policy source, or an amount the user wrote. Products from earlier turns of the conversation count,
 // because an answer may refer back to them.
 
 import type { Check, CheckFinding } from '@yokla/core';
@@ -39,6 +39,16 @@ export function priceGrounded(data: EcommerceData): Check {
         }
         for (const amount of userNumbers(view.user)) {
           groundings.push({ amount, currency: undefined, source: 'the user' });
+        }
+      }
+      for (const policy of data.policies.values()) {
+        const source = policy.answers[lang.language] ?? policy.answers['*'];
+        for (const money of source === undefined ? [] : lang.findMoney(source)) {
+          groundings.push({
+            amount: money.amount,
+            currency: money.currency,
+            source: `${policy.topic} policy`,
+          });
         }
       }
       for (const campaign of data.config.campaigns) {
