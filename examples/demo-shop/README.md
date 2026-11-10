@@ -24,8 +24,34 @@ pnpm --filter yokla-demo-shop start --list-defects
 | `--port` | `PORT` | `3000` | `0` picks a free port; the startup line prints the URL. |
 | `--defect` | `DEMO_SHOP_DEFECT` | `none` | The one seeded defect to turn on. |
 | `--rate-limit` | | `on` | `off` disables the rate limiter. |
+| `--model-url` | `DEMO_SHOP_MODEL_URL` | in process | An OpenAI-compatible base URL for the model calls. |
+| `--model-stream` | | off | Ask the model for event streams, with usage in the last chunk. |
+| | `DEMO_SHOP_MODEL_KEY` | `demo-key` | The key sent with the model calls. |
 
 demo-shop binds to `127.0.0.1` only.
+
+### The model over HTTP
+
+By default the model runs in process. With `--model-url`, both model calls of
+a turn go to an OpenAI-compatible chat completions endpoint, so a model proxy
+can sit in between (ADR-0012).
+
+- **The fake provider** answers those calls the way the model in process
+  would, so the answers stay the same. It counts one token per started four
+  bytes, and it keeps its own usage records: the provider's side that the
+  proxy's measurements are reconciled with. It costs nothing and contacts
+  nothing.
+- **Defects.** Model defects (`fabricated-price`, `unknown-stock-claim`,
+  `invented-return-policy`, `absence-substitution`, `over-refusal`) then belong
+  to the provider: start it with `--defect`. The app's own defects stay with
+  the demo-shop.
+- **Trace.** The demo-shop passes an incoming `x-yokla-trace` header on to both
+  model calls of the turn, the one-line change `header` correlation needs.
+
+```sh
+node examples/demo-shop/src/provider-main.ts --port 0 --usage-log runs/provider-usage.jsonl
+pnpm --filter yokla-demo-shop start --port 0 --model-url http://127.0.0.1:<port>/v1
+```
 
 ### Test it with yokla
 
