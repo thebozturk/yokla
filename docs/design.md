@@ -573,6 +573,10 @@ them `unobserved`, and the cost suite reports `unmeasured` instead of guessing.
     prints what changed.
   - A run with an `error` or `fixture-missing` case, or a partial run, can't
     be judged and exits with `2`.
+  - Latency percentiles and cost thresholds per suite (`latencyP95Ms`,
+    `costPerTurnUsd`, ...) are judged over every answered turn, every sample
+    pooled; a threshold without data breaks the gate as `unmeasured`
+    (ADR-0014).
 
 ## 17. Packs
 
