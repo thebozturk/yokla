@@ -127,6 +127,17 @@
               "additionalProperties": {
                 "type": "number"
               }
+            },
+            "missing": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
             }
           },
           "required": [
@@ -135,7 +146,8 @@
             "lines",
             "matched",
             "unmatched",
-            "totals"
+            "totals",
+            "missing"
           ],
           "additionalProperties": false
         },

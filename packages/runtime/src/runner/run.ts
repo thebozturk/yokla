@@ -380,6 +380,7 @@ async function observe(
   );
   const byExchange = new Map<Exchange, Record<string, JsonValue> | undefined>();
   const totals: Record<string, number> = {};
+  const missing: Record<string, number> = {};
   let matched = 0;
   for (const [index, exchange] of answered.entries()) {
     const line = found[index];
@@ -389,6 +390,7 @@ async function observe(
     matched += 1;
     for (const [name, value] of Object.entries(fields)) {
       if (typeof value === 'number') totals[name] = (totals[name] ?? 0) + value;
+      if (value === null) missing[name] = (missing[name] ?? 0) + 1;
     }
   }
   return {
@@ -400,6 +402,7 @@ async function observe(
       matched,
       unmatched: answered.length - matched,
       totals,
+      missing,
     },
     issues: [],
   };

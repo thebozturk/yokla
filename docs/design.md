@@ -416,6 +416,8 @@ These are lessons from building a production harness.
   - A turn without a matching line carries an issue.
   - Logs that can't be read are a run issue, not a failure.
   - The results keep only the mapped fields and their totals.
+  - A sum with an unmeasured value is null, not a smaller number. Totals
+    leave such turns out and count them per field.
 
 ## 12. Model proxy
 

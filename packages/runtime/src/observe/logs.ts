@@ -48,6 +48,7 @@ export function parseLogLines(text: string, config: LogConfig): unknown[] {
   return lines;
 }
 
+/** A field's value, or null when the line doesn't measure it. A sum with a non-number is null. */
 export function readField(line: unknown, spec: FieldSpec): JsonValue {
   if (typeof spec === 'string') {
     const [first] = queryJsonPath(line, spec);
@@ -58,7 +59,10 @@ export function readField(line: unknown, spec: FieldSpec): JsonValue {
     case 'first':
       return values[0] === undefined ? null : toJson(values[0]);
     case 'sum':
-      return values.reduce<number>((total, v) => total + (typeof v === 'number' ? v : 0), 0);
+      return values.reduce<number | null>(
+        (total, v) => (total === null || typeof v !== 'number' ? null : total + v),
+        0,
+      );
     case 'count':
       return values.length;
     case 'any':
