@@ -66,7 +66,18 @@ export {
   TurnResult,
 } from './schema/results.ts';
 
-/** What a language pack provides. Grows with the checks (design §17). */
-export interface LanguagePack {
-  readonly language: string;
-}
+export { aggregateCase, summariseChecks, wilson, type CaseAggregate } from './checks/aggregate.ts';
+export { runChecks } from './checks/run.ts';
+export type {
+  AggregationPolicy,
+  Check,
+  CheckContext,
+  CheckFinding,
+  CheckOutcome,
+  DomainPack,
+  FindingSeverity,
+  LanguagePack,
+  PackIo,
+  PreparedPack,
+  TurnView,
+} from './checks/types.ts';

@@ -1,16 +1,27 @@
-// Runs cases against a target and produces results.v1 (design §11, ADR-0007).
-// Everything target-specific comes from the profile (P9). Checks are not run
-// here yet: until they are, every case that ran is `unmeasured`, never `pass`.
+// Runs cases against a target, checks every answered turn and produces
+// results.v1 (design §11, ADR-0007). Everything target-specific comes from the
+// profile (P9); everything domain-specific comes from the packs the caller
+// passes in (P7). A case where no check applied is `unmeasured`, never `pass`.
 
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
+  aggregateCase,
   buildRequest,
   checkTemplates,
   extractResponse,
   queryJsonPath,
   RESULTS_SCHEMA_ID,
+  runChecks,
+  summariseChecks,
   toJson,
+  type AggregationPolicy,
   type Case,
+  type Check,
+  type DomainPack,
+  type LanguagePack,
+  type TurnView,
   type JsonValue,
   type Profile,
   type Results,
@@ -43,6 +54,13 @@ export interface RunOptions {
   /** Id generator for sessions and request ids. Default: random UUIDs. */
   readonly ids?: () => string;
   readonly clock?: Clock;
+  /** Domain packs; the one whose id is the profile's domain runs its checks. */
+  readonly packs?: readonly DomainPack[];
+  readonly languages?: readonly LanguagePack[];
+  /** Checks that run for every case, whatever the domain. */
+  readonly checks?: readonly Check[];
+  /** Reads a file for a pack. Default: relative to profileDir. */
+  readonly readText?: (path: string) => string;
   readonly onTurn?: (event: {
     caseId: string;
     sample: number;
@@ -53,6 +71,44 @@ export interface RunOptions {
 
 export class ConfigError extends Error {
   override readonly name = 'ConfigError';
+}
+
+const NO_EXPECTATIONS: Readonly<Record<string, unknown>> = {};
+
+interface Prepared {
+  readonly checks: readonly Check[];
+  readonly policies: Readonly<Record<string, AggregationPolicy>>;
+  readonly languages: ReadonlyMap<string, LanguagePack>;
+}
+
+function prepare(options: RunOptions): Prepared {
+  const { profile } = options;
+  const packs = options.packs ?? [];
+  const pack = packs.find((candidate) => candidate.id === profile.domain);
+  if (packs.length > 0 && pack === undefined) {
+    throw new ConfigError(`no domain pack "${profile.domain}" is loaded`);
+  }
+  const readText =
+    options.readText ?? ((path: string) => readFileSync(resolve(options.profileDir, path), 'utf8'));
+  let packChecks: readonly Check[] = [];
+  if (pack !== undefined) {
+    try {
+      packChecks = pack.prepare(profile, { readText }).checks;
+    } catch (error) {
+      throw new ConfigError(
+        `pack "${pack.id}": ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+  const checks = [...(options.checks ?? []), ...packChecks];
+  const ids = checks.map((check) => check.id);
+  const duplicate = ids.find((id, index) => ids.indexOf(id) !== index);
+  if (duplicate !== undefined) throw new ConfigError(`check "${duplicate}" is defined twice`);
+  return {
+    checks,
+    policies: pack?.dimensions ?? {},
+    languages: new Map((options.languages ?? []).map((lang) => [lang.language, lang])),
+  };
 }
 
 function errorMessage(error: unknown): string {
@@ -87,6 +143,7 @@ export function preflight(options: RunOptions): void {
 
 async function runSample(
   options: RunOptions,
+  prepared: Prepared,
   client: HttpClient,
   testCase: Case,
   caseIndex: number,
@@ -112,6 +169,7 @@ async function runSample(
   const turns: TurnResult[] = [];
   const session = target.session.mode === 'client' ? ids() : undefined;
   const carry: Record<string, JsonValue> = {};
+  const history: TurnView[] = [];
 
   try {
     await bypass.prepare();
@@ -157,8 +215,34 @@ async function runSample(
       if (result.status < 200 || result.status > 299) error = `HTTP ${String(result.status)}`;
       else if (extracted === undefined) error = 'the response is not JSON';
       else if (extracted.text === undefined) error = issues.shift() ?? 'answer text not found';
+      let checks: TurnResult['checks'] = [];
+      if (error === undefined && extracted?.text !== undefined) {
+        const view: TurnView = {
+          user: turn.user,
+          expect: turn.expect ?? NO_EXPECTATIONS,
+          response: {
+            status: result.status,
+            latencyMs: response.latencyMs,
+            text: extracted.text,
+            route: extracted.route,
+            id: extracted.id,
+            evidence: extracted.evidence,
+          },
+          observed: undefined,
+        };
+        checks = runChecks(prepared.checks, {
+          case: testCase,
+          turnIndex,
+          turn: view,
+          history: [...history],
+          profile: options.profile,
+          lang: prepared.languages.get(testCase.language),
+        });
+        history.push(view);
+      }
       outcome = {
         ...base,
+        checks,
         response,
         ...(error === undefined ? {} : { error }),
         ...(issues.length === 0 ? {} : { issues }),
@@ -184,6 +268,7 @@ async function runSample(
 
 async function runCase(
   options: RunOptions,
+  prepared: Prepared,
   client: HttpClient,
   testCase: Case,
   caseIndex: number,
@@ -191,17 +276,17 @@ async function runCase(
   const samples: SampleResult[] = [];
   const count = testCase.samples ?? options.samples ?? 1;
   for (let index = 0; index < count; index += 1) {
-    samples.push(await runSample(options, client, testCase, caseIndex, index));
+    samples.push(await runSample(options, prepared, client, testCase, caseIndex, index));
   }
-  const errored = samples.some((sample) => sample.turns.some((turn) => turn.error !== undefined));
+  const aggregate = aggregateCase(samples, prepared.policies, testCase.knownGap !== undefined);
   return {
     id: testCase.id,
     suite: testCase.suite,
     language: testCase.language,
-    status: errored ? 'error' : 'unmeasured',
-    unstable: false,
+    status: aggregate.status,
+    unstable: aggregate.unstable,
     ...(testCase.knownGap === undefined ? {} : { knownGap: testCase.knownGap }),
-    dimensions: [],
+    dimensions: aggregate.dimensions,
     samples,
   };
 }
@@ -228,6 +313,7 @@ async function pool<T, R>(
 
 export async function runSuite(options: RunOptions): Promise<Results> {
   preflight(options);
+  const prepared = prepare(options);
   const target = options.profile.target;
   const startedAt = new Date();
   const started = performance.now();
@@ -253,7 +339,7 @@ export async function runSuite(options: RunOptions): Promise<Results> {
   });
 
   const cases = await pool(options.cases, options.concurrency ?? 1, (testCase, index) =>
-    runCase(options, client, testCase, index),
+    runCase(options, prepared, client, testCase, index),
   );
 
   const statuses: Partial<Record<CaseResult['status'], number>> = {};
@@ -273,7 +359,7 @@ export async function runSuite(options: RunOptions): Promise<Results> {
       partial: false,
     },
     cases,
-    checks: [],
+    checks: summariseChecks(cases),
     summary: { cases: cases.length, statuses },
   };
 }

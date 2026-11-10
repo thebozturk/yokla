@@ -48,7 +48,7 @@ const TurnRequest = z
   .meta({ description: 'Extra request content for this turn only.' });
 
 /** Builds the case shape; packs contribute the keys of `expect`. */
-export function caseShape(language: z.ZodType<string>, expect: z.ZodType) {
+export function caseShape<E extends z.ZodType>(language: z.ZodType<string>, expect: E) {
   return {
     id: Id,
     title: z.string().min(1).optional(),

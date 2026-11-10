@@ -2,13 +2,14 @@
 // Schema files in packages/cli/schemas/ (ADR-0006).
 
 import { buildSchemas, Results, z } from '@yokla/core';
-import { ecommerceSchemas } from '@yokla/pack-ecommerce';
-import { english } from '@yokla/pack-lang-en';
-import { turkish } from '@yokla/pack-lang-tr';
+import { DOMAIN_PACKS, LANGUAGE_PACKS } from './packs.ts';
+
+const [firstLanguage, ...otherLanguages] = LANGUAGE_PACKS.map((pack) => pack.language);
+if (firstLanguage === undefined) throw new Error('no language pack is loaded');
 
 export const schemas = buildSchemas({
-  languages: [turkish.language, english.language],
-  domainPacks: [ecommerceSchemas],
+  languages: [firstLanguage, ...otherLanguages],
+  domainPacks: DOMAIN_PACKS,
 });
 
 /** JSON Schema documents by file name. Config schemas describe what people write. */
