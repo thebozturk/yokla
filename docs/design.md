@@ -95,11 +95,13 @@ What it does that existing tools don't do together:
 
 ## 4. Prior art and positioning
 
-| Tool | Strengths | What yokla borrows (ideas, not code) | Where yokla differs |
+Other evaluation tools are described here by kind, not by name.
+
+| Kind of tool | Strengths | What yokla borrows (ideas, not code) | Where yokla differs |
 |---|---|---|---|
-| **Giskard** | OWASP LLM Top 10 scan; RAGET builds question / reference-answer sets from a knowledge base; scores each pipeline component | scoring per component | yokla computes expected behaviour from structured data instead of generated reference answers; yokla is TypeScript and HTTP-first |
-| **DeepEval** | generates test cases ("goldens") from documents | per-dimension metrics | as with Giskard |
-| **garak**, **PyRIT** | red-team probe libraries (Python) | attack ideas, with licence care | yokla covers the whole test lifecycle, not only red teaming |
+| **Vulnerability scanners with knowledge-base test generation** | an LLM top-10 risk scan; question and reference-answer sets built from a knowledge base; a score for each pipeline component | scoring per component | yokla computes expected behaviour from structured data instead of generated reference answers; yokla is TypeScript and HTTP-first |
+| **Metric libraries that generate test cases from documents** | test cases ("goldens") generated from documents | per-dimension metrics | as with the scanners above |
+| **Red-team probe libraries** | large probe sets (mostly Python) | attack ideas, with licence care | yokla covers the whole test lifecycle, not only red teaming |
 
 ## 5. Concepts
 
