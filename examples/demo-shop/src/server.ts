@@ -117,8 +117,11 @@ export function createDemoShopServer(options: DemoShopServerOptions): Server {
       return;
     }
 
+    // Passed on to the model calls, so a model proxy can tie them to this request.
+    const trace = request.headers['x-yokla-trace'];
     const { reply, cache } = await options.assistant.reply(chat.sessionId, chat.message, {
       bypassCache: wantsCacheBypass(request),
+      ...(typeof trace === 'string' && trace !== '' ? { trace } : {}),
     });
     send(response, 200, { data: reply }, { 'x-cache': cache });
   }

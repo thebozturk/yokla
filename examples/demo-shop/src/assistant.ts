@@ -102,7 +102,7 @@ export class Assistant {
   async reply(
     sessionId: string,
     message: string,
-    options: { readonly bypassCache?: boolean } = {},
+    options: { readonly bypassCache?: boolean; readonly trace?: string } = {},
   ): Promise<{ reply: ChatReply; cache: CacheStatus }> {
     const bypass = options.bypassCache === true;
     const context = this.#sessions.get(sessionId);
@@ -116,9 +116,10 @@ export class Assistant {
       }
     }
 
-    const interpretation = await this.#model.interpret(message, context);
+    const call = options.trace === undefined ? {} : { trace: options.trace };
+    const interpretation = await this.#model.interpret(message, context, call);
     const { draft, next } = this.#plan(interpretation, context);
-    const answer = await this.#model.write(draft);
+    const answer = await this.#model.write(draft, call);
     const shown =
       draft.kind === 'cheapest' ? [draft.product] : 'products' in draft ? draft.products : [];
     const reply: ChatReply = {

@@ -73,9 +73,18 @@ export type AnswerDraft =
     }
   | { readonly kind: 'refusal' | 'fallback'; readonly language: Language };
 
+/** Per-call details the app passes on, e.g. a trace id to forward to the provider. */
+export interface ModelCall {
+  readonly trace?: string;
+}
+
 export interface ChatModel {
-  interpret(message: string, context: ConversationContext | undefined): Promise<Interpretation>;
-  write(draft: AnswerDraft): Promise<string>;
+  interpret(
+    message: string,
+    context: ConversationContext | undefined,
+    call?: ModelCall,
+  ): Promise<Interpretation>;
+  write(draft: AnswerDraft, call?: ModelCall): Promise<string>;
 }
 
 export function hasFilters(filters: Filters): boolean {
