@@ -57,7 +57,8 @@ export {
   type ProfileTarget,
 } from './schema/profile.ts';
 export { ProxyRecord, ProxyUsage } from './schema/proxy.ts';
-export { GateConfig, YoklaConfig } from './schema/config.ts';
+export { callCost } from './proxy/cost.ts';
+export { GateConfig, YoklaConfig, type Price } from './schema/config.ts';
 export { evaluateGate, type GateBreach, type GateOutcome } from './gate/gate.ts';
 export { Baseline, BASELINE_SCHEMA_ID } from './schema/baseline.ts';
 export { baselineChanges, baselineOf } from './baseline/baseline.ts';

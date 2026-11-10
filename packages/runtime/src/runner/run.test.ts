@@ -16,6 +16,7 @@ import {
   type Check,
   type DomainPack,
   type Profile,
+  type ProxyRecord,
 } from '@yokla/core';
 import { stubLanguagePack } from '@yokla/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -787,5 +788,185 @@ describe('runSuite with target logs', () => {
       runSuite(options(byOrder, c, { concurrency: 1, logSettleMs: 0 })),
     ).resolves.toBeDefined();
     expect(t.received).toHaveLength(1);
+  });
+});
+
+interface FakeProxy {
+  readonly url: string;
+  readonly records: ProxyRecord[];
+  readonly calls: string[];
+}
+
+/** A stand-in for the proxy's control endpoint; the fake target adds its records. */
+async function fakeProxy(
+  answers: { health?: unknown; open?: number; close?: number } = {},
+): Promise<FakeProxy> {
+  const records: ProxyRecord[] = [];
+  const calls: string[] = [];
+  const server = createServer((request, response) => {
+    const key = `${request.method ?? ''} ${request.url ?? ''}`;
+    calls.push(key);
+    const reply = (status: number, body: unknown) => {
+      response.writeHead(status, { 'content-type': 'application/json' });
+      response.end(JSON.stringify(body));
+    };
+    if (key === 'GET /_yokla/health') {
+      reply(200, answers.health ?? { ok: true, upstreams: ['fake'], recording: null });
+    } else if (key === 'POST /_yokla/recordings') {
+      const status = answers.open ?? 201;
+      reply(
+        status,
+        status === 201 ? { id: 'rec-1', startedAt: new Date().toISOString() } : { error: 'busy' },
+      );
+    } else if (key === 'DELETE /_yokla/recordings/rec-1') {
+      const status = answers.close ?? 200;
+      reply(status, status === 200 ? { id: 'rec-1', startedAt: 'x', records } : { error: 'gone' });
+    } else reply(404, { error: 'nope' });
+  });
+  servers.push(server);
+  await new Promise<void>((resolve) => {
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  if (typeof address !== 'object' || address === null) throw new Error('no address');
+  return { url: `http://127.0.0.1:${String(address.port)}`, records, calls };
+}
+
+function call(trace: string | null, model = 'm'): ProxyRecord {
+  return {
+    id: `call-${String((counter += 1))}`,
+    upstream: 'fake',
+    kind: 'openai-compatible',
+    method: 'POST',
+    path: '/chat/completions',
+    model,
+    startedAt: new Date().toISOString(),
+    durationMs: 1,
+    status: 200,
+    stream: false,
+    usage: { input: 1000, output: 100, cachedInput: null, cacheWrite: null, reasoning: null },
+    trace,
+  };
+}
+
+const proxied = (url: string, correlation: 'serial' | 'header'): Profile => ({
+  ...profile(url, {
+    request: { url, body: { message: '{{message}}' }, requestId: { header: 'x-request-id' } },
+  }),
+  modelProxy: {
+    port: 1,
+    upstreams: [{ id: 'fake', kind: 'openai-compatible', upstream: 'http://127.0.0.1:9/v1' }],
+    correlation,
+  },
+});
+
+describe('runSuite with the model proxy', () => {
+  const prices = { fake: { m: { input: 1, output: 10 } } };
+
+  it('ties the calls made while each request was in flight to its turn, and prices them', async () => {
+    const proxy = await fakeProxy();
+    const t = await target((_r, _i, response) => {
+      // Like an app, answer only after its model calls: a call never ends with the turn.
+      proxy.records.push(call(null), call(null, 'unpriced'));
+      setTimeout(() => {
+        json(response, answer());
+      }, 3);
+    });
+    const results = await runSuite(
+      options(proxied(t.url, 'serial'), cases({ turns: [{ user: 'a' }, { user: 'b' }] }), {
+        proxyUrl: proxy.url,
+        prices,
+      }),
+    );
+    expect(Results.safeParse(results).success).toBe(true);
+    const turns = results.cases[0]?.samples[0]?.turns ?? [];
+    expect(turns.map((turn) => turn.proxy?.calls.map((c) => c.costUsd))).toEqual([
+      [0.002, null],
+      [0.002, null],
+    ]);
+    expect(turns[0]?.proxy).toMatchObject({ correlation: 'serial', costUsd: null });
+    expect(results.run.correlation).toBe('serial');
+    expect(results.run.proxy).toEqual({
+      correlation: 'serial',
+      records: 4,
+      attributed: 4,
+      unattributed: 0,
+      totals: { calls: 4, inputTokens: 4000, outputTokens: 400, costUsd: 0.004 },
+      missing: { cachedInputTokens: 4, cacheWriteTokens: 4, reasoningTokens: 4, costUsd: 2 },
+    });
+    expect(proxy.calls).toEqual([
+      'GET /_yokla/health',
+      'POST /_yokla/recordings',
+      'DELETE /_yokla/recordings/rec-1',
+    ]);
+  });
+
+  it('sends a trace per turn in header correlation and ties calls by it, in parallel too', async () => {
+    const proxy = await fakeProxy();
+    const t = await target((received, _i, response) => {
+      const trace = received.headers['x-yokla-trace'];
+      proxy.records.push(call(typeof trace === 'string' ? trace : null), call(null));
+      json(response, answer());
+    });
+    const results = await runSuite(
+      options(
+        proxied(t.url, 'header'),
+        cases({ turns: [{ user: 'a' }] }, { turns: [{ user: 'b' }] }),
+        {
+          proxyUrl: proxy.url,
+          concurrency: 2,
+        },
+      ),
+    );
+    const turns = results.cases.map((c) => c.samples[0]?.turns[0]);
+    for (const turn of turns) {
+      expect(turn?.proxy?.trace).toBe(turn?.requestId);
+      expect(turn?.proxy?.calls).toHaveLength(1);
+    }
+    expect(t.received.map((r) => r.headers['x-yokla-trace'])).toEqual(
+      t.received.map((r) => r.headers['x-request-id']),
+    );
+    expect(results.run.proxy).toMatchObject({
+      correlation: 'header',
+      attributed: 2,
+      unattributed: 2,
+    });
+  });
+
+  it("refuses to run when the proxy doesn't answer, routes other upstreams or is busy", async () => {
+    const t = await target((_r, _i, response) => {
+      json(response, answer());
+    });
+    const c = cases({ turns: [{ user: 'a' }] });
+    await expect(
+      runSuite(options(proxied(t.url, 'serial'), c, { proxyUrl: 'http://127.0.0.1:9' })),
+    ).rejects.toThrow(/doesn't answer.*; start it with yokla proxy/u);
+    const other = await fakeProxy({ health: { ok: true, upstreams: ['openai'], recording: null } });
+    await expect(
+      runSuite(options(proxied(t.url, 'serial'), c, { proxyUrl: other.url })),
+    ).rejects.toThrow(/the model proxy doesn't route fake; start it with this profile/u);
+    const busy = await fakeProxy({ open: 409 });
+    await expect(
+      runSuite(options(proxied(t.url, 'serial'), c, { proxyUrl: busy.url })),
+    ).rejects.toThrow(ConfigError);
+    await expect(
+      runSuite(options(proxied(t.url, 'serial'), c, { proxyUrl: busy.url, concurrency: 2 })),
+    ).rejects.toThrow(/correlates serially, which needs a concurrency of 1/u);
+    expect(t.received).toHaveLength(0);
+  });
+
+  it('keeps the run when the records cannot be read, and says so instead of reporting zero calls', async () => {
+    const proxy = await fakeProxy({ close: 500 });
+    const t = await target((_r, _i, response) => {
+      json(response, answer());
+    });
+    const results = await runSuite(
+      options(proxied(t.url, 'serial'), cases({ turns: [{ user: 'a' }] }), { proxyUrl: proxy.url }),
+    );
+    expect(results.run.proxy).toBeUndefined();
+    expect(results.cases[0]?.samples[0]?.turns[0]?.proxy).toBeUndefined();
+    expect(results.run.issues).toEqual([
+      expect.stringMatching(/^the model proxy's records could not be read: .*500/u),
+    ]);
   });
 });

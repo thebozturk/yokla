@@ -171,6 +171,25 @@ describe('terminalSummary', () => {
     expect(err).toEqual(['  broken [sample 0]: HTTP 500', '  run: logs unreadable']);
   });
 
+  it('states what the model proxy recorded, and what it could not price', () => {
+    const { out } = terminalSummary(
+      results([kase('a', 'pass')], {
+        correlation: 'serial',
+        proxy: {
+          correlation: 'serial',
+          records: 3,
+          attributed: 2,
+          unattributed: 1,
+          totals: { calls: 3, inputTokens: 900, outputTokens: 120, costUsd: 0.0012345678 },
+          missing: { costUsd: 1, cachedInputTokens: 3 },
+        },
+      }),
+    );
+    expect(out).toContain(
+      'model proxy (serial): 3 calls, 1 unattributed; inputTokens 900, outputTokens 120, costUsd 0.001235 (no value on 1 call), cachedInputTokens no value on 3 calls',
+    );
+  });
+
   it('shows one line for a clean run and never the answers', () => {
     const { out, err } = terminalSummary(results([kase('a', 'pass')]));
     expect(out).toEqual(['1 cases: pass 1']);

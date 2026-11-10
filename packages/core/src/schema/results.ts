@@ -3,6 +3,7 @@
 
 import { z } from 'zod';
 import { Id, LanguageCode, Suite } from './common.ts';
+import { ProxyUsage } from './proxy.ts';
 
 export const RESULTS_SCHEMA_ID = 'yokla.results/v1';
 
@@ -57,6 +58,29 @@ export const TurnResult = z.object({
       source: z.literal('target-logs'),
       correlation: z.enum(['request-id', 'target-id', 'order']),
       fields: z.record(z.string(), z.json()),
+    })
+    .optional(),
+  /** The provider calls the model proxy tied to this turn (ADR-0012). */
+  proxy: z
+    .object({
+      correlation: z.enum(['serial', 'header']),
+      /** The x-yokla-trace value sent with the request, in header correlation. */
+      trace: z.string().optional(),
+      calls: z.array(
+        z.object({
+          id: z.string(),
+          upstream: Id,
+          model: z.string().nullable(),
+          status: z.int().nullable(),
+          durationMs: z.number().nonnegative(),
+          stream: z.boolean(),
+          usage: ProxyUsage,
+          /** null without a price or with unmeasured tokens. */
+          costUsd: z.number().nonnegative().nullable(),
+        }),
+      ),
+      /** The sum of the calls' cost; null when any call has none. */
+      costUsd: z.number().nonnegative().nullable(),
     })
     .optional(),
   /** Set when the request failed or the answer couldn't be read; later turns don't run. */
@@ -137,6 +161,20 @@ export const Results = z
           /** Sums of the numeric observed fields over matched turns. */
           totals: z.record(z.string(), z.number()),
           /** Per field, the matched turns where it had no value; a total leaves them out. */
+          missing: z.record(z.string(), z.int().positive()),
+        })
+        .optional(),
+      /** What the model proxy recorded during the run (ADR-0012). */
+      proxy: z
+        .object({
+          correlation: z.enum(['serial', 'header']),
+          /** Calls recorded during the run, tied to a turn or not. */
+          records: z.int().nonnegative(),
+          attributed: z.int().nonnegative(),
+          unattributed: z.int().nonnegative(),
+          /** Sums over every recorded call. */
+          totals: z.record(z.string(), z.number()),
+          /** Per total, the calls without a value; the total leaves them out. */
           missing: z.record(z.string(), z.int().positive()),
         })
         .optional(),

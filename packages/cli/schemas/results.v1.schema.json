@@ -151,6 +151,62 @@
           ],
           "additionalProperties": false
         },
+        "proxy": {
+          "type": "object",
+          "properties": {
+            "correlation": {
+              "type": "string",
+              "enum": [
+                "serial",
+                "header"
+              ]
+            },
+            "records": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "attributed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "unattributed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "totals": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "number"
+              }
+            },
+            "missing": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            }
+          },
+          "required": [
+            "correlation",
+            "records",
+            "attributed",
+            "unattributed",
+            "totals",
+            "missing"
+          ],
+          "additionalProperties": false
+        },
         "issues": {
           "type": "array",
           "items": {
@@ -398,6 +454,173 @@
                           "source",
                           "correlation",
                           "fields"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "proxy": {
+                        "type": "object",
+                        "properties": {
+                          "correlation": {
+                            "type": "string",
+                            "enum": [
+                              "serial",
+                              "header"
+                            ]
+                          },
+                          "trace": {
+                            "type": "string"
+                          },
+                          "calls": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "upstream": {
+                                  "type": "string",
+                                  "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+                                },
+                                "model": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "status": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "durationMs": {
+                                  "type": "number",
+                                  "minimum": 0
+                                },
+                                "stream": {
+                                  "type": "boolean"
+                                },
+                                "usage": {
+                                  "type": "object",
+                                  "properties": {
+                                    "input": {
+                                      "anyOf": [
+                                        {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 9007199254740991
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "output": {
+                                      "anyOf": [
+                                        {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 9007199254740991
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "cachedInput": {
+                                      "anyOf": [
+                                        {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 9007199254740991
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "cacheWrite": {
+                                      "anyOf": [
+                                        {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 9007199254740991
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "reasoning": {
+                                      "anyOf": [
+                                        {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 9007199254740991
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "input",
+                                    "output",
+                                    "cachedInput",
+                                    "cacheWrite",
+                                    "reasoning"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "costUsd": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number",
+                                      "minimum": 0
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "upstream",
+                                "model",
+                                "status",
+                                "durationMs",
+                                "stream",
+                                "usage",
+                                "costUsd"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "costUsd": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "correlation",
+                          "calls",
+                          "costUsd"
                         ],
                         "additionalProperties": false
                       },

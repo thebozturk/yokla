@@ -2,7 +2,7 @@
 // the profile, it is a config file: unknown keys are errors.
 
 import { z } from 'zod';
-import { Suite } from './common.ts';
+import { Id, Suite } from './common.ts';
 
 const Thresholds = z.strictObject({
   maxFailures: z
@@ -24,8 +24,33 @@ export const GateConfig = Thresholds.extend({
 });
 export type GateConfig = z.output<typeof GateConfig>;
 
+const Price = z
+  .strictObject({
+    input: z.number().nonnegative(),
+    output: z.number().nonnegative(),
+    cachedInput: z
+      .number()
+      .nonnegative()
+      .optional()
+      .meta({ description: 'Defaults to the input price, so cost is never understated.' }),
+    cacheWrite: z
+      .number()
+      .nonnegative()
+      .optional()
+      .meta({ description: 'Defaults to the input price, so cost is never understated.' }),
+  })
+  .meta({ description: 'USD per million tokens.' });
+export type Price = z.output<typeof Price>;
+
 export const YoklaConfig = z.strictObject({
   version: z.literal(1),
   gate: GateConfig.default({}),
+  prices: z
+    .record(Id, z.record(z.string().min(1), Price))
+    .default({})
+    .meta({
+      description:
+        'Per upstream id, per model as the provider reports it (ADR-0012). A model without a price has no cost.',
+    }),
 });
 export type YoklaConfig = z.output<typeof YoklaConfig>;
