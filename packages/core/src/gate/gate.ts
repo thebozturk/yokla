@@ -9,7 +9,7 @@ import type { Results } from '../schema/results.ts';
 type CaseResult = Results['cases'][number];
 
 export interface GateBreach {
-  readonly rule: 'failures' | 'unmeasured' | 'regression';
+  readonly rule: 'failures' | 'unmeasured' | 'regression' | 'latency' | 'cost';
   readonly suite: string;
   readonly cases: readonly string[];
   readonly message: string;
@@ -30,6 +30,89 @@ const STILL_PASSING: ReadonlySet<CaseResult['status']> = new Set(['pass', 'gap-c
 
 function counted(count: number, noun: string): string {
   return `${String(count)} ${noun}${count === 1 ? '' : 's'}`;
+}
+
+/** The nearest-rank percentile of values sorted ascending: no interpolation. */
+export function percentile(sorted: readonly number[], q: number): number {
+  const rank = Math.max(1, Math.ceil(q * sorted.length));
+  return sorted[rank - 1] ?? Number.NaN;
+}
+
+function round(value: number, digits: number): string {
+  return String(Math.round(value * 10 ** digits) / 10 ** digits);
+}
+
+type Thresholds = Omit<GateConfig, 'suites'>;
+
+/** Latency and cost thresholds over a suite's answered turns, every sample included (ADR-0014). */
+function budgetBreaches(
+  suite: string,
+  cases: readonly CaseResult[],
+  own: Thresholds,
+): GateBreach[] {
+  const turns = cases.flatMap((c) =>
+    c.samples.flatMap((sample) => sample.turns.filter((turn) => turn.response !== undefined)),
+  );
+  const breaches: GateBreach[] = [];
+  const caseIds = cases.map((c) => c.id);
+  const unmeasured = (name: string, why: string) => {
+    if (own.allowUnmeasured !== true) {
+      breaches.push({
+        rule: 'unmeasured',
+        suite,
+        cases: caseIds,
+        message: `${suite}: ${name} is set but can't be measured: ${why}`,
+      });
+    }
+  };
+  const latencies = turns.map((turn) => turn.response?.latencyMs ?? 0).toSorted((a, b) => a - b);
+  for (const [name, q] of [
+    ['latencyP50Ms', 0.5],
+    ['latencyP95Ms', 0.95],
+  ] as const) {
+    const limit = own[name];
+    if (limit === undefined) continue;
+    if (latencies.length === 0) {
+      unmeasured(name, 'no answered turn');
+      continue;
+    }
+    const value = percentile(latencies, q);
+    if (value > limit) {
+      breaches.push({
+        rule: 'latency',
+        suite,
+        cases: caseIds,
+        message: `${suite}: latency p${String(q * 100)} ${round(value, 1)} ms, ${String(limit)} allowed`,
+      });
+    }
+  }
+  if (own.costPerTurnUsd === undefined && own.costUsd === undefined) return breaches;
+  const costs = turns.map((turn) => turn.proxy?.costUsd ?? null);
+  const missing = costs.filter((cost) => cost === null).length;
+  const why =
+    turns.length === 0 ? 'no answered turn' : `${counted(missing, 'answered turn')} without a cost`;
+  const measured = turns.length > 0 && missing === 0;
+  const total = costs.reduce<number>((sum, cost) => sum + (cost ?? 0), 0);
+  for (const [name, value] of [
+    ['costPerTurnUsd', total / Math.max(1, turns.length)],
+    ['costUsd', total],
+  ] as const) {
+    const limit = own[name];
+    if (limit === undefined) continue;
+    if (!measured) {
+      unmeasured(name, why);
+      continue;
+    }
+    if (value > limit) {
+      breaches.push({
+        rule: 'cost',
+        suite,
+        cases: caseIds,
+        message: `${suite}: ${name === 'costUsd' ? 'cost' : 'cost per turn'} ${round(value, 6)} USD, ${String(limit)} allowed`,
+      });
+    }
+  }
+  return breaches;
 }
 
 function ids(cases: readonly CaseResult[]): string {
@@ -76,6 +159,9 @@ export function evaluateGate(
         message: `${suite}: ${counted(unmeasured.length, 'unmeasured case')}; unmeasured never counts as a pass: ${ids(unmeasured)}`,
       });
     }
+    // Suite-level keys first, then the gate-wide ones (ADR-0010, ADR-0014).
+    const { suites: _suites, ...wide } = config;
+    breaches.push(...budgetBreaches(suite, cases, { ...wide, ...own, allowUnmeasured }));
   }
   for (const c of results.cases) {
     if (c.status === 'gap-closed')

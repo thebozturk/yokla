@@ -17,8 +17,28 @@
           "maximum": 9007199254740991
         },
         "allowUnmeasured": {
-          "description": "Whether a suite may have unmeasured cases. Default false: unmeasured is never a pass.",
+          "description": "Whether a suite may have unmeasured cases and thresholds. Default false: unmeasured is never a pass.",
           "type": "boolean"
+        },
+        "latencyP50Ms": {
+          "description": "The median latency of the answered turns, every sample included (ADR-0014).",
+          "type": "number",
+          "minimum": 0
+        },
+        "latencyP95Ms": {
+          "description": "The 95th percentile latency of the answered turns, every sample included.",
+          "type": "number",
+          "minimum": 0
+        },
+        "costPerTurnUsd": {
+          "description": "The mean model cost of an answered turn, from the model proxy.",
+          "type": "number",
+          "minimum": 0
+        },
+        "costUsd": {
+          "description": "The suite's total model cost, from the model proxy.",
+          "type": "number",
+          "minimum": 0
         },
         "suites": {
           "description": "Overrides per suite of the thresholds above.",
@@ -44,8 +64,28 @@
                 "maximum": 9007199254740991
               },
               "allowUnmeasured": {
-                "description": "Whether a suite may have unmeasured cases. Default false: unmeasured is never a pass.",
+                "description": "Whether a suite may have unmeasured cases and thresholds. Default false: unmeasured is never a pass.",
                 "type": "boolean"
+              },
+              "latencyP50Ms": {
+                "description": "The median latency of the answered turns, every sample included (ADR-0014).",
+                "type": "number",
+                "minimum": 0
+              },
+              "latencyP95Ms": {
+                "description": "The 95th percentile latency of the answered turns, every sample included.",
+                "type": "number",
+                "minimum": 0
+              },
+              "costPerTurnUsd": {
+                "description": "The mean model cost of an answered turn, from the model proxy.",
+                "type": "number",
+                "minimum": 0
+              },
+              "costUsd": {
+                "description": "The suite's total model cost, from the model proxy.",
+                "type": "number",
+                "minimum": 0
               }
             },
             "additionalProperties": false

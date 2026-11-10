@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { YoklaConfig, type GateConfig } from '../schema/config.ts';
 import { Results, RESULTS_SCHEMA_ID } from '../schema/results.ts';
 import { baselineOf } from '../baseline/baseline.ts';
-import { evaluateGate } from './gate.ts';
+import { evaluateGate, percentile } from './gate.ts';
 
 type CaseResult = Results['cases'][number];
 
@@ -220,5 +220,145 @@ describe('YoklaConfig', () => {
     ).toBe(false);
     expect(YoklaConfig.safeParse({ version: 1, gate: { maxFailures: -1 } }).success).toBe(false);
     expect(YoklaConfig.safeParse({ version: 2 }).success).toBe(false);
+  });
+});
+
+/** A case whose turns took these latencies and cost these amounts (null: no cost; undefined: no proxy). */
+function timed(
+  id: string,
+  suite: CaseResult['suite'],
+  turns: { latencyMs: number; costUsd?: number | null }[],
+  samples = 1,
+): CaseResult {
+  return {
+    ...kase(id, 'pass', suite),
+    samples: Array.from({ length: samples }, (_v, index) => ({
+      index,
+      cache: 'cold' as const,
+      turns: turns.map((turn) => ({
+        user: 'u',
+        checks: [],
+        response: { status: 200, latencyMs: turn.latencyMs, evidence: {} },
+        ...(turn.costUsd === undefined
+          ? {}
+          : { proxy: { correlation: 'serial' as const, calls: [], costUsd: turn.costUsd } }),
+      })),
+    })),
+  };
+}
+
+describe('percentile', () => {
+  it('takes the nearest rank, without interpolating', () => {
+    const values = Array.from({ length: 20 }, (_v, i) => i + 1);
+    expect([percentile(values, 0.5), percentile(values, 0.95), percentile(values, 1)]).toEqual([
+      10, 19, 20,
+    ]);
+    // 0.95 × 12 = 11.4: the nearest rank rounds up, to the 12th value.
+    expect(
+      percentile(
+        Array.from({ length: 12 }, (_v, i) => i + 1),
+        0.95,
+      ),
+    ).toBe(12);
+    expect(percentile([5], 0.95)).toBe(5);
+    expect(percentile([], 0.5)).toBeNaN();
+  });
+});
+
+describe('evaluateGate latency and cost thresholds (ADR-0014)', () => {
+  const fast = Array.from({ length: 20 }, (_v, i) => ({ latencyMs: (i + 1) * 100 }));
+
+  it('judges the p50 and p95 of every answered turn of the suite, every sample pooled', () => {
+    const results = run([
+      timed('a', 'perf', fast.slice(0, 10)),
+      timed('b', 'perf', fast.slice(10)),
+      timed('q', 'quality', [{ latencyMs: 99_999 }]),
+    ]);
+    expect(
+      gate(results, { suites: { perf: { latencyP95Ms: 1900, latencyP50Ms: 1000 } } }).verdict,
+    ).toBe('pass');
+    expect(gate(results, { suites: { perf: { latencyP95Ms: 1899 } } }).breaches).toEqual([
+      {
+        rule: 'latency',
+        suite: 'perf',
+        cases: ['a', 'b'],
+        message: 'perf: latency p95 1900 ms, 1899 allowed',
+      },
+    ]);
+    expect(gate(results, { suites: { perf: { latencyP50Ms: 999 } } }).breaches[0]?.message).toBe(
+      'perf: latency p50 1000 ms, 999 allowed',
+    );
+    // The samples of one case are pooled too: a slow second sample counts.
+    const pooled = run([
+      {
+        ...kase('a', 'pass', 'perf'),
+        samples: [100, 5000].map((latencyMs, index) => ({
+          index,
+          cache: 'cold' as const,
+          turns: [{ user: 'u', checks: [], response: { status: 200, latencyMs, evidence: {} } }],
+        })),
+      },
+    ]);
+    expect(gate(pooled, { latencyP50Ms: 100 }).verdict).toBe('pass');
+    expect(gate(pooled, { latencyP95Ms: 4999 }).verdict).toBe('broken');
+  });
+
+  it('judges the mean cost per answered turn and the total', () => {
+    const results = run([
+      timed('a', 'perf', [
+        { latencyMs: 1, costUsd: 0.001 },
+        { latencyMs: 1, costUsd: 0.003 },
+      ]),
+    ]);
+    expect(gate(results, { costPerTurnUsd: 0.002, costUsd: 0.004 }).verdict).toBe('pass');
+    expect(
+      gate(results, { costPerTurnUsd: 0.0019, costUsd: 0.0039 }).breaches.map((b) => b.message),
+    ).toEqual([
+      'perf: cost per turn 0.002 USD, 0.0019 allowed',
+      'perf: cost 0.004 USD, 0.0039 allowed',
+    ]);
+  });
+
+  it('breaks on a threshold it cannot measure, unless the suite allows unmeasured', () => {
+    const noCost = run([
+      timed('a', 'perf', [
+        { latencyMs: 1, costUsd: 0.001 },
+        { latencyMs: 1, costUsd: null },
+        { latencyMs: 1 },
+      ]),
+    ]);
+    expect(gate(noCost, { costUsd: 1 }).breaches).toEqual([
+      {
+        rule: 'unmeasured',
+        suite: 'perf',
+        cases: ['a'],
+        message: "perf: costUsd is set but can't be measured: 2 answered turns without a cost",
+      },
+    ]);
+    expect(gate(noCost, { costUsd: 1, allowUnmeasured: true }).verdict).toBe('pass');
+    const silent = run([
+      {
+        ...kase('a', 'pass', 'perf'),
+        samples: [{ index: 0, cache: 'cold', turns: [{ user: 'u', checks: [] }] }],
+      },
+    ]);
+    expect(
+      gate(silent, { latencyP95Ms: 1, costPerTurnUsd: 1 }).breaches.map((b) => b.message),
+    ).toEqual([
+      "perf: latencyP95Ms is set but can't be measured: no answered turn",
+      "perf: costPerTurnUsd is set but can't be measured: no answered turn",
+    ]);
+  });
+
+  it('lets a suite override the gate-wide thresholds', () => {
+    const results = run([
+      timed('a', 'perf', [{ latencyMs: 500 }]),
+      timed('b', 'quality', [{ latencyMs: 500 }]),
+    ]);
+    expect(
+      gate(results, { latencyP95Ms: 100, suites: { perf: { latencyP95Ms: 1000 } } }).breaches.map(
+        (b) => b.suite,
+      ),
+    ).toEqual(['quality']);
   });
 });
