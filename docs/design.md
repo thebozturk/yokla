@@ -536,6 +536,11 @@ them `unobserved`, and the cost suite reports `unmeasured` instead of guessing.
   target URLs, the proxy upstreams and the model providers the user configures.
 - **An egress test in CI** runs the full demo-shop suite behind a network guard
   and fails on any other host.
+  - The guard records every TCP connection and DNS lookup of the yokla
+    process and stops the ones not allowed before anything leaves.
+  - It has its own tests, so the egress test can't pass vacuously.
+  - Local commands a profile runs, such as a cache bypass or a log reader,
+    are the user's own and run outside it.
 - **Secrets** are read only from the environment and never written to results.
 - **Target data.** Generated and recorded files may contain the target's data,
   so `yokla init` writes a `.gitignore` for `yokla-data/` and `runs/`.
@@ -625,7 +630,8 @@ runs in CI at zero model cost.
 **Checks.** Every check has unit tests and mutation tests, and the mutation
 harness asserts each mutation was applied.
 
-**Egress.** The egress test described in §15.
+**Egress.** The egress test described in §15. It wraps the acceptance runs,
+the gate and the baseline in `packages/cli/src/demo-shop.e2e.test.ts`.
 
 **External targets:**
 - **A private production e-commerce assistant.** Results are not published.
