@@ -137,6 +137,16 @@ export function preflight(options: RunOptions): void {
     if (!languages.has(c.language)) {
       problems.push(`case "${c.id}" is in "${c.language}", which the profile doesn't list`);
     }
+    const mapped = new Set(Object.keys(target.response.evidence ?? {}));
+    for (const turn of c.turns) {
+      const evidence = turn.expect?.['evidence'];
+      if (typeof evidence !== 'object' || evidence === null) continue;
+      for (const name of Object.keys(evidence)) {
+        if (!mapped.has(name)) {
+          problems.push(`case "${c.id}" expects evidence "${name}", which the profile doesn't map`);
+        }
+      }
+    }
   }
   if (problems.length > 0) throw new ConfigError(problems.join('\n'));
 }
