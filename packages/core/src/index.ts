@@ -10,7 +10,13 @@ export {
   type ParseResult,
 } from './config/parse.ts';
 export { buildSchemas, type DomainPackSchemas, type SchemaOptions } from './schema/build.ts';
-export { KnownGap, type Case, type CaseFile, type CaseTurn } from './schema/cases.ts';
+export {
+  coreExpectations,
+  KnownGap,
+  type Case,
+  type CaseFile,
+  type CaseTurn,
+} from './schema/cases.ts';
 export {
   FieldName,
   FieldPath,
@@ -26,7 +32,7 @@ export {
   Suite,
   SUITES,
 } from './schema/common.ts';
-export { type Profile, type ProfileTarget } from './schema/profile.ts';
+export { FieldSpec, type Profile, type ProfileTarget } from './schema/profile.ts';
 export {
   CASE_STATUSES,
   CaseResult,

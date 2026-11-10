@@ -46,7 +46,7 @@
               }
             },
             "body": {
-              "description": "JSON body. String values may contain {{message}}, {{session}} and {{env.NAME}}.",
+              "description": "JSON body. Strings may contain {{message}}, {{session}}, {{requestId}}, {{carry.NAME}} and {{env.NAME}}. A string that is only a placeholder with no value is left out.",
               "$ref": "#/$defs/__schema0"
             },
             "timeoutMs": {
@@ -54,6 +54,20 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 600000
+            },
+            "requestId": {
+              "description": "Send a unique id per request in this header, for log correlation.",
+              "type": "object",
+              "properties": {
+                "header": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "header"
+              ],
+              "additionalProperties": false
             }
           },
           "required": [
@@ -70,6 +84,11 @@
               "description": "Where the assistant's answer text is."
             },
             "route": {
+              "type": "string",
+              "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+            },
+            "id": {
+              "description": "Where the target's own request id is.",
               "type": "string",
               "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
             },
@@ -94,10 +113,48 @@
                       "pattern": "^[a-z][A-Za-z0-9]*$"
                     },
                     "additionalProperties": {
-                      "type": "string",
-                      "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "from": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                                },
+                                {
+                                  "minItems": 1,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                                  }
+                                }
+                              ]
+                            },
+                            "as": {
+                              "description": "Convert the value, e.g. a decimal string to a number.",
+                              "type": "string",
+                              "enum": [
+                                "string",
+                                "number",
+                                "boolean"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "from"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
                     },
-                    "description": "Evidence field name → path inside each item, e.g. price: price.amount."
+                    "description": "Evidence field → where it is in each item, e.g. price: price.amount, or price: { from: [price.salePrice, price.listPrice], as: number }."
                   }
                 },
                 "required": [
@@ -115,55 +172,45 @@
         },
         "session": {
           "default": {
-            "mode": "client"
+            "mode": "client",
+            "carry": []
           },
-          "oneOf": [
-            {
-              "type": "object",
-              "properties": {
-                "mode": {
-                  "type": "string",
-                  "const": "client"
-                }
-              },
-              "required": [
-                "mode"
-              ],
-              "additionalProperties": false
+          "type": "object",
+          "properties": {
+            "mode": {
+              "default": "client",
+              "description": "client: yokla sends a new {{session}} id per sample.",
+              "type": "string",
+              "enum": [
+                "client",
+                "none"
+              ]
             },
-            {
-              "type": "object",
-              "properties": {
-                "mode": {
-                  "type": "string",
-                  "const": "none"
-                }
-              },
-              "required": [
-                "mode"
-              ],
-              "additionalProperties": false
-            },
-            {
-              "type": "object",
-              "properties": {
-                "mode": {
-                  "type": "string",
-                  "const": "server"
+            "carry": {
+              "default": [],
+              "description": "Values read from each response and sent with the next turn as {{carry.NAME}}, e.g. a server-issued conversation id.",
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[a-z][A-Za-z0-9]*$"
+                  },
+                  "from": {
+                    "type": "string",
+                    "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                  }
                 },
-                "id": {
-                  "type": "string",
-                  "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$",
-                  "description": "Where the server returns the session id."
-                }
-              },
-              "required": [
-                "mode",
-                "id"
-              ],
-              "additionalProperties": false
+                "required": [
+                  "name",
+                  "from"
+                ],
+                "additionalProperties": false
+              }
             }
-          ]
+          },
+          "additionalProperties": false
         },
         "limits": {
           "type": "object",
@@ -175,6 +222,78 @@
             "perMinute": {
               "type": "number",
               "exclusiveMinimum": 0
+            },
+            "perHour": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "retryAfter": {
+              "default": {
+                "headers": [
+                  "retry-after"
+                ],
+                "unit": "seconds",
+                "maxWaitMs": 60000
+              },
+              "type": "object",
+              "properties": {
+                "headers": {
+                  "default": [
+                    "retry-after"
+                  ],
+                  "description": "Header names to read; a trailing * matches a prefix, e.g. retry-after-*.",
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "unit": {
+                  "default": "seconds",
+                  "type": "string",
+                  "enum": [
+                    "seconds",
+                    "milliseconds"
+                  ]
+                },
+                "maxWaitMs": {
+                  "default": 60000,
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 3600000
+                }
+              },
+              "additionalProperties": false
+            },
+            "clientIdentity": {
+              "description": "Opt-in: send a rotating client address when the target limits per address.",
+              "type": "object",
+              "properties": {
+                "header": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "e.g. x-forwarded-for"
+                },
+                "pool": {
+                  "type": "string",
+                  "const": "test-net",
+                  "description": "Addresses from the TEST-NET ranges (RFC 5737)."
+                },
+                "per": {
+                  "default": "case",
+                  "type": "string",
+                  "enum": [
+                    "case",
+                    "sample"
+                  ]
+                }
+              },
+              "required": [
+                "header",
+                "pool"
+              ],
+              "additionalProperties": false
             }
           },
           "additionalProperties": false
@@ -211,6 +330,36 @@
               "properties": {
                 "kind": {
                   "type": "string",
+                  "const": "command"
+                },
+                "run": {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "description": "Program and arguments, e.g. [docker, compose, logs, backend]. No shell."
+                },
+                "timeoutMs": {
+                  "default": 30000,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 600000
+                }
+              },
+              "required": [
+                "kind",
+                "run"
+              ],
+              "additionalProperties": false,
+              "description": "Runs before each cold sample, e.g. to clear the target cache."
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
                   "const": "none"
                 }
               },
@@ -220,6 +369,162 @@
               "additionalProperties": false
             }
           ]
+        },
+        "observe": {
+          "type": "object",
+          "properties": {
+            "logs": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "file"
+                        },
+                        "path": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "path"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "command"
+                        },
+                        "run": {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "description": "Program and arguments, e.g. [docker, compose, logs, backend]. No shell."
+                        },
+                        "timeoutMs": {
+                          "default": 30000,
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 600000
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "run"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "match": {
+                  "default": [],
+                  "description": "Only lines where every path has this value, e.g. a log context.",
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string",
+                        "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                      },
+                      "equals": {
+                        "type": [
+                          "string",
+                          "number",
+                          "boolean"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "path",
+                      "equals"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "correlate": {
+                  "type": "object",
+                  "properties": {
+                    "by": {
+                      "type": "string",
+                      "enum": [
+                        "request-id",
+                        "target-id",
+                        "order"
+                      ]
+                    },
+                    "field": {
+                      "description": "The line field holding the id.",
+                      "type": "string",
+                      "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                    }
+                  },
+                  "required": [
+                    "by"
+                  ],
+                  "additionalProperties": false
+                },
+                "fields": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "pattern": "^[a-z][A-Za-z0-9]*$"
+                  },
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "from": {
+                            "type": "string",
+                            "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                          },
+                          "reduce": {
+                            "default": "first",
+                            "type": "string",
+                            "enum": [
+                              "first",
+                              "sum",
+                              "count",
+                              "any",
+                              "all"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "from"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "source",
+                "correlate",
+                "fields"
+              ],
+              "additionalProperties": false,
+              "description": "ADR-0009. Lines are JSON; text before the first \"{\" is ignored."
+            }
+          },
+          "additionalProperties": false
         }
       },
       "required": [

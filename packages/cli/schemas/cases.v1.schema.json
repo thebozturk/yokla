@@ -48,10 +48,104 @@
                   "type": "string",
                   "minLength": 1
                 },
+                "request": {
+                  "type": "object",
+                  "properties": {
+                    "body": {
+                      "description": "Merged into the profile body: objects merge, other values replace.",
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    "headers": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "additionalProperties": false,
+                  "description": "Extra request content for this turn only."
+                },
                 "expect": {
                   "description": "Expectations for the response to this turn.",
                   "type": "object",
                   "properties": {
+                    "route": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      ],
+                      "description": "The route(s) that may answer this turn."
+                    },
+                    "answer": {
+                      "type": "object",
+                      "properties": {
+                        "contains": {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "notContains": {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      },
+                      "additionalProperties": false,
+                      "description": "Text the answer must or must not contain, after the language pack's folding."
+                    },
+                    "evidence": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "min": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "max": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "includes": {
+                            "description": "Item ids that must be returned.",
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "description": "Expectations per evidence collection, e.g. products: { min: 1 }."
+                    },
                     "filters": {
                       "type": "object",
                       "properties": {
@@ -224,5 +318,38 @@
     "cases"
   ],
   "additionalProperties": false,
-  "title": "yokla cases v1"
+  "title": "yokla cases v1",
+  "$defs": {
+    "__schema0": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema0"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema0"
+          }
+        }
+      ]
+    }
+  }
 }

@@ -8,6 +8,45 @@ export const KnownGap = z.strictObject({
   issue: z.string().min(1).optional(),
 });
 
+/** Domain-neutral expectations every case may use. Packs add their own keys. */
+export const coreExpectations = {
+  route: z
+    .union([z.string().min(1), z.array(z.string().min(1)).min(1)])
+    .meta({ description: 'The route(s) that may answer this turn.' }),
+  answer: z
+    .strictObject({
+      contains: z.array(z.string().min(1)).min(1).optional(),
+      notContains: z.array(z.string().min(1)).min(1).optional(),
+    })
+    .meta({
+      description: "Text the answer must or must not contain, after the language pack's folding.",
+    }),
+  evidence: z
+    .record(
+      Id,
+      z.strictObject({
+        min: z.int().min(0).optional(),
+        max: z.int().min(0).optional(),
+        includes: z
+          .array(z.string().min(1))
+          .min(1)
+          .optional()
+          .meta({ description: 'Item ids that must be returned.' }),
+      }),
+    )
+    .meta({ description: 'Expectations per evidence collection, e.g. products: { min: 1 }.' }),
+};
+
+const TurnRequest = z
+  .strictObject({
+    body: z
+      .json()
+      .optional()
+      .meta({ description: 'Merged into the profile body: objects merge, other values replace.' }),
+    headers: z.record(z.string().min(1), z.string()).optional(),
+  })
+  .meta({ description: 'Extra request content for this turn only.' });
+
 /** Builds the case shape; packs contribute the keys of `expect`. */
 export function caseShape(language: z.ZodType<string>, expect: z.ZodType) {
   return {
@@ -19,6 +58,7 @@ export function caseShape(language: z.ZodType<string>, expect: z.ZodType) {
       .array(
         z.strictObject({
           user: z.string().min(1),
+          request: TurnRequest.optional(),
           expect: expect
             .optional()
             .meta({ description: 'Expectations for the response to this turn.' }),

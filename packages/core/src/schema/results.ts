@@ -34,13 +34,25 @@ export const CheckResult = z.object({
 
 export const TurnResult = z.object({
   user: z.string(),
+  /** The id yokla sent with the request, when the profile asks for one. */
+  requestId: z.string().optional(),
   response: z
     .object({
       status: z.int(),
       latencyMs: z.number().nonnegative(),
+      /** The target's own request id, when the profile maps it. */
+      id: z.string().optional(),
       text: z.string().optional(),
       route: z.string().optional(),
       evidence: z.record(z.string(), z.array(z.json())),
+    })
+    .optional(),
+  /** Fields read from the target's logs (ADR-0009), labelled by their source. */
+  observed: z
+    .object({
+      source: z.literal('target-logs'),
+      correlation: z.enum(['request-id', 'target-id', 'order']),
+      fields: z.record(z.string(), z.json()),
     })
     .optional(),
   /** Set when the request or the response mapping failed. */

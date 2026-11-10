@@ -40,7 +40,7 @@ describe('profile schema', () => {
     const parsed = profile.parse(validProfile);
     expect(parsed.target.request.method).toBe('POST');
     expect(parsed.target.request.timeoutMs).toBe(30_000);
-    expect(parsed.target.session).toEqual({ mode: 'client' });
+    expect(parsed.target.session).toEqual({ mode: 'client', carry: [] });
     expect(parsed.target.cacheBypass).toEqual({ kind: 'none' });
     expect(parsed.capabilities).toEqual([]);
   });
@@ -56,7 +56,7 @@ describe('profile schema', () => {
     ],
     ['an unknown adapter', withChange({ target: { ...validProfile.target, adapter: 'grpc' } })],
     [
-      'server sessions without an id path',
+      'a server session mode (server ids are carried instead)',
       withChange({ target: { ...validProfile.target, session: { mode: 'server' } } }),
     ],
   ])('rejects %s', (_name, input) => {
@@ -138,5 +138,171 @@ describe('buildSchemas', () => {
 
   it('requires a domain pack', () => {
     expect(() => buildSchemas({ languages: ['tr'], domainPacks: [] })).toThrow(/at least one/u);
+  });
+});
+
+function withTarget(change: Record<string, unknown>): Record<string, unknown> {
+  return withChange({ target: { ...validProfile.target, ...change } });
+}
+
+const response = (fields: unknown) => ({
+  text: '$.message',
+  evidence: { products: { items: '$.products[*]', fields } },
+});
+
+describe('target configuration', () => {
+  it('reads evidence fields from one path or from fallbacks with a conversion', () => {
+    const parsed = profile.parse(
+      withTarget({
+        response: response({
+          id: 'externalId',
+          price: { from: ['price.salePrice', 'price.listPrice'], as: 'number' },
+        }),
+      }),
+    );
+    expect(parsed.target.response.evidence?.['products']?.fields['price']).toEqual({
+      from: ['price.salePrice', 'price.listPrice'],
+      as: 'number',
+    });
+  });
+
+  it.each([
+    ['an empty fallback list', response({ price: { from: [] } })],
+    ['an unknown conversion', response({ price: { from: 'price', as: 'decimal' } })],
+  ])('rejects %s', (_name, value) => {
+    expect(profile.safeParse(withTarget({ response: value })).success).toBe(false);
+  });
+
+  it('carries response values into later turns and sends a request id', () => {
+    const parsed = profile.parse(
+      withTarget({
+        request: { ...validProfile.target.request, requestId: { header: 'x-request-id' } },
+        response: { text: '$.message', id: '$.requestId' },
+        session: { carry: [{ name: 'conversationId', from: '$.metadata.conversationId' }] },
+      }),
+    );
+    expect(parsed.target.session).toEqual({
+      mode: 'client',
+      carry: [{ name: 'conversationId', from: '$.metadata.conversationId' }],
+    });
+    expect(parsed.target.request.requestId).toEqual({ header: 'x-request-id' });
+  });
+
+  it('configures rate-limit headers and units, with defaults', () => {
+    const defaults = profile.parse(withTarget({ limits: { burstPerSecond: 3 } }));
+    expect(defaults.target.limits?.retryAfter).toEqual({
+      headers: ['retry-after'],
+      unit: 'seconds',
+      maxWaitMs: 60_000,
+    });
+    const tiered = profile.parse(
+      withTarget({
+        limits: {
+          perHour: 2000,
+          retryAfter: { headers: ['retry-after', 'retry-after-*'], unit: 'milliseconds' },
+          clientIdentity: { header: 'x-forwarded-for', pool: 'test-net' },
+        },
+      }),
+    );
+    expect(tiered.target.limits?.clientIdentity).toEqual({
+      header: 'x-forwarded-for',
+      pool: 'test-net',
+      per: 'case',
+    });
+  });
+
+  it('rejects client addresses outside the TEST-NET pool', () => {
+    const result = profile.safeParse(
+      withTarget({ limits: { clientIdentity: { header: 'x-forwarded-for', pool: 'random' } } }),
+    );
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a cache-bypass command given as an argument list only', () => {
+    const parsed = profile.parse(
+      withTarget({ cacheBypass: { kind: 'command', run: ['./clear-cache.sh', '--all'] } }),
+    );
+    expect(parsed.target.cacheBypass).toEqual({
+      kind: 'command',
+      run: ['./clear-cache.sh', '--all'],
+      timeoutMs: 30_000,
+    });
+    expect(
+      profile.safeParse(withTarget({ cacheBypass: { kind: 'command', run: [] } })).success,
+    ).toBe(false);
+    expect(
+      profile.safeParse(withTarget({ cacheBypass: { kind: 'command', run: 'rm -rf x' } })).success,
+    ).toBe(false);
+  });
+
+  it('accepts a log source with correlation and field reductions', () => {
+    const parsed = profile.parse(
+      withTarget({
+        observe: {
+          logs: {
+            source: {
+              kind: 'command',
+              run: ['docker', 'compose', 'logs', '--no-color', 'backend'],
+            },
+            match: [{ path: '$.context', equals: 'Telemetry' }],
+            correlate: { by: 'request-id', field: '$.requestId' },
+            fields: {
+              costUsd: { from: '$.modelCallUsage[*].costUsd', reduce: 'sum' },
+              cacheHit: '$.cacheHit',
+            },
+          },
+        },
+      }),
+    );
+    expect(parsed.target.observe?.logs?.fields['costUsd']).toEqual({
+      from: '$.modelCallUsage[*].costUsd',
+      reduce: 'sum',
+    });
+  });
+
+  it('rejects an unknown correlation mode', () => {
+    const logs = {
+      source: { kind: 'file', path: 'app.log' },
+      correlate: { by: 'timestamp' },
+      fields: {},
+    };
+    expect(profile.safeParse(withTarget({ observe: { logs } })).success).toBe(false);
+  });
+});
+
+function turn(extra: Record<string, unknown>) {
+  return {
+    version: 1,
+    cases: [{ id: 'c', suite: 'quality', language: 'tr', turns: [{ user: 'x', ...extra }] }],
+  };
+}
+
+describe('core expectations and turn requests', () => {
+  it('accepts route, answer and evidence expectations next to pack ones', () => {
+    const expectation = {
+      route: ['retrieval', 'ai'],
+      answer: { contains: ['bulamadım'], notContains: ['stokta'] },
+      evidence: { products: { min: 1, max: 5, includes: ['P-1'] } },
+      answerable: true,
+    };
+    expect(caseFile.safeParse(turn({ expect: expectation })).success).toBe(true);
+  });
+
+  it('rejects a negative evidence count', () => {
+    expect(
+      caseFile.safeParse(turn({ expect: { evidence: { products: { min: -1 } } } })).success,
+    ).toBe(false);
+  });
+
+  it('accepts extra body fields and headers for one turn', () => {
+    const request = { body: { context: { page: 'product' } }, headers: { 'x-device-key': 'd' } };
+    expect(caseFile.safeParse(turn({ request })).success).toBe(true);
+  });
+
+  it('rejects a pack expectation that clashes with a core expectation', () => {
+    const clash: DomainPackSchemas = { id: 'clash', expectations: { route: z.string() } };
+    expect(() => buildSchemas({ languages: ['tr'], domainPacks: [clash] })).toThrow(
+      /core expectation/u,
+    );
   });
 });
