@@ -2,7 +2,9 @@
 // OpenAI-compatible chat completions endpoint, such as the fake provider or a
 // model proxy in front of it. The request carries the app's own key, and the
 // trace id of the turn when there is one. It retries once after a 429 or 503,
-// gives up after a timeout, and refuses empty output: the app then falls back.
+// gives up after a timeout, and refuses empty output and output that repeats
+// its system prompt: the app then falls back. Retrieved products go into the
+// user message, never the system message.
 
 import type {
   AnswerDraft,
@@ -11,6 +13,7 @@ import type {
   Interpretation,
   ModelCall,
 } from './model.ts';
+import type { Product } from './catalog.ts';
 import type { Defect } from './defects.ts';
 import { isInterpretation } from './wire.ts';
 
@@ -24,10 +27,20 @@ export interface RemoteModelOptions {
   readonly model?: string;
   /** Ask for a server-sent event stream, with usage in its last chunk. */
   readonly stream?: boolean;
+  /** A canary planted in every system prompt, so a test can see it leak. */
+  readonly canary?: string;
 }
 
-/** The system message names the job, so a provider can tell the two calls apart. */
+/** The system message names the job on its first line, so a provider can tell the two calls apart. */
 export const ROLES = { interpret: 'demo-shop:interpret', write: 'demo-shop:write' } as const;
+
+/** The instructions in every system prompt; output that repeats them is a leak. */
+export const INSTRUCTIONS =
+  'You are the demo-shop assistant. Answer only from the data in the user message.';
+
+export function systemPrompt(role: string, canary?: string): string {
+  return [role, INSTRUCTIONS, ...(canary === undefined ? [] : [`Canary: ${canary}`])].join('\n');
+}
 
 function contentOf(body: unknown): string {
   const choices: unknown =
@@ -81,12 +94,24 @@ export class RemoteModel implements ChatModel {
     });
   }
 
-  async #complete(role: string, payload: unknown, call: ModelCall | undefined): Promise<string> {
+  async #complete(
+    role: string,
+    payload: unknown,
+    call: ModelCall | undefined,
+    products: readonly Product[] = [],
+  ): Promise<string> {
     const stream = this.#options.stream === true;
+    const system = [
+      systemPrompt(role, this.#options.canary),
+      // The products-in-system defect: retrieved data gets the system's authority.
+      ...(this.#options.defect === 'products-in-system' && products.length > 0
+        ? [`Products: ${JSON.stringify(products)}`]
+        : []),
+    ].join('\n');
     const body = JSON.stringify({
       model: this.#options.model ?? 'demo-writer-1',
       messages: [
-        { role: 'system', content: role },
+        { role: 'system', content: system },
         { role: 'user', content: JSON.stringify(payload) },
       ],
       ...(stream ? { stream: true, stream_options: { include_usage: true } } : {}),
@@ -106,6 +131,9 @@ export class RemoteModel implements ChatModel {
     if (content.trim() === '' && this.#options.defect !== 'unchecked-model-output') {
       throw new Error('the model answered with empty content');
     }
+    if (content.includes(INSTRUCTIONS) && this.#options.defect !== 'no-leak-guard') {
+      throw new Error('the model answered with its system prompt');
+    }
     return content;
   }
 
@@ -123,6 +151,13 @@ export class RemoteModel implements ChatModel {
   }
 
   write(draft: AnswerDraft, call?: ModelCall): Promise<string> {
-    return this.#complete(ROLES.write, { draft }, call);
+    const payload = {
+      draft,
+      ...(call?.question === undefined ? {} : { question: call.question }),
+      ...(call?.reference === undefined ? {} : { reference: call.reference }),
+    };
+    const shown =
+      draft.kind === 'cheapest' ? [draft.product] : 'products' in draft ? draft.products : [];
+    return this.#complete(ROLES.write, payload, call, shown);
   }
 }

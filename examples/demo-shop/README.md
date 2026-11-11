@@ -27,6 +27,7 @@ pnpm --filter yokla-demo-shop start --list-defects
 | `--model-url` | `DEMO_SHOP_MODEL_URL` | in process | An OpenAI-compatible base URL for the model calls. |
 | `--model-stream` | | off | Ask the model for event streams, with usage in the last chunk. |
 | `--model-timeout-ms` | | `3000` | How long a model call may take before the demo-shop falls back. |
+| `--model-canary` | | none | A canary to plant in every system prompt, for leak tests. |
 | | `DEMO_SHOP_MODEL_KEY` | `demo-key` | The key sent with the model calls. |
 
 demo-shop binds to `127.0.0.1` only.
@@ -55,6 +56,17 @@ can sit in between (ADR-0012).
   `cases-resilience/` holds the cases that inject the faults (ADR-0013). They
   need the model proxy, so the resilience matrix runs in
   `packages/cli/src/proxy.e2e.test.ts`.
+- **Prompts.** Each system prompt names the job on its first line, then the
+  instructions, then the `--model-canary` if one is set. The products found
+  and the user's message go into the user message, never the system message,
+  and only the products the answer shows. Phone numbers and e-mail addresses
+  in the user's message are masked before any model call. A guard refuses
+  model output that repeats the system prompt; the demo-shop then falls back.
+  The fake provider, like a model that gives in to an extraction request,
+  repeats its system prompt when asked for its instructions.
+  `cases-inspection/` holds the cases for the inspection checks (ADR-0015).
+  They also need the model proxy, so the inspection matrix runs in
+  `packages/cli/src/proxy.e2e.test.ts` too.
 
 ```sh
 node examples/demo-shop/src/provider-main.ts --port 0 --usage-log runs/provider-usage.jsonl
@@ -150,6 +162,10 @@ pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml \
 | `no-model-fallback` | With the model over HTTP, a model failure becomes a `500` instead of a fallback answer. | `graceful-under-fault` (v0.2) |
 | `no-model-timeout` | With the model over HTTP, a stalled model stalls the answer. | `answered-within-deadline` (v0.2) |
 | `unchecked-model-output` | With the model over HTTP, empty model output reaches the user. | `route-expected` (v0.2) |
+| `products-in-system` | With the model over HTTP, the products found are put into the system message. | `untrusted-in-system` (v0.2) |
+| `prompt-bloat` | With the model over HTTP, the whole catalog goes with every answer to write. | `prompt-budget` (v0.2) |
+| `unmasked-pii` | Phone numbers and e-mail addresses in the user's message reach the model unmasked. | `pii-in-prompt` (v0.2) |
+| `no-leak-guard` | With the model over HTTP, an answer that repeats the system prompt reaches the user. | `prompt-leak` (v0.2) |
 
 `src/assistant.test.ts` holds a fixed set of probe questions. For each defect,
 it asserts that the defect changes exactly the listed probes and nothing else.

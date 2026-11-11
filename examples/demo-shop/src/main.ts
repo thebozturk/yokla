@@ -1,5 +1,6 @@
 // Starts the demo-shop: node src/main.ts [--port 3000] [--defect <name>] [--rate-limit off]
 //   [--model-url <OpenAI-compatible base URL>] [--model-stream] [--model-timeout-ms 3000]
+//   [--model-canary <text>]
 
 import { parseArgs } from 'node:util';
 import { Assistant } from './assistant.ts';
@@ -19,6 +20,7 @@ function main(): void {
       'model-url': { type: 'string' },
       'model-stream': { type: 'boolean' },
       'model-timeout-ms': { type: 'string' },
+      'model-canary': { type: 'string' },
     },
   });
 
@@ -47,6 +49,7 @@ function main(): void {
           stream: values['model-stream'] === true,
           timeoutMs: Number(values['model-timeout-ms'] ?? '3000'),
           defect,
+          ...(values['model-canary'] === undefined ? {} : { canary: values['model-canary'] }),
         });
   const assistant = new Assistant({ data: loadShopData(), model, defect });
   const server = createDemoShopServer({

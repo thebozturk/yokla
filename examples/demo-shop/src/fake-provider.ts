@@ -33,7 +33,9 @@ export function tokenCount(text: string): number {
 
 interface ChatRequest {
   readonly model: string;
+  /** The first line of the system message, which names the job. */
   readonly role: string;
+  readonly system: string;
   readonly payload: string;
   readonly prompt: string;
   readonly stream: boolean;
@@ -59,7 +61,8 @@ function parse(body: string): ChatRequest | undefined {
   const options: unknown = Reflect.get(value, 'stream_options');
   return {
     model,
-    role: contents[0] ?? '',
+    role: (contents[0] ?? '').split('\n')[0] ?? '',
+    system: contents[0] ?? '',
     payload: contents[1] ?? '',
     prompt: contents.join(''),
     stream: Reflect.get(value, 'stream') === true,
@@ -68,6 +71,13 @@ function parse(body: string): ChatRequest | undefined {
       options !== null &&
       Reflect.get(options, 'include_usage') === true,
   };
+}
+
+const EXTRACTION = ['talimatların', 'sistem prompt', 'system prompt', 'your instructions'];
+
+function asksForInstructions(question: string): boolean {
+  const text = question.toLocaleLowerCase('tr-TR');
+  return EXTRACTION.some((phrase) => text.includes(phrase));
 }
 
 async function answer(model: ScriptedModel, request: ChatRequest): Promise<string | undefined> {
@@ -82,6 +92,9 @@ async function answer(model: ScriptedModel, request: ChatRequest): Promise<strin
   }
   if (request.role === ROLES.write) {
     const draft: unknown = Reflect.get(payload, 'draft');
+    const question: unknown = Reflect.get(payload, 'question');
+    // Like a model that gives in to an extraction request, it repeats its system prompt.
+    if (typeof question === 'string' && asksForInstructions(question)) return request.system;
     return isDraft(draft) ? model.write(draft) : undefined;
   }
   return undefined;
