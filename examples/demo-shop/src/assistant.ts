@@ -10,6 +10,7 @@ import {
   type ConversationContext,
   type Filters,
   type Interpretation,
+  type ModelCall,
   type Route,
   unavailableAnswer,
 } from './model.ts';
@@ -73,6 +74,14 @@ function view(product: Product, language: Language): ProductView {
   };
 }
 
+const EMAIL = /[\p{L}\p{N}._%+-]+@[\p{L}\p{N}.-]+\.\p{L}{2,}/gu;
+const PHONE = /(?<![\d+])(?:(?:\+90|0)[\s-]*)?5\d{2}[\s-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}(?!\d)/gu;
+
+/** The message with e-mail addresses and Turkish mobile numbers masked, for the model. */
+export function maskPersonalData(message: string): string {
+  return message.replaceAll(EMAIL, '[email]').replaceAll(PHONE, '[phone]');
+}
+
 /** Inserts or refreshes a key, evicting the oldest entry beyond `max`. */
 function remember<K, V>(map: Map<K, V>, key: K, value: V, max: number): void {
   map.delete(key);
@@ -117,13 +126,19 @@ export class Assistant {
       }
     }
 
-    const call = options.trace === undefined ? {} : { trace: options.trace };
+    // The model sees the message with personal data masked, and only the data it needs.
+    const sent = this.#defect === 'unmasked-pii' ? message : maskPersonalData(message);
+    const call: ModelCall = {
+      ...(options.trace === undefined ? {} : { trace: options.trace }),
+      question: sent,
+      ...(this.#defect === 'prompt-bloat' ? { reference: this.#data.catalog } : {}),
+    };
     let interpretation: Interpretation;
     let draft: AnswerDraft;
     let next: ConversationContext;
     let answer: string;
     try {
-      interpretation = await this.#model.interpret(message, context, call);
+      interpretation = await this.#model.interpret(sent, context, call);
       ({ draft, next } = this.#plan(interpretation, context));
       answer = await this.#model.write(draft, call);
     } catch (error) {

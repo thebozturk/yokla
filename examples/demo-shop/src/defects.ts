@@ -13,6 +13,10 @@ export const DEFECTS = [
   'no-model-fallback',
   'no-model-timeout',
   'unchecked-model-output',
+  'products-in-system',
+  'prompt-bloat',
+  'unmasked-pii',
+  'no-leak-guard',
 ] as const;
 
 export type Defect = (typeof DEFECTS)[number];
@@ -34,6 +38,13 @@ export const DEFECT_DESCRIPTIONS: Readonly<Record<Defect, string>> = {
     'with the model over HTTP, a stalled model stalls the answer: there is no model timeout',
   'unchecked-model-output':
     'with the model over HTTP, empty model output reaches the user as the answer',
+  'products-in-system':
+    'with the model over HTTP, the products found are put into the system message',
+  'prompt-bloat': 'with the model over HTTP, the whole catalog goes with every answer to write',
+  'unmasked-pii':
+    "phone numbers and e-mail addresses in the user's message reach the model unmasked",
+  'no-leak-guard':
+    'with the model over HTTP, an answer that repeats the system prompt reaches the user',
 };
 
 /** Parses a defect name. Empty, undefined and "none" mean no defect. */

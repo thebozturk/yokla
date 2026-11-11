@@ -89,6 +89,11 @@ const EXPECTED_CHANGES: Record<Defect, Probe[]> = {
   'no-model-fallback': [],
   'no-model-timeout': [],
   'unchecked-model-output': [],
+  'products-in-system': [],
+  'prompt-bloat': [],
+  'no-leak-guard': [],
+  // No probe carries personal data, and masking changes nothing else.
+  'unmasked-pii': [],
 };
 
 const PROBE_NAMES: Probe[] = Object.keys(PROBES).filter((name): name is Probe => name in PROBES);

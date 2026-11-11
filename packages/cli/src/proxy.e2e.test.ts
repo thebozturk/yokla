@@ -3,8 +3,9 @@
 // reconcile with the provider's own usage records, call for call and token
 // for token. One run correlates serially with JSON answers, the other by
 // header with event streams. Then the resilience cases run against a
-// demo-shop for each resilience defect (ADR-0013). Everything runs behind the
-// network guard.
+// demo-shop for each resilience defect (ADR-0013), and the inspection cases
+// for each inspection defect (ADR-0015). Everything runs behind the network
+// guard.
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -72,18 +73,27 @@ let serialShop = '';
 let headerShop = '';
 
 /** The demo-shop profile with its data paths made absolute and a model proxy added. */
-function profileFor(correlation: 'serial' | 'header', providerUrl: string): string {
+function profileFor(
+  correlation: 'serial' | 'header',
+  providerUrl: string,
+  name: string = correlation,
+  more = '',
+): string {
   const text = readFileSync(join(DEMO, 'yokla.profile.yaml'), 'utf8').replaceAll(
     './data/',
     join(DEMO, 'data/'),
   );
-  const path = join(dir, `${correlation}.profile.yaml`);
+  const path = join(dir, `${name}.profile.yaml`);
   writeFileSync(
     path,
-    `${text}\nmodelProxy:\n  port: 1\n  correlation: ${correlation}\n  upstreams:\n    - { id: fake, kind: openai-compatible, upstream: '${providerUrl}' }\n`,
+    `${text}\nmodelProxy:\n  port: 1\n  correlation: ${correlation}\n  upstreams:\n    - { id: fake, kind: openai-compatible, upstream: '${providerUrl}' }\n${more}`,
   );
   return path;
 }
+
+const CANARY = 'DEMO-CANARY-7F3A';
+/** What the inspection checks look for: the canary in the demo-shop's system prompt, and product names. */
+const INSPECT = `  inspect:\n    canary: ${CANARY}\n    untrusted: { products: [name] }\n`;
 
 const runs = new Map<
   string,
@@ -142,6 +152,57 @@ const RESILIENCE: Readonly<Record<string, Readonly<Record<string, readonly strin
   'unchecked-model-output': { 'route-expected': ['empty-model-output'] },
 };
 const resilience = new Map<string, Results>();
+
+const PRODUCT_CASES = [
+  'personal-data-masked-tr',
+  'products-stay-out-of-system-en',
+  'products-stay-out-of-system-tr',
+  'prompt-size-tr',
+];
+/** Inspection defect → the one check that must catch it → the cases it must fail. */
+const INSPECTION: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
+  none: {},
+  'products-in-system': { 'untrusted-in-system': PRODUCT_CASES },
+  'prompt-bloat': { 'prompt-budget': ['prompt-size-tr'] },
+  'unmasked-pii': { 'pii-in-prompt': ['personal-data-masked-tr'] },
+  'no-leak-guard': {
+    'prompt-leak': ['system-prompt-extraction-en', 'system-prompt-extraction-tr'],
+  },
+};
+const inspection = new Map<string, Results>();
+
+async function runInspection(defect: string, providerUrl: string): Promise<void> {
+  const shop = await start('src/main.ts', [
+    '--port',
+    '0',
+    '--model-url',
+    `${proxyUrl}/fake`,
+    '--model-canary',
+    CANARY,
+    '--defect',
+    defect,
+  ]);
+  const out = join(dir, `inspection-${defect}.json`);
+  const quiet = { out: () => undefined, err: () => undefined };
+  const code = await main(
+    [
+      'run',
+      '--profile',
+      profileFor('serial', providerUrl, 'inspection', INSPECT),
+      '--cases',
+      join(DEMO, 'cases-inspection'),
+      '--target-url',
+      `${shop}/v1/chat`,
+      '--proxy-url',
+      proxyUrl,
+      '--out',
+      out,
+    ],
+    quiet,
+  );
+  expect(code, defect).toBe(0);
+  inspection.set(defect, Results.parse(JSON.parse(readFileSync(out, 'utf8'))));
+}
 
 /** check → the cases where it reported a failing finding. */
 function failingByCheck(results: Results | undefined): Record<string, string[]> {
@@ -218,7 +279,8 @@ beforeAll(async () => {
   await run('serial', serialShop, providerUrl);
   await run('header', headerShop, providerUrl);
   for (const defect of Object.keys(RESILIENCE)) await runResilience(defect, providerUrl);
-}, 180_000);
+  for (const defect of Object.keys(INSPECTION)) await runInspection(defect, providerUrl);
+}, 240_000);
 
 afterAll(async () => {
   stopProxy.abort();
@@ -298,6 +360,7 @@ describe('the model proxy against the demo-shop', () => {
     const recorded = [
       ...[...runs.values()].map((done) => done.results),
       ...resilience.values(),
+      ...inspection.values(),
     ].reduce((total, results) => total + (results.run.proxy?.records ?? 0), 0);
     expect(lines).toHaveLength(recorded);
     expect(lines.join('\n')).not.toMatch(/authorization|demo-key/iu);
@@ -337,6 +400,47 @@ describe('the model proxy against the demo-shop', () => {
       { id: 'malformed-interpretation', calls: ['malformed-json'] },
       { id: 'slow-provider', calls: ['latency', 'latency'] },
     ]);
+  });
+
+  it.each(Object.entries(INSPECTION))(
+    'inspection, %s: exactly the expected check fails, on exactly the expected cases',
+    (defect, expected) => {
+      const results = inspection.get(defect);
+      expect(results?.cases).toHaveLength(6);
+      const wanted = Object.fromEntries(
+        Object.entries(expected).map(([check, ids]) => [check, [...ids].toSorted()]),
+      );
+      expect(failingByCheck(results)).toEqual(wanted);
+      const failed = new Set(Object.values(wanted).flat());
+      for (const c of results?.cases ?? [])
+        expect(c.status, `${defect} ${c.id}`).toBe(failed.has(c.id) ? 'fail' : 'pass');
+      // The canary reached the system prompts, so prompt-leak could apply.
+      expect(results?.run.issues).toBeUndefined();
+    },
+  );
+
+  it('inspection: every check applied where it should, and the results keep no prompt text', () => {
+    const results = inspection.get('none');
+    const applied = (id: string) =>
+      (results?.cases ?? [])
+        .filter((c) =>
+          c.samples.some((sample) =>
+            sample.turns.some((turn) =>
+              turn.checks.some((check) => check.check === id && check.applicable),
+            ),
+          ),
+        )
+        .map((c) => c.id)
+        .toSorted();
+    expect(applied('prompt-leak')).toHaveLength(6);
+    expect(applied('untrusted-in-system')).toEqual(PRODUCT_CASES);
+    expect(applied('pii-in-prompt')).toEqual(['personal-data-masked-tr']);
+    expect(applied('prompt-budget')).toEqual(['prompt-size-tr']);
+    // Every system prompt carried the canary, but prompts are kept as sizes: the
+    // canary is in the results only where it leaked into the target's answer.
+    for (const [defect, kept] of inspection) {
+      expect(JSON.stringify(kept).includes(CANARY), defect).toBe(defect === 'no-leak-guard');
+    }
   });
 
   it('budgets: plan estimates a repeat of the serial run exactly from it', () => {

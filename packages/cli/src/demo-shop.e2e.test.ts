@@ -73,6 +73,12 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
   'no-model-fallback': {},
   'no-model-timeout': {},
   'unchecked-model-output': {},
+  // The inspection defects need the model over HTTP too, or no prompt carries
+  // personal data; they are in the inspection matrix of proxy.e2e.test.ts.
+  'products-in-system': {},
+  'prompt-bloat': {},
+  'unmasked-pii': {},
+  'no-leak-guard': {},
 };
 
 const children: ChildProcess[] = [];
