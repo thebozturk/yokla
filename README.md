@@ -57,7 +57,7 @@ seeded defects. Its README walks through a full run.
 ## Planned
 
 - **v0.2:** a model proxy that measures model calls, tokens, cost and latency,
-  and injects provider faults.
+  injects provider faults, and inspects the prompts sent to the model.
 - **v0.3:** an analyzer that reads your code, API contract, prompts, data
   schema and docs, and writes a profile for you to review.
 - **v0.4:** red teaming with local attack generation.
