@@ -27,7 +27,7 @@ old one.
 | [0012](0012-model-proxy-process-routing-and-records.md) | The model proxy: a standalone process, routing, records and correlation | Accepted |
 | [0013](0013-fault-plans.md) | Fault plans: provider faults per turn, injected by the model proxy | Accepted |
 | [0014](0014-budgets-and-plan.md) | Budgets: cost and latency thresholds, unmeasured thresholds, plan and cap | Accepted |
-| [0015](0015-prompt-inspection.md) | Prompt inspection: what the proxy captures, what is stored, and four checks | Proposed |
+| [0015](0015-prompt-inspection.md) | Prompt inspection: what the proxy captures, what is stored, and four checks | Accepted |
 
 ## Template
 

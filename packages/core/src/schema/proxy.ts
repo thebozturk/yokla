@@ -22,6 +22,28 @@ export const ProxyUsage = z.object({
 });
 export type ProxyUsage = z.output<typeof ProxyUsage>;
 
+/** Who a prompt message speaks as; `developer` counts as `system`, an embedding's input is `input` (ADR-0015). */
+export const PromptRole = z.enum(['system', 'user', 'assistant', 'tool', 'input']);
+export type PromptRole = z.output<typeof PromptRole>;
+
+/**
+ * One message of a call's prompt (ADR-0015). The proxy hands the runner its
+ * text; what is written to files depends on the profile's `prompts.store`.
+ */
+export const PromptMessage = z.object({
+  role: PromptRole,
+  /** The length of the text, in UTF-16 code units. */
+  chars: z.int().nonnegative(),
+  /** The SHA-256 of the text, in hex: stored with `hashed` and `full`. */
+  sha256: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/u)
+    .optional(),
+  /** The text, or with `redacted` the text with matches of the profile's patterns replaced. */
+  text: z.string().optional(),
+});
+export type PromptMessage = z.output<typeof PromptMessage>;
+
 export const ProxyRecord = z.object({
   id: z.string().min(1),
   upstream: Id,
@@ -45,5 +67,7 @@ export const ProxyRecord = z.object({
   /** false when the proxy answered without calling the provider. */
   forwarded: z.boolean().optional(),
   error: z.string().optional(),
+  /** The messages the call sent (ADR-0015); null when the proxy couldn't read the request. */
+  prompt: z.array(PromptMessage).nullable().optional(),
 });
 export type ProxyRecord = z.output<typeof ProxyRecord>;

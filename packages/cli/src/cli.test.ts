@@ -487,7 +487,7 @@ describe('yokla proxy', () => {
       `  ${proxy.url}/openai → https://api.openai.com/v1 (OPENAI_BASE_URL=${proxy.url}/openai)`,
     ]);
     const control = new ProxyControl(proxy.url);
-    expect(await control.health()).toEqual({ ok: true, upstreams: ['openai'], recording: null });
+    expect(await control.health()).toEqual({ ok: true, upstreams: ['openai'], recording: false });
     const { id } = await control.open();
     expect(await control.close(id)).toEqual([]);
     proxy.stop.abort();

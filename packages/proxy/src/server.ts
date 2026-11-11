@@ -2,8 +2,9 @@
 // providers. A call to /<upstream-id>/<rest> goes to <upstream>/<rest> with
 // the app's own headers, and the response comes back byte for byte. Nothing
 // is changed in either direction. While a recording is open, every call
-// yields a ProxyRecord, tagged with the turn the runner marked as in flight,
-// and a turn the runner armed with faults gets them (ADR-0013).
+// yields a ProxyRecord, tagged with the turn the runner marked as in flight
+// and holding the messages it sent (ADR-0015), and a turn the runner armed
+// with faults gets them (ADR-0013).
 // Paths under /_yokla/ are the local control endpoint
 // and are never forwarded. The proxy contacts only its configured upstreams.
 
@@ -28,6 +29,7 @@ import {
   nextFault,
   type ArmedTurn,
 } from './faults.ts';
+import { readPrompt } from './prompts.ts';
 import { readUsage, UNMEASURED, type UpstreamKind } from './usage.ts';
 
 export interface ProxyUpstream {
@@ -171,7 +173,8 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
       sendJson(response, 200, {
         ok: true,
         upstreams: [...upstreams.keys()],
-        recording: recording?.id ?? null,
+        // Whether one is open, not which: its id is the key to its prompts (ADR-0015).
+        recording: recording !== undefined,
       });
       return;
     }
@@ -276,12 +279,13 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
           : raw === undefined
             ? { usage: UNMEASURED, model: null }
             : readUsage(upstream.kind, raw, stream);
+      const path = rest.split('?')[0] ?? '';
       const record: ProxyRecord = {
         id: randomUUID(),
         upstream: upstream.id,
         kind: upstream.kind,
         method: request.method ?? 'GET',
-        path: rest.split('?')[0] ?? '',
+        path,
         model: read.model ?? facts.model,
         startedAt: startedAt.toISOString(),
         durationMs: Math.round((performance.now() - started) * 100) / 100,
@@ -295,6 +299,8 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
           : { fault: { kind: fault.kind, applied: extra.applied ?? true } }),
         ...(extra.forwarded === false ? { forwarded: false } : {}),
         ...(error === undefined ? {} : { error }),
+        // What the call sent to the model, read only for an open recording (ADR-0015).
+        prompt: readPrompt(upstream.kind, path, decoded(body, request.headers['content-encoding'])),
       };
       open.records.push(record);
       options.onRecord?.(record);
