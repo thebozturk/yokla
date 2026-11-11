@@ -170,6 +170,19 @@ const target = (change: Partial<ProfileTarget> = {}): ProfileTarget => ({
   ...change,
 });
 
+/** A target whose session.open sends `openBody` and carries `carry`. */
+const opened = (openBody: Request['body'], carry = [{ name: 'sessionId', from: '$.id' }]) =>
+  checkTemplates(
+    target({
+      request: request({ headers: { 'x-session-id': '{{carry.sessionId}}' } }),
+      session: {
+        mode: 'client',
+        carry: [],
+        open: { request: request({ url: '/api/session', body: openBody }), carry },
+      },
+    }),
+  );
+
 describe('checkTemplates', () => {
   it('accepts valid templates and lists the environment variables they read', () => {
     const check = checkTemplates(
@@ -197,6 +210,20 @@ describe('checkTemplates', () => {
       '{{requestId}} is used but request.requestId is not configured',
       '{{carry.conversationId}} is used but session.carry has no "conversationId"',
       'unknown placeholder {{usr}}',
+    ]);
+  });
+
+  it('lets turns use what session.open carries, and keeps session.open before any message', () => {
+    expect(opened({ user: '{{session}}', key: '{{env.KEY}}' })).toEqual({
+      issues: [],
+      env: ['KEY'],
+    });
+    expect(opened({ m: '{{message}}', c: '{{carry.sessionId}}' }).issues).toEqual([
+      '{{message}} is used in session.open, which is sent before any message',
+      '{{carry.sessionId}} is used in session.open, which comes before any carried value',
+    ]);
+    expect(opened({}, [{ name: 'other', from: '$.id' }]).issues).toEqual([
+      '{{carry.sessionId}} is used but session.carry has no "sessionId"',
     ]);
   });
 

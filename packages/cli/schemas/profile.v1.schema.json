@@ -291,6 +291,98 @@
                 ],
                 "additionalProperties": false
               }
+            },
+            "open": {
+              "type": "object",
+              "properties": {
+                "request": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "May contain {{env.NAME}}."
+                    },
+                    "method": {
+                      "default": "POST",
+                      "type": "string",
+                      "enum": [
+                        "POST",
+                        "PUT",
+                        "PATCH"
+                      ]
+                    },
+                    "headers": {
+                      "description": "Values may contain {{env.NAME}}. Secrets belong in the environment.",
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "body": {
+                      "description": "JSON body. Strings may contain {{message}}, {{session}}, {{requestId}}, {{carry.NAME}} and {{env.NAME}}. A string that is only a placeholder with no value is left out.",
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    "timeoutMs": {
+                      "default": 30000,
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 600000
+                    },
+                    "requestId": {
+                      "description": "Send a unique id per request in this header, for log correlation.",
+                      "type": "object",
+                      "properties": {
+                        "header": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "header"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "url"
+                  ],
+                  "additionalProperties": false,
+                  "description": "The url may be a path, such as /api/session, resolved against the target url. No {{message}}."
+                },
+                "carry": {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "pattern": "^[a-z][A-Za-z0-9]*$"
+                      },
+                      "from": {
+                        "type": "string",
+                        "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "from"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "description": "Values read from its answer and sent with every turn as {{carry.NAME}}."
+                }
+              },
+              "required": [
+                "request",
+                "carry"
+              ],
+              "additionalProperties": false
             }
           },
           "additionalProperties": false

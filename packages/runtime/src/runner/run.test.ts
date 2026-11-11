@@ -991,6 +991,152 @@ describe('runSuite with a streaming target (ADR-0016)', () => {
   });
 });
 
+/** A target that issues sessions on /api/session and answers chats on /chat. */
+async function sessions(open: (index: number, response: ServerResponse) => void) {
+  let opened = 0;
+  const t = await target((received, _i, response) => {
+    if (received.body['open'] === true) {
+      open(opened, response);
+      opened += 1;
+      return;
+    }
+    json(response, answer({ answer: `session ${String(received.headers['x-session-id'])}` }));
+  });
+  return { ...t, opened: () => opened };
+}
+const opening = (url: string, path: string, change: Record<string, unknown> = {}) =>
+  profile(url, {
+    request: {
+      url,
+      headers: { 'x-session-id': '{{carry.sessionId}}' },
+      body: { message: '{{message}}' },
+    },
+    session: {
+      mode: 'none',
+      carry: [],
+      open: {
+        request: { url: path, body: { open: true } },
+        carry: [{ name: 'sessionId', from: '$.session_id' }],
+      },
+    },
+    ...change,
+  });
+
+describe('runSuite opening a session (ADR-0016)', () => {
+  it('opens a session per sample before the first turn and sends its id with every turn', async () => {
+    const t = await sessions((index, response) => {
+      json(response, { session_id: `s-${String(index)}` });
+    });
+    const results = await runSuite(
+      options(
+        opening(t.url, '/api/session'),
+        cases({ samples: 2, turns: [{ user: 'a' }, { user: 'b' }] }),
+      ),
+    );
+    expect(Results.safeParse(results).success).toBe(true);
+    expect(t.opened()).toBe(2);
+    const texts = results.cases[0]?.samples.map((sample) =>
+      sample.turns.map((turn) => turn.response?.text),
+    );
+    expect(texts).toEqual([
+      ['session s-0', 'session s-0'],
+      ['session s-1', 'session s-1'],
+    ]);
+    // The opening isn't a turn: two turns per sample, no more.
+    expect(results.cases[0]?.samples[0]?.turns).toHaveLength(2);
+  });
+
+  it('resolves a path against the target url, and takes a full url as it is', async () => {
+    const t = await sessions((_index, response) => {
+      json(response, { session_id: 'x' });
+    });
+    const origin = new URL(t.url).origin;
+    for (const path of ['/api/session', `${origin}/api/session`, '{{env.BASE}}/api/session']) {
+      const results = await runSuite(
+        options(opening('http://127.0.0.1:1/never', path), cases({ turns: [{ user: 'a' }] }), {
+          targetUrl: t.url,
+          env: { BASE: origin },
+        }),
+      );
+      expect(results.cases[0]?.samples[0]?.turns[0]?.response?.text, path).toBe('session x');
+    }
+    expect(t.received.filter((r) => r.body['open'] === true)).toHaveLength(3);
+  });
+
+  it('fails the first turn when the opening fails or carries nothing', async () => {
+    const replies: ((response: ServerResponse) => void)[] = [
+      (response) => json(response, { error: 'down' }, 503),
+      (response) => json(response, { session_id: null }),
+      (response) => {
+        response.end('not json');
+      },
+      (response) => json(response, { other: 1 }),
+    ];
+    const t = await sessions((index, response) => {
+      replies[index]?.(response);
+    });
+    const results = await runSuite(
+      options(
+        opening(t.url, '/api/session'),
+        cases(
+          { turns: [{ user: 'a' }] },
+          { turns: [{ user: 'b' }] },
+          { turns: [{ user: 'c' }] },
+          { turns: [{ user: 'd' }] },
+        ),
+      ),
+    );
+    expect(results.cases.map((c) => c.samples[0]?.turns)).toEqual([
+      [{ user: 'a', error: 'session setup failed: HTTP 503', checks: [] }],
+      [
+        {
+          user: 'b',
+          error: 'session setup failed: no value at $.session_id for {{carry.sessionId}}',
+          checks: [],
+        },
+      ],
+      [{ user: 'c', error: 'session setup failed: the answer is not JSON', checks: [] }],
+      [
+        {
+          user: 'd',
+          error: 'session setup failed: no value at $.session_id for {{carry.sessionId}}',
+          checks: [],
+        },
+      ],
+    ]);
+    // No turn was sent.
+    expect(t.received.filter((r) => r.body['open'] !== true)).toHaveLength(0);
+  });
+
+  it('sends the cache bypass with the opening, and may open on another origin', async () => {
+    const issuer = await sessions((_index, response) => {
+      json(response, { session_id: 'far' });
+    });
+    const chat = await sessions(() => undefined);
+    const results = await runSuite(
+      options(
+        opening(chat.url, `${new URL(issuer.url).origin}/api/session`, {
+          cacheBypass: { kind: 'header', name: 'x-bypass', value: '1' },
+        }),
+        cases({ turns: [{ user: 'a' }] }),
+      ),
+    );
+    expect(results.cases[0]?.samples[0]?.turns[0]?.response?.text).toBe('session far');
+    expect(issuer.received[0]?.headers['x-bypass']).toBe('1');
+  });
+
+  it('refuses an opening url that is neither a url nor a path', async () => {
+    await expect(
+      runSuite(
+        options(
+          opening('http://127.0.0.1:1/chat', 'api/session'),
+          cases({ turns: [{ user: 'a' }] }),
+        ),
+      ),
+    ).rejects.toThrow('the session.open url "api/session" is not a valid url or path');
+  });
+});
+
 describe('runSuite with the model proxy', () => {
   const prices = { fake: { m: { input: 1, output: 10 } } };
 
@@ -1352,6 +1498,35 @@ describe('runSuite with the model proxy', () => {
     }
     expect(JSON.stringify(results)).not.toMatch(/YK-CANARY|05321112233/u);
     expect(results.run.issues).toBeUndefined();
+  });
+
+  it('leaves a call the session opening causes unattributed, in serial correlation', async () => {
+    const proxy = await fakeProxy();
+    const t = await target((received, _i, response) => {
+      proxy.records.push(call(null, proxy.mark()));
+      if (received.body['open'] === true) json(response, { session_id: 's' });
+      else json(response, answer());
+    });
+    const base = proxied(t.url, 'serial');
+    const withOpening: Profile = {
+      ...base,
+      target: {
+        ...base.target,
+        session: {
+          ...base.target.session,
+          open: {
+            request: { url: '/session', method: 'POST', timeoutMs: 5_000, body: { open: true } },
+            carry: [{ name: 'sessionId', from: '$.session_id' }],
+          },
+        },
+      },
+    };
+    const results = await runSuite(
+      options(withOpening, cases({ turns: [{ user: 'a' }] }), { proxyUrl: proxy.url }),
+    );
+    expect(results.run.proxy).toMatchObject({ records: 2, attributed: 1, unattributed: 1 });
+    expect(results.cases[0]?.samples[0]?.turns[0]?.proxy?.calls).toHaveLength(1);
+    expect(proxy.armed[0]?.turn).toMatch(/^session-open-/u);
   });
 
   it('says when the declared canary reached no system prompt in the whole run', async () => {
