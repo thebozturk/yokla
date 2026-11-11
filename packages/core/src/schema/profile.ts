@@ -56,7 +56,32 @@ const EvidenceCollection = z.strictObject({
   }),
 });
 
+/** ADR-0016: an answer streamed as events, turned into one document the other paths read. */
+const ResponseStream = z
+  .strictObject({
+    format: z.enum(['sse', 'ndjson']),
+    event: JsonPath.optional().meta({
+      description:
+        "Where an event's name is in its data; by default the SSE event field, else message.",
+    }),
+    text: z
+      .strictObject({ event: z.string().min(1), from: JsonPath })
+      .meta({ description: 'The events that carry text pieces, and where the piece is.' }),
+    done: z.string().min(1).optional().meta({
+      description: 'The event that ends a complete answer; without it, the answer is incomplete.',
+    }),
+    error: z
+      .strictObject({ event: z.string().min(1), from: JsonPath.optional() })
+      .optional()
+      .meta({ description: 'The event that reports a failure, and where its message is.' }),
+  })
+  .meta({
+    description:
+      'The paths below then read {text, events, all, last}: the joined text, every event, and per event name all its data and the last.',
+  });
+
 const HttpResponse = z.strictObject({
+  stream: ResponseStream.optional(),
   text: JsonPath.meta({ description: "Where the assistant's answer text is." }),
   route: JsonPath.optional(),
   id: JsonPath.optional().meta({ description: "Where the target's own request id is." }),
@@ -283,6 +308,7 @@ export type Profile = z.output<typeof BaseProfile> & { readonly [section: string
 export type ProfileTarget = z.output<typeof Target>;
 export type ModelProxyConfig = z.output<typeof ModelProxy>;
 export type FieldSpec = z.output<typeof FieldSpec>;
+export type ResponseStream = z.output<typeof ResponseStream>;
 
 /** Problems between profile sections: untrusted fields must be evidence fields the profile maps. */
 export function profileProblems(

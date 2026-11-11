@@ -888,6 +888,109 @@ const proxied = (url: string, correlation: 'serial' | 'header'): Profile => ({
   },
 });
 
+/** Writes server-sent events, one write per event, a little apart. */
+function events(response: ServerResponse, list: [string, unknown][]): void {
+  response.writeHead(200, { 'content-type': 'text/event-stream' });
+  const write = (index: number) => {
+    const entry = list[index];
+    if (entry === undefined) {
+      response.end();
+      return;
+    }
+    response.write(`event: ${entry[0]}\ndata: ${JSON.stringify(entry[1])}\n\n`);
+    setTimeout(() => {
+      write(index + 1);
+    }, 5);
+  };
+  write(0);
+}
+
+const STREAMED = {
+  stream: {
+    format: 'sse',
+    text: { event: 'text_delta', from: '$.text' },
+    done: 'turn_complete',
+    error: { event: 'error', from: '$.message' },
+  },
+  text: '$.text',
+  route: '$.last.turn_complete.route',
+  evidence: {
+    items: { items: '$.all.ui[*].items[*]', fields: { id: 'id', price: 'price' } },
+  },
+};
+
+describe('runSuite with a streaming target (ADR-0016)', () => {
+  it('reads the answer, route and evidence from the stream, and times the first text', async () => {
+    const t = await target((received, _i, response) => {
+      const conversation = received.body['conversation'];
+      events(response, [
+        ['ui', { items: [{ id: 'P1', price: 19.9 }] }],
+        ['text_delta', { text: 'Ta' }],
+        ['text_delta', { text: 'mam' }],
+        ['turn_complete', { route: 'search', conversation: conversation ?? 'c-1' }],
+      ]);
+    });
+    const streaming = profile(t.url, {
+      request: {
+        url: t.url,
+        body: { message: '{{message}}', conversation: '{{carry.conversation}}' },
+      },
+      response: STREAMED,
+      session: {
+        mode: 'none',
+        carry: [{ name: 'conversation', from: '$.last.turn_complete.conversation' }],
+      },
+    });
+    const results = await runSuite(
+      options(
+        streaming,
+        cases({ turns: [{ user: 'a', expect: { route: 'search' } }, { user: 'b' }] }),
+        { checks: CORE_CHECKS },
+      ),
+    );
+    expect(Results.safeParse(results).success).toBe(true);
+    const [first, second] = results.cases[0]?.samples[0]?.turns ?? [];
+    expect(first?.response).toMatchObject({
+      text: 'Tamam',
+      route: 'search',
+      evidence: { items: [{ id: 'P1', price: 19.9 }] },
+    });
+    const firstText = first?.response?.firstTextMs ?? -1;
+    expect(firstText).toBeGreaterThan(0);
+    expect(firstText).toBeLessThan(first?.response?.latencyMs ?? 0);
+    expect(first?.checks.find((c) => c.check === 'route-expected')?.findings[0]?.verdict).toBe(
+      'pass',
+    );
+    // The value carried from the first turn's stream reached the second request.
+    expect(t.received.map((r) => r.body['conversation'])).toEqual([undefined, 'c-1']);
+    expect(second?.error).toBeUndefined();
+  });
+
+  it('calls an answer incomplete when its stream ends early or reports an error', async () => {
+    const t = await target((received, _i, response) => {
+      events(
+        response,
+        received.body['message'] === 'cut'
+          ? [['text_delta', { text: 'Ta' }]]
+          : [
+              ['text_delta', { text: 'Ta' }],
+              ['error', { message: 'model overloaded' }],
+              ['turn_complete', {}],
+            ],
+      );
+    });
+    const streaming = profile(t.url, { response: STREAMED });
+    const results = await runSuite(
+      options(streaming, cases({ turns: [{ user: 'cut' }] }, { turns: [{ user: 'error' }] })),
+    );
+    expect(results.cases.map((c) => c.samples[0]?.turns[0]?.error)).toEqual([
+      'the stream ended before its "turn_complete" event',
+      'the stream reported an error: model overloaded',
+    ]);
+    expect(results.cases.map((c) => c.status)).toEqual(['error', 'error']);
+  });
+});
+
 describe('runSuite with the model proxy', () => {
   const prices = { fake: { m: { input: 1, output: 10 } } };
 

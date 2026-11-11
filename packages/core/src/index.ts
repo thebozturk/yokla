@@ -11,6 +11,13 @@ export {
 } from './config/parse.ts';
 export { getFieldPath, parseJsonPath, queryJsonPath, type Segment } from './extract/jsonpath.ts';
 export {
+  parseStream,
+  readStream,
+  type ReadStream,
+  type StreamChunk,
+  type StreamEvent,
+} from './extract/stream.ts';
+export {
   extractField,
   extractResponse,
   toJson,

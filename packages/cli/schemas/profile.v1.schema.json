@@ -78,6 +78,71 @@
         "response": {
           "type": "object",
           "properties": {
+            "stream": {
+              "type": "object",
+              "properties": {
+                "format": {
+                  "type": "string",
+                  "enum": [
+                    "sse",
+                    "ndjson"
+                  ]
+                },
+                "event": {
+                  "description": "Where an event's name is in its data; by default the SSE event field, else message.",
+                  "type": "string",
+                  "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                },
+                "text": {
+                  "type": "object",
+                  "properties": {
+                    "event": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "from": {
+                      "type": "string",
+                      "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                    }
+                  },
+                  "required": [
+                    "event",
+                    "from"
+                  ],
+                  "additionalProperties": false,
+                  "description": "The events that carry text pieces, and where the piece is."
+                },
+                "done": {
+                  "description": "The event that ends a complete answer; without it, the answer is incomplete.",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "error": {
+                  "description": "The event that reports a failure, and where its message is.",
+                  "type": "object",
+                  "properties": {
+                    "event": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "from": {
+                      "type": "string",
+                      "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                    }
+                  },
+                  "required": [
+                    "event"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "format",
+                "text"
+              ],
+              "additionalProperties": false,
+              "description": "The paths below then read {text, events, all, last}: the joined text, every event, and per event name all its data and the last."
+            },
             "text": {
               "type": "string",
               "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$",

@@ -45,6 +45,8 @@ export const TurnResult = z.object({
     .object({
       status: z.int(),
       latencyMs: z.number().nonnegative(),
+      /** For a streamed answer, the time to its first text piece (ADR-0016). */
+      firstTextMs: z.number().nonnegative().optional(),
       /** The target's own request id, when the profile maps it. */
       id: z.string().optional(),
       text: z.string().optional(),
