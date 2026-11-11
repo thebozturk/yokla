@@ -28,7 +28,9 @@ import {
   type JsonValue,
   type Profile,
   type FaultPlan,
+  type PromptRole,
   type PromptStorage,
+  type ProxyCallView,
   type ProxyRecord,
   type Results,
   type YoklaConfig,
@@ -518,6 +520,26 @@ async function observe(
   };
 }
 
+/** A prompt as checks see it: only when all its text is there (ADR-0015). */
+function promptView(prompt: TurnProxy['calls'][number]['prompt']): ProxyCallView['prompt'] {
+  if (prompt === undefined || prompt === null) return null;
+  const view: { role: PromptRole; text: string }[] = [];
+  for (const { role, text } of prompt) {
+    if (text === undefined) return null;
+    view.push({ role, text });
+  }
+  return view;
+}
+
+/** Whether any recorded call sent `text` in a system message: every prompt-leak pass needs it. */
+function inSystemPrompt(records: readonly ProxyRecord[], text: string): boolean {
+  return records.some((record) =>
+    (record.prompt ?? []).some(
+      (message) => message.role === 'system' && (message.text ?? '').includes(text),
+    ),
+  );
+}
+
 /** The run's calls tied to its turns, and what of their prompts the results keep. */
 interface ProxiedCalls {
   readonly byTurn: ReadonlyMap<Exchange, TurnProxy>;
@@ -555,7 +577,15 @@ function judgeCase(
         ...exchange.view,
         observed: fields,
         proxy:
-          proxy === undefined ? undefined : { calls: proxy.calls.length, costUsd: proxy.costUsd },
+          proxy === undefined
+            ? undefined
+            : {
+                calls: proxy.calls.map((call) => ({
+                  inputTokens: call.usage.input,
+                  prompt: promptView(call.prompt),
+                })),
+                costUsd: proxy.costUsd,
+              },
       };
       // A turn with no usable answer under faults is judged only by the fault judges.
       const applicable =
@@ -726,6 +756,12 @@ export async function runSuite(options: RunOptions): Promise<Results> {
           ),
           prompts: recording.prompts,
         };
+  const canary = options.profile.modelProxy?.inspect?.canary;
+  if (canary !== undefined && records !== undefined && !inSystemPrompt(records, canary)) {
+    proxyIssues.push(
+      "the canary in modelProxy.inspect.canary reached no system prompt during the run, so prompt-leak couldn't apply",
+    );
+  }
   const observation = await observe(options, startedAt, exchanged);
   const cases = exchanged.map((c) => judgeCase(options, prepared, c, observation, calls));
   const stop = cap?.reason();

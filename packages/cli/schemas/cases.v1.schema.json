@@ -295,10 +295,25 @@
                           "type": "integer",
                           "minimum": 0,
                           "maximum": 9007199254740991
+                        },
+                        "inputTokens": {
+                          "description": "The most input tokens any one model call of the turn may send (ADR-0015).",
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
                         }
                       },
                       "additionalProperties": false,
-                      "description": "The most the turn's model calls may cost, and how many there may be (ADR-0014)."
+                      "description": "The most the turn's model calls may cost, how many there may be (ADR-0014), and how large each prompt may be (ADR-0015)."
+                    },
+                    "notSentToModel": {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "description": "Seeded values, such as fake personal data, that must not appear in any message of the turn's model calls (ADR-0015)."
                     },
                     "evidence": {
                       "type": "object",

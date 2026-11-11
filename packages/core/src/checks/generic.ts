@@ -3,11 +3,9 @@
 
 import { coreExpectations } from '../schema/cases.ts';
 import { findPhrases } from '../text/phrases.ts';
-import type { Check, CheckContext, CheckFinding } from './types.ts';
-
-function fold(context: CheckContext, text: string): string {
-  return context.lang === undefined ? text.toLowerCase() : context.lang.fold(text);
-}
+import { fold } from './fold.ts';
+import { piiInPrompt, promptBudget, promptLeak, untrustedInSystem } from './inspection.ts';
+import type { Check, CheckFinding } from './types.ts';
 
 export const routeExpected: Check = {
   id: 'route-expected',
@@ -177,6 +175,10 @@ export const costBudget: Check = {
   run(context) {
     const parsed = coreExpectations.budget.safeParse(context.turn.expect['budget']);
     if (!parsed.success) return { applicable: false, reason: 'the turn has no budget' };
+    const { costUsd, modelCalls } = parsed.data;
+    if (costUsd === undefined && modelCalls === undefined) {
+      return { applicable: false, reason: 'the budget sets no cost and no call count' };
+    }
     const { proxy } = context.turn;
     if (proxy === undefined) {
       return {
@@ -186,13 +188,13 @@ export const costBudget: Check = {
       };
     }
     const findings: CheckFinding[] = [];
-    const { costUsd, modelCalls } = parsed.data;
     if (modelCalls !== undefined) {
+      const calls = proxy.calls.length;
       findings.push({
         dimension: 'cost',
-        verdict: proxy.calls <= modelCalls ? 'pass' : 'fail',
+        verdict: calls <= modelCalls ? 'pass' : 'fail',
         severity: 'medium',
-        message: `${String(proxy.calls)} model calls, budget ${String(modelCalls)}`,
+        message: `${String(calls)} model calls, budget ${String(modelCalls)}`,
       });
     }
     if (costUsd !== undefined && proxy.costUsd === null) {
@@ -228,4 +230,8 @@ export const CORE_CHECKS: readonly Check[] = [
   gracefulUnderFault,
   answeredWithinDeadline,
   costBudget,
+  promptBudget,
+  promptLeak,
+  untrustedInSystem,
+  piiInPrompt,
 ];

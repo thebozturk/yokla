@@ -7,6 +7,7 @@ import type { EvidenceItem, JsonValue } from '../extract/response.ts';
 import type { DomainPackSchemas } from '../schema/build.ts';
 import type { Case } from '../schema/cases.ts';
 import type { Profile } from '../schema/profile.ts';
+import type { PromptRole } from '../schema/proxy.ts';
 
 export type FindingSeverity = 'info' | 'low' | 'medium' | 'high' | 'critical';
 
@@ -56,7 +57,16 @@ export interface TurnView {
    */
   readonly faults: { readonly failure: string | undefined } | undefined;
   /** The model calls the proxy tied to this turn; undefined without proxy data (ADR-0012). */
-  readonly proxy: { readonly calls: number; readonly costUsd: number | null } | undefined;
+  readonly proxy:
+    { readonly calls: readonly ProxyCallView[]; readonly costUsd: number | null } | undefined;
+}
+
+/** One model call the proxy tied to a turn, as checks see it (ADR-0012, ADR-0015). */
+export interface ProxyCallView {
+  /** Input tokens as the provider reported them, cached ones included; null when unreported. */
+  readonly inputTokens: number | null;
+  /** The messages the call sent, with their text; null when the proxy couldn't read them. */
+  readonly prompt: readonly { readonly role: PromptRole; readonly text: string }[] | null;
 }
 
 /** A money amount mentioned in text, e.g. "1.299,90 TL". */

@@ -745,6 +745,33 @@
             }
           },
           "additionalProperties": false
+        },
+        "inspect": {
+          "type": "object",
+          "properties": {
+            "canary": {
+              "description": "A string the app's system prompt contains; prompt-leak fails when the answer contains it.",
+              "type": "string",
+              "minLength": 8
+            },
+            "untrusted": {
+              "description": "Evidence fields that hold retrieved content, per collection, e.g. { products: [name] }; untrusted-in-system fails when one of their values is in a system message.",
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+              },
+              "additionalProperties": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][A-Za-z0-9]*$"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
         }
       },
       "required": [

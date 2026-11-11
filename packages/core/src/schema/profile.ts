@@ -226,6 +226,18 @@ const PromptStorage = z
     path: ['redact'],
   });
 
+/** ADR-0015: what the inspection checks look for in the prompts the proxy captures. */
+const Inspect = z.strictObject({
+  canary: z.string().min(8).optional().meta({
+    description:
+      "A string the app's system prompt contains; prompt-leak fails when the answer contains it.",
+  }),
+  untrusted: z.record(Id, z.array(FieldName).min(1)).optional().meta({
+    description:
+      'Evidence fields that hold retrieved content, per collection, e.g. { products: [name] }; untrusted-in-system fails when one of their values is in a system message.',
+  }),
+});
+
 /** ADR-0012: the model proxy between the app and its providers. */
 const ModelProxy = z.strictObject({
   port: z.int().min(1).max(65_535).default(8787),
@@ -240,6 +252,7 @@ const ModelProxy = z.strictObject({
       'serial: one request in flight; header: the app forwards x-yokla-trace to its provider calls.',
   }),
   prompts: PromptStorage.default({ store: 'sizes' }),
+  inspect: Inspect.optional(),
 });
 
 const Capability = z.strictObject({
@@ -270,3 +283,28 @@ export type Profile = z.output<typeof BaseProfile> & { readonly [section: string
 export type ProfileTarget = z.output<typeof Target>;
 export type ModelProxyConfig = z.output<typeof ModelProxy>;
 export type FieldSpec = z.output<typeof FieldSpec>;
+
+/** Problems between profile sections: untrusted fields must be evidence fields the profile maps. */
+export function profileProblems(
+  profile: Pick<Profile, 'target' | 'modelProxy'>,
+): { path: (string | number)[]; message: string }[] {
+  const problems: { path: (string | number)[]; message: string }[] = [];
+  const evidence = profile.target.response.evidence ?? {};
+  for (const [name, fields] of Object.entries(profile.modelProxy?.inspect?.untrusted ?? {})) {
+    const path = ['modelProxy', 'inspect', 'untrusted', name];
+    const collection = evidence[name];
+    if (collection === undefined) {
+      problems.push({ path, message: `the profile maps no evidence collection "${name}"` });
+      continue;
+    }
+    for (const [index, field] of fields.entries()) {
+      if (!(field in collection.fields)) {
+        problems.push({
+          path: [...path, index],
+          message: `evidence collection "${name}" maps no field "${field}"`,
+        });
+      }
+    }
+  }
+  return problems;
+}

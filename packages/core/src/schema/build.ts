@@ -2,7 +2,7 @@
 
 import { z } from 'zod';
 import { caseShape, coreExpectations } from './cases.ts';
-import { profileShape } from './profile.ts';
+import { profileProblems, profileShape } from './profile.ts';
 
 /** What a domain pack contributes to the config schemas. */
 export interface DomainPackSchemas {
@@ -57,6 +57,11 @@ export function buildSchemas(options: SchemaOptions) {
         })
         .optional(),
       ...sections,
+    })
+    .superRefine((value, context) => {
+      for (const problem of profileProblems(value)) {
+        context.addIssue({ code: 'custom', path: problem.path, message: problem.message });
+      }
     })
     .meta({ title: 'yokla profile v1' });
 

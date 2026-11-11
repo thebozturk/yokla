@@ -119,6 +119,40 @@ describe('model proxy prompts (ADR-0015)', () => {
   });
 });
 
+const inspecting = (inspect: unknown) =>
+  profile.safeParse(
+    withChange({
+      modelProxy: {
+        upstreams: [{ id: 'openai', kind: 'openai-compatible', upstream: 'http://127.0.0.1:9' }],
+        inspect,
+      },
+    }),
+  );
+
+const issues = (inspect: unknown) =>
+  inspecting(inspect).error?.issues.map((issue) => [issue.path.join('.'), issue.message]);
+
+describe('model proxy inspection (ADR-0015)', () => {
+  it('accepts a canary and untrusted fields the profile maps as evidence', () => {
+    expect(inspecting({ canary: 'YK-CANARY-1', untrusted: { products: ['price'] } }).success).toBe(
+      true,
+    );
+    expect(inspecting({ canary: 'short' }).success).toBe(false);
+  });
+
+  it('refuses untrusted fields that are not mapped as evidence, saying where', () => {
+    expect(issues({ untrusted: { stores: ['name'] } })).toEqual([
+      ['modelProxy.inspect.untrusted.stores', 'the profile maps no evidence collection "stores"'],
+    ]);
+    expect(issues({ untrusted: { products: ['price', 'name'] } })).toEqual([
+      [
+        'modelProxy.inspect.untrusted.products.1',
+        'evidence collection "products" maps no field "name"',
+      ],
+    ]);
+  });
+});
+
 describe('case schema', () => {
   const validCase = {
     id: 'tents-tr',
