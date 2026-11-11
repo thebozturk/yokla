@@ -3,6 +3,7 @@
 
 import { z } from 'zod';
 import { FieldName, FieldPath, Id, JsonPath, LanguageCode, Provenance } from './common.ts';
+import { PromptStore } from './proxy.ts';
 
 /** A command run locally as an argument list, never through a shell. */
 const Command = z
@@ -191,6 +192,40 @@ const Upstream = z.strictObject({
     .meta({ description: "The app's setting that points it at the proxy; for people to read." }),
 });
 
+/** A pattern whose matches `redacted` replaces; it must compile and must not match empty text. */
+const RedactPattern = z
+  .string()
+  .min(1)
+  .superRefine((source, context) => {
+    let pattern: RegExp;
+    try {
+      pattern = new RegExp(source, 'u');
+    } catch (error) {
+      context.addIssue({
+        code: 'custom',
+        message: `not a regular expression: ${error instanceof Error ? error.message : String(error)}`,
+      });
+      return;
+    }
+    if (pattern.test('')) context.addIssue({ code: 'custom', message: 'matches empty text' });
+  });
+
+/** ADR-0015: what of each call's prompt is written to results and records files. */
+const PromptStorage = z
+  .strictObject({
+    store: PromptStore.default('sizes').meta({
+      description:
+        'sizes: role and length; hashed: plus a SHA-256; redacted: plus the text with the redact patterns replaced; full: plus the hash and the text.',
+    }),
+    redact: z.array(RedactPattern).min(1).optional().meta({
+      description: 'Regular expressions (Unicode mode) whose matches redacted replaces.',
+    }),
+  })
+  .refine((storage) => storage.store !== 'redacted' || storage.redact !== undefined, {
+    message: 'store: redacted needs at least one redact pattern',
+    path: ['redact'],
+  });
+
 /** ADR-0012: the model proxy between the app and its providers. */
 const ModelProxy = z.strictObject({
   port: z.int().min(1).max(65_535).default(8787),
@@ -204,6 +239,7 @@ const ModelProxy = z.strictObject({
     description:
       'serial: one request in flight; header: the app forwards x-yokla-trace to its provider calls.',
   }),
+  prompts: PromptStorage.default({ store: 'sizes' }),
 });
 
 const Capability = z.strictObject({

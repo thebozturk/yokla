@@ -716,6 +716,35 @@
             "serial",
             "header"
           ]
+        },
+        "prompts": {
+          "default": {
+            "store": "sizes"
+          },
+          "type": "object",
+          "properties": {
+            "store": {
+              "default": "sizes",
+              "description": "sizes: role and length; hashed: plus a SHA-256; redacted: plus the text with the redact patterns replaced; full: plus the hash and the text.",
+              "type": "string",
+              "enum": [
+                "sizes",
+                "hashed",
+                "redacted",
+                "full"
+              ]
+            },
+            "redact": {
+              "description": "Regular expressions (Unicode mode) whose matches redacted replaces.",
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "additionalProperties": false
         }
       },
       "required": [

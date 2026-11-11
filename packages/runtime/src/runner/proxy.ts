@@ -4,7 +4,15 @@
 // call belongs to the turn whose x-yokla-trace it carried. Neither needs a
 // clock. Calls tied to no turn are counted as unattributed, never dropped.
 
-import { callCost, type ProxyRecord, type Results, type YoklaConfig } from '@yokla/core';
+import { createHash } from 'node:crypto';
+import {
+  callCost,
+  storePrompt,
+  type PromptStorage,
+  type ProxyRecord,
+  type Results,
+  type YoklaConfig,
+} from '@yokla/core';
 
 type TurnResult = Results['cases'][number]['samples'][number]['turns'][number];
 export type TurnProxy = NonNullable<TurnResult['proxy']>;
@@ -65,6 +73,7 @@ export function attributeCalls<K>(
       usage: record.usage,
       costUsd,
       ...(record.fault === undefined ? {} : { fault: record.fault }),
+      ...(record.prompt === undefined ? {} : { prompt: record.prompt }),
     });
   }
 
@@ -103,5 +112,24 @@ export function attributeCalls<K>(
       totals,
       missing,
     },
+  };
+}
+
+function sha256(text: string): string {
+  return createHash('sha256').update(text, 'utf8').digest('hex');
+}
+
+/**
+ * A turn's calls as the results keep them: the checks see the prompts' text,
+ * the results only what the profile's `prompts.store` keeps (ADR-0015).
+ */
+export function storeTurnProxy(proxy: TurnProxy, storage: PromptStorage): TurnProxy {
+  return {
+    ...proxy,
+    calls: proxy.calls.map((call) =>
+      call.prompt === undefined
+        ? call
+        : { ...call, prompt: storePrompt(call.prompt, storage, sha256) },
+    ),
   };
 }

@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import { Id, LanguageCode, Suite } from './common.ts';
-import { ProxyUsage } from './proxy.ts';
+import { PromptMessage, PromptStore, ProxyUsage } from './proxy.ts';
 
 export const RESULTS_SCHEMA_ID = 'yokla.results/v1';
 
@@ -81,6 +81,11 @@ export const TurnResult = z.object({
           costUsd: z.number().nonnegative().nullable(),
           /** The fault the proxy injected, and whether it could apply (ADR-0013). */
           fault: z.object({ kind: z.string(), applied: z.boolean() }).optional(),
+          /**
+           * The messages the call sent, in the form the run's `prompts` store mode
+           * keeps (ADR-0015); null when the proxy couldn't read the request.
+           */
+          prompt: z.array(PromptMessage).nullable().optional(),
         }),
       ),
       /** The sum of the calls' cost; null when any call has none. */
@@ -182,6 +187,8 @@ export const Results = z
           totals: z.record(z.string(), z.number()),
           /** Per total, the calls without a value; the total leaves them out. */
           missing: z.record(z.string(), z.int().positive()),
+          /** What of each call's prompt these results keep (ADR-0015). */
+          prompts: PromptStore.optional(),
         })
         .optional(),
       /** Problems that affect the whole run, e.g. logs that couldn't be read. */
