@@ -98,6 +98,7 @@ export type {
   PackIo,
   PhraseKind,
   PreparedPack,
+  ProxyCallView,
   TurnView,
 } from './checks/types.ts';
 export { findPhrases, hasPhrase, type PhraseMatch } from './text/phrases.ts';
@@ -111,3 +112,4 @@ export {
   evidenceCount,
   routeExpected,
 } from './checks/generic.ts';
+export { piiInPrompt, promptBudget, promptLeak, untrustedInSystem } from './checks/inspection.ts';

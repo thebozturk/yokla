@@ -1191,6 +1191,98 @@ describe('runSuite with the model proxy', () => {
     expect(plain.cases[0]?.status).toBe('unmeasured');
   });
 
+  it("gives the checks each call's prompt text, while the results keep sizes", async () => {
+    const proxy = await fakeProxy();
+    const prompts: ProxyRecord['prompt'][] = [];
+    const t = await target((_r, _i, response) => {
+      for (const prompt of prompts.splice(0, 1))
+        proxy.records.push({ ...call(null, proxy.mark()), prompt });
+      json(response, answer());
+    });
+    const base = proxied(t.url, 'serial');
+    const inspecting: Profile =
+      base.modelProxy === undefined
+        ? base
+        : { ...base, modelProxy: { ...base.modelProxy, inspect: { canary: 'YK-CANARY-1' } } };
+    const expect1 = { notSentToModel: ['0532 111 22 33'], budget: { inputTokens: 999 } };
+    prompts.push(
+      [
+        { role: 'system', chars: 15, text: 'Kurallar YK-CANARY-1' },
+        { role: 'user', chars: 11, text: '05321112233' },
+      ],
+      // A prompt stored without its text can't be inspected, nor one the proxy couldn't read.
+      [{ role: 'user', chars: 11 }],
+      null,
+    );
+    const results = await runSuite(
+      options(
+        inspecting,
+        cases({
+          turns: [
+            { user: 'a', expect: expect1 },
+            { user: 'b', expect: expect1 },
+            { user: 'c', expect: expect1 },
+          ],
+        }),
+        { proxyUrl: proxy.url, checks: CORE_CHECKS },
+      ),
+    );
+    expect(Results.safeParse(results).success).toBe(true);
+    const [first, second, third] = results.cases[0]?.samples[0]?.turns ?? [];
+    const outcome = (turn: typeof first, id: string) => {
+      const check = turn?.checks.find((c) => c.check === id);
+      return check?.applicable === true
+        ? [
+            ...check.findings.map((f) => f.verdict),
+            ...(check.unmeasured ?? []).map(() => 'unmeasured'),
+          ]
+        : ['n/a'];
+    };
+    expect(
+      ['pii-in-prompt', 'prompt-budget', 'prompt-leak'].map((id) => outcome(first, id)),
+    ).toEqual([['fail'], ['fail'], ['pass']]);
+    for (const turn of [second, third]) {
+      expect(['pii-in-prompt', 'prompt-leak'].map((id) => outcome(turn, id))).toEqual([
+        ['unmeasured'],
+        ['unmeasured'],
+      ]);
+    }
+    expect(JSON.stringify(results)).not.toMatch(/YK-CANARY|05321112233/u);
+    expect(results.run.issues).toBeUndefined();
+  });
+
+  it('says when the declared canary reached no system prompt in the whole run', async () => {
+    const proxy = await fakeProxy();
+    const t = await target((_r, _i, response) => {
+      proxy.records.push({
+        ...call(null, proxy.mark()),
+        prompt: [
+          { role: 'system', chars: 8, text: 'Kurallar' },
+          { role: 'user', chars: 11, text: 'YK-CANARY-1' },
+        ],
+      });
+      json(response, answer());
+    });
+    const base = proxied(t.url, 'serial');
+    const inspecting: Profile =
+      base.modelProxy === undefined
+        ? base
+        : { ...base, modelProxy: { ...base.modelProxy, inspect: { canary: 'YK-CANARY-1' } } };
+    const results = await runSuite(
+      options(inspecting, cases({ turns: [{ user: 'a' }] }), {
+        proxyUrl: proxy.url,
+        checks: CORE_CHECKS,
+      }),
+    );
+    expect(results.run.issues).toEqual([
+      "the canary in modelProxy.inspect.canary reached no system prompt during the run, so prompt-leak couldn't apply",
+    ]);
+    const silent = await runSuite(
+      options(base, cases({ turns: [{ user: 'a' }] }), { proxyUrl: proxy.url }),
+    );
+    expect(silent.run.issues).toBeUndefined();
+  });
+
   it('stops starting samples and cases at the cost cap, and says so', async () => {
     const proxy = await fakeProxy();
     const t = await target((_r, _i, response) => {

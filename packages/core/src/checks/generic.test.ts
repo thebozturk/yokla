@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkContext, mutate, stubLanguagePack, turnView } from '../testing.ts';
+import { checkContext, mutate, proxyCalls, stubLanguagePack, turnView } from '../testing.ts';
 import {
   answeredWithinDeadline,
   answerText,
@@ -230,17 +230,19 @@ const runBudget = (budget: unknown, proxy: TurnView['proxy']) =>
 describe('cost-budget', () => {
   it('judges the cost and the number of model calls against the budget, boundaries included', () => {
     expect(
-      runBudget({ costUsd: 0.002, modelCalls: 2 }, { calls: 2, costUsd: 0.002 }),
+      runBudget({ costUsd: 0.002, modelCalls: 2 }, { calls: proxyCalls(2), costUsd: 0.002 }),
     ).toMatchObject({
       findings: [
         { dimension: 'cost', verdict: 'pass', message: '2 model calls, budget 2' },
         { dimension: 'cost', verdict: 'pass', message: 'cost 0.002 USD, budget 0.002 USD' },
       ],
     });
-    expect(verdicts(runBudget({ costUsd: 0.002 }, { calls: 1, costUsd: 0.0021 }))).toEqual([
-      'fail',
-    ]);
-    expect(verdicts(runBudget({ modelCalls: 1 }, { calls: 2, costUsd: null }))).toEqual(['fail']);
+    expect(
+      verdicts(runBudget({ costUsd: 0.002 }, { calls: proxyCalls(1), costUsd: 0.0021 })),
+    ).toEqual(['fail']);
+    expect(verdicts(runBudget({ modelCalls: 1 }, { calls: proxyCalls(2), costUsd: null }))).toEqual(
+      ['fail'],
+    );
   });
 
   it('reports cost as unmeasured without proxy data or with a call that has no cost', () => {
@@ -249,14 +251,24 @@ describe('cost-budget', () => {
       findings: [],
       unmeasured: [{ dimension: 'cost', reason: 'no model proxy data for this turn' }],
     });
-    expect(runBudget({ costUsd: 1, modelCalls: 5 }, { calls: 2, costUsd: null })).toMatchObject({
+    expect(
+      runBudget({ costUsd: 1, modelCalls: 5 }, { calls: proxyCalls(2), costUsd: null }),
+    ).toMatchObject({
       findings: [{ verdict: 'pass', message: '2 model calls, budget 5' }],
       unmeasured: [{ dimension: 'cost', reason: 'a model call of the turn has no cost' }],
     });
   });
 
   it('does not apply without a budget, and refuses an empty one', () => {
-    expect(runBudget(undefined, { calls: 1, costUsd: 0 })).toMatchObject({ applicable: false });
-    expect(runBudget({}, { calls: 1, costUsd: 0 })).toMatchObject({ applicable: false });
+    expect(runBudget(undefined, { calls: proxyCalls(1), costUsd: 0 })).toMatchObject({
+      applicable: false,
+    });
+    expect(runBudget({}, { calls: proxyCalls(1), costUsd: 0 })).toMatchObject({
+      applicable: false,
+    });
+    expect(runBudget({ inputTokens: 10 }, { calls: proxyCalls(1), costUsd: 0 })).toEqual({
+      applicable: false,
+      reason: 'the budget sets no cost and no call count',
+    });
   });
 });

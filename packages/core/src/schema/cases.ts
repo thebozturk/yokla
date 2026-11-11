@@ -2,6 +2,7 @@
 
 import { z } from 'zod';
 import { Id, LanguageCode, Provenance, Suite } from './common.ts';
+import { squeeze } from '../text/match.ts';
 import { FaultPlan } from './fault.ts';
 
 export const KnownGap = z.strictObject({
@@ -30,13 +31,34 @@ export const coreExpectations = {
     .strictObject({
       costUsd: z.number().nonnegative().optional(),
       modelCalls: z.int().min(0).optional(),
+      inputTokens: z.int().min(0).optional().meta({
+        description: 'The most input tokens any one model call of the turn may send (ADR-0015).',
+      }),
     })
-    .refine((budget) => budget.costUsd !== undefined || budget.modelCalls !== undefined, {
-      message: 'a budget needs costUsd or modelCalls',
-    })
+    .refine(
+      (budget) =>
+        budget.costUsd !== undefined ||
+        budget.modelCalls !== undefined ||
+        budget.inputTokens !== undefined,
+      { message: 'a budget needs costUsd, modelCalls or inputTokens' },
+    )
     .meta({
       description:
-        "The most the turn's model calls may cost, and how many there may be (ADR-0014).",
+        "The most the turn's model calls may cost, how many there may be (ADR-0014), and how large each prompt may be (ADR-0015).",
+    }),
+  notSentToModel: z
+    .array(
+      z
+        .string()
+        .min(1)
+        .refine((value) => squeeze(value).length >= 3, {
+          message: 'needs at least 3 characters besides spaces, dots, dashes and parentheses',
+        }),
+    )
+    .min(1)
+    .meta({
+      description:
+        "Seeded values, such as fake personal data, that must not appear in any message of the turn's model calls (ADR-0015).",
     }),
   evidence: z
     .record(

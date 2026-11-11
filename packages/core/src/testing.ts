@@ -3,7 +3,7 @@
 // mutation that silently did nothing can't make a test pass.
 
 import type { Case } from './schema/cases.ts';
-import type { CheckContext, LanguagePack, TurnView } from './checks/types.ts';
+import type { CheckContext, LanguagePack, ProxyCallView, TurnView } from './checks/types.ts';
 import type { Profile } from './schema/profile.ts';
 
 /**
@@ -40,6 +40,16 @@ export function turnView(
       ...response,
     },
   };
+}
+
+/** A model call as checks see it, for check tests: 100 input tokens, an empty prompt. */
+export function proxyCall(change: Partial<ProxyCallView> = {}): ProxyCallView {
+  return { inputTokens: 100, prompt: [], ...change };
+}
+
+/** `count` model calls as checks see them, for check tests. */
+export function proxyCalls(count: number): ProxyCallView[] {
+  return Array.from({ length: count }, () => proxyCall());
 }
 
 const MINIMAL_PROFILE = {
