@@ -32,7 +32,11 @@ export interface RemoteModelOptions {
 }
 
 /** The system message names the job on its first line, so a provider can tell the two calls apart. */
-export const ROLES = { interpret: 'demo-shop:interpret', write: 'demo-shop:write' } as const;
+export const ROLES = {
+  interpret: 'demo-shop:interpret',
+  write: 'demo-shop:write',
+  summarize: 'demo-shop:summarize',
+} as const;
 
 /** The instructions in every system prompt; output that repeats them is a leak. */
 export const INSTRUCTIONS =
@@ -148,6 +152,10 @@ export class RemoteModel implements ChatModel {
     if (!isInterpretation(parsed))
       throw new Error('the model answered with an invalid interpretation');
     return parsed;
+  }
+
+  summarize(answer: string, call?: ModelCall): Promise<string> {
+    return this.#complete(ROLES.summarize, { answer }, call);
   }
 
   write(draft: AnswerDraft, call?: ModelCall): Promise<string> {

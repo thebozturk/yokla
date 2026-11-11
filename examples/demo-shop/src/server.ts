@@ -1,5 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import type { Assistant } from './assistant.ts';
+import type { Assistant, ChatReply } from './assistant.ts';
 import { RateLimiter, type RateLimitOptions } from './rate-limit.ts';
 
 export interface DemoShopServerOptions {
@@ -7,7 +8,12 @@ export interface DemoShopServerOptions {
   /** `false` disables rate limiting. */
   readonly rateLimit: RateLimitOptions | false;
   readonly now?: () => number;
+  /** After each answer has gone out, summarise it with a model call in the background. */
+  readonly summarizeAfterAnswer?: boolean;
 }
+
+/** How long after an answer the background summary starts. */
+export const SUMMARY_DELAY_MS = 20;
 
 export const DEFAULT_RATE_LIMIT: RateLimitOptions = { burstPerSecond: 3, perMinute: 120 };
 
@@ -48,7 +54,10 @@ function readBody(request: IncomingMessage): Promise<string | undefined> {
   });
 }
 
-function parseChatRequest(body: string): { message: string; sessionId: string } | undefined {
+function parseChatRequest(
+  body: string,
+  header: string | undefined,
+): { message: string; sessionId: string } | undefined {
   let value: unknown;
   try {
     value = JSON.parse(body);
@@ -57,12 +66,28 @@ function parseChatRequest(body: string): { message: string; sessionId: string } 
   }
   if (typeof value !== 'object' || value === null) return undefined;
   const message: unknown = 'message' in value ? value.message : undefined;
-  const sessionId: unknown = 'sessionId' in value ? value.sessionId : undefined;
+  // A session the server issued comes in a header; otherwise the client names one.
+  const sessionId: unknown = header ?? ('sessionId' in value ? value.sessionId : undefined);
   if (typeof message !== 'string' || message.trim() === '' || message.length > MAX_MESSAGE_LENGTH)
     return undefined;
   if (typeof sessionId !== 'string' || sessionId === '' || sessionId.length > MAX_SESSION_ID_LENGTH)
     return undefined;
   return { message, sessionId };
+}
+
+/** The answer as server-sent events: the products, the text in pieces, then done. */
+function stream(response: ServerResponse, reply: ChatReply, cache: string): void {
+  response.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-cache',
+    'x-cache': cache,
+  });
+  const event = (name: string, data: unknown) =>
+    response.write(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
+  event('products', { products: reply.products });
+  for (const piece of reply.answer.match(/[\s\S]{1,40}/gu) ?? []) event('delta', { text: piece });
+  event('done', reply.metadata);
+  response.end();
 }
 
 function wantsCacheBypass(request: IncomingMessage): boolean {
@@ -82,7 +107,7 @@ export function createDemoShopServer(options: DemoShopServerOptions): Server {
       send(response, 200, { status: 'ok' });
       return;
     }
-    if (path !== '/v1/chat') {
+    if (path !== '/v1/chat' && path !== '/v1/sessions') {
       send(response, 404, { error: 'not_found' });
       return;
     }
@@ -103,12 +128,25 @@ export function createDemoShopServer(options: DemoShopServerOptions): Server {
       }
     }
 
+    if (path === '/v1/sessions') {
+      // A session the server issues; chats send it back in x-session-id.
+      request.resume();
+      send(response, 201, { data: { sessionId: randomUUID() } });
+      return;
+    }
+
     const body = await readBody(request);
     if (body === undefined) {
       send(response, 413, { error: 'payload_too_large' }, { connection: 'close' });
       return;
     }
-    const chat = parseChatRequest(body);
+    const header = request.headers['x-session-id'];
+    const chat = parseChatRequest(
+      body,
+      typeof header === 'string' && header !== '' && header.length <= MAX_SESSION_ID_LENGTH
+        ? header
+        : undefined,
+    );
     if (chat === undefined) {
       send(response, 400, {
         error: 'invalid_request',
@@ -123,7 +161,18 @@ export function createDemoShopServer(options: DemoShopServerOptions): Server {
       bypassCache: wantsCacheBypass(request),
       ...(typeof trace === 'string' && trace !== '' ? { trace } : {}),
     });
-    send(response, 200, { data: reply }, { 'x-cache': cache });
+    const accept = request.headers.accept ?? '';
+    if (accept.includes('text/event-stream')) stream(response, reply, cache);
+    else send(response, 200, { data: reply }, { 'x-cache': cache });
+    if (options.summarizeAfterAnswer === true) {
+      // Like apps that update a memory after answering: started later, never awaited.
+      setTimeout(() => {
+        void options.assistant.summarize(
+          reply.answer,
+          typeof trace === 'string' && trace !== '' ? { trace } : {},
+        );
+      }, SUMMARY_DELAY_MS);
+    }
   }
 
   return createServer((request, response) => {
