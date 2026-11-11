@@ -28,6 +28,7 @@ pnpm --filter yokla-demo-shop start --list-defects
 | `--model-stream` | | off | Ask the model for event streams, with usage in the last chunk. |
 | `--model-timeout-ms` | | `3000` | How long a model call may take before the demo-shop falls back. |
 | `--model-canary` | | none | A canary to plant in every system prompt, for leak tests. |
+| `--model-summary` | | off | Summarise each answer with a model call shortly after it went out, never awaited. |
 | | `DEMO_SHOP_MODEL_KEY` | `demo-key` | The key sent with the model calls. |
 
 demo-shop binds to `127.0.0.1` only.
@@ -128,6 +129,16 @@ pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml \
   and 120 per minute. Excess requests get `429` with `Retry-After`.
 - **Errors and health.** Invalid requests get `400`, bodies over 64 KiB get
   `413`, and `GET /healthz` returns `200`.
+- **Streamed answers.** With `accept: text/event-stream`, the answer comes as
+  server-sent events: `products` with the products, `delta` events with the
+  text in pieces, then `done` with the metadata.
+- **Sessions the shop issues.** `POST /v1/sessions` returns
+  `{"data": {"sessionId": string}}`. A chat that sends it in `x-session-id`
+  uses it over any `sessionId` in the body.
+
+The proxy end-to-end test (`packages/cli/src/proxy.e2e.test.ts`) tests the
+demo-shop this way too: with a session it issues, answers as events and a
+summary call after each answer (ADR-0016).
 
 ## Behaviour without defects
 

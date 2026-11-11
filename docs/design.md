@@ -206,6 +206,10 @@ target:
     method: POST
     body: { message: "{{message}}", sessionId: "{{session}}" }
   response:
+    # stream:                               # an answer streamed as events (ADR-0016)
+    #   format: sse                         # sse | ndjson
+    #   text: { event: delta, from: $.text }
+    #   done: done
     text: $.data.answer
     route: $.data.metadata.route            # optional
     evidence:
@@ -221,6 +225,9 @@ target:
     mode: client                            # client | none
     carry:                                  # values sent back on the next turn
       - { name: conversationId, from: $.data.metadata.conversationId }
+    # open:                                 # a request before the first turn (ADR-0016)
+    #   request: { url: /api/session, body: {} }
+    #   carry: [{ name: sessionId, from: $.session_id }]
   limits: { burstPerSecond: 3, perMinute: 120 }
   cacheBypass: { kind: header, name: x-cache-bypass }   # header | command | none
 languages: [tr, en]
@@ -395,8 +402,15 @@ These are lessons from building a production harness.
 - **Adapters:** HTTP in v1; in-process function / SDK from v0.3; CLI later.
 - **Multi-turn:** session modes `client | none`. A server-issued id, such as a
   conversation id, is carried from each response into the next turn
-  (`session.carry`). Turns run sequentially within a case; cases run in
-  parallel up to the configured concurrency.
+  (`session.carry`). A target that opens its own session gets a request before
+  the first turn, and the values it returns go with every turn
+  (`session.open`, ADR-0016). Turns run sequentially within a case; cases run
+  in parallel up to the configured concurrency.
+- **Streamed answers (ADR-0016):** an answer streamed as server-sent events or
+  newline-delimited JSON becomes one document, `{text, events, all, last}`,
+  that the profile's paths read as they read a JSON body. A declared `done`
+  event that never comes, or an `error` event, makes the answer incomplete.
+  The results add the time to the first text piece.
 - **Requests:** a case turn can add body fields and headers to the profile's
   request. With `request.requestId`, every request carries a unique id in a
   header, for correlating the target's logs (ADR-0009).
@@ -456,6 +470,14 @@ localhost only.
 2. `header`: the target forwards `x-yokla-trace` to its provider calls. This
    takes a one-line change in the app, or OTel baggage.
 3. `traceparent`: W3C trace context, if the app already propagates it.
+
+**Calls after the answer (ADR-0016).** Apps often call their model after
+answering, for example to update a memory. In `serial` correlation the runner
+asks the proxy to settle after every answer: it waits until none of the
+target's calls is in flight and none has ended for `quietMs`, and only then
+marks the next turn. So such a call is counted for the turn that caused it.
+Every recording also settles before it closes, so the calls after the last
+answer are recorded.
 
 The report always states which mode was used.
 
