@@ -221,6 +221,9 @@ type Arm = (
   arming: { readonly inFlight: boolean; readonly faults?: readonly FaultPlan[] },
 ) => Promise<void>;
 
+/** Waits until the target's model calls stop (ADR-0016); says why when they didn't. */
+type Settle = () => Promise<string | undefined>;
+
 interface ExchangedSample {
   readonly index: number;
   readonly exchanges: Exchange[];
@@ -239,6 +242,7 @@ async function runSample(
   sampleIndex: number,
   arm: Arm | undefined,
   openUrl: string | undefined,
+  settle: Settle | undefined,
 ): Promise<ExchangedSample> {
   const target = options.profile.target;
   const ids = options.ids ?? randomUUID;
@@ -302,6 +306,8 @@ async function runSample(
         }
         carry[entry.name] = toJson(value);
       }
+      // Calls the opening caused finish before the first turn is marked.
+      if (options.profile.modelProxy?.correlation === 'serial') await settle?.();
     } catch (error) {
       exchanges.push({
         turn: {
@@ -448,6 +454,23 @@ async function runSample(
               ...(tag === undefined ? {} : { tag }),
             };
     }
+    // Serial correlation: calls the target makes after its answer belong to this turn,
+    // so the next turn is marked only once they have stopped (ADR-0016).
+    if (correlation === 'serial' && settle !== undefined) {
+      const problem = await settle();
+      if (problem !== undefined) {
+        outcome = {
+          ...outcome,
+          turn: {
+            ...outcome.turn,
+            issues: [
+              ...(outcome.turn.issues ?? []),
+              `${problem} after its answer; later calls may be counted for the next turn`,
+            ],
+          },
+        };
+      }
+    }
     exchanges.push(outcome);
     options.onTurn?.({
       caseId: testCase.id,
@@ -468,11 +491,14 @@ async function exchangeCase(
   arm: Arm | undefined,
   cap: Cap | undefined,
   openUrl: string | undefined,
+  settle: Settle | undefined,
 ): Promise<ExchangedCase> {
   const samples: ExchangedSample[] = [];
   const count = testCase.samples ?? options.samples ?? 1;
   for (let index = 0; index < count && cap?.stopped() !== true; index += 1) {
-    samples.push(await runSample(options, client, testCase, caseIndex, index, arm, openUrl));
+    samples.push(
+      await runSample(options, client, testCase, caseIndex, index, arm, openUrl, settle),
+    );
     await cap?.check();
   }
   return { testCase, samples };
@@ -673,6 +699,18 @@ interface OpenRecording {
   readonly id: string;
   readonly correlation: Correlation;
   readonly prompts: PromptStorage;
+  readonly settle: { readonly quietMs: number; readonly maxWaitMs: number };
+}
+
+async function settleRecording(recording: OpenRecording): Promise<string | undefined> {
+  try {
+    const quiet = await recording.control.settle(recording.id, recording.settle);
+    return quiet.settled
+      ? undefined
+      : `the target was still calling its model ${String(quiet.waitedMs)} ms`;
+  } catch (error) {
+    return `couldn't wait for the target's model calls to stop (${errorMessage(error)})`;
+  }
 }
 
 /** The cost cap of a run (ADR-0014): checked after each sample, from the open recording. */
@@ -727,7 +765,13 @@ async function openRecording(options: RunOptions): Promise<OpenRecording | undef
       );
     }
     const { id } = await control.open();
-    return { control, id, correlation: config.correlation, prompts: config.prompts };
+    return {
+      control,
+      id,
+      correlation: config.correlation,
+      prompts: config.prompts,
+      settle: config.settle,
+    };
   } catch (error) {
     if (error instanceof ProxyControlError) {
       throw new ConfigError(`${error.message}; start it with yokla proxy`);
@@ -781,6 +825,8 @@ export async function runSuite(options: RunOptions): Promise<Results> {
     recording === undefined
       ? undefined
       : (turn, arming) => recording.control.turn(recording.id, turn, arming);
+  const settle: Settle | undefined =
+    recording === undefined ? undefined : () => settleRecording(recording);
   let exchanged: ExchangedCase[] = [];
   // Undefined when there is no proxy, or its records couldn't be read.
   let records: ProxyRecord[] | undefined;
@@ -789,11 +835,17 @@ export async function runSuite(options: RunOptions): Promise<Results> {
     exchanged = await pool(
       options.cases,
       options.concurrency ?? 1,
-      (testCase, index) => exchangeCase(options, client, testCase, index, arm, cap, openUrl),
+      (testCase, index) =>
+        exchangeCase(options, client, testCase, index, arm, cap, openUrl, settle),
       () => cap?.stopped() === true,
     );
   } finally {
     if (recording !== undefined) {
+      // Calls after the last answer are recorded only if the recording waits for them.
+      const problem = await settleRecording(recording);
+      if (problem !== undefined) {
+        proxyIssues.push(`${problem} when the run ended; calls after that weren't recorded`);
+      }
       try {
         records = await recording.control.close(recording.id);
       } catch (error) {

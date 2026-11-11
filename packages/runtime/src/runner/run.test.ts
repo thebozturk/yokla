@@ -799,18 +799,27 @@ interface FakeProxy {
   readonly calls: string[];
   /** The turn the runner last marked as in flight. */
   readonly mark: () => string | null;
+  /** What the runner asked of each settle call. */
+  readonly settles: unknown[];
   /** What the runner told the proxy about each turn. */
   readonly armed: { turn: string; body: unknown }[];
 }
 
 /** A stand-in for the proxy's control endpoint; the fake target adds its records. */
 async function fakeProxy(
-  answers: { health?: unknown; open?: number; close?: number } = {},
+  answers: {
+    health?: unknown;
+    open?: number;
+    close?: number;
+    /** How the settle call answers: after `delayMs`, settled or not, or with an error status. */
+    settle?: { delayMs?: number; settled?: boolean; status?: number };
+  } = {},
 ): Promise<FakeProxy> {
   const records: ProxyRecord[] = [];
   const calls: string[] = [];
   let mark: string | null = null;
   const armed: { turn: string; body: unknown }[] = [];
+  const settles: unknown[] = [];
   const server = createServer((request, response) => {
     const key = `${request.method ?? ''} ${(request.url ?? '').split('?')[0] ?? ''}`;
     calls.push(key);
@@ -836,6 +845,19 @@ async function fakeProxy(
         if (Reflect.get(Object(body), 'inFlight') === true) mark = turn;
         reply(200, { id: 'rec-1', turn });
       });
+    } else if (key === 'POST /_yokla/recordings/rec-1/settle') {
+      const chunks: Buffer[] = [];
+      request.on('data', (chunk: Buffer) => chunks.push(chunk));
+      request.on('end', () => {
+        settles.push(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+        const { delayMs = 0, settled = true, status = 200 } = answers.settle ?? {};
+        setTimeout(() => {
+          reply(
+            status,
+            status === 200 ? { id: 'rec-1', settled, waitedMs: delayMs } : { error: 'no' },
+          );
+        }, delayMs);
+      });
     } else if (key === 'GET /_yokla/recordings/rec-1') {
       reply(200, { id: 'rec-1', startedAt: 'x', records });
     } else if (key === 'DELETE /_yokla/recordings/rec-1') {
@@ -855,6 +877,7 @@ async function fakeProxy(
     calls,
     mark: () => mark,
     armed,
+    settles,
   };
 }
 
@@ -885,6 +908,7 @@ const proxied = (url: string, correlation: 'serial' | 'header'): Profile => ({
     upstreams: [{ id: 'fake', kind: 'openai-compatible', upstream: 'http://127.0.0.1:9/v1' }],
     correlation,
     prompts: { store: 'sizes' },
+    settle: { quietMs: 0, maxWaitMs: 1_000 },
   },
 });
 
@@ -1170,11 +1194,17 @@ describe('runSuite with the model proxy', () => {
       missing: { cachedInputTokens: 4, cacheWriteTokens: 4, reasoningTokens: 4, costUsd: 2 },
       prompts: 'sizes',
     });
+    expect(proxy.settles[0]).toEqual({ quietMs: 0, maxWaitMs: 1_000 });
+    // Serial: after each answer the runner waits for the target's calls to stop,
+    // and once more before closing the recording (ADR-0016).
     expect(proxy.calls.map((c) => c.replace(/turns\/.+$/u, 'turns/<turn>'))).toEqual([
       'GET /_yokla/health',
       'POST /_yokla/recordings',
       'PUT /_yokla/recordings/rec-1/turns/<turn>',
+      'POST /_yokla/recordings/rec-1/settle',
       'PUT /_yokla/recordings/rec-1/turns/<turn>',
+      'POST /_yokla/recordings/rec-1/settle',
+      'POST /_yokla/recordings/rec-1/settle',
       'DELETE /_yokla/recordings/rec-1',
     ]);
     expect(proxy.armed.map((a) => a.body)).toEqual([
@@ -1500,12 +1530,73 @@ describe('runSuite with the model proxy', () => {
     expect(results.run.issues).toBeUndefined();
   });
 
-  it('leaves a call the session opening causes unattributed, in serial correlation', async () => {
-    const proxy = await fakeProxy();
-    const t = await target((received, _i, response) => {
+  it('counts a call the target makes after its answer for that turn, by waiting for quiet', async () => {
+    // The settle answers after 60 ms; the target's background call starts 20 ms after its answer.
+    const proxy = await fakeProxy({ settle: { delayMs: 60 } });
+    const t = await target((_r, _i, response) => {
       proxy.records.push(call(null, proxy.mark()));
-      if (received.body['open'] === true) json(response, { session_id: 's' });
-      else json(response, answer());
+      json(response, answer());
+      setTimeout(() => proxy.records.push(call(null, proxy.mark())), 20);
+    });
+    const results = await runSuite(
+      options(proxied(t.url, 'serial'), cases({ turns: [{ user: 'a' }, { user: 'b' }] }), {
+        proxyUrl: proxy.url,
+      }),
+    );
+    const turns = results.cases[0]?.samples[0]?.turns ?? [];
+    expect(turns.map((turn) => turn.proxy?.calls.length)).toEqual([2, 2]);
+    expect(results.run.proxy).toMatchObject({ records: 4, unattributed: 0 });
+    expect(results.run.issues).toBeUndefined();
+  });
+
+  it('says when the target never went quiet, per turn and at the end, and goes on', async () => {
+    const proxy = await fakeProxy({ settle: { settled: false, delayMs: 5 } });
+    const t = await target((_r, _i, response) => {
+      json(response, answer());
+    });
+    const results = await runSuite(
+      options(proxied(t.url, 'serial'), cases({ turns: [{ user: 'a' }, { user: 'b' }] }), {
+        proxyUrl: proxy.url,
+      }),
+    );
+    const turns = results.cases[0]?.samples[0]?.turns ?? [];
+    expect(turns.map((turn) => turn.issues)).toEqual([
+      [
+        'the target was still calling its model 5 ms after its answer; later calls may be counted for the next turn',
+      ],
+      [
+        'the target was still calling its model 5 ms after its answer; later calls may be counted for the next turn',
+      ],
+    ]);
+    expect(turns.map((turn) => turn.error)).toEqual([undefined, undefined]);
+    expect(results.run.issues).toEqual([
+      "the target was still calling its model 5 ms when the run ended; calls after that weren't recorded",
+    ]);
+    const failing = await fakeProxy({ settle: { status: 404 } });
+    const header = await runSuite(
+      options(proxied(t.url, 'header'), cases({ turns: [{ user: 'a' }] }), {
+        proxyUrl: failing.url,
+      }),
+    );
+    // Header correlation waits only before closing; a failed wait is said, not hidden.
+    expect(failing.calls.filter((c) => c.endsWith('/settle'))).toHaveLength(1);
+    expect(header.cases[0]?.samples[0]?.turns[0]?.issues).toBeUndefined();
+    expect(header.run.issues?.[0]).toMatch(
+      /^couldn't wait for the target's model calls to stop \(the model proxy answered 404: no\) when the run ended/u,
+    );
+  });
+
+  it('leaves a call the session opening causes unattributed, in serial correlation', async () => {
+    const proxy = await fakeProxy({ settle: { delayMs: 60 } });
+    const t = await target((received, _i, response) => {
+      if (received.body['open'] === true) {
+        json(response, { session_id: 's' });
+        // A call the opening starts in the background, after its answer.
+        setTimeout(() => proxy.records.push(call(null, proxy.mark())), 20);
+        return;
+      }
+      proxy.records.push(call(null, proxy.mark()));
+      json(response, answer());
     });
     const base = proxied(t.url, 'serial');
     const withOpening: Profile = {

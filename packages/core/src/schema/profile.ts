@@ -297,6 +297,16 @@ const ModelProxy = z.strictObject({
   }),
   prompts: PromptStorage.default({ store: 'sizes' }),
   inspect: Inspect.optional(),
+  settle: z
+    .strictObject({
+      quietMs: z.int().min(0).max(600_000).default(250),
+      maxWaitMs: z.int().min(0).max(600_000).default(10_000),
+    })
+    .default({ quietMs: 250, maxWaitMs: 10_000 })
+    .meta({
+      description:
+        "ADR-0016: after each answer (serial) and before the run ends, wait until the target's model calls stop: none in flight, none for quietMs.",
+    }),
 });
 
 const Capability = z.strictObject({
