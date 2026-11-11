@@ -2,9 +2,11 @@
 // pointed at it once; runs open a recording through its control endpoint.
 // Exit codes: 0 stopped; 2 a configuration problem or a port in use.
 
+import { createHash } from 'node:crypto';
 import { appendFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { storePrompt, type ProxyRecord } from '@yokla/core';
 import { startProxy } from '@yokla/proxy';
 import { LoadError, loadProfile } from '../load.ts';
 import type { Output } from './run.ts';
@@ -14,7 +16,8 @@ export const PROXY_HELP = `Usage: yokla proxy [options]
 Options:
   --profile <file>      the profile with a modelProxy section (default: yokla.profile.yaml)
   --port <n>            listen here instead of modelProxy.port (0 picks a free port)
-  --records <file>      also append each recorded call to this JSON Lines file
+  --records <file>      also append each recorded call to this JSON Lines file,
+                        with prompts kept as modelProxy.prompts.store says
 
 The proxy listens on 127.0.0.1 only and records calls only while a run has a
 recording open. Stop it with Ctrl-C.`;
@@ -25,6 +28,10 @@ const PROXY_OPTIONS = {
   records: { type: 'string' },
   help: { type: 'boolean' },
 } as const;
+
+function sha256(text: string): string {
+  return createHash('sha256').update(text, 'utf8').digest('hex');
+}
 
 function port(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
@@ -84,8 +91,13 @@ export async function proxyCommand(
       ...(records === undefined
         ? {}
         : {
-            onRecord: (record) => {
-              appendFileSync(records, `${JSON.stringify(record)}\n`);
+            onRecord: (record: ProxyRecord) => {
+              // The file keeps of each prompt what the profile's prompts.store keeps (ADR-0015).
+              const stored =
+                record.prompt === undefined
+                  ? record
+                  : { ...record, prompt: storePrompt(record.prompt, config.prompts, sha256) };
+              appendFileSync(records, `${JSON.stringify(stored)}\n`);
             },
           }),
     });

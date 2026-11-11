@@ -195,6 +195,15 @@
                 "exclusiveMinimum": 0,
                 "maximum": 9007199254740991
               }
+            },
+            "prompts": {
+              "type": "string",
+              "enum": [
+                "sizes",
+                "hashed",
+                "redacted",
+                "full"
+              ]
             }
           },
           "required": [
@@ -606,6 +615,48 @@
                                     "applied"
                                   ],
                                   "additionalProperties": false
+                                },
+                                "prompt": {
+                                  "anyOf": [
+                                    {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "role": {
+                                            "type": "string",
+                                            "enum": [
+                                              "system",
+                                              "user",
+                                              "assistant",
+                                              "tool",
+                                              "input"
+                                            ]
+                                          },
+                                          "chars": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "maximum": 9007199254740991
+                                          },
+                                          "sha256": {
+                                            "type": "string",
+                                            "pattern": "^[0-9a-f]{64}$"
+                                          },
+                                          "text": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "role",
+                                          "chars"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
                                 }
                               },
                               "required": [

@@ -86,6 +86,39 @@ describe('profile schema', () => {
   });
 });
 
+const proxied = (prompts?: unknown) =>
+  profile.safeParse(
+    withChange({
+      modelProxy: {
+        upstreams: [{ id: 'openai', kind: 'openai-compatible', upstream: 'http://127.0.0.1:9' }],
+        ...(prompts === undefined ? {} : { prompts }),
+      },
+    }),
+  );
+
+const messages = (prompts: unknown) =>
+  proxied(prompts).error?.issues.map((issue) => issue.message) ?? [];
+
+describe('model proxy prompts (ADR-0015)', () => {
+  it('keeps sizes by default, and accepts every store mode', () => {
+    expect(proxied().data?.modelProxy?.prompts).toEqual({ store: 'sizes' });
+    for (const store of ['sizes', 'hashed', 'full']) expect(proxied({ store }).success).toBe(true);
+    expect(proxied({ store: 'redacted', redact: ['\\d{11}'] }).success).toBe(true);
+    expect(proxied({ store: 'everything' }).success).toBe(false);
+  });
+
+  it('needs a pattern to redact, and refuses one that is broken or matches empty text', () => {
+    expect(messages({ store: 'redacted' })).toEqual([
+      'store: redacted needs at least one redact pattern',
+    ]);
+    expect(messages({ store: 'redacted', redact: [] })).toHaveLength(1);
+    expect(messages({ store: 'redacted', redact: ['('] })[0]).toMatch(/^not a regular expression/u);
+    // Valid without the u flag, but not in Unicode mode, which redaction uses.
+    expect(messages({ store: 'sizes', redact: ['\\-'] })[0]).toMatch(/^not a regular expression/u);
+    expect(messages({ store: 'sizes', redact: ['\\d*'] })).toEqual(['matches empty text']);
+  });
+});
+
 describe('case schema', () => {
   const validCase = {
     id: 'tents-tr',

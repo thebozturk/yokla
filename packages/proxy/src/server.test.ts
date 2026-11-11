@@ -24,8 +24,14 @@ const CHAT = JSON.stringify({
 });
 
 /** A fake provider: answers by path, and remembers what it received. */
-async function upstream(): Promise<{ url: string; received: Received[] }> {
+async function upstream(): Promise<{
+  url: string;
+  received: Received[];
+  /** Ends the streams held open on /v1/hold. */
+  held: (() => void)[];
+}> {
   const received: Received[] = [];
+  const held: (() => void)[] = [];
   const server: Server = createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -51,6 +57,10 @@ async function upstream(): Promise<{ url: string; received: Received[] }> {
             'data: {"model":"gpt-x","choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2}}\n\ndata: [DONE]\n\n',
           );
         }, 20);
+      } else if (path === '/v1/hold') {
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        res.write('data: {"model":"gpt-x","choices":[{"delta":{"content":"Mer"}}]}\n\n');
+        held.push(() => res.end('data: [DONE]\n\n'));
       } else if (path === '/v1/drop') {
         res.socket?.destroy();
       } else {
@@ -73,7 +83,7 @@ async function upstream(): Promise<{ url: string; received: Received[] }> {
   );
   const address = server.address();
   if (typeof address !== 'object' || address === null) throw new Error('no address');
-  return { url: `http://127.0.0.1:${String(address.port)}/v1`, received };
+  return { url: `http://127.0.0.1:${String(address.port)}/v1`, received, held };
 }
 
 async function proxy(
@@ -186,9 +196,14 @@ describe('startProxy forwarding', () => {
     const opened = parse(await call(running, 'POST', '/_yokla/recordings'));
     const id =
       typeof opened === 'object' && opened !== null ? String(Reflect.get(opened, 'id')) : '';
-    const slow = call(running, 'POST', '/openai/stream', '{"stream":true}');
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    const slow = call(running, 'POST', '/openai/hold', '{"stream":true}');
+    // The upstream holds its answer open until the recording has closed.
+    for (let i = 0; i < 200 && up.held.length === 0; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(up.held).toHaveLength(1);
     const closed = parse(await call(running, 'DELETE', `/_yokla/recordings/${id}`));
+    for (const end of up.held) end();
     await slow;
     expect(closed).toMatchObject({ records: [] });
     expect(records).toEqual([]);

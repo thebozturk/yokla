@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { appendFileSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import {
   createServer,
@@ -16,6 +17,7 @@ import {
   type Check,
   type DomainPack,
   type Profile,
+  type PromptStorage,
   type ProxyRecord,
 } from '@yokla/core';
 import { stubLanguagePack } from '@yokla/core/testing';
@@ -882,6 +884,7 @@ const proxied = (url: string, correlation: 'serial' | 'header'): Profile => ({
     port: 1,
     upstreams: [{ id: 'fake', kind: 'openai-compatible', upstream: 'http://127.0.0.1:9/v1' }],
     correlation,
+    prompts: { store: 'sizes' },
   },
 });
 
@@ -916,6 +919,7 @@ describe('runSuite with the model proxy', () => {
       unattributed: 0,
       totals: { calls: 4, inputTokens: 4000, outputTokens: 400, costUsd: 0.004 },
       missing: { cachedInputTokens: 4, cacheWriteTokens: 4, reasoningTokens: 4, costUsd: 2 },
+      prompts: 'sizes',
     });
     expect(proxy.calls.map((c) => c.replace(/turns\/.+$/u, 'turns/<turn>'))).toEqual([
       'GET /_yokla/health',
@@ -930,6 +934,48 @@ describe('runSuite with the model proxy', () => {
     ]);
     // Each turn was marked with its own request id.
     expect(turns.map((turn) => turn.requestId)).not.toContain(undefined);
+  });
+
+  it('keeps of each prompt only what the profile stores, and says which', async () => {
+    const proxy = await fakeProxy();
+    const t = await target((_r, _i, response) => {
+      proxy.records.push(
+        { ...call(null, proxy.mark()), prompt: [{ role: 'user', chars: 5, text: 'gizli' }] },
+        { ...call(null, proxy.mark()), prompt: null },
+        call(null, proxy.mark()),
+      );
+      json(response, answer());
+    });
+    const run = async (prompts: PromptStorage) => {
+      proxy.records.splice(0);
+      const base = proxied(t.url, 'serial');
+      const stored: Profile =
+        base.modelProxy === undefined
+          ? base
+          : { ...base, modelProxy: { ...base.modelProxy, prompts } };
+      const results = await runSuite(
+        options(stored, cases({ turns: [{ user: 'a' }] }), { proxyUrl: proxy.url }),
+      );
+      expect(Results.safeParse(results).success).toBe(true);
+      expect(results.run.proxy?.prompts).toBe(prompts.store);
+      return {
+        prompts: results.cases[0]?.samples[0]?.turns[0]?.proxy?.calls.map((c) => c.prompt),
+        json: JSON.stringify(results),
+      };
+    };
+    const sha = createHash('sha256').update('gizli', 'utf8').digest('hex');
+    const sized = await run({ store: 'sizes' });
+    expect(sized.prompts).toEqual([[{ role: 'user', chars: 5 }], null, undefined]);
+    expect(sized.json).not.toContain('gizli');
+    expect((await run({ store: 'hashed' })).prompts?.[0]).toEqual([
+      { role: 'user', chars: 5, sha256: sha },
+    ]);
+    expect((await run({ store: 'redacted', redact: ['iz'] })).prompts?.[0]).toEqual([
+      { role: 'user', chars: 5, text: 'g[redacted]li' },
+    ]);
+    expect((await run({ store: 'full' })).prompts?.[0]).toEqual([
+      { role: 'user', chars: 5, sha256: sha, text: 'gizli' },
+    ]);
   });
 
   it('sends a trace per turn in header correlation and ties calls by it, in parallel too', async () => {

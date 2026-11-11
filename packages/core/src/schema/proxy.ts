@@ -26,6 +26,10 @@ export type ProxyUsage = z.output<typeof ProxyUsage>;
 export const PromptRole = z.enum(['system', 'user', 'assistant', 'tool', 'input']);
 export type PromptRole = z.output<typeof PromptRole>;
 
+/** What of a prompt is written to results and records files (ADR-0015). */
+export const PromptStore = z.enum(['sizes', 'hashed', 'redacted', 'full']);
+export type PromptStore = z.output<typeof PromptStore>;
+
 /**
  * One message of a call's prompt (ADR-0015). The proxy hands the runner its
  * text; what is written to files depends on the profile's `prompts.store`.
@@ -34,7 +38,7 @@ export const PromptMessage = z.object({
   role: PromptRole,
   /** The length of the text, in UTF-16 code units. */
   chars: z.int().nonnegative(),
-  /** The SHA-256 of the text, in hex: stored with `hashed` and `full`. */
+  /** The SHA-256 of the text, in hex: kept with `hashed` and `full`. */
   sha256: z
     .string()
     .regex(/^[0-9a-f]{64}$/u)

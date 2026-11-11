@@ -267,6 +267,7 @@ describe('the model proxy against the demo-shop', () => {
           cacheWriteTokens: provider.length,
           reasoningTokens: provider.length,
         },
+        prompts: 'sizes',
       });
     },
   );
@@ -280,7 +281,14 @@ describe('the model proxy against the demo-shop', () => {
       expect(turn.proxy?.calls.every((call) => call.stream === (name === 'header'))).toBe(true);
       // Header correlation names each turn's trace; serial correlation has none.
       expect(turn.proxy?.trace === undefined).toBe(name === 'serial');
+      for (const call of turn.proxy?.calls ?? []) {
+        // By default the results keep each message's role and length, never its text.
+        expect(call.prompt?.map((message) => message.role)).toEqual(['system', 'user']);
+        expect(call.prompt?.every((message) => message.chars > 0)).toBe(true);
+        expect(Object.keys(call.prompt?.[0] ?? {})).toEqual(['role', 'chars']);
+      }
     }
+    expect(JSON.stringify(runs.get(name)?.results)).not.toContain('demo-shop:');
   });
 
   it('wrote every recorded call to the --records file', () => {
@@ -293,6 +301,12 @@ describe('the model proxy against the demo-shop', () => {
     ].reduce((total, results) => total + (results.run.proxy?.records ?? 0), 0);
     expect(lines).toHaveLength(recorded);
     expect(lines.join('\n')).not.toMatch(/authorization|demo-key/iu);
+    // The file keeps prompts as the profile's prompts.store says: sizes, no text.
+    for (const line of lines) {
+      const prompt: unknown = Reflect.get(Object(JSON.parse(line)), 'prompt');
+      expect(Array.isArray(prompt) && prompt.length > 0, line).toBe(true);
+    }
+    expect(lines.join('\n')).not.toContain('demo-shop:');
   });
 
   it.each(Object.entries(RESILIENCE))(

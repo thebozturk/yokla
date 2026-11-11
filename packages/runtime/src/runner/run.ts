@@ -28,6 +28,7 @@ import {
   type JsonValue,
   type Profile,
   type FaultPlan,
+  type PromptStorage,
   type ProxyRecord,
   type Results,
   type YoklaConfig,
@@ -39,7 +40,13 @@ import { cacheBypass } from '../process/cache-bypass.ts';
 import { CommandError } from '../process/command.ts';
 import { correlate, observedFields, parseLogLines, readLogText } from '../observe/logs.ts';
 import { ProxyControl, ProxyControlError } from '../proxy/control.ts';
-import { attributeCalls, type Correlation, type TurnProxy, type TurnTag } from './proxy.ts';
+import {
+  attributeCalls,
+  storeTurnProxy,
+  type Correlation,
+  type TurnProxy,
+  type TurnTag,
+} from './proxy.ts';
 
 type CaseResult = Results['cases'][number];
 type SampleResult = CaseResult['samples'][number];
@@ -511,13 +518,19 @@ async function observe(
   };
 }
 
+/** The run's calls tied to its turns, and what of their prompts the results keep. */
+interface ProxiedCalls {
+  readonly byTurn: ReadonlyMap<Exchange, TurnProxy>;
+  readonly prompts: PromptStorage;
+}
+
 /** Runs the checks over a case's exchanges, with what the logs observed, and aggregates. */
 function judgeCase(
   options: RunOptions,
   prepared: Prepared,
   exchanged: ExchangedCase,
   observation: Observation,
-  proxyByTurn: ReadonlyMap<Exchange, TurnProxy> | undefined,
+  proxied: ProxiedCalls | undefined,
 ): CaseResult {
   const { testCase } = exchanged;
   const correlation = options.profile.target.observe?.logs?.correlate.by;
@@ -532,8 +545,11 @@ function judgeCase(
             ? { ...turn, issues: [...(turn.issues ?? []), 'no matching line in the target logs'] }
             : { ...turn, observed: { source: 'target-logs', correlation, fields } };
       }
-      const proxy = proxyByTurn?.get(exchange);
-      if (proxy !== undefined) turn = { ...turn, proxy };
+      const proxy = proxied?.byTurn.get(exchange);
+      // The checks see the prompts' text; the results keep what the profile says (ADR-0015).
+      if (proxy !== undefined && proxied !== undefined) {
+        turn = { ...turn, proxy: storeTurnProxy(proxy, proxied.prompts) };
+      }
       if (exchange.view === undefined) return turn;
       const view: TurnView = {
         ...exchange.view,
@@ -577,6 +593,7 @@ interface OpenRecording {
   readonly control: ProxyControl;
   readonly id: string;
   readonly correlation: Correlation;
+  readonly prompts: PromptStorage;
 }
 
 /** The cost cap of a run (ADR-0014): checked after each sample, from the open recording. */
@@ -631,7 +648,7 @@ async function openRecording(options: RunOptions): Promise<OpenRecording | undef
       );
     }
     const { id } = await control.open();
-    return { control, id, correlation: config.correlation };
+    return { control, id, correlation: config.correlation, prompts: config.prompts };
   } catch (error) {
     if (error instanceof ProxyControlError) {
       throw new ConfigError(`${error.message}; start it with yokla proxy`);
@@ -696,18 +713,21 @@ export async function runSuite(options: RunOptions): Promise<Results> {
   const calls =
     recording === undefined || records === undefined
       ? undefined
-      : attributeCalls(
-          records,
-          exchanged
-            .flatMap((c) => c.samples.flatMap((sample) => sample.exchanges))
-            .flatMap((exchange) =>
-              exchange.tag === undefined ? [] : [{ key: exchange, tag: exchange.tag }],
-            ),
-          recording.correlation,
-          options.prices ?? {},
-        );
+      : {
+          ...attributeCalls(
+            records,
+            exchanged
+              .flatMap((c) => c.samples.flatMap((sample) => sample.exchanges))
+              .flatMap((exchange) =>
+                exchange.tag === undefined ? [] : [{ key: exchange, tag: exchange.tag }],
+              ),
+            recording.correlation,
+            options.prices ?? {},
+          ),
+          prompts: recording.prompts,
+        };
   const observation = await observe(options, startedAt, exchanged);
-  const cases = exchanged.map((c) => judgeCase(options, prepared, c, observation, calls?.byTurn));
+  const cases = exchanged.map((c) => judgeCase(options, prepared, c, observation, calls));
   const stop = cap?.reason();
   const issues = [...observation.issues, ...proxyIssues, ...(stop === undefined ? [] : [stop])];
   const statuses: Partial<Record<CaseResult['status'], number>> = {};
@@ -726,7 +746,7 @@ export async function runSuite(options: RunOptions): Promise<Results> {
       correlation: recording?.correlation ?? 'none',
       partial: cap?.stopped() === true,
       ...(observation.summary === undefined ? {} : { observation: observation.summary }),
-      ...(calls === undefined ? {} : { proxy: calls.summary }),
+      ...(calls === undefined ? {} : { proxy: { ...calls.summary, prompts: calls.prompts.store } }),
       ...(issues.length === 0 ? {} : { issues }),
     },
     cases,
