@@ -71,5 +71,7 @@ cases:
     turns:
       - user: Show me headlamps
         faults:
-          - fault: { kind: latency, ms: 150, jitterMs: 100 }
+          # At most 150 ms a call: half the demo-shop's 300 ms model timeout in the
+          # end-to-end test, so a slow machine doesn't turn it into a timeout.
+          - fault: { kind: latency, ms: 100, jitterMs: 50 }
         expect: { answerable: true, route: product-search, deadlineMs: 1500 }

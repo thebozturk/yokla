@@ -11,7 +11,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Results } from '@yokla/core';
+import { parseConfig, Results, z } from '@yokla/core';
 import { installNetworkGuard, type NetworkGuard } from '@yokla/runtime/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { planCommand } from './commands/plan.ts';
@@ -153,6 +153,121 @@ const RESILIENCE: Readonly<Record<string, Readonly<Record<string, readonly strin
 };
 const resilience = new Map<string, Results>();
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The demo-shop profile turned into a streaming target (ADR-0016): a session the
+ * shop issues, sent back in a header, and answers as server-sent events.
+ */
+function streamingProfile(providerUrl: string): string {
+  const text = readFileSync(join(DEMO, 'yokla.profile.yaml'), 'utf8').replaceAll(
+    './data/',
+    join(DEMO, 'data/'),
+  );
+  const parsed = parseConfig(text, 'yokla.profile.yaml', z.record(z.string(), z.unknown()));
+  if (!parsed.ok) throw new Error('the demo-shop profile does not parse');
+  const profile = parsed.value;
+  const target = profile['target'];
+  if (!isRecord(target) || !isRecord(target['request']) || !isRecord(target['response'])) {
+    throw new Error('the demo-shop profile has no target');
+  }
+  const evidence = target['response']['evidence'];
+  const products = isRecord(evidence) ? evidence['products'] : undefined;
+  const fields = isRecord(products) ? products['fields'] : undefined;
+  const streaming = {
+    ...profile,
+    target: {
+      ...target,
+      request: {
+        ...target['request'],
+        headers: {
+          'content-type': 'application/json',
+          accept: 'text/event-stream',
+          'x-session-id': '{{carry.sessionId}}',
+        },
+        body: { message: '{{message}}' },
+      },
+      session: {
+        mode: 'none',
+        open: {
+          request: { url: '/v1/sessions', body: {} },
+          carry: [{ name: 'sessionId', from: '$.data.sessionId' }],
+        },
+      },
+      response: {
+        stream: { format: 'sse', text: { event: 'delta', from: '$.text' }, done: 'done' },
+        text: '$.text',
+        route: '$.last.done.route',
+        evidence: { products: { items: '$.last.products.products[*]', fields } },
+      },
+    },
+    modelProxy: {
+      port: 1,
+      correlation: 'serial',
+      upstreams: [{ id: 'fake', kind: 'openai-compatible', upstream: providerUrl }],
+      settle: { quietMs: 100, maxWaitMs: 5_000 },
+    },
+  };
+  const path = join(dir, 'streaming.profile.yaml');
+  // JSON is YAML too.
+  writeFileSync(path, JSON.stringify(streaming, null, 2));
+  return path;
+}
+
+/** Each case's answers and routes, turn by turn. */
+const answers = (results: Results | undefined) =>
+  Object.fromEntries(
+    (results?.cases ?? []).map((c) => [
+      c.id,
+      c.samples[0]?.turns.map((turn) => [turn.response?.text, turn.response?.route]),
+    ]),
+  );
+
+let streamed:
+  { code: number; output: string; results: Results; before: number; after: number } | undefined;
+
+async function runStreaming(providerUrl: string): Promise<void> {
+  const shop = await start('src/main.ts', [
+    '--port',
+    '0',
+    '--model-url',
+    `${proxyUrl}/fake`,
+    '--model-summary',
+  ]);
+  const out = join(dir, 'streaming.results.json');
+  const before = usageEntries().length;
+  const lines: string[] = [];
+  const io = { out: (line: string) => lines.push(line), err: (line: string) => lines.push(line) };
+  const code = await main(
+    [
+      'run',
+      '--profile',
+      streamingProfile(providerUrl),
+      '--cases',
+      join(DEMO, 'cases'),
+      '--target-url',
+      `${shop}/v1/chat`,
+      '--proxy-url',
+      proxyUrl,
+      '--config',
+      join(dir, 'yokla.config.yaml'),
+      '--out',
+      out,
+    ],
+    io,
+  );
+  // The last summary call reaches the provider after the run settled on it.
+  streamed = {
+    code,
+    output: lines.join('\n'),
+    results: Results.parse(JSON.parse(readFileSync(out, 'utf8'))),
+    before,
+    after: usageEntries().length,
+  };
+}
+
 const PRODUCT_CASES = [
   'personal-data-masked-tr',
   'products-stay-out-of-system-en',
@@ -280,7 +395,8 @@ beforeAll(async () => {
   await run('header', headerShop, providerUrl);
   for (const defect of Object.keys(RESILIENCE)) await runResilience(defect, providerUrl);
   for (const defect of Object.keys(INSPECTION)) await runInspection(defect, providerUrl);
-}, 240_000);
+  await runStreaming(providerUrl);
+}, 300_000);
 
 afterAll(async () => {
   stopProxy.abort();
@@ -361,6 +477,7 @@ describe('the model proxy against the demo-shop', () => {
       ...[...runs.values()].map((done) => done.results),
       ...resilience.values(),
       ...inspection.values(),
+      ...(streamed === undefined ? [] : [streamed.results]),
     ].reduce((total, results) => total + (results.run.proxy?.records ?? 0), 0);
     expect(lines).toHaveLength(recorded);
     expect(lines.join('\n')).not.toMatch(/authorization|demo-key/iu);
@@ -441,6 +558,36 @@ describe('the model proxy against the demo-shop', () => {
     for (const [defect, kept] of inspection) {
       expect(JSON.stringify(kept).includes(CANARY), defect).toBe(defect === 'no-leak-guard');
     }
+  });
+
+  it('streaming: the acceptance passes the same, answer for answer, with sessions the shop issues', () => {
+    expect(streamed?.code, streamed?.output).toBe(0);
+    expect(streamed?.results.summary.statuses).toEqual({ pass: 18 });
+    expect(answers(streamed?.results)).toEqual(answers(runs.get('serial')?.results));
+    for (const turn of streamed?.results.cases.flatMap((c) => c.samples[0]?.turns ?? []) ?? []) {
+      const first = turn.response?.firstTextMs;
+      expect(first, turn.user).toBeGreaterThan(0);
+      expect(first ?? Infinity).toBeLessThanOrEqual(turn.response?.latencyMs ?? 0);
+      expect(turn.issues, turn.user).toBeUndefined();
+    }
+  });
+
+  it('streaming: every summary call after an answer is counted for its turn, and cost reconciles', () => {
+    const results = streamed?.results;
+    const provider = usageEntries().slice(streamed?.before ?? 0, streamed?.after ?? 0);
+    const input = provider.reduce((total, entry) => total + entry.promptTokens, 0);
+    const output = provider.reduce((total, entry) => total + entry.completionTokens, 0);
+    expect(results?.run.proxy).toMatchObject({
+      records: provider.length,
+      attributed: provider.length,
+      unattributed: 0,
+      totals: { calls: provider.length, inputTokens: input, outputTokens: output },
+    });
+    expect(results?.run.issues).toBeUndefined();
+    // Interpret, write, and the summary the shop starts after answering.
+    const turns = results?.cases.flatMap((c) => c.samples[0]?.turns ?? []) ?? [];
+    expect(turns.length).toBeGreaterThan(0);
+    for (const turn of turns) expect(turn.proxy?.calls, turn.user).toHaveLength(3);
   });
 
   it('budgets: plan estimates a repeat of the serial run exactly from it', () => {

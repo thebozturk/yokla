@@ -115,6 +115,7 @@ describe('the demo-shop server', () => {
         calls.push(call);
         return scripted.write(draft);
       },
+      summarize: (answer) => scripted.summarize(answer),
     };
     const url = await listen(
       createDemoShopServer({
@@ -177,6 +178,12 @@ describe('the fake provider', () => {
     expect(tokenCount('abcd')).toBe(1);
     expect(tokenCount('abcde')).toBe(2);
     expect(tokenCount('ğ')).toBe(1);
+  });
+
+  it('summarises an answer to its first line, and counts the call like any other', async () => {
+    const { url, usage } = await provider();
+    expect(await new RemoteModel({ url, key: 'k' }).summarize('Bir\nİki')).toBe('Bir');
+    expect(usage).toHaveLength(1);
   });
 
   it('streams usage only when asked to, like the real API', async () => {
@@ -301,6 +308,7 @@ describe('the demo-shop under model failures', () => {
         return Promise.reject(new Error('provider down'));
       },
       write: () => Promise.reject(new Error('provider down')),
+      summarize: () => Promise.reject(new Error('provider down')),
     };
     const shop = new Assistant({ data, model: failing, defect: null });
     const first = await shop.reply('s', 'Çadır önerir misin?');
@@ -438,6 +446,7 @@ describe('the demo-shop prompts (ADR-0015)', () => {
         return scripted.interpret(message, context);
       },
       write: (written) => scripted.write(written),
+      summarize: (answer) => scripted.summarize(answer),
     };
     const message = 'Telefonum 0532 111 22 33. Çadır önerir misin?';
     const masked = 'Telefonum [phone]. Çadır önerir misin?';

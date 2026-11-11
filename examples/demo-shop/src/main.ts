@@ -1,6 +1,6 @@
 // Starts the demo-shop: node src/main.ts [--port 3000] [--defect <name>] [--rate-limit off]
 //   [--model-url <OpenAI-compatible base URL>] [--model-stream] [--model-timeout-ms 3000]
-//   [--model-canary <text>]
+//   [--model-canary <text>] [--model-summary]
 
 import { parseArgs } from 'node:util';
 import { Assistant } from './assistant.ts';
@@ -21,6 +21,7 @@ function main(): void {
       'model-stream': { type: 'boolean' },
       'model-timeout-ms': { type: 'string' },
       'model-canary': { type: 'string' },
+      'model-summary': { type: 'boolean' },
     },
   });
 
@@ -55,6 +56,7 @@ function main(): void {
   const server = createDemoShopServer({
     assistant,
     rateLimit: rateLimitSetting === 'off' ? false : DEFAULT_RATE_LIMIT,
+    summarizeAfterAnswer: values['model-summary'] === true,
   });
 
   // Loopback only: the demo-shop is a local test target.

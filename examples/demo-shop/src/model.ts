@@ -89,6 +89,8 @@ export interface ChatModel {
     call?: ModelCall,
   ): Promise<Interpretation>;
   write(draft: AnswerDraft, call?: ModelCall): Promise<string>;
+  /** A short summary of an answer, for the conversation's memory. */
+  summarize(answer: string, call?: ModelCall): Promise<string>;
 }
 
 export function hasFilters(filters: Filters): boolean {
@@ -269,6 +271,11 @@ export class ScriptedModel implements ChatModel {
 
   write(draft: AnswerDraft): Promise<string> {
     return Promise.resolve(this.#write(draft));
+  }
+
+  /** The answer's first line: what a memory keeps of it. */
+  summarize(answer: string): Promise<string> {
+    return Promise.resolve(answer.split('\n')[0] ?? '');
   }
 
   #interpret(message: string, context: ConversationContext | undefined): Interpretation {

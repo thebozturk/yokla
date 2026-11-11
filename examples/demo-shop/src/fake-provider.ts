@@ -90,6 +90,10 @@ async function answer(model: ScriptedModel, request: ChatRequest): Promise<strin
     if (context !== null && !isContext(context)) return undefined;
     return JSON.stringify(await model.interpret(message, context ?? undefined));
   }
+  if (request.role === ROLES.summarize) {
+    const written: unknown = Reflect.get(payload, 'answer');
+    return typeof written === 'string' ? model.summarize(written) : undefined;
+  }
   if (request.role === ROLES.write) {
     const draft: unknown = Reflect.get(payload, 'draft');
     const question: unknown = Reflect.get(payload, 'question');

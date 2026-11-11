@@ -169,6 +169,21 @@ export class Assistant {
     return { reply, cache: bypass ? 'bypass' : 'miss' };
   }
 
+  /**
+   * Summarises an answer for the session's memory, as apps do in the background
+   * after answering. Failures are swallowed: the user already has the answer.
+   */
+  async summarize(answer: string, options: { readonly trace?: string } = {}): Promise<void> {
+    try {
+      await this.#model.summarize(
+        answer,
+        options.trace === undefined ? {} : { trace: options.trace },
+      );
+    } catch {
+      // Nothing to do: a lost summary only makes the memory shorter.
+    }
+  }
+
   #plan(
     interpretation: Interpretation,
     context: ConversationContext | undefined,
