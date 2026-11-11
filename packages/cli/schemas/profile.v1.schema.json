@@ -929,6 +929,29 @@
             }
           },
           "additionalProperties": false
+        },
+        "settle": {
+          "default": {
+            "quietMs": 250,
+            "maxWaitMs": 10000
+          },
+          "description": "ADR-0016: after each answer (serial) and before the run ends, wait until the target's model calls stop: none in flight, none for quietMs.",
+          "type": "object",
+          "properties": {
+            "quietMs": {
+              "default": 250,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 600000
+            },
+            "maxWaitMs": {
+              "default": 10000,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 600000
+            }
+          },
+          "additionalProperties": false
         }
       },
       "required": [

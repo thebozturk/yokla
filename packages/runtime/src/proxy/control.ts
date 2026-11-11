@@ -17,6 +17,11 @@ const Health = z.object({
 const Opened = z.object({ id: z.string().min(1), startedAt: z.iso.datetime() });
 const Closed = z.object({ id: z.string().min(1), records: z.array(ProxyRecord) });
 const Armed = z.object({ id: z.string().min(1), turn: z.string().min(1) });
+const Settled = z.object({
+  settled: z.boolean(),
+  waitedMs: z.number().nonnegative(),
+  inFlight: z.int().nonnegative().optional(),
+});
 
 export class ProxyControl {
   readonly #base: string;
@@ -36,12 +41,13 @@ export class ProxyControl {
     path: string,
     schema: z.ZodType<T>,
     payload?: unknown,
+    timeoutMs = this.#timeoutMs,
   ): Promise<T> {
     let response: Response;
     try {
       response = await fetch(`${this.#base}${path}`, {
         method,
-        signal: AbortSignal.timeout(this.#timeoutMs),
+        signal: AbortSignal.timeout(timeoutMs),
         ...(payload === undefined
           ? {}
           : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }),
@@ -85,6 +91,23 @@ export class ProxyControl {
       `/_yokla/recordings/${encodeURIComponent(id)}/turns/${encodeURIComponent(turn)}`,
       Armed,
       { inFlight: arming.inFlight, faults: arming.faults ?? [] },
+    );
+  }
+
+  /**
+   * Waits until the target's model calls of the recording have stopped: none in
+   * flight, and none started or ended for quietMs (ADR-0016).
+   */
+  settle(
+    id: string,
+    wait: { readonly quietMs: number; readonly maxWaitMs: number },
+  ): Promise<z.output<typeof Settled>> {
+    return this.#call(
+      'POST',
+      `/_yokla/recordings/${encodeURIComponent(id)}/settle`,
+      Settled,
+      wait,
+      wait.maxWaitMs + this.#timeoutMs,
     );
   }
 

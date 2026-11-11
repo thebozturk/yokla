@@ -156,7 +156,16 @@ interface Recording {
   mark: string | null;
   /** The turns the runner armed, with their fault plans (ADR-0013). */
   readonly turns: Map<string, ArmedTurn>;
+  /** Calls of this recording whose answer to the app hasn't closed yet (ADR-0016). */
+  inFlight: number;
+  /** When a call of this recording last ended, on the performance clock. */
+  lastActivity: number;
 }
+
+const Settling = z.object({
+  quietMs: z.int().min(0).max(600_000),
+  maxWaitMs: z.int().min(0).max(600_000),
+});
 
 export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
   const upstreams = new Map(options.upstreams.map((upstream) => [upstream.id, upstream]));
@@ -189,6 +198,8 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
         records: [],
         mark: null,
         turns: new Map(),
+        inFlight: 0,
+        lastActivity: performance.now(),
       };
       sendJson(response, 201, { id: recording.id, startedAt: recording.startedAt });
       return;
@@ -223,6 +234,50 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
       });
       return;
     }
+    const settling = /^\/_yokla\/recordings\/([\w-]+)\/settle$/u.exec(path);
+    if (settling !== null && request.method === 'POST') {
+      const open = recording;
+      if (open?.id !== settling[1] || open === undefined) {
+        sendJson(response, 404, { error: 'no such recording' });
+        return;
+      }
+      const body = await readBody(request, 1024 * 1024);
+      let value: unknown;
+      try {
+        value = JSON.parse(body?.toString('utf8') ?? '');
+      } catch {
+        value = undefined;
+      }
+      const parsed = Settling.safeParse(value);
+      if (!parsed.success) {
+        sendJson(response, 400, { error: 'expected {"quietMs": n, "maxWaitMs": n}' });
+        return;
+      }
+      const { quietMs, maxWaitMs } = parsed.data;
+      // Quiet counts from the later of the last activity and this request, so a
+      // call the app starts right after its answer still has quietMs to show up.
+      const asked = performance.now();
+      for (;;) {
+        const now = performance.now();
+        const quiet = now - Math.max(open.lastActivity, asked);
+        const waited = now - asked;
+        if (open.inFlight === 0 && quiet >= quietMs) {
+          sendJson(response, 200, { id: open.id, settled: true, waitedMs: Math.round(waited) });
+          return;
+        }
+        if (waited >= maxWaitMs) {
+          sendJson(response, 200, {
+            id: open.id,
+            settled: false,
+            waitedMs: Math.round(waited),
+            inFlight: open.inFlight,
+          });
+          return;
+        }
+        const pause = Math.min(25, Math.max(1, quietMs - quiet), Math.max(1, maxWaitMs - waited));
+        await new Promise((resolve) => setTimeout(resolve, pause));
+      }
+    }
     const match = /^\/_yokla\/recordings\/([\w-]+)$/u.exec(path);
     if (match !== null && (request.method === 'GET' || request.method === 'DELETE')) {
       const open = recording;
@@ -244,6 +299,15 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
     upstream: ProxyUpstream,
     rest: string,
   ): Promise<void> {
+    const open = recording;
+    if (open !== undefined) {
+      // In flight until the answer to the app closes, however the call ends (ADR-0016).
+      open.inFlight += 1;
+      response.once('close', () => {
+        open.inFlight -= 1;
+        open.lastActivity = performance.now();
+      });
+    }
     const body = await readBody(request, maxRequest);
     if (body === undefined) {
       sendJson(response, 413, { error: 'request body too large for the proxy' });
@@ -257,7 +321,6 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
     const captured: Buffer[] = [];
     let capturedBytes = 0;
     let overflow = false;
-    const open = recording;
     const mark = open?.mark ?? null;
     // The turn this call belongs to: the one its trace names, else the one in flight.
     const turnId = typeof trace === 'string' && open?.turns.has(trace) === true ? trace : mark;

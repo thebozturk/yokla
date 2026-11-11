@@ -378,6 +378,122 @@ describe('startProxy prompts', () => {
   });
 });
 
+/** A proxy with an open recording, and a way to ask it to settle. */
+async function recorded(up: { url: string }) {
+  const { running, records } = await proxy(up.url);
+  const opened = parse(await call(running, 'POST', '/_yokla/recordings'));
+  const id = String(Reflect.get(Object(opened), 'id'));
+  const settle = async (quietMs: number, maxWaitMs: number) =>
+    parse(
+      await call(
+        running,
+        'POST',
+        `/_yokla/recordings/${id}/settle`,
+        JSON.stringify({ quietMs, maxWaitMs }),
+      ),
+    );
+  return { running, records, id, settle };
+}
+const holding = async (up: { held: (() => void)[] }, count: number) => {
+  for (let i = 0; i < 200 && up.held.length < count; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  expect(up.held).toHaveLength(count);
+};
+const waited = (answer: unknown) => Number(Reflect.get(Object(answer), 'waitedMs'));
+
+describe('startProxy settle (ADR-0016)', () => {
+  it('answers once nothing is in flight and nothing started for quietMs after it was asked', async () => {
+    const up = await upstream();
+    const { settle } = await recorded(up);
+    const answer = await settle(60, 2_000);
+    expect(answer).toMatchObject({ settled: true });
+    expect(waited(answer)).toBeGreaterThanOrEqual(59);
+    expect(waited(answer)).toBeLessThan(1_000);
+  });
+
+  it('counts quiet from the request, not from a call that ended long before it', async () => {
+    const up = await upstream();
+    const { running, settle } = await recorded(up);
+    await call(running, 'POST', '/openai/chat/completions', '{}');
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(waited(await settle(60, 2_000))).toBeGreaterThanOrEqual(59);
+  });
+
+  it('waits for a call in flight to end, then for quietMs more', async () => {
+    const up = await upstream();
+    const { running, settle, records } = await recorded(up);
+    const slow = call(running, 'POST', '/openai/hold', '{"stream":true}');
+    await holding(up, 1);
+    const settling = settle(40, 5_000);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    for (const end of up.held) end();
+    await slow;
+    const answer = await settling;
+    expect(answer).toMatchObject({ settled: true });
+    expect(waited(answer)).toBeGreaterThanOrEqual(155);
+    // The call was recorded by the time the settle answered.
+    expect(records).toHaveLength(1);
+  });
+
+  it('counts a call that starts while it waits, and gives up after maxWaitMs', async () => {
+    const up = await upstream();
+    const { running, settle } = await recorded(up);
+    const settling = settle(80, 5_000);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await call(running, 'POST', '/openai/chat/completions', '{}');
+    expect(waited(await settling)).toBeGreaterThanOrEqual(125);
+
+    const slow = call(running, 'POST', '/openai/hold', '{"stream":true}');
+    await holding(up, 1);
+    const answer = await settle(10, 80);
+    expect(answer).toMatchObject({ settled: false, inFlight: 1 });
+    expect(waited(answer)).toBeGreaterThanOrEqual(79);
+    for (const end of up.held) end();
+    await slow;
+  });
+
+  it('counts only calls of the recording, and a call the app gives up on ends', async () => {
+    const up = await upstream();
+    const { running } = await proxy(up.url);
+    // A call from before the recording, still held: not the recording's.
+    const before = call(running, 'POST', '/openai/hold', '{"stream":true}');
+    await holding(up, 1);
+    const opened = parse(await call(running, 'POST', '/_yokla/recordings'));
+    const id = String(Reflect.get(Object(opened), 'id'));
+    const settle = async () =>
+      parse(
+        await call(
+          running,
+          'POST',
+          `/_yokla/recordings/${id}/settle`,
+          JSON.stringify({ quietMs: 20, maxWaitMs: 300 }),
+        ),
+      );
+    expect(await settle()).toMatchObject({ settled: true });
+    // A call of the recording that the app abandons.
+    const abandoned = request(`${running.url}/openai/hold`, { method: 'POST' });
+    abandoned.on('error', () => undefined);
+    abandoned.end('{"stream":true}');
+    await holding(up, 2);
+    abandoned.destroy();
+    expect(await settle()).toMatchObject({ settled: true });
+    for (const end of up.held) end();
+    await before;
+  });
+
+  it('refuses an unknown recording and a malformed request', async () => {
+    const up = await upstream();
+    const { running, id } = await recorded(up);
+    expect((await call(running, 'POST', '/_yokla/recordings/other/settle', '{}')).status).toBe(404);
+    for (const body of ['{}', '{"quietMs":-1,"maxWaitMs":10}', 'not json']) {
+      expect((await call(running, 'POST', `/_yokla/recordings/${id}/settle`, body)).status).toBe(
+        400,
+      );
+    }
+  });
+});
+
 /** A proxy with an open recording and one turn armed. */
 async function armed(up: { url: string }, turn: string, body: unknown) {
   const { running, records } = await proxy(up.url);

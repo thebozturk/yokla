@@ -36,6 +36,7 @@ const inspecting = (inspect: Inspect): Profile => ({
     upstreams: [{ id: 'openai', kind: 'openai-compatible', upstream: 'http://127.0.0.1:9' }],
     correlation: 'serial',
     prompts: { store: 'sizes' },
+    settle: { quietMs: 0, maxWaitMs: 0 },
     inspect,
   },
 });
