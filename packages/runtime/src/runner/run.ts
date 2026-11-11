@@ -238,6 +238,7 @@ async function runSample(
   caseIndex: number,
   sampleIndex: number,
   arm: Arm | undefined,
+  openUrl: string | undefined,
 ): Promise<ExchangedSample> {
   const target = options.profile.target;
   const ids = options.ids ?? randomUUID;
@@ -273,6 +274,45 @@ async function runSample(
       view: undefined,
     });
     return { index: sampleIndex, exchanges };
+  }
+
+  // The target's own session, opened before the first turn (ADR-0016).
+  const open = target.session.open;
+  if (open !== undefined && openUrl !== undefined) {
+    try {
+      // Serial correlation: a mark no turn has, so calls the opening causes stay unattributed.
+      if (options.profile.modelProxy?.correlation === 'serial') {
+        await arm?.(`session-open-${ids()}`, { inFlight: true });
+      }
+      const built = buildRequest(
+        { ...open.request, url: openUrl },
+        undefined,
+        { message: '', session, requestId: undefined, carry: {}, env: options.env },
+        { ...bypass.headers, ...identityHeaders },
+      );
+      const result = await client.send(built);
+      if (result.status < 200 || result.status > 299) {
+        throw new Error(`HTTP ${String(result.status)}`);
+      }
+      if (result.json === undefined) throw new Error('the answer is not JSON');
+      for (const entry of open.carry) {
+        const [value] = queryJsonPath(result.json, entry.from);
+        if (value === undefined || value === null) {
+          throw new Error(`no value at ${entry.from} for {{carry.${entry.name}}}`);
+        }
+        carry[entry.name] = toJson(value);
+      }
+    } catch (error) {
+      exchanges.push({
+        turn: {
+          user: testCase.turns[0]?.user ?? '',
+          error: `session setup failed: ${errorMessage(error)}`,
+          checks: [],
+        },
+        view: undefined,
+      });
+      return { index: sampleIndex, exchanges };
+    }
   }
 
   for (const [turnIndex, turn] of testCase.turns.entries()) {
@@ -427,11 +467,12 @@ async function exchangeCase(
   caseIndex: number,
   arm: Arm | undefined,
   cap: Cap | undefined,
+  openUrl: string | undefined,
 ): Promise<ExchangedCase> {
   const samples: ExchangedSample[] = [];
   const count = testCase.samples ?? options.samples ?? 1;
   for (let index = 0; index < count && cap?.stopped() !== true; index += 1) {
-    samples.push(await runSample(options, client, testCase, caseIndex, index, arm));
+    samples.push(await runSample(options, client, testCase, caseIndex, index, arm, openUrl));
     await cap?.check();
   }
   return { testCase, samples };
@@ -695,18 +736,18 @@ async function openRecording(options: RunOptions): Promise<OpenRecording | undef
   }
 }
 
+/** A url with its {{env.NAME}} placeholders filled in. */
+function withEnv(text: string, env: RunOptions['env']): string {
+  return text.replaceAll(/\{\{\s*env\.(\w+)\s*\}\}/gu, (_m, name: string) => env[name] ?? '');
+}
+
 export async function runSuite(options: RunOptions): Promise<Results> {
   preflight(options);
   const prepared = prepare(options);
   const target = options.profile.target;
   const startedAt = new Date();
   const started = performance.now();
-  const url =
-    options.targetUrl ??
-    target.request.url.replaceAll(
-      /\{\{\s*env\.(\w+)\s*\}\}/gu,
-      (_m, name: string) => options.env[name] ?? '',
-    );
+  const url = options.targetUrl ?? withEnv(target.request.url, options.env);
   let origin: string;
   try {
     origin = new URL(url).origin;
@@ -714,8 +755,20 @@ export async function runSuite(options: RunOptions): Promise<Results> {
     throw new ConfigError(`the target url "${url}" is not a valid absolute url`);
   }
 
+  // A session.open url that is a path is resolved against the target url.
+  const openTemplate = target.session.open?.request.url;
+  let openUrl: string | undefined;
+  if (openTemplate !== undefined) {
+    const raw = withEnv(openTemplate, options.env);
+    try {
+      openUrl = raw.startsWith('/') ? new URL(raw, url).href : new URL(raw).href;
+    } catch {
+      throw new ConfigError(`the session.open url "${raw}" is not a valid url or path`);
+    }
+  }
+
   const client = new HttpClient({
-    allowedOrigins: [origin],
+    allowedOrigins: [origin, ...(openUrl === undefined ? [] : [new URL(openUrl).origin])],
     timeoutMs: target.request.timeoutMs,
     limits: target.limits,
     retryAfter: target.limits?.retryAfter,
@@ -736,7 +789,7 @@ export async function runSuite(options: RunOptions): Promise<Results> {
     exchanged = await pool(
       options.cases,
       options.concurrency ?? 1,
-      (testCase, index) => exchangeCase(options, client, testCase, index, arm, cap),
+      (testCase, index) => exchangeCase(options, client, testCase, index, arm, cap, openUrl),
       () => cap?.stopped() === true,
     );
   } finally {

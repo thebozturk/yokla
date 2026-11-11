@@ -95,19 +95,38 @@ const HttpResponse = z.strictObject({
   evidence: z.record(Id, EvidenceCollection).optional(),
 });
 
-const Session = z.strictObject({
-  mode: z
-    .enum(['client', 'none'])
-    .default('client')
-    .meta({ description: 'client: yokla sends a new {{session}} id per sample.' }),
-  carry: z
-    .array(z.strictObject({ name: FieldName, from: JsonPath }))
-    .default([])
-    .meta({
+const Carry = z.array(z.strictObject({ name: FieldName, from: JsonPath }));
+
+/** ADR-0016: a request that opens the target's own session before the first turn. */
+const SessionOpen = z.strictObject({
+  request: HttpRequest.meta({
+    description:
+      'The url may be a path, such as /api/session, resolved against the target url. No {{message}}.',
+  }),
+  carry: Carry.min(1).meta({
+    description: 'Values read from its answer and sent with every turn as {{carry.NAME}}.',
+  }),
+});
+
+const Session = z
+  .strictObject({
+    mode: z
+      .enum(['client', 'none'])
+      .default('client')
+      .meta({ description: 'client: yokla sends a new {{session}} id per sample.' }),
+    carry: Carry.default([]).meta({
       description:
         'Values read from each response and sent with the next turn as {{carry.NAME}}, e.g. a server-issued conversation id.',
     }),
-});
+    open: SessionOpen.optional(),
+  })
+  .refine(
+    (session) => {
+      const names = [...session.carry, ...(session.open?.carry ?? [])].map((entry) => entry.name);
+      return new Set(names).size === names.length;
+    },
+    { message: 'each carried name must be read in one place only', path: ['carry'] },
+  );
 
 const Limits = z.strictObject({
   burstPerSecond: z.number().positive().optional(),

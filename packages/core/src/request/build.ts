@@ -193,13 +193,23 @@ export function checkTemplates(
     [target.request.url, target.request.headers, target.request.body, turnRequests],
     strings,
   );
-  const carried = new Set(target.session.carry.map((entry) => entry.name));
+  const open = target.session.open;
+  const opening: string[] = [];
+  if (open !== undefined) {
+    collectStrings([open.request.url, open.request.headers, open.request.body], opening);
+  }
+  const carried = new Set(
+    [...target.session.carry, ...(open?.carry ?? [])].map((entry) => entry.name),
+  );
   const issues = new Set<string>();
   const env = new Set<string>();
-  for (const text of strings) {
+  // session.open goes out before any message and before any value is carried.
+  const check = (text: string, opens: boolean) => {
     for (const [, name = ''] of text.matchAll(PLACEHOLDER)) {
-      if (name === 'message') continue;
-      if (name === 'session') {
+      if (name === 'message') {
+        if (opens)
+          issues.add('{{message}} is used in session.open, which is sent before any message');
+      } else if (name === 'session') {
         if (target.session.mode === 'none')
           issues.add('{{session}} is used but the session mode is "none"');
       } else if (name === 'requestId') {
@@ -208,13 +218,18 @@ export function checkTemplates(
         }
       } else if (name.startsWith('carry.')) {
         const key = name.slice('carry.'.length);
-        if (!carried.has(key)) issues.add(`{{${name}}} is used but session.carry has no "${key}"`);
+        if (opens)
+          issues.add(`{{${name}}} is used in session.open, which comes before any carried value`);
+        else if (!carried.has(key))
+          issues.add(`{{${name}}} is used but session.carry has no "${key}"`);
       } else if (name.startsWith('env.') && name.length > 'env.'.length) {
         env.add(name.slice('env.'.length));
       } else {
         issues.add(`unknown placeholder {{${name}}}`);
       }
     }
-  }
+  };
+  for (const text of strings) check(text, false);
+  for (const text of opening) check(text, true);
   return { issues: [...issues], env: [...env] };
 }
