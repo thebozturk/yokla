@@ -57,11 +57,17 @@ seeded defects. Its README walks through a full run.
 ## Planned
 
 - **v0.2:** a model proxy that measures model calls, tokens, cost and latency,
-  injects provider faults, and inspects the prompts sent to the model.
-- **v0.3:** an analyzer that reads your code, API contract, prompts, data
+  injects provider faults, and inspects the prompts sent to the model; targets
+  that stream their answers.
+- **v0.3:** more ways to reach a target and see its model calls (WebSocket,
+  Gemini, OpenTelemetry), tool-call checks, and a simulated customer that
+  shops with a goal.
+- **v0.4:** an analyzer that reads your code, API contract, prompts, data
   schema and docs, and writes a profile for you to review.
-- **v0.4:** red teaming with local attack generation.
-- **v0.5:** import and export for other evaluation tools, and an HTML report.
+- **v0.5:** red teaming with local attack generation, mapped to OWASP, GDPR
+  and KVKK, and the EU AI Act.
+- **v0.6:** import and export for other evaluation tools, an HTML report and a
+  GitHub Action.
 
 Read the design: [`docs/design.md`](docs/design.md) · Decisions:
 [`docs/adr/`](docs/adr/README.md) · Changes: [`CHANGELOG.md`](CHANGELOG.md)
