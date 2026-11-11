@@ -15,6 +15,7 @@ import {
   extractResponse,
   FAULT_JUDGES,
   queryJsonPath,
+  readStream,
   RESULTS_SCHEMA_ID,
   runChecks,
   summariseChecks,
@@ -302,12 +303,18 @@ async function runSample(
           ...(trace === undefined ? {} : { 'x-yokla-trace': trace }),
         },
       );
-      const result = await client.send(built);
-      const extracted =
-        result.json === undefined ? undefined : extractResponse(result.json, target.response);
+      const stream = target.response.stream;
+      const result = await client.send(built, { stream: stream !== undefined });
+      // A streamed answer becomes one document that the profile's paths read (ADR-0016).
+      const read = stream === undefined ? undefined : readStream(result.chunks ?? [], stream);
+      const body = read === undefined ? result.json : read.document;
+      const extracted = body === undefined ? undefined : extractResponse(body, target.response);
       const response = {
         status: result.status,
         latencyMs: Math.round(result.latencyMs * 100) / 100,
+        ...(read?.firstTextMs === undefined
+          ? {}
+          : { firstTextMs: Math.round(read.firstTextMs * 100) / 100 }),
         ...(extracted?.id === undefined ? {} : { id: extracted.id }),
         ...(extracted?.text === undefined ? {} : { text: extracted.text }),
         ...(extracted?.route === undefined ? {} : { route: extracted.route }),
@@ -321,6 +328,7 @@ async function runSample(
       const issues = [...(extracted?.issues ?? [])];
       let error: string | undefined;
       if (result.status < 200 || result.status > 299) error = `HTTP ${String(result.status)}`;
+      else if (read?.problem !== undefined) error = read.problem;
       else if (extracted === undefined) error = 'the response is not JSON';
       else if (extracted.text === undefined) error = issues.shift() ?? 'answer text not found';
       // Under injected faults, a failed answer is what the case judges, not a run error (ADR-0013).
@@ -363,7 +371,7 @@ async function runSample(
         ...(tag === undefined ? {} : { tag }),
       };
       for (const entry of target.session.carry) {
-        const [value] = result.json === undefined ? [] : queryJsonPath(result.json, entry.from);
+        const [value] = body === undefined ? [] : queryJsonPath(body, entry.from);
         carry[entry.name] = value === undefined ? null : toJson(value);
       }
     } catch (error) {

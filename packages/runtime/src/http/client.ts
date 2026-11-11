@@ -2,7 +2,8 @@
 // (zero egress, ADR-0003), paces requests, waits out 429s as the target asks,
 // and reports failures as typed errors instead of throwing raw exceptions.
 
-import type { BuiltRequest } from '@yokla/core';
+import type { ReadableStreamReadResult } from 'node:stream/web';
+import type { BuiltRequest, StreamChunk } from '@yokla/core';
 import { type Clock, RateLimiter, type Limits, systemClock } from './rate-limit.ts';
 import { retryAfterMs, type RetryAfterConfig } from './retry-after.ts';
 
@@ -24,8 +25,10 @@ export interface HttpResult {
   readonly latencyMs: number;
   readonly headers: Readonly<Record<string, string>>;
   readonly text: string;
-  /** The parsed body, or undefined when the body isn't JSON. */
+  /** The parsed body, or undefined when the body isn't JSON or was read as a stream. */
   readonly json: unknown;
+  /** With `stream`, the body as it arrived, timed from the request (ADR-0016). */
+  readonly chunks?: readonly StreamChunk[];
   readonly attempts: number;
   /** Time spent waiting on 429s. */
   readonly waitedMs: number;
@@ -57,6 +60,36 @@ function originOf(url: string): string {
   }
 }
 
+/** Reads a body piece by piece, timing each from `started`; the size limit holds as it grows. */
+async function readChunks(
+  response: Response,
+  started: number,
+  limit: number,
+): Promise<StreamChunk[]> {
+  const chunks: StreamChunk[] = [];
+  if (response.body === null) return chunks;
+  // A multi-byte character can straddle two pieces: the decoder keeps its first bytes.
+  const decoder = new TextDecoder('utf-8');
+  const reader = response.body.getReader();
+  let size = 0;
+  for (;;) {
+    const read: ReadableStreamReadResult<unknown> = await reader.read();
+    if (read.done) break;
+    const value = read.value;
+    if (!(value instanceof Uint8Array)) throw new HttpError('network', 'the body is not bytes');
+    size += value.byteLength;
+    if (size > limit) {
+      await reader.cancel();
+      throw new HttpError('too-large', 'response exceeds the size limit');
+    }
+    const text = decoder.decode(value, { stream: true });
+    if (text !== '') chunks.push({ atMs: performance.now() - started, text });
+  }
+  const rest = decoder.decode();
+  if (rest !== '') chunks.push({ atMs: performance.now() - started, text: rest });
+  return chunks;
+}
+
 export class HttpClient {
   readonly #origins: ReadonlySet<string>;
   readonly #options: HttpClientOptions;
@@ -71,7 +104,8 @@ export class HttpClient {
       options.limits === undefined ? undefined : new RateLimiter(options.limits, this.#clock);
   }
 
-  async send(request: BuiltRequest): Promise<HttpResult> {
+  /** Sends the request; with `stream`, reads the body piece by piece, timing each one. */
+  async send(request: BuiltRequest, read: { readonly stream?: boolean } = {}): Promise<HttpResult> {
     const origin = originOf(request.url);
     if (!this.#origins.has(origin)) {
       throw new HttpError('refused-host', `refusing to contact ${origin}: not a configured target`);
@@ -82,7 +116,7 @@ export class HttpClient {
 
     for (let attempt = 1; ; attempt += 1) {
       await this.#limiter?.acquire();
-      const result = await this.#attempt(request);
+      const result = await this.#attempt(request, read.stream === true);
       if (result.status !== 429) return { ...result, attempts: attempt, waitedMs };
 
       const wait = retryAfterMs(result.headers, retry, Date.now()) ?? 1_000;
@@ -100,7 +134,10 @@ export class HttpClient {
     }
   }
 
-  async #attempt(request: BuiltRequest): Promise<Omit<HttpResult, 'attempts' | 'waitedMs'>> {
+  async #attempt(
+    request: BuiltRequest,
+    stream: boolean,
+  ): Promise<Omit<HttpResult, 'attempts' | 'waitedMs'>> {
     const started = performance.now();
     let response: Response;
     try {
@@ -123,9 +160,16 @@ export class HttpClient {
     if (declared > limit)
       throw new HttpError('too-large', `response of ${String(declared)} bytes exceeds the limit`);
     let text: string;
+    let chunks: StreamChunk[] | undefined;
     try {
-      text = await response.text();
+      if (stream) {
+        chunks = await readChunks(response, started, limit);
+        text = chunks.map((chunk) => chunk.text).join('');
+      } else {
+        text = await response.text();
+      }
     } catch (error) {
+      if (error instanceof HttpError) throw error;
       if (error instanceof DOMException && error.name === 'TimeoutError') {
         throw new HttpError(
           'timeout',
@@ -140,7 +184,7 @@ export class HttpClient {
 
     let json: unknown;
     try {
-      json = JSON.parse(text);
+      json = chunks === undefined ? JSON.parse(text) : undefined;
     } catch {
       json = undefined;
     }
@@ -148,6 +192,13 @@ export class HttpClient {
     response.headers.forEach((value, name) => {
       headers[name.toLowerCase()] = value;
     });
-    return { status: response.status, latencyMs, headers, text, json };
+    return {
+      status: response.status,
+      latencyMs,
+      headers,
+      text,
+      json,
+      ...(chunks === undefined ? {} : { chunks }),
+    };
   }
 }

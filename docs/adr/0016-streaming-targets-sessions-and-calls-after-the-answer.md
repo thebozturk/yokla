@@ -1,6 +1,6 @@
 # 0016. Streaming targets, session setup, and model calls after the answer
 
-Status: Proposed · Date: 2026-11-11
+Status: Accepted · Date: 2026-11-11
 
 ## Context
 

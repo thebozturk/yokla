@@ -191,4 +191,65 @@ describe('HttpClient', () => {
     });
     await expect(client.send(post(base))).rejects.toMatchObject({ kind: 'too-large' });
   });
+
+  it('reads a stream piece by piece, timing each, and decodes characters split across pieces', async () => {
+    const tent = Buffer.from('çadır', 'utf8');
+    const base = await serve((_request, _body, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      // The first piece ends in the middle of the two bytes of the letter ç.
+      response.write(tent.subarray(0, 1));
+      setTimeout(() => {
+        response.write(tent.subarray(1));
+        setTimeout(() => {
+          response.end('{"done":true}');
+        }, 40);
+      }, 40);
+    });
+    const client = new HttpClient({ allowedOrigins: [base], timeoutMs: 5_000 });
+    const result = await client.send(post(base), { stream: true });
+    expect(result.text).toBe('çadır{"done":true}');
+    // Even a JSON body read as a stream is left to the stream reader.
+    expect(result.json).toBeUndefined();
+    const chunks = result.chunks ?? [];
+    expect(chunks.map((chunk) => chunk.text)).toEqual(['çadır', '{"done":true}']);
+    expect(chunks[0]?.atMs).toBeGreaterThanOrEqual(35);
+    expect((chunks[1]?.atMs ?? 0) - (chunks[0]?.atMs ?? 0)).toBeGreaterThanOrEqual(35);
+    expect(result.latencyMs).toBeGreaterThanOrEqual(chunks[1]?.atMs ?? Infinity);
+    const plain = await client.send(post(base));
+    expect(plain.chunks).toBeUndefined();
+  });
+
+  it('leaves a streamed JSON body to the stream reader, and ends a cut character visibly', async () => {
+    const base = await serve((request, _body, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      // The second request's stream ends halfway through a two-byte letter.
+      if (request.url === '/cut') response.end(Buffer.from('ç', 'utf8').subarray(0, 1));
+      else response.end('{"a":1}');
+    });
+    const client = new HttpClient({ allowedOrigins: [base], timeoutMs: 5_000 });
+    const whole = await client.send(post(base), { stream: true });
+    expect(whole).toMatchObject({ text: '{"a":1}', json: undefined });
+    const cut = await client.send(post(`${base}/cut`), { stream: true });
+    expect(cut.chunks?.map((chunk) => chunk.text)).toEqual([String.fromCharCode(0xfffd)]);
+  });
+
+  it('holds a streamed body to the size limit as it grows, and to the timeout', async () => {
+    const base = await serve((_request, _body, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      response.write('x'.repeat(600));
+      response.write('x'.repeat(600));
+    });
+    const small = new HttpClient({
+      allowedOrigins: [base],
+      timeoutMs: 5_000,
+      maxResponseBytes: 1_000,
+    });
+    await expect(small.send(post(base), { stream: true })).rejects.toMatchObject({
+      kind: 'too-large',
+    });
+    const slow = new HttpClient({ allowedOrigins: [base], timeoutMs: 200 });
+    await expect(slow.send(post(base), { stream: true })).rejects.toMatchObject({
+      kind: 'timeout',
+    });
+  });
 });
