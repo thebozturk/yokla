@@ -11,7 +11,8 @@ export class ProxyControlError extends Error {
 const Health = z.object({
   ok: z.literal(true),
   upstreams: z.array(z.string()),
-  recording: z.string().nullable(),
+  /** Whether a recording is open; its id stays with whoever opened it (ADR-0015). */
+  recording: z.boolean(),
 });
 const Opened = z.object({ id: z.string().min(1), startedAt: z.iso.datetime() });
 const Closed = z.object({ id: z.string().min(1), records: z.array(ProxyRecord) });

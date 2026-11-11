@@ -56,7 +56,7 @@ export {
   type Profile,
   type ProfileTarget,
 } from './schema/profile.ts';
-export { ProxyRecord, ProxyUsage } from './schema/proxy.ts';
+export { PromptMessage, PromptRole, ProxyRecord, ProxyUsage } from './schema/proxy.ts';
 export { Fault, FAULT_KINDS, FaultPlan } from './schema/fault.ts';
 export { callCost } from './proxy/cost.ts';
 export { plan, type Plan, type PlannedCase } from './plan/plan.ts';

@@ -52,13 +52,13 @@ async function control(answers: Record<string, [number, unknown]>): Promise<stri
 describe('ProxyControl', () => {
   it('checks health, opens a recording and closes it with its records', async () => {
     const url = await control({
-      'GET /_yokla/health': [200, { ok: true, upstreams: ['openai'], recording: null }],
+      'GET /_yokla/health': [200, { ok: true, upstreams: ['openai'], recording: false }],
       'POST /_yokla/recordings': [201, { id: 'rec-1', startedAt: '2026-11-10T12:00:00.000Z' }],
       'DELETE /_yokla/recordings/rec-1': [200, { id: 'rec-1', startedAt: 'x', records: [RECORD] }],
       'PUT /_yokla/recordings/rec-1/turns/turn%201': [200, { id: 'rec-1', turn: 'turn 1' }],
     });
     const proxy = new ProxyControl(url);
-    expect(await proxy.health()).toEqual({ ok: true, upstreams: ['openai'], recording: null });
+    expect(await proxy.health()).toEqual({ ok: true, upstreams: ['openai'], recording: false });
     expect(await proxy.open()).toEqual({ id: 'rec-1', startedAt: '2026-11-10T12:00:00.000Z' });
     await expect(proxy.turn('rec-1', 'turn 1', { inFlight: true })).resolves.toBeUndefined();
     expect(await proxy.close('rec-1')).toEqual([RECORD]);

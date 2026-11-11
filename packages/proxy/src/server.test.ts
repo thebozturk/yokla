@@ -102,7 +102,7 @@ function call(
   running: RunningProxy,
   method: string,
   path: string,
-  body = '',
+  body: string | Buffer = '',
   headers: Record<string, string> = {},
 ): Promise<Raw> {
   return new Promise((resolve, reject) => {
@@ -312,6 +312,54 @@ describe('startProxy recordings', () => {
 
     await call(running, 'POST', '/openai/chat/completions', '{}');
     expect(records).toHaveLength(2);
+  });
+});
+
+describe('startProxy prompts', () => {
+  it('records the messages each call sent, from a compressed request too', async () => {
+    const up = await upstream();
+    const { running, records } = await proxy(up.url);
+    expect(parse(await call(running, 'GET', '/_yokla/health'))).toMatchObject({
+      recording: false,
+    });
+    const opened = parse(await call(running, 'POST', '/_yokla/recordings'));
+    const id = String(Reflect.get(Object(opened), 'id'));
+    // Health says a recording is open, but not which: its id is the key to its prompts.
+    const health = await call(running, 'GET', '/_yokla/health');
+    expect(parse(health)).toMatchObject({ recording: true });
+    expect(health.body.toString('utf8')).not.toContain(id);
+
+    const messages = [
+      { role: 'system', content: 'Be brief.' },
+      { role: 'user', content: 'Çadır öner' },
+    ];
+    await call(running, 'POST', '/openai/chat/completions', JSON.stringify({ messages }));
+    await call(
+      running,
+      'POST',
+      '/openai/chat/completions',
+      gzipSync(JSON.stringify({ messages: [{ role: 'user', content: 'Merhaba' }] })),
+      { 'content-encoding': 'gzip' },
+    );
+    await call(running, 'POST', '/openai/chat/completions', 'not json');
+    await call(running, 'POST', '/openai/chat/completions', 'not gzip', {
+      'content-encoding': 'gzip',
+    });
+    expect(records.map((record) => record.prompt)).toEqual([
+      [
+        { role: 'system', chars: 9, text: 'Be brief.' },
+        { role: 'user', chars: 10, text: 'Çadır öner' },
+      ],
+      [{ role: 'user', chars: 7, text: 'Merhaba' }],
+      null,
+      null,
+    ]);
+    // The upstream got the request as the app sent it.
+    expect(up.received[0]?.body).toBe(JSON.stringify({ messages }));
+    const listed = parse(await call(running, 'GET', `/_yokla/recordings/${id}`));
+    expect(listed).toMatchObject({
+      records: [{ prompt: [{ text: 'Be brief.' }, {}] }, {}, {}, {}],
+    });
   });
 });
 

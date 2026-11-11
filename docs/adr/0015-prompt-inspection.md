@@ -1,6 +1,6 @@
 # 0015. Prompt inspection: what the proxy captures, what is stored, and four checks
 
-Status: Proposed · Date: 2026-11-11
+Status: Accepted · Date: 2026-11-11
 
 ## Context
 
@@ -47,13 +47,15 @@ or hashed. ADR-0012 left two questions to this ADR:
   |---|---|
   | `sizes` (default) | the role and the text's length in characters |
   | `hashed` | as `sizes`, plus the SHA-256 of the text |
-  | `redacted` | as `hashed`, plus the text, with each match of the profile's `prompts.redact` patterns replaced by `[redacted]` |
+  | `redacted` | as `sizes`, plus the text, with each match of the profile's `prompts.redact` patterns replaced by `[redacted]` |
   | `full` | as `hashed`, plus the text as sent |
 
   - `redacted` needs at least one pattern. An invalid pattern is a profile
     error.
   - A hash isn't anonymisation: a short value inside a known template can be
     guessed. That is why `sizes` is the default.
+  - `redacted` keeps no hash. Next to the rest of the text, a hash of the
+    original would let the removed values be guessed back.
   - `results.v1` gains, additively, a `prompt` on each attributed call and the
     store mode on the run's proxy summary.
   - Findings never quote prompt text. They name the call, the role and the

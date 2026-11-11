@@ -817,7 +817,7 @@ async function fakeProxy(
       response.end(JSON.stringify(body));
     };
     if (key === 'GET /_yokla/health') {
-      reply(200, answers.health ?? { ok: true, upstreams: ['fake'], recording: null });
+      reply(200, answers.health ?? { ok: true, upstreams: ['fake'], recording: false });
     } else if (key === 'POST /_yokla/recordings') {
       const status = answers.open ?? 201;
       reply(
@@ -973,7 +973,9 @@ describe('runSuite with the model proxy', () => {
     await expect(
       runSuite(options(proxied(t.url, 'serial'), c, { proxyUrl: 'http://127.0.0.1:9' })),
     ).rejects.toThrow(/doesn't answer.*; start it with yokla proxy/u);
-    const other = await fakeProxy({ health: { ok: true, upstreams: ['openai'], recording: null } });
+    const other = await fakeProxy({
+      health: { ok: true, upstreams: ['openai'], recording: false },
+    });
     await expect(
       runSuite(options(proxied(t.url, 'serial'), c, { proxyUrl: other.url })),
     ).rejects.toThrow(/the model proxy doesn't route fake; start it with this profile/u);
