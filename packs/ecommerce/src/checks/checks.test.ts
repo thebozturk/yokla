@@ -680,8 +680,8 @@ describe('type-matched-or-disclosed', () => {
   });
 
   it('matches whole levels only, and only exactly without a separator', () => {
-    const slug = { id: 'M1', name: 'Kılıf', category: 'arac-gerec/mama-sandalyesi-kilifi' };
-    expect(verdicts(run('Ürünler:', [slug], 'arac-gerec/mama'))).toEqual(['fail']);
+    const slug = { id: 'M1', name: 'Kılıf', category: 'outdoor/camp-stove-cover' };
+    expect(verdicts(run('Ürünler:', [slug], 'outdoor/camp'))).toEqual(['fail']);
     expect(verdicts(run('Kamp ürünleri:', [tent], 'outdoor/camping', { d: data() }))).toEqual([
       'fail',
     ]);
