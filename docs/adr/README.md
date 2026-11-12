@@ -25,11 +25,11 @@ old one.
 | [0010](0010-gate-thresholds-and-baseline.md) | The gate: thresholds per suite, a baseline, and three exit codes | Accepted; amended by 0011 |
 | [0011](0011-baseline-file-and-case-definitions.md) | The baseline file, and cases compared only while their definition holds | Accepted |
 | [0012](0012-model-proxy-process-routing-and-records.md) | The model proxy: a standalone process, routing, records and correlation | Accepted |
-| [0013](0013-fault-plans.md) | Fault plans: provider faults per turn, injected by the model proxy | Accepted |
+| [0013](0013-fault-plans.md) | Fault plans: provider faults per turn, injected by the model proxy | Accepted; amended by 0017 |
 | [0014](0014-budgets-and-plan.md) | Budgets: cost and latency thresholds, unmeasured thresholds, plan and cap | Accepted |
 | [0015](0015-prompt-inspection.md) | Prompt inspection: what the proxy captures, what is stored, and four checks | Accepted |
 | [0016](0016-streaming-targets-sessions-and-calls-after-the-answer.md) | Streaming targets, session setup, and model calls after the answer | Accepted |
-| [0017](0017-fault-jitter-seed.md) | Fault jitter seeded by case, sample and turn | Proposed |
+| [0017](0017-fault-jitter-seed.md) | Fault jitter seeded by case, sample and turn | Accepted |
 
 ## Template
 
