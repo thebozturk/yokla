@@ -1,7 +1,10 @@
 // price-grounded (design §10): every money amount in the answer equals the
 // price of a returned product, a campaign amount the profile declares, an
 // amount in a policy source, or an amount the user wrote. Products from earlier turns of the conversation count,
-// because an answer may refer back to them.
+// because an answer may refer back to them. The check applies only when the
+// evidence has an authoritative price: with no priced product in the
+// conversation, as when the profile maps no evidence, yokla can't tell a real
+// price from an invented one.
 
 import type { Check, CheckFinding } from '@yokla/core';
 import type { EcommerceData } from '../data.ts';
@@ -27,16 +30,24 @@ export function priceGrounded(data: EcommerceData): Check {
       const mentions = lang.findMoney(context.turn.response.text);
       if (mentions.length === 0) return notApplicable('the answer mentions no money');
 
-      const groundings: Grounding[] = [];
-      for (const view of [...context.history, context.turn]) {
-        for (const product of productsOf(view, data) ?? []) {
-          if (product.price === undefined) continue;
-          groundings.push({
-            amount: product.price,
-            currency: product.currency,
-            source: `product ${product.id ?? product.name ?? '?'}`,
-          });
-        }
+      const views = [...context.history, context.turn];
+      const groundings: Grounding[] = views.flatMap((view) =>
+        (productsOf(view, data) ?? []).flatMap((product) =>
+          product.price === undefined
+            ? []
+            : [
+                {
+                  amount: product.price,
+                  currency: product.currency,
+                  source: `product ${product.id ?? product.name ?? '?'}`,
+                },
+              ],
+        ),
+      );
+      if (groundings.length === 0) {
+        return notApplicable('no product in the conversation has a price');
+      }
+      for (const view of views) {
         for (const amount of userNumbers(view.user)) {
           groundings.push({ amount, currency: undefined, source: 'the user' });
         }
