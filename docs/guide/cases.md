@@ -93,7 +93,7 @@ turns:
 | `fault.kind` | Effect |
 |---|---|
 | `status` | Answer `429`, `500` or `503` without calling the provider, optionally with `retryAfterS`. |
-| `latency` | Delay the call by `ms`, plus up to `jitterMs`. |
+| `latency` | Delay the call by `ms`, plus up to `jitterMs`. The jitter is drawn from the case id, the sample and the turn, so a run repeats it; each sample gets its own draw (ADR-0017). |
 | `timeout` | Hold the connection without an answer for `holdMs` (default 120000). |
 | `malformed-json` | Break the provider's JSON answer. |
 | `empty-content` | Empty the answer's content. |
