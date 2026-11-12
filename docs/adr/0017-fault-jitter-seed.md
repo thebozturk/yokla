@@ -1,6 +1,6 @@
 # 0017. Fault jitter seeded by case, sample and turn
 
-Status: Proposed · Date: 2026-11-12 · Amends 0013
+Status: Accepted · Date: 2026-11-12 · Amends 0013
 
 ## Context
 
