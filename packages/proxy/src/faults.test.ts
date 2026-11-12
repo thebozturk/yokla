@@ -1,6 +1,14 @@
 import { FaultPlan } from '@yokla/core';
 import { describe, expect, it } from 'vitest';
-import { armTurn, changeAnswer, errorBody, isChanging, jitter, nextFault } from './faults.ts';
+import {
+  armTurn,
+  changeAnswer,
+  errorBody,
+  isChanging,
+  jitter,
+  jitterSeed,
+  nextFault,
+} from './faults.ts';
 
 const plan = (value: unknown) => FaultPlan.parse(value);
 const json = (value: unknown) => JSON.stringify(value);
@@ -29,6 +37,24 @@ describe('nextFault', () => {
     expect(nextFault(turn, 'b')).toEqual({ kind: 'status', status: 503 });
     expect(nextFault(turn, 'b')).toEqual({ kind: 'empty-content' });
     expect(armTurn([]).matched).toEqual([]);
+  });
+});
+
+describe('jitterSeed', () => {
+  it("prefers the armed seed to the turn id, then adds the upstream and each plan's call count", () => {
+    const seeded = armTurn([plan({ fault: { kind: 'latency', ms: 1 } })], 'case-a|1|2');
+    nextFault(seeded, 'openai');
+    expect(jitterSeed(seeded, 'random-turn-id', 'openai')).toBe('case-a|1|2|openai|1');
+    expect(jitterSeed(seeded, 'another-turn-id', 'openai')).toBe('case-a|1|2|openai|1');
+    nextFault(seeded, 'openai');
+    expect(jitterSeed(seeded, 'random-turn-id', 'anthropic')).toBe('case-a|1|2|anthropic|2');
+  });
+
+  it('falls back to the turn id for a turn armed without a seed, or not armed', () => {
+    const unseeded = armTurn([plan({ fault: { kind: 'latency', ms: 1 } })]);
+    expect(jitterSeed(unseeded, 'turn-1', 'openai')).toBe('turn-1|openai|0');
+    expect(jitterSeed(undefined, 'turn-1', 'openai')).toBe('turn-1|openai|');
+    expect(jitterSeed(undefined, null, 'openai')).toBe('|openai|');
   });
 });
 

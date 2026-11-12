@@ -218,7 +218,11 @@ interface Exchange {
 /** Tells the model proxy about a turn: in flight, and its faults (ADR-0012, ADR-0013). */
 type Arm = (
   turn: string,
-  arming: { readonly inFlight: boolean; readonly faults?: readonly FaultPlan[] },
+  arming: {
+    readonly inFlight: boolean;
+    readonly faults?: readonly FaultPlan[];
+    readonly seed?: string;
+  },
 ) => Promise<void>;
 
 /** Waits until the target's model calls stop (ADR-0016); says why when they didn't. */
@@ -336,7 +340,10 @@ async function runSample(
       if (tag !== undefined && (correlation === 'serial' || faults !== undefined)) {
         await arm?.(tag.id, {
           inFlight: correlation === 'serial',
-          ...(faults === undefined ? {} : { faults }),
+          // The jitter seed: what identifies this turn in every run (ADR-0017).
+          ...(faults === undefined
+            ? {}
+            : { faults, seed: `${testCase.id}|${String(sampleIndex)}|${String(turnIndex)}` }),
         });
       }
       const built = buildRequest(

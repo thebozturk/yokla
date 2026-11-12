@@ -84,13 +84,22 @@ export class ProxyControl {
   async turn(
     id: string,
     turn: string,
-    arming: { readonly inFlight: boolean; readonly faults?: readonly FaultPlan[] },
+    arming: {
+      readonly inFlight: boolean;
+      readonly faults?: readonly FaultPlan[];
+      /** What identifies the turn across runs, for repeatable jitter (ADR-0017). */
+      readonly seed?: string;
+    },
   ): Promise<void> {
     await this.#call(
       'PUT',
       `/_yokla/recordings/${encodeURIComponent(id)}/turns/${encodeURIComponent(turn)}`,
       Armed,
-      { inFlight: arming.inFlight, faults: arming.faults ?? [] },
+      {
+        inFlight: arming.inFlight,
+        faults: arming.faults ?? [],
+        ...(arming.seed === undefined ? {} : { seed: arming.seed }),
+      },
     );
   }
 
