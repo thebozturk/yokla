@@ -73,8 +73,10 @@ pnpm yokla baseline --results runs/<run id>.json
 - `yokla schema <profile|cases|config|results|baseline>` prints the JSON Schema
   for editors.
 
-[`examples/demo-shop`](examples/demo-shop/README.md) is a reference target with
-seeded defects. Its README walks through a full run.
+[The guide](docs/guide/README.md) walks through a first run against your own
+assistant, and documents the profile, cases, checks, the model proxy and every
+command. [`examples/demo-shop`](examples/demo-shop/README.md) is a reference
+target with seeded defects. Its README walks through a full run.
 
 ## Planned
 
@@ -90,7 +92,8 @@ seeded defects. Its README walks through a full run.
 - **v0.6:** import and export for other evaluation tools, and a GitHub
   Action.
 
-Read the design: [`docs/design.md`](docs/design.md) · Decisions:
+Read the guide: [`docs/guide/`](docs/guide/README.md) · The design:
+[`docs/design.md`](docs/design.md) · Decisions:
 [`docs/adr/`](docs/adr/README.md) · Changes: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## License
