@@ -417,7 +417,7 @@
             }
           },
           "samples": {
-            "description": "Defaults per suite (design §11).",
+            "description": "How many times to run the case. Default: yokla run --samples, else 1.",
             "type": "integer",
             "minimum": 1,
             "maximum": 100
