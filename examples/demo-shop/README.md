@@ -23,6 +23,7 @@ pnpm --filter yokla-demo-shop start --list-defects
 |---|---|---|---|
 | `--port` | `PORT` | `3000` | `0` picks a free port; the startup line prints the URL. |
 | `--defect` | `DEMO_SHOP_DEFECT` | `none` | The one seeded defect to turn on. |
+| `--list-defects` | | | Print the defects and exit. |
 | `--rate-limit` | | `on` | `off` disables the rate limiter. |
 | `--model-url` | `DEMO_SHOP_MODEL_URL` | in process | An OpenAI-compatible base URL for the model calls. |
 | `--model-stream` | | off | Ask the model for event streams, with usage in the last chunk. |
@@ -31,32 +32,37 @@ pnpm --filter yokla-demo-shop start --list-defects
 | `--model-summary` | | off | Summarise each answer with a model call shortly after it went out, never awaited. |
 | | `DEMO_SHOP_MODEL_KEY` | `demo-key` | The key sent with the model calls. |
 
+The options from `--model-stream` down take effect only with `--model-url`:
+the model in process has no system prompt, no timeout and no summary call.
 demo-shop binds to `127.0.0.1` only.
 
 ### The model over HTTP
 
-By default the model runs in process. With `--model-url`, both model calls of
-a turn go to an OpenAI-compatible chat completions endpoint, so a model proxy
-can sit in between (ADR-0012).
+By default the model runs in process. With `--model-url`, the model calls of a
+turn go to an OpenAI-compatible chat completions endpoint, so a model proxy
+can sit in between (ADR-0012). A turn makes two calls, interpret and write,
+and a third with `--model-summary`.
 
 - **The fake provider** answers those calls the way the model in process
   would, so the answers stay the same. It counts one token per started four
   bytes, and it keeps its own usage records: the provider's side that the
   proxy's measurements are reconciled with. It costs nothing and contacts
-  nothing.
+  nothing. Its `--key` (default `demo-key`) must equal the demo-shop's
+  `DEMO_SHOP_MODEL_KEY`; otherwise it answers `401`.
 - **Defects.** Model defects (`fabricated-price`, `unknown-stock-claim`,
   `invented-return-policy`, `absence-substitution`, `over-refusal`) then belong
-  to the provider: start it with `--defect`. The app's own defects stay with
-  the demo-shop.
-- **Trace.** The demo-shop passes an incoming `x-yokla-trace` header on to both
-  model calls of the turn, the one-line change `header` correlation needs.
+  to the provider: start it with `--defect`. Given to the demo-shop with
+  `--model-url` set, they have no effect. The app's own defects stay with the
+  demo-shop.
+- **Trace.** The demo-shop passes an incoming `x-yokla-trace` header on to
+  every model call of the turn, the one-line change `header` correlation needs.
 - **Resilience.** The model client retries once after a `429` or `503`,
-  honouring `Retry-After`. It gives up after `--model-timeout-ms` and refuses
-  empty output. When the model fails, the demo-shop answers from a template on
-  the `fallback` route, with no products. That answer is never cached.
-  `cases-resilience/` holds the cases that inject the faults (ADR-0013). They
-  need the model proxy, so the resilience matrix runs in
-  `packages/cli/src/proxy.e2e.test.ts`.
+  honouring `Retry-After` up to 2 seconds. It gives up after
+  `--model-timeout-ms`. It refuses empty output, an error status and an
+  interpretation that isn't valid JSON. When the model fails, the demo-shop
+  answers from a template on the `fallback` route, with no products. That
+  answer is never cached. `cases-resilience/` holds the six cases that inject
+  the faults (ADR-0013).
 - **Prompts.** Each system prompt names the job on its first line, then the
   instructions, then the `--model-canary` if one is set. The products found
   and the user's message go into the user message, never the system message,
@@ -65,20 +71,67 @@ can sit in between (ADR-0012).
   model output that repeats the system prompt; the demo-shop then falls back.
   The fake provider, like a model that gives in to an extraction request,
   repeats its system prompt when asked for its instructions.
-  `cases-inspection/` holds the cases for the inspection checks (ADR-0015).
-  They also need the model proxy, so the inspection matrix runs in
-  `packages/cli/src/proxy.e2e.test.ts` too.
+  `cases-inspection/` holds the six cases for the inspection checks
+  (ADR-0015).
 
 ```sh
+mkdir -p runs
 node examples/demo-shop/src/provider-main.ts --port 0 --usage-log runs/provider-usage.jsonl
 pnpm --filter yokla-demo-shop start --port 0 --model-url http://127.0.0.1:<port>/v1
 ```
 
+The `--usage-log` directory must exist: the provider appends to the file but
+doesn't create its directory.
+
+### Run the proxy cases by hand
+
+The resilience and inspection cases need the model proxy between the
+demo-shop and the fake provider. `packages/cli/src/proxy.e2e.test.ts` runs
+them in CI, a demo-shop per defect. To run them yourself:
+
+1. **Copy the profile** next to the original, so its `./data/` paths still
+   resolve, for example as `examples/demo-shop/yokla.proxy.profile.yaml`, and
+   add a model proxy that points at the fake provider:
+
+   ```yaml
+   modelProxy:
+     upstreams:
+       - { id: fake, kind: openai-compatible, upstream: 'http://127.0.0.1:<provider port>/v1' }
+     inspect:                         # only for cases-inspection/
+       canary: DEMO-CANARY-7F3A
+       untrusted: { products: [name] }
+   ```
+
+2. **Start the three processes,** each in its own terminal:
+
+   ```sh
+   node examples/demo-shop/src/provider-main.ts --port 0
+   pnpm yokla proxy --profile examples/demo-shop/yokla.proxy.profile.yaml
+   pnpm --filter yokla-demo-shop start --port 0 --model-url http://127.0.0.1:8787/fake \
+     --model-timeout-ms 300                                # for cases-resilience/
+   ```
+
+   For `cases-inspection/`, start the demo-shop with
+   `--model-canary DEMO-CANARY-7F3A` instead of `--model-timeout-ms 300`. The
+   resilience case `provider-stalls` expects an answer within one second, so it
+   needs the shorter model timeout. Without the canary in the demo-shop, a run
+   with `inspect.canary` in the profile notes that the canary reached no system
+   prompt.
+
+3. **Run the cases:**
+
+   ```sh
+   pnpm yokla run --profile examples/demo-shop/yokla.proxy.profile.yaml \
+     --cases examples/demo-shop/cases-resilience --target-url http://127.0.0.1:<port>/v1/chat
+   ```
+
+Add `--defect <name>` to the demo-shop to see a defect caught.
+
 ### Test it with yokla
 
-Start the demo-shop on a free port, then run the acceptance cases against it.
-The demo-shop is a target like any other: yokla reaches it over HTTP and
-imports nothing from it.
+Start the demo-shop on a free port, then run the 18 acceptance cases in
+`cases/` against it. The demo-shop is a target like any other: yokla reaches
+it over HTTP and imports nothing from it.
 
 ```sh
 pnpm --filter yokla-demo-shop start --port 0       # prints the url
@@ -95,6 +148,8 @@ pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml \
   `0` passed, `1` broken or `2` when the run can't be judged (ADR-0010).
 - **Baseline.** `pnpm yokla baseline --results <file>` accepts a run as
   `yokla.baseline.json` and prints what changed since the last one (ADR-0011).
+
+[`docs/guide/cli.md`](../../docs/guide/cli.md) lists every option.
 
 ## API
 
@@ -121,18 +176,23 @@ pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml \
 
 - **`stockQuantity`.** `null` means the stock is unknown, not zero.
 - **Routes.** `metadata.route` is one of `product-search`, `policy`,
-  `follow-up-cheapest`, `refusal` and `fallback`.
+  `follow-up-cheapest`, `refusal` and `fallback`. `fallback` answers a model
+  failure, a message the shop doesn't understand, such as a greeting, and a
+  "cheaper" follow-up with no earlier products.
 - **Response cache.** The first turn of a session is cached by message. Send
-  `x-cache-bypass: 1` to skip the cache. The `x-cache` response header reports
-  `miss`, `hit` or `bypass`.
+  `x-cache-bypass: 1` to skip reading the cache. The `x-cache` response header
+  reports `miss`, `hit` or `bypass`.
 - **Rate limit.** Each client address gets a burst of 3 requests per second
-  and 120 per minute. Excess requests get `429` with `Retry-After`.
-- **Errors and health.** Invalid requests get `400`, bodies over 64 KiB get
-  `413`, and `GET /healthz` returns `200`.
+  and 120 per minute, `POST /v1/sessions` included. Excess requests get `429`
+  with `Retry-After`.
+- **Errors and health.** Invalid requests get `400`: `message` must be a
+  non-empty string of at most 2000 characters, and `sessionId` at most 128.
+  Bodies over 64 KiB get `413`, unknown paths `404`, and a method other than
+  `POST` `405`. `GET /healthz` returns `200`.
 - **Streamed answers.** With `accept: text/event-stream`, the answer comes as
   server-sent events: `products` with the products, `delta` events with the
   text in pieces, then `done` with the metadata.
-- **Sessions the shop issues.** `POST /v1/sessions` returns
+- **Sessions the shop issues.** `POST /v1/sessions` returns `201` with
   `{"data": {"sessionId": string}}`. A chat that sends it in `x-session-id`
   uses it over any `sessionId` in the body.
 
@@ -143,7 +203,8 @@ summary call after each answer (ADR-0016).
 ## Behaviour without defects
 
 - **Products.** It lists up to three of the cheapest products of the requested
-  type.
+  type. A follow-up with only filters, such as "only black ones", refines the
+  previous search, and "the cheaper one" picks the cheapest product shown.
 - **Prices.** Every price is shown exactly as in the catalog.
 - **Stock.** It says "in stock" or "out of stock" only when the stock is known.
   Otherwise it says the stock isn't confirmed.
@@ -160,7 +221,7 @@ summary call after each answer (ADR-0016).
 
 ## Defects
 
-| Defect | What goes wrong | Detected by (v0.1 check) |
+| Defect | What goes wrong | Detected by |
 |---|---|---|
 | `fabricated-price` | The first listed product is shown 10% cheaper than its catalog price. | `price-grounded` |
 | `unknown-stock-claim` | Products with unknown stock are said to be in stock. | `stock-claim` |
