@@ -1,6 +1,6 @@
 {
   "name": "@yokla/proxy",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "The model proxy between an app and its model providers (ADR-0012).",
   "license": "Apache-2.0",
