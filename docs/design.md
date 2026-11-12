@@ -522,7 +522,8 @@ Prices are configuration and are never hard-coded. A call without a price, or
 with tokens the provider didn't report, costs null, never 0.
 
 **Fault plans, per scenario:**
-- latency (fixed or with jitter),
+- latency (fixed or with jitter; the jitter is the same for the same case,
+  sample and turn in every run, ADR-0017),
 - status codes `429`, `500`, `503`,
 - timeout (the connection is held without an answer),
 - malformed JSON,
