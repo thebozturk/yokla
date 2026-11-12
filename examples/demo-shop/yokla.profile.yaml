@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../../packages/cli/schemas/profile.v1.schema.json
 #
 # The hand-written profile of the demo-shop (design §20, v0.1 exit criteria).
-# The v0.3 analyzer is measured against the approved entries of this file.
+# The v0.4 analyzer is measured against the approved entries of this file.
 
 version: 1
 

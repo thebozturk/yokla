@@ -114,13 +114,13 @@ Other evaluation tools are described here by kind, not by name.
 | **Case** | One scenario: its turns, expectations, the checks that apply, provenance and status. |
 | **Sample** | One execution of a case. Each case runs N samples. |
 | **Evidence** | Structured data the target returned (for example products with prices), extracted through the profile's response mapping. |
-| **Check** | A function from (case, sample, evidence, profile, data, proxy records) to findings. Deterministic or judge-based. |
-| **Finding** | `{check, dimension, verdict, severity, evidence}`. |
+| **Check** | Runs on each turn, from the turn's context (the case, the turn and the turns before it, the profile, the language pack) to an outcome: not applicable with a reason, findings, or a dimension it can't measure. A domain pack binds its data to its checks. Deterministic; judge-based checks come with v0.5. |
+| **Finding** | `{dimension, verdict, severity, message, evidence?}`, grouped per check as `{check, applicable, findings, unmeasured?}`. |
 | **Aggregation policy** | How the findings from N samples become one case verdict, per dimension. |
 | **Run** | One execution of the selected suites. It produces a results file. |
 | **Baseline** | Approved results that later runs are compared against. |
 | **Gate** | Thresholds over a run (and its baseline) that produce the exit code. |
-| **Budget** | The cost and time caps for a run. |
+| **Budget** | The cost and latency bounds of a run: per-turn budgets, gate thresholds and a cost cap (ADR-0014). |
 
 ## 6. Architecture
 
@@ -144,8 +144,9 @@ yokla uses models in two distinct roles, and the design keeps them apart:
 - **The target's model calls.** yokla observes these through the proxy. It
   never makes them itself.
 - **yokla's own model use:** analysis, generation, attacks and judging. These
-  go through a `ModelClient` with its own budget, using providers the user
-  configures. Local models are supported.
+  will go through a `ModelClient` with its own budget, using providers the
+  user configures, local models included. Up to v0.2, yokla makes no model
+  call of its own.
 
 ### Layers
 
@@ -153,11 +154,12 @@ yokla uses models in two distinct roles, and the design keeps them apart:
 |---|---|---|
 | `core` | nothing | schemas, types, check API, aggregation, gate. Pure: no I/O, no network |
 | `packs/*` | `core` | domain and language packs |
-| `runtime` | `core` | runner, target adapters, `ModelClient`, budget, file system |
+| `runtime` | `core` | runner, target adapter, proxy control, cost cap, file system; later the `ModelClient` |
 | `proxy` | `core` | model proxy |
-| `analyzer`, `generator` | `core`, `runtime` | |
-| `report`, `interop-*` | `core` | |
+| `analyzer`, `generator` | `core`, `runtime` | later |
+| `report`, `interop-*` | `core` | `interop-*` later |
 | `cli` | everything | nothing depends on `cli` |
+| `examples/demo-shop` | no `@yokla/*` package | the system under test |
 
 These rules are enforced from the first commit by a manifest check and lint
 rules ([ADR-0006](adr/0006-tooling-and-repository-layout.md)). Keeping layer
@@ -167,14 +169,15 @@ rules is cheaper than restoring them later.
 
 ```
 packages/
-  core/  runtime/  proxy/  analyzer/  generator/  report/  cli/
+  core/  runtime/  proxy/  report/  cli/
+  analyzer/  generator/   (later)
   interop-*/          mappings to other tools' formats (later)
 packs/
   ecommerce/  lang-tr/  lang-en/
 examples/
   demo-shop/          reference target with seeded defects (§19)
 docs/
-  design.md  adr/
+  design.md  adr/  guide/
 ```
 
 ## 7. The system profile
@@ -194,7 +197,8 @@ by default.
 The core fields are domain-neutral. A domain pack adds its own section under
 its id, here `ecommerce` (§17). The v1 schema is
 `packages/cli/schemas/profile.v1.schema.json`. The demo-shop's profile,
-`examples/demo-shop/yokla.profile.yaml`, is a complete example.
+`examples/demo-shop/yokla.profile.yaml`, is a complete example, and
+[the profile guide](guide/profile.md) describes every field.
 
 ```yaml
 version: 1
@@ -253,16 +257,25 @@ ecommerce:
     path: ./yokla-data/catalog.jsonl
     fields: { id: id, type: category_path, price: price, currency: currency, stock: stock }
 
-# From v0.2:
-# modelProxy:
-#   upstreams:
-#     - id: openai
-#       kind: openai-compatible
-#       appBaseUrlEnv: OPENAI_BASE_URL      # how the app is pointed at the proxy
-#       upstream: https://api.openai.com/v1
+modelProxy:                                 # the app's model calls go through yokla proxy (§12)
+  port: 8787
+  correlation: serial                       # serial | header
+  upstreams:
+    - id: openai
+      kind: openai-compatible               # openai-compatible | anthropic
+      appBaseUrlEnv: OPENAI_BASE_URL        # how the app is pointed at the proxy
+      upstream: https://api.openai.com/v1
+  prompts: { store: sizes }                 # sizes | hashed | redacted | full (ADR-0015)
+  settle: { quietMs: 250 }                  # wait for calls after the answer (ADR-0016)
 ```
 
+The commented lines show a streamed answer and session setup. The example
+leaves out rate-limit headers, log observation and the inspection fields; the
+guide shows them.
+
 ## 8. Analyzer
+
+Planned for v0.4. Until then, a person writes the profile.
 
 **Inputs, all optional except one way to reach the target:**
 - the repository path,
@@ -295,6 +308,9 @@ ecommerce:
   estimate before it calls any model.
 
 ## 9. Scenario generation
+
+Planned: data generators in v0.4, attack generation in v0.5. Until then, a
+person writes the cases.
 
 Generators live in packs. Each generator emits cases whose expectations are
 computed, not guessed.
@@ -345,35 +361,50 @@ Only `approved` cases count towards the gate.
 
 ## 10. Checks (oracles)
 
-A check has the signature `check(ctx) → Finding[]`. Its context `ctx` is
-`{case, sample, evidence, profile, snapshot, proxyRecords, lang}`.
+A check runs once per turn: `run(ctx) → outcome`. Its context `ctx` is
+`{case, turnIndex, turn, history, profile, lang}`. The turn carries the
+answer, the evidence, the fields observed in the target's logs and the turn's
+model calls. `history` holds the turns before it. A domain pack binds its data,
+such as the catalog and the policy sources, when it prepares its checks. The
+outcome is not applicable with a reason, findings, or a dimension the check
+applies to but can't measure (ADR-0014).
 
 ### Built-in deterministic checks
 
+The [checks guide](guide/checks.md) gives each check's exact conditions.
+
 | Check | Enabled when | Rule |
 |---|---|---|
-| `price-grounded` | evidence has an authoritative price | Every money amount in the answer (parsed by the language pack) equals the price of a returned product, or a campaign amount the profile declares. |
-| `stock-claim` | evidence has a stock field | No availability claim when stock is unknown. Claims must match known stock. |
+| `price-grounded` | the answer mentions money, and a product returned in the conversation has a price | Every money amount in the answer (parsed by the language pack) equals the price of a product returned in this turn or an earlier one, a campaign amount the profile declares, an amount in a policy source, or an amount the user wrote. |
+| `stock-claim` | the evidence or the catalog gives stock | No availability claim when stock is unknown. Claims must match known stock. |
 | `policy-claim` | the profile lists policies | Concrete claims (durations, fees, "free shipping") need a source and must match it. |
-| `filter-honoured-or-disclosed` | the case carries filters | Returned items satisfy the filters, or the answer discloses the relaxation. |
-| `type-matched-or-disclosed` | the case names the requested type | Returned items are of that type or a type under it, or the answer says it shows other types. |
+| `filter-honoured-or-disclosed` | the turn carries filters | Returned items satisfy the filters, or the answer discloses the relaxation. |
+| `type-matched-or-disclosed` | the turn names the requested type | Returned items are of that type or a type under it, or the answer says it shows other types. |
 | `no-duplicates` | evidence has ids | |
-| `absence-correct` | the case expects absence | The answer states the absence and doesn't present other types as the requested one. |
-| `over-refusal` | the data says the request is answerable | The answer doesn't refuse. Uses the language pack's lexicon. |
-| `injection-canary` | the case seeds a canary | The answer neither contains nor acts on the canary instruction. |
+| `absence-correct` | the turn expects absence | The answer states the absence and doesn't present other types as the requested one. |
+| `over-refusal` | the turn says whether the request is answerable | An answerable request isn't refused, and one marked not answerable is. Uses the language pack's lexicon and the profile's canonical refusals. |
+| `deflection` | the turn is answerable | The answer does more than send the user to customer service. Advisory: it never decides a case. |
+| `route-expected` | the turn expects a route, and the profile maps one | |
+| `answer-text` | the turn lists phrases the answer must or must not contain | |
+| `evidence-count` | the turn expects evidence counts or ids | |
+| `graceful-under-fault` | the turn injects provider faults (ADR-0013) | The target still gives a usable answer. |
+| `answered-within-deadline` | the turn sets `deadlineMs` (ADR-0013) | The full answer arrived in time. |
+| `cost-budget` | the turn's budget sets `costUsd` or `modelCalls` (ADR-0014) | The turn's model calls stay within it. Unmeasured without proxy data. |
+| `prompt-budget` | the turn's budget sets `inputTokens` | No model call of the turn sends more input tokens. |
 | `prompt-leak` | the profile's canary reached a system prompt (ADR-0015) | The answer doesn't contain the canary. Long n-gram runs from the system prompt, without a canary, come with the red team's extraction attacks (v0.5). |
 | `untrusted-in-system` | the profile names the evidence fields that hold retrieved content | None of their values is in a system message of the turn's model calls. |
 | `pii-in-prompt` | the turn lists `notSentToModel` values | None of them is in any message of the turn's model calls. |
-| `pii-leak` | the case seeds fake PII | Seeded values don't appear where they shouldn't. |
-| `language-match` | always | The answer is in the user's language. |
-| `route-expected` | the profile exposes routes | |
-| `latency-budget`, `cost-budget` | timings, proxy records | |
-| `prompt-budget` | the turn's budget sets `inputTokens` | No model call of the turn sends more input tokens. |
+| `injection-canary` (v0.5) | the case seeds a canary | The answer neither contains nor acts on the canary instruction. |
+| `pii-leak` (v0.5) | the case seeds fake PII | Seeded values don't appear where they shouldn't. |
+| `language-match` (later) | always | The answer is in the user's language. |
 
-### Judge checks
+Latency has no per-turn check besides `deadlineMs`. Its percentiles are gate
+thresholds per suite (ADR-0014, §16).
 
-Rubric-based checks (helpfulness, tone, faithfulness of free text) must pass a
-calibration set of seeded cases in every run. If any calibration case is
+### Judge checks (v0.5)
+
+Rubric-based checks (helpfulness, tone, faithfulness of free text) will have to
+pass a calibration set of seeded cases in every run. If any calibration case is
 misjudged, judge scores for that run are discarded and reported as
 `unmeasured`.
 
@@ -399,7 +430,8 @@ These are lessons from building a production harness.
 
 ## 11. Runner
 
-- **Adapters:** HTTP in v1; in-process function / SDK from v0.3; CLI later.
+- **Adapters:** HTTP in v1; WebSocket in v0.3; in-process function, SDK and
+  CLI adapters later.
 - **Multi-turn:** session modes `client | none`. A server-issued id, such as a
   conversation id, is carried from each response into the next turn
   (`session.carry`). A target that opens its own session gets a request before
@@ -420,13 +452,15 @@ These are lessons from building a production harness.
   `retry-after-*` for tiered limits). It can optionally send a per-case client
   identity header (addresses from the TEST-NET ranges) when the target limits
   per IP and the operator allows it.
-- **Cache bypass:** applied before every cold sample, as the profile defines it
-  (a header, or a local command given as an argument list, never a shell).
-  Warm samples are reported separately.
-- **Warm-up:** warm-up requests are excluded from latency statistics.
-- **Deadlines:** a timeout per request and a deadline per run.
-- **Samples:** N per case, with defaults per suite: 1 for deterministic paths,
-  3–9 for paths that call a model.
+- **Cache bypass:** applied before every sample, as the profile defines it (a
+  header, or a local command given as an argument list, never a shell). Every
+  sample is cold today. Warm samples, reported separately, come later.
+- **Warm-up (later):** warm-up requests, excluded from latency statistics.
+- **Deadlines:** a timeout per request (`request.timeoutMs`) and a deadline per
+  turn (`deadlineMs`, ADR-0013). A deadline per run comes later.
+- **Samples:** N per case: the case's `samples`, else `--samples`, else 1.
+  Defaults per suite (1 for deterministic paths, 3–9 for paths that call a
+  model) come later.
 - **Log observation (ADR-0009):** after the last case, the runner waits
   briefly and reads the profile's log source once: a file, or a local command
   whose arguments may contain `{{startedAt}}`. It ties each answered turn to
@@ -456,20 +490,21 @@ app. The app's provider base-URL variable points at it
 (`http://127.0.0.1:<port>/<upstream-id>`). The proxy forwards to the real
 upstream with the app's own credentials. It holds no keys and binds to
 localhost only.
-- It never changes a request or a response; usage a provider didn't report
-  stays unmeasured.
-- `yokla run` reads the records of its own time window from the proxy's local
-  control endpoint.
+- It changes a response only to inject a turn's fault plan (ADR-0013), and
+  never outside a recording. Usage a provider didn't report stays unmeasured.
+- `yokla run` opens a recording on the proxy's local control endpoint before
+  the first case and closes it after the last, and reads its records from
+  there.
 
 **Correlation: which provider calls belong to which test request?**
-1. `serial`: one request in flight; every call in its window belongs to it.
-   This is the default for the cost and performance suites, and it forces
-   concurrency to 1. The runner marks each turn on the proxy before its
-   request, and the proxy tags each call with the turn marked when it started,
-   so attribution needs no clock.
+1. `serial`, the default: one request in flight; every call in its window
+   belongs to it. The profile sets the mode for the whole run, and `serial`
+   needs a concurrency of 1: the run refuses a higher one. The runner marks
+   each turn on the proxy before its request, and the proxy tags each call
+   with the turn marked when it started, so attribution needs no clock.
 2. `header`: the target forwards `x-yokla-trace` to its provider calls. This
    takes a one-line change in the app, or OTel baggage.
-3. `traceparent`: W3C trace context, if the app already propagates it.
+3. `traceparent` (later): W3C trace context, if the app already propagates it.
 
 **Calls after the answer (ADR-0016).** Apps often call their model after
 answering, for example to update a memory. In `serial` correlation the runner
@@ -481,13 +516,15 @@ answer are recorded.
 
 The report always states which mode was used.
 
-**Cost.** Prices per model and token kind (input, output, cached) live in a
-price table in the config. Prices are configuration and are never hard-coded.
+**Cost.** Prices per upstream and model, for each token kind (input, output,
+cached input, cache write), live in a price table in `yokla.config.yaml`.
+Prices are configuration and are never hard-coded. A call without a price, or
+with tokens the provider didn't report, costs null, never 0.
 
 **Fault plans, per scenario:**
 - latency (fixed or with jitter),
 - status codes `429`, `500`, `503`,
-- timeout (the request is dropped),
+- timeout (the connection is held without an answer),
 - malformed JSON,
 - truncated stream,
 - empty content,
@@ -508,8 +545,8 @@ on them:
 **Limits.** When the proxy can't see a target's calls, the target's own
 structured logs are the other source of cost and path signals (ADR-0009).
 Providers that sign requests (AWS SigV4) and SDK-only transports
-can't be proxied transparently in v1. Without a log source, the profile marks
-them `unobserved`, and the cost suite reports `unmeasured` instead of guessing.
+can't be proxied transparently in v1. Without a log source, their cost and
+path stay `unmeasured` instead of being guessed.
 
 **Data.** Records stay local. The profile sets what of each prompt the
 results and the records file keep: role and length by default, or also a
@@ -518,20 +555,24 @@ hash, the text with patterns redacted, or the full text (ADR-0015).
 ## 13. Aggregation, statuses and statistics
 
 - **Each finding has a dimension; each dimension has an aggregation policy.**
-  Packs define the policies and users can override them.
+  Packs define the policies; a dimension no pack lists is worst-of-N.
+  Overriding a policy from the config comes later.
 
   | Dimension | Default policy |
   |---|---|
-  | fabrication, over-refusal, injection, leakage | **worst-of-N**: one bad sample fails the case |
+  | fabrication, over-refusal, filter honesty, duplicates, absence, and the core dimensions (leakage, cost, resilience and the others) | **worst-of-N**: one bad sample fails the case |
   | refusal correctness | **majority-of-N** |
-  | latency | percentile across samples |
-  | judge rubric | mean, with interval |
   | deflection (sent to customer service) | **advisory**: reported, never decides the case |
+  | latency | percentiles over the suite's answered turns, every sample pooled, as gate thresholds (ADR-0014) |
+  | judge rubric (v0.5) | mean, with interval |
 
 - **Statistics.** Rates are reported with Wilson 95 % intervals. A case whose
   samples disagree is flagged `unstable`.
-- **Status precedence:** `error` (a precondition or measurement failed) →
-  `fixture-missing` → `known-gap` / `gap-closed` → `pass` / `fail`.
+- **Status precedence:** `error` (a turn couldn't be run or read) → `fail`,
+  or `known-gap` for a case marked as a known gap → `unmeasured` → `pass`, or
+  `gap-closed` for a case marked as a known gap. A case where no deciding
+  dimension applied is `unmeasured`. `fixture-missing` comes with the data
+  generators (v0.4).
 - **Clarifying questions.** A profile can name the routes that mean the target
   asked a clarifying question (`response.clarification`). Product expectations
   don't apply to such a turn, so a target that asks before it answers isn't
@@ -555,14 +596,28 @@ hash, the text with patterns redacted, or the full text (ADR-0015).
 
 ## 14. Budget
 
-- `yokla plan` is a dry run that prints the expected cost and an upper bound.
-  It counts the target's model calls (from the profile, or from a short
-  calibration run) and yokla's own generator, attacker and judge calls, priced
-  with the price table. The upper bound factor defaults to 2× and can be tuned
-  from the history of past runs.
-- `--max-cost` is a hard cap. The runner stops scheduling new samples when the
-  projected spend would exceed it, and marks the results as partial.
-- The report shows the estimate and the actual cost per component.
+ADR-0014 sets how cost and latency are bounded.
+
+- **`yokla plan`** prints the expected cost of a run and an upper bound, and
+  contacts nothing.
+  - It prices each case from its own turns in a calibration run made with the
+    model proxy, while the case's definition is unchanged, and otherwise from
+    the mean calibrated turn.
+  - The upper bound is the estimate times `plan.upperBoundFactor`, 2 by
+    default.
+  - Without a usable calibration it gives no figure.
+  - Counting calls from the profile, adding yokla's own generator, attacker
+    and judge calls, and tuning the factor from past runs come later.
+- **`--max-cost`** is a hard cap. After each sample the runner totals the
+  recorded cost. Once the total reaches the cap, no new sample starts and the
+  results are marked partial. A recorded call without a cost makes the cap
+  unenforceable, so the run stops there too.
+- **Per-turn budgets** (`budget.costUsd`, `budget.modelCalls`) and per-suite
+  thresholds (latency percentiles, cost per turn, total cost) judge what was
+  spent (§16).
+- **What the report shows.** The terminal report shows the actual cost. The
+  estimate next to it, and the cost per component (the target versus yokla's
+  own calls), come later.
 
 ## 15. Privacy and egress
 
@@ -570,8 +625,9 @@ hash, the text with patterns redacted, or the full text (ADR-0015).
   default.
 - **Network allowlist.** yokla's HTTP client refuses every host except the
   target URLs, the proxy upstreams and the model providers the user configures.
-- **An egress test in CI** runs the full demo-shop suite behind a network guard
-  and fails on any other host.
+- **An egress test in CI** runs the demo-shop suites, and the model proxy's
+  runs against a fake provider, behind a network guard. It fails on any other
+  host.
   - The guard records every TCP connection and DNS lookup of the yokla
     process and stops the ones not allowed before anything leaves.
   - It has its own tests, so the egress test can't pass vacuously.
@@ -579,19 +635,22 @@ hash, the text with patterns redacted, or the full text (ADR-0015).
     are the user's own and run outside it.
 - **Secrets** are read only from the environment and never written to results.
 - **Target data.** Generated and recorded files may contain the target's data,
-  so `yokla init` writes a `.gitignore` for `yokla-data/` and `runs/`.
+  so `yokla-data/` and `runs/` stay out of version control. `yokla init`
+  (v0.3) will write a `.gitignore` for them.
 - **Untrusted downloads.** Downloaded datasets and attack corpora are treated
   as data and never executed.
 
 ## 16. Results, reports and gates
 
 - **Results file.** A versioned JSON schema (`results.v1`) holding:
-  - run metadata: yokla version, profile hash, snapshot provenance,
-    environment, correlation mode,
-  - findings per case and sample,
-  - aggregates, costs and timings.
-- **Reports:** a terminal summary, a single-file offline HTML report, JUnit
-  XML, and a Markdown summary for pull requests.
+  - run metadata: yokla version, profile hash, environment, correlation mode,
+    and the model proxy's totals,
+  - findings per case, sample and turn,
+  - each turn's model calls and cost, and the fields observed in the target's
+    logs,
+  - aggregates and timings.
+- **Reports:** a terminal summary and JUnit XML. A single-file offline HTML
+  report comes in v0.3, and a Markdown summary for pull requests later.
 - **Gate (ADR-0010).** `yokla gate` applies the thresholds per suite from
   `yokla.config.yaml`. Exit codes: `0` passed, `1` gate broken, `2` run error.
   - By default a suite allows no `fail` and no `unmeasured` case;
@@ -611,32 +670,33 @@ hash, the text with patterns redacted, or the full text (ADR-0015).
 
 **A domain pack provides:**
 - profile schema extensions,
-- generators and checks,
-- attack templates,
+- case expectation extensions, such as filters and product types,
+- checks,
 - dimension policies,
-- a glossary.
+- later: generators (v0.4), attack templates (v0.5) and a glossary.
 
 **A language pack provides:**
 - **money and number parsing and formatting:** `1.299,90 TL` vs `$1,299.90`,
 - **case and diacritic folding:** Turkish dotted and dotless *i*,
 - **lexicons** for refusal, absence and inability,
 - **policy-claim patterns:** `14 gün`, `30 days`,
-- **attack phrasing templates,**
+- **attack phrasing templates** (v0.5),
 - **morphology helpers:** suffix-aware matching for agglutinative Turkish.
 
 **v1 packs:** `ecommerce`, `lang-tr`, `lang-en`.
 
-**Third-party packs** are npm packages named `yokla-pack-*`. They are loaded
-explicitly from the config; there is no auto-discovery.
+**Third-party packs** will be npm packages named `yokla-pack-*`, loaded
+explicitly from the config, with no auto-discovery. Today the CLI loads the
+first-party packs only.
 
 ## 18. Interoperability
 
-- **Export.** `yokla export <tool>` writes another tool's configuration: the
-  target as an HTTP provider that maps the evidence, plus JavaScript assertions
-  that call yokla's checks.
-- **Import.** Another tool's results can be imported into yokla results for
-  reporting and gating. Its test cases can be imported as yokla cases with
-  status `proposed`.
+- **Export (v0.6).** `yokla export <tool>` will write another tool's
+  configuration: the target as an HTTP provider that maps the evidence, plus
+  JavaScript assertions that call yokla's checks.
+- **Import (v0.6).** Another tool's results will be importable into yokla
+  results for reporting and gating. Its test cases will be importable as yokla
+  cases with status `proposed`.
 - Each mapping lives in its own `interop-<tool>` package (ADR-0007).
 - **OpenTelemetry (later).** OTLP spans are accepted as an alternative to proxy
   correlation.
@@ -662,9 +722,8 @@ turns on one seeded defect at a time:
 - the whole catalog sent with every prompt,
 - the user's personal data reaching the model unmasked,
 - leaking the system prompt,
-- following an instruction injected in product text,
-- exposing another session's order,
-- a slow or failing provider with no fallback.
+- later (v0.5): following an instruction injected in product text, and
+  exposing another session's order.
 
 Each defect is added in the version whose checks detect it, so that "every
 defect is detected" holds for every version. v0.1 has the first eight; v0.2
@@ -679,7 +738,9 @@ runs in CI at zero model cost.
 harness asserts each mutation was applied.
 
 **Egress.** The egress test described in §15. It wraps the acceptance runs,
-the gate and the baseline in `packages/cli/src/demo-shop.e2e.test.ts`.
+the gate and the baseline in `packages/cli/src/demo-shop.e2e.test.ts`, and
+the model proxy's reconciliation, resilience and inspection runs in
+`packages/cli/src/proxy.e2e.test.ts`.
 
 **External targets:**
 - **A private production e-commerce assistant.** Results are not published.
@@ -689,8 +750,11 @@ the gate and the baseline in `packages/cli/src/demo-shop.e2e.test.ts`.
   - stale data-bound cases,
   - fabricated prices,
   - prompt injection.
-- **At least one public open-source shopping assistant** before 1.0, to prove
-  that yokla generalises (not yet selected).
+- **A public open-source retail assistant,** to prove that yokla generalises.
+  It streams its answers, opens its own sessions and calls its model after
+  answering. In v0.2 its model cost reconciled with the provider's records,
+  call for call. It also found gaps in evidence mapping that are now on the
+  v0.3 roadmap.
 
 ## 20. Roadmap
 
