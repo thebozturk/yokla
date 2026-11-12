@@ -3,7 +3,10 @@
 // topic and makes such a claim is a claim about that topic; when a turn names
 // its topic with `policyTopic`, every concrete claim in the answer is about it.
 // Sentences without a concrete claim, such as "I can't verify shipping
-// terms", make no claim (narrow detectors, design §10).
+// terms", make no claim (narrow detectors, design §10). The check applies only
+// when the profile lists policies: then a topic listed without a source, or a
+// neverFabricate topic left out, can back no claim. A profile that lists none
+// gives the check nothing to judge a claim against.
 
 import { findPhrases, type Check, type CheckFinding, type LanguagePack } from '@yokla/core';
 import type { EcommerceData } from '../data.ts';
@@ -42,6 +45,7 @@ export function policyClaim(data: EcommerceData): Check {
       const { lang } = context;
       if (lang === undefined)
         return notApplicable(`no language pack for "${context.case.language}"`);
+      if (data.policies.size === 0) return notApplicable('the profile lists no policies');
       const lexicon = POLICY_TOPIC_PHRASES[lang.language] ?? {};
       const expected = context.turn.expect['policyTopic'];
       const declared = typeof expected === 'string' ? expected : undefined;

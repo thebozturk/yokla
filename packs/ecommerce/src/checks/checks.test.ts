@@ -385,6 +385,28 @@ describe('policy-claim', () => {
     expect(run('Kargo ücretsizdir ve 2 gün içinde teslim edilir.')).toEqual(['fail']);
   });
 
+  it('does not apply when the profile lists no policies', () => {
+    const outcome = policyClaim(data()).run(
+      checkContext(answer('Ürünleri 30 gün içinde ücretsiz iade edebilirsiniz.'), {
+        lang: fakeTurkish,
+      }),
+    );
+    expect(verdicts(outcome)).toEqual(['n/a: the profile lists no policies']);
+  });
+
+  it('treats a neverFabricate topic the profile leaves out as having no source', () => {
+    const returnsOnly = new Map([
+      ['returns', { topic: 'returns', answers: { tr: RETURNS_TR, en: RETURNS_EN } }],
+    ]);
+    const shipping = checkContext(answer('Kargo ücretsizdir.'), { lang: fakeTurkish });
+    expect(verdicts(policyClaim(data({ policies: returnsOnly })).run(shipping))).toEqual(['fail']);
+    const notGuarded = data({
+      policies: returnsOnly,
+      config: ecommerceProfile.parse({ neverFabricate: ['returns'] }),
+    });
+    expect(verdicts(policyClaim(notGuarded).run(shipping))).toEqual(['pass']);
+  });
+
   it('accepts honest inability: no concrete claim, no finding against it', () => {
     expect(run('Kargo ve teslimat koşullarını doğrulayamıyorum.')).toEqual(['pass']);
   });
