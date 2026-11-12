@@ -1375,8 +1375,8 @@ describe('runSuite with the model proxy', () => {
     expect(ran).toEqual(['b']);
     expect(results.cases[0]?.status).toBe('fail');
     expect(proxy.armed.map((a) => a.body)).toEqual([
-      { inFlight: true, faults },
-      { inFlight: true, faults },
+      { inFlight: true, faults, seed: 'c0|0|0' },
+      { inFlight: true, faults, seed: 'c0|0|1' },
     ]);
   });
 
@@ -1399,6 +1399,37 @@ describe('runSuite with the model proxy', () => {
     expect(results.cases[0]?.status).toBe('fail');
   });
 
+  it("seeds each turn's jitter with its case, sample and turn, the same in every run", async () => {
+    const proxy = await fakeProxy();
+    const t = await target((_r, _i, response) => {
+      json(response, answer());
+    });
+    const faults = [{ fault: { kind: 'latency', ms: 1, jitterMs: 50 } }];
+    const run = () =>
+      runSuite(
+        options(
+          proxied(t.url, 'serial'),
+          cases({
+            id: 'slow',
+            samples: 2,
+            turns: [
+              { user: 'a', faults },
+              { user: 'b', faults },
+            ],
+          }),
+          { proxyUrl: proxy.url },
+        ),
+      );
+    await run();
+    await run();
+    const seeds = proxy.armed.map((a) => String(Reflect.get(Object(a.body), 'seed')));
+    const once = ['slow|0|0', 'slow|0|1', 'slow|1|0', 'slow|1|1'];
+    expect(seeds).toEqual([...once, ...once]);
+    // The turn ids the proxy knows the turns by are new in every run; the seeds aren't.
+    const turns = proxy.armed.map((a) => a.turn);
+    expect(new Set(turns).size).toBe(turns.length);
+  });
+
   it('arms faults without marking in header correlation, and refuses faults without a proxy', async () => {
     const proxy = await fakeProxy();
     const t = await target((_r, _i, response) => {
@@ -1411,7 +1442,11 @@ describe('runSuite with the model proxy', () => {
       }),
     );
     expect(proxy.armed.map((a) => a.body)).toEqual([
-      { inFlight: false, faults: [{ fault: { kind: 'latency', ms: 1, jitterMs: 0 } }] },
+      {
+        inFlight: false,
+        faults: [{ fault: { kind: 'latency', ms: 1, jitterMs: 0 } }],
+        seed: 'c0|0|0',
+      },
     ]);
     await expect(
       runSuite(options(profile(t.url), cases({ id: 'faulty', turns: [{ user: 'a', faults }] }))),

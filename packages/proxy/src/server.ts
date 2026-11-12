@@ -26,6 +26,7 @@ import {
   errorBody,
   isChanging,
   jitter,
+  jitterSeed,
   nextFault,
   type ArmedTurn,
 } from './faults.ts';
@@ -137,6 +138,8 @@ async function readBody(request: IncomingMessage, max: number): Promise<Buffer |
 const TurnArming = z.object({
   inFlight: z.boolean().default(false),
   faults: z.array(FaultPlan).default([]),
+  /** What identifies the turn across runs, for repeatable jitter (ADR-0017). */
+  seed: z.string().min(1).max(1024).optional(),
 });
 
 /** A call the proxy answered itself made no provider call: zero is a measurement. */
@@ -220,12 +223,14 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
       }
       const parsed = TurnArming.safeParse(value);
       if (!parsed.success) {
-        sendJson(response, 400, { error: 'expected {"inFlight"?: boolean, "faults"?: [...]}' });
+        sendJson(response, 400, {
+          error: 'expected {"inFlight"?: boolean, "faults"?: [...], "seed"?: string}',
+        });
         return;
       }
       const turn = decodeURIComponent(turned[2] ?? '');
       if (parsed.data.inFlight) open.mark = turn;
-      open.turns.set(turn, armTurn(parsed.data.faults));
+      open.turns.set(turn, armTurn(parsed.data.faults, parsed.data.seed));
       sendJson(response, 200, {
         id: open.id,
         turn,
@@ -396,7 +401,7 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
       return;
     }
     if (fault?.kind === 'latency') {
-      const seed = `${turnId ?? ''}|${upstream.id}|${(armed?.matched ?? []).join(',')}`;
+      const seed = jitterSeed(armed, turnId, upstream.id);
       await new Promise((resolve) => setTimeout(resolve, fault.ms + jitter(seed, fault.jitterMs)));
     }
     const changing = fault !== undefined && isChanging(fault.kind) ? fault.kind : undefined;

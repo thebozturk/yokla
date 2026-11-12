@@ -19,14 +19,32 @@ export function isChanging(kind: Fault['kind']): kind is ChangingFault {
   );
 }
 
-/** A turn the runner armed: its plans, and how many calls each plan has matched so far. */
+/**
+ * A turn the runner armed: its plans, how many calls each plan has matched so
+ * far, and the seed of its jitter (ADR-0017).
+ */
 export interface ArmedTurn {
   readonly plans: readonly FaultPlan[];
   readonly matched: number[];
+  readonly seed: string | undefined;
 }
 
-export function armTurn(plans: readonly FaultPlan[]): ArmedTurn {
-  return { plans, matched: plans.map(() => 0) };
+export function armTurn(plans: readonly FaultPlan[], seed?: string): ArmedTurn {
+  return { plans, matched: plans.map(() => 0), seed };
+}
+
+/**
+ * The jitter seed of a call (ADR-0017): the seed the runner armed the turn
+ * with, made of what identifies the turn across runs, or else the turn id;
+ * then the upstream and how many calls each plan has matched, so every call
+ * draws its own delay.
+ */
+export function jitterSeed(
+  turn: ArmedTurn | undefined,
+  turnId: string | null,
+  upstream: string,
+): string {
+  return `${turn?.seed ?? turnId ?? ''}|${upstream}|${(turn?.matched ?? []).join(',')}`;
 }
 
 /** The fault for the turn's next call to `upstream`: the first plan whose filters match. */

@@ -2,6 +2,7 @@ import { createServer, request, type IncomingHttpHeaders, type Server } from 'no
 import { gzipSync } from 'node:zlib';
 import type { ProxyRecord } from '@yokla/core';
 import { afterEach, describe, expect, it } from 'vitest';
+import { jitter } from './faults.ts';
 import { startProxy, type RunningProxy } from './server.ts';
 
 interface Received {
@@ -607,6 +608,31 @@ describe('startProxy faults', () => {
       (await call(running, 'POST', '/openai/chat/completions', '{}')).body.toString('utf8'),
     ).toBe(JSON.stringify(JSON.parse(CHAT)));
     expect(records[0]?.fault).toEqual({ kind: 'invalid-tool-call', applied: false });
+  });
+
+  it("draws a latency fault's jitter from the armed seed, not from the turn id", async () => {
+    const up = await upstream();
+    // A seed whose draw is long, for a turn id whose own draw would be short:
+    // only the seed explains a delay at least that long (ADR-0017).
+    const max = 400;
+    const seed = Array.from({ length: 500 }, (_v, i) => `case-${String(i)}|0|0`).find(
+      (candidate) => jitter(`${candidate}|openai|1`, max) >= 300,
+    );
+    const turn = Array.from({ length: 500 }, (_v, i) => `turn-${String(i)}`).find(
+      (candidate) => jitter(`${candidate}|openai|1`, max) < 100,
+    );
+    expect(seed).toBeDefined();
+    expect(turn).toBeDefined();
+    const slow = await armed(up, String(turn), {
+      inFlight: true,
+      faults: [{ fault: { kind: 'latency', ms: 0, jitterMs: max } }],
+      seed,
+    });
+    const startedAt = performance.now();
+    await call(slow.running, 'POST', '/openai/chat/completions', '{}');
+    expect(performance.now() - startedAt).toBeGreaterThanOrEqual(
+      jitter(`${String(seed)}|openai|1`, max) - 5,
+    );
   });
 
   it('delays a latency fault, and holds a timeout fault without an answer', async () => {
