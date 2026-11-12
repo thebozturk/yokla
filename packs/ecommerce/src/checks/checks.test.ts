@@ -63,6 +63,14 @@ describe('price-grounded', () => {
     expect(verdicts(english)).toEqual(['pass']);
   });
 
+  it('accepts an amount the user wrote in an earlier turn', () => {
+    const earlier = answer('Hangi çadır?', [], '1000 TL altında çadır');
+    const later = answer('1.000,00 TL altında: Plaj Çadırı 899,50 TL', tents, 'en ucuzu?');
+    const context = checkContext(later, { lang: fakeTurkish, history: [earlier] });
+    expect(verdicts(check.run(context))).toEqual(['pass']);
+    expect(verdicts(check.run(checkContext(later, { lang: fakeTurkish })))).toEqual(['fail']);
+  });
+
   it('accepts prices of products returned earlier in the conversation', () => {
     const earlier = answer(honest, tents);
     const context = checkContext(answer('En ucuzu 899,50 TL.', [], 'daha ucuz?'), {
@@ -92,6 +100,28 @@ describe('price-grounded', () => {
       },
     );
     expect(verdicts(check.run(context))).toEqual(['fail']);
+  });
+
+  it('does not apply when no product in the conversation has a price', () => {
+    const noPrice = 'n/a: no product in the conversation has a price';
+    // No product evidence, as when the profile maps none: a real price can't be told apart.
+    expect(run('Plaj Çadırı 899,50 TL.', [])).toEqual([noPrice]);
+    // A product whose price neither the response nor the catalog gives.
+    expect(run('Plaj Çadırı 899,50 TL.', [{ id: 'unknown', name: 'Plaj Çadırı' }])).toEqual([
+      noPrice,
+    ]);
+    // A campaign or the user's own amount alone doesn't make the check apply.
+    const withCampaign = priceGrounded(
+      data({
+        config: ecommerceProfile.parse({
+          campaigns: [{ id: 'cargo', amount: 49.9, currency: 'TRY' }],
+        }),
+      }),
+    );
+    const context = checkContext(answer('Kargo 49,90 TL, çadır 899,50 TL.', [], '49,90'), {
+      lang: fakeTurkish,
+    });
+    expect(verdicts(withCampaign.run(context))).toEqual([noPrice]);
   });
 
   it('does not apply without money or without a language pack', () => {
@@ -391,9 +421,13 @@ describe('policy-claim', () => {
 describe('price-grounded with policy sources', () => {
   it('accepts an amount quoted from a policy source', () => {
     const outcome = priceGrounded(withPolicies).run(
-      checkContext(answer('Kargo ücreti 49,90 TL.'), { lang: fakeTurkish }),
+      checkContext(answer('Kargo ücreti 49,90 TL.', tents), { lang: fakeTurkish }),
     );
     expect(verdicts(outcome)).toEqual(['pass']);
+    const withoutPolicies = priceGrounded(data()).run(
+      checkContext(answer('Kargo ücreti 49,90 TL.', tents), { lang: fakeTurkish }),
+    );
+    expect(verdicts(withoutPolicies)).toEqual(['fail']);
   });
 });
 
