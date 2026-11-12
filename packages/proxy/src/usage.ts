@@ -118,21 +118,47 @@ function fromJson(kind: UpstreamKind, body: unknown): ReadUsage {
   return { usage: usage ?? UNMEASURED, model: text(at(body, 'model')) };
 }
 
+const ANTHROPIC_COUNTS = [
+  'input_tokens',
+  'output_tokens',
+  'cache_read_input_tokens',
+  'cache_creation_input_tokens',
+] as const;
+
+/**
+ * The counts of an Anthropic stream are cumulative totals. A count in a later event
+ * replaces the earlier one, and a count the later event leaves out keeps its earlier
+ * value. message_start may report zero input and message_delta the real input and cache
+ * counts, so reading only the delta's output would undercount.
+ */
+function anthropicStream(events: readonly unknown[]): ReadUsage {
+  let model: string | null = null;
+  let counts: Record<string, number> | undefined;
+  for (const event of events) {
+    const type = at(event, 'type');
+    let usage: unknown;
+    if (type === 'message_start') {
+      model = text(at(event, 'message', 'model')) ?? model;
+      usage = at(event, 'message', 'usage');
+    } else if (type === 'message_delta') {
+      usage = at(event, 'usage');
+    }
+    if (!isObject(usage)) continue;
+    counts = { ...counts };
+    for (const key of ANTHROPIC_COUNTS) {
+      const count = tokens(usage[key]);
+      if (count !== null) counts[key] = count;
+    }
+  }
+  return { usage: anthropicUsage(counts) ?? UNMEASURED, model };
+}
+
 function fromStream(kind: UpstreamKind, events: readonly unknown[]): ReadUsage {
+  if (kind === 'anthropic') return anthropicStream(events);
   let model: string | null = null;
   let usage: ProxyUsage | undefined;
   for (const event of events) {
     const type = at(event, 'type');
-    if (kind === 'anthropic') {
-      if (type === 'message_start') {
-        model = text(at(event, 'message', 'model')) ?? model;
-        usage = anthropicUsage(at(event, 'message', 'usage')) ?? usage;
-      } else if (type === 'message_delta' && usage !== undefined) {
-        // The delta carries the final, cumulative output count.
-        usage = { ...usage, output: tokens(at(event, 'usage', 'output_tokens')) ?? usage.output };
-      }
-      continue;
-    }
     if (typeof type === 'string' && type.startsWith('response.')) {
       model = text(at(event, 'response', 'model')) ?? model;
       usage = openAiUsage(at(event, 'response', 'usage'), false) ?? usage;

@@ -166,6 +166,86 @@ describe('readUsage, Anthropic', () => {
     });
   });
 
+  it('takes the cumulative counts of message_delta over those of message_start', () => {
+    // A gateway's shape: message_start reports zero input, message_delta the real counts.
+    const body = sse(
+      {
+        type: 'message_start',
+        message: { model: 'claude-x', usage: { input_tokens: 0, output_tokens: 1 } },
+      },
+      { type: 'content_block_delta', delta: { text: 'Hi' } },
+      {
+        type: 'message_delta',
+        usage: {
+          input_tokens: 472,
+          output_tokens: 87,
+          cache_read_input_tokens: 300,
+          cache_creation_input_tokens: 9400,
+        },
+      },
+    );
+    expect(readUsage('anthropic', body, true)).toEqual({
+      model: 'claude-x',
+      usage: { input: 10172, output: 87, cachedInput: 300, cacheWrite: 9400, reasoning: null },
+    });
+  });
+
+  it('keeps an earlier count that message_delta leaves out or reports as invalid', () => {
+    const body = sse(
+      {
+        type: 'message_start',
+        message: {
+          model: 'claude-x',
+          usage: {
+            input_tokens: 25,
+            output_tokens: 1,
+            cache_read_input_tokens: 300,
+            cache_creation_input_tokens: 40,
+          },
+        },
+      },
+      {
+        type: 'message_delta',
+        usage: { output_tokens: 15, cache_read_input_tokens: -1, cache_creation_input_tokens: 2.5 },
+      },
+    );
+    expect(readUsage('anthropic', body, true).usage).toEqual({
+      input: 365,
+      output: 15,
+      cachedInput: 300,
+      cacheWrite: 40,
+      reasoning: null,
+    });
+  });
+
+  it('reads counts that only message_delta carries, and is unmeasured with none', () => {
+    const deltaOnly = sse(
+      { type: 'message_start', message: { model: 'claude-x' } },
+      { type: 'message_delta', usage: { input_tokens: 9, output_tokens: 4 } },
+    );
+    expect(readUsage('anthropic', deltaOnly, true)).toEqual({
+      model: 'claude-x',
+      usage: { input: 9, output: 4, cachedInput: null, cacheWrite: null, reasoning: null },
+    });
+    const none = sse(
+      { type: 'message_start', message: { model: 'claude-x' } },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' } },
+    );
+    expect(readUsage('anthropic', none, true)).toEqual({ model: 'claude-x', usage: UNMEASURED });
+  });
+
+  it('reads usage only from message_start and message_delta', () => {
+    const body = sse(
+      {
+        type: 'message_start',
+        message: { model: 'claude-x', usage: { input_tokens: 25, output_tokens: 1 } },
+      },
+      { type: 'content_block_delta', usage: { input_tokens: 999, output_tokens: 999 } },
+      { type: 'message_delta', usage: { output_tokens: 15 } },
+    );
+    expect(readUsage('anthropic', body, true).usage).toMatchObject({ input: 25, output: 15 });
+  });
+
   it('is unmeasured for a body that is not JSON', () => {
     expect(readUsage('anthropic', '<html>bad gateway</html>', false)).toEqual({
       model: null,
