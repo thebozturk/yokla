@@ -108,12 +108,9 @@ export function caseShape<E extends z.ZodType>(language: z.ZodType<string>, expe
         }),
       )
       .min(1),
-    samples: z
-      .int()
-      .min(1)
-      .max(100)
-      .optional()
-      .meta({ description: 'Defaults per suite (design §11).' }),
+    samples: z.int().min(1).max(100).optional().meta({
+      description: 'How many times to run the case. Default: yokla run --samples, else 1.',
+    }),
     checks: z
       .array(Id)
       .min(1)
