@@ -1,4 +1,5 @@
-import type { Server } from 'node:http';
+import { request as httpRequest, type Server } from 'node:http';
+import { connect } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Assistant } from './assistant.ts';
 import { loadShopData } from './catalog.ts';
@@ -235,5 +236,174 @@ describe('demo-shop HTTP server', () => {
     await chat(plain, { message: 'Merhaba', sessionId: 's' });
     await new Promise((resolve) => setTimeout(resolve, SUMMARY_DELAY_MS + 50));
     expect(summaries).toHaveLength(1);
+  });
+});
+
+/** Each turn's events over one WebSocket: a turn ends at its done or error event. */
+async function converse(url: string, messages: readonly unknown[]): Promise<unknown[][]> {
+  const socket = new WebSocket(url);
+  const turns: unknown[][] = [];
+  let current: unknown[] = [];
+  let finish: (() => void) | undefined;
+  socket.addEventListener('message', (event) => {
+    const received: unknown = JSON.parse(String(event.data));
+    current.push(received);
+    const type = field(received, 'type');
+    if (type === 'done' || type === 'error') finish?.();
+  });
+  await new Promise<void>((resolve, reject) => {
+    socket.addEventListener('open', () => {
+      resolve();
+    });
+    socket.addEventListener('close', (event) => {
+      reject(new Error(`closed with ${String(event.code)}`));
+    });
+  });
+  for (const message of messages) {
+    current = [];
+    const answered = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    socket.send(typeof message === 'string' ? message : JSON.stringify(message));
+    await answered;
+    turns.push(current);
+  }
+  const closed = new Promise<void>((resolve) => {
+    socket.addEventListener('close', () => {
+      resolve();
+    });
+  });
+  socket.close(1000);
+  await closed;
+  return turns;
+}
+
+const types = (events: readonly unknown[] | undefined) =>
+  (events ?? []).map((event) => field(event, 'type'));
+
+const text = (events: readonly unknown[] | undefined) =>
+  (events ?? [])
+    .filter((event) => field(event, 'type') === 'delta')
+    .map((event) => String(field(event, 'text')))
+    .join('');
+
+/** Sends raw bytes to the shop and resolves with everything it sent back. */
+function raw(base: string, bytes: readonly Buffer[]): Promise<Buffer> {
+  const { port } = new URL(base);
+  return new Promise((resolve, reject) => {
+    const socket = connect(Number(port), '127.0.0.1');
+    const received: Buffer[] = [];
+    socket.on('data', (chunk: Buffer) => received.push(chunk));
+    socket.on('end', () => {
+      resolve(Buffer.concat(received));
+    });
+    socket.on('error', reject);
+    socket.on('connect', () => {
+      for (const chunk of bytes) socket.write(chunk);
+    });
+    setTimeout(() => {
+      socket.destroy();
+      resolve(Buffer.concat(received));
+    }, 1_500).unref();
+  });
+}
+
+/** The code of the close frame after the handshake's response, if any. */
+function closeCode(bytes: Buffer): number | undefined {
+  const at = bytes.indexOf(Buffer.from([0x88]), bytes.indexOf('\r\n\r\n') + 4);
+  return at === -1 ? undefined : bytes.readUInt16BE(at + 2);
+}
+
+const HANDSHAKE = Buffer.from(
+  [
+    'GET /v1/ws HTTP/1.1',
+    'Host: 127.0.0.1',
+    'Upgrade: websocket',
+    'Connection: Upgrade',
+    'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
+    'Sec-WebSocket-Version: 13',
+    '',
+    '',
+  ].join('\r\n'),
+);
+
+describe('demo-shop chat over a WebSocket', () => {
+  it('answers with the events of its stream, one message each, the text as over HTTP', async () => {
+    const base = await start();
+    const [turn] = await converse(`${base.replace('http:', 'ws:')}/v1/ws`, [
+      { message: 'Show me headlamps', sessionId: 's1' },
+    ]);
+    const kinds = types(turn);
+    expect(kinds[0]).toBe('products');
+    expect(kinds.at(-1)).toBe('done');
+    expect(new Set(kinds.slice(1, -1))).toEqual(new Set(['delta']));
+    expect(field(turn?.[0], 'products')).toHaveLength(3);
+    expect(turn?.at(-1)).toMatchObject({ type: 'done', route: 'product-search', language: 'en' });
+    const overHttp: unknown = await (
+      await chat(base, { message: 'Show me headlamps', sessionId: 's2' })
+    ).json();
+    expect(text(turn)).toBe(field(field(overHttp, 'data'), 'answer'));
+  });
+
+  it("keeps the url's session for every message, and refuses a bad one with an error event", async () => {
+    const base = await start();
+    const turns = await converse(`${base.replace('http:', 'ws:')}/v1/ws?session=abc`, [
+      { message: 'Çadır var mı?' },
+      { message: '  ' },
+      '{',
+      { message: 'Daha ucuzu var mı?' },
+    ]);
+    expect(turns.map(types).map((kinds) => kinds.at(-1))).toEqual([
+      'done',
+      'error',
+      'error',
+      'done',
+    ]);
+    expect(turns[1]?.[0]).toMatchObject({ type: 'error', error: 'invalid_request' });
+    // The follow-up was understood in the same session.
+    expect(turns[3]?.at(-1)).toMatchObject({ route: 'follow-up-cheapest' });
+  });
+
+  it('rate limits each message with an error event', async () => {
+    let time = 0;
+    const base = await start({ burstPerSecond: 1, perMinute: 60 }, () => time);
+    const turns = await converse(`${base.replace('http:', 'ws:')}/v1/ws`, [
+      { message: 'Merhaba', sessionId: 'a' },
+      { message: 'Merhaba', sessionId: 'a' },
+    ]);
+    expect(turns[1]).toEqual([{ type: 'error', error: 'rate_limited', detail: 'retry after 1 s' }]);
+  });
+
+  it('refuses an upgrade on another path, and one that is not a valid handshake', async () => {
+    const base = await start();
+    const notFound = await raw(base, [
+      Buffer.from(HANDSHAKE.toString().replace('/v1/ws', '/v1/chat')),
+    ]);
+    expect(notFound.toString()).toMatch(/^HTTP\/1\.1 404 /u);
+    const status = await new Promise<number>((resolve, reject) => {
+      const request = httpRequest(`${base}/v1/ws`, {
+        headers: { connection: 'Upgrade', upgrade: 'websocket', 'sec-websocket-version': '13' },
+      });
+      request.on('response', (response) => {
+        resolve(response.statusCode ?? 0);
+        response.resume();
+      });
+      request.on('error', reject);
+      request.end();
+    });
+    expect(status).toBe(400);
+  });
+
+  it('closes with 1002 on an unmasked frame, and with 1009 on a message over the limit', async () => {
+    const base = await start();
+    const unmasked = await raw(base, [HANDSHAKE, Buffer.from([0x81, 0x02, 0x68, 0x69])]);
+    expect(unmasked.toString()).toMatch(/^HTTP\/1\.1 101 /u);
+    expect(closeCode(unmasked)).toBe(1002);
+    const huge = Buffer.alloc(10);
+    huge[0] = 0x81;
+    huge[1] = 0x80 | 127;
+    huge.writeBigUInt64BE(BigInt(1024 * 1024), 2);
+    const oversized = await raw(base, [HANDSHAKE, huge]);
+    expect(closeCode(oversized)).toBe(1009);
   });
 });
