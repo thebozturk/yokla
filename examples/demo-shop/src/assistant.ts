@@ -23,6 +23,8 @@ export interface ProductView {
   readonly price: { readonly amount: number; readonly currency: string };
   /** null means unknown, not zero. */
   readonly stockQuantity: number | null;
+  /** Available or not, as shops without quantities say it; null means unknown. */
+  readonly available: boolean | null;
   readonly attributes: Readonly<Partial<Record<'size' | 'color' | 'gender', string>>>;
 }
 
@@ -66,6 +68,7 @@ function view(product: Product, language: Language): ProductView {
     category: product.categoryPath,
     price: { amount: product.price, currency: product.currency },
     stockQuantity: product.stock,
+    available: product.stock === null ? null : product.stock > 0,
     attributes: {
       ...(product.size === undefined ? {} : { size: product.size }),
       ...(product.color === undefined ? {} : { color: product.color }),
