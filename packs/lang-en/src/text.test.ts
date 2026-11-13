@@ -121,6 +121,13 @@ describe('phrases', () => {
   it.each([
     ['refusal', "I can't help with that."],
     ['refusal', 'I’m sorry, but I can’t do that'],
+    [
+      'refusal',
+      "I'm not able to recommend investments or stocks; that's outside what I can help with here.",
+    ],
+    ['refusal', "That's not something I can help with."],
+    ['refusal', 'Tax advice is outside of what I can help with.'],
+    ['refusal', 'Medical questions are beyond what I can help with.'],
     ['inability', "I can't verify shipping terms"],
     ['inability', 'stock not confirmed'],
     ['absence', "We don't carry hammocks."],
@@ -136,6 +143,8 @@ describe('phrases', () => {
 
   it.each([
     ['refusal', 'I can help with products.'],
+    ['refusal', 'Here is what I can help with: products and orders.'],
+    ['refusal', "I can't recommend one tent over the other without your budget."],
     ['free', 'Feel freely to ask'],
     ['absence', 'We have these.'],
   ] as const)('not %s: %s', (kind, text) => {
