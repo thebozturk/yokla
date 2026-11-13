@@ -210,6 +210,52 @@ describe('evaluateGate with a baseline', () => {
   });
 });
 
+describe('evaluateGate and proposed cases (ADR-0004)', () => {
+  const proposed = (c: CaseResult): CaseResult => ({ ...c, review: 'proposed' });
+
+  it('leaves proposed cases out, whatever their status, and names them in a notice', () => {
+    const results = run([
+      kase('ok', 'pass'),
+      proposed(kase('p-fail', 'fail')),
+      proposed(kase('p-error', 'error')),
+      proposed(kase('p-unmeasured', 'unmeasured')),
+    ]);
+    expect(gate(results)).toEqual({
+      verdict: 'pass',
+      breaches: [],
+      problems: [],
+      notices: [
+        '3 proposed cases not gating until a person approves: p-fail, p-error, p-unmeasured',
+      ],
+    });
+    expect(gate(run([proposed(kase('one', 'pass'))])).notices).toEqual([
+      '1 proposed case not gating until a person approves: one',
+    ]);
+    // An approved case still gates beside them.
+    expect(gate(run([kase('a', 'fail'), proposed(kase('p', 'pass'))])).verdict).toBe('broken');
+  });
+
+  it('leaves proposed cases out of the latency and cost thresholds', () => {
+    const results = run([
+      timed('fast', 'perf', [{ latencyMs: 100 }]),
+      proposed(timed('slow', 'perf', [{ latencyMs: 9000 }])),
+    ]);
+    expect(gate(results, { suites: { perf: { latencyP95Ms: 200 } } }).verdict).toBe('pass');
+  });
+
+  it("doesn't compare a case that passed in the baseline and is proposed now", () => {
+    const before = run([kase('a', 'pass')]);
+    const now = run([proposed(kase('a', 'fail'))]);
+    expect(gate(now, undefined, before)).toMatchObject({
+      verdict: 'pass',
+      breaches: [],
+    });
+    expect(gate(now, undefined, before).notices).toContain(
+      "a passed in the baseline but is proposed now, so it isn't compared",
+    );
+  });
+});
+
 describe('YoklaConfig', () => {
   it('defaults the gate and rejects unknown keys and suites', () => {
     expect(YoklaConfig.parse({ version: 1 })).toEqual({

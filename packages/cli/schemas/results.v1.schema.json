@@ -293,6 +293,10 @@
             ],
             "additionalProperties": false
           },
+          "review": {
+            "type": "string",
+            "const": "proposed"
+          },
           "dimensions": {
             "type": "array",
             "items": {

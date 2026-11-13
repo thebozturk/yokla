@@ -13,7 +13,9 @@ export function baselineOf(results: Results): Baseline {
       startedAt: results.run.startedAt,
       profile: { target: results.run.profile.target, sha256: results.run.profile.sha256 },
     },
+    // A proposed case doesn't gate, so the baseline leaves it out (ADR-0004).
     cases: results.cases
+      .filter((c) => c.review !== 'proposed')
       .map((c) => ({
         id: c.id,
         suite: c.suite,

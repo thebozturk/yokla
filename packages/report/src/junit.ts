@@ -56,13 +56,15 @@ interface Counts {
 }
 
 function count(cases: readonly CaseResult[]): Counts {
+  // A proposed case doesn't gate (ADR-0004), so it is skipped whatever its status.
+  const approved = cases.filter((c) => c.review !== 'proposed');
   const has = (...statuses: CaseResult['status'][]) =>
-    cases.filter((c) => statuses.includes(c.status)).length;
+    approved.filter((c) => statuses.includes(c.status)).length;
   return {
     tests: cases.length,
     failures: has('fail'),
     errors: has('error', 'fixture-missing'),
-    skipped: has('unmeasured', 'known-gap'),
+    skipped: has('unmeasured', 'known-gap') + (cases.length - approved.length),
   };
 }
 
@@ -74,7 +76,10 @@ function testcase(c: CaseResult): string[] {
   const problems = caseProblems(c);
   const reason = caseReason(c, problems) ?? '';
   const children: string[] = [];
-  if (c.status === 'fail') {
+  if (c.review === 'proposed') {
+    const message = `proposed, not approved yet: ${c.status}${reason === '' ? '' : `: ${reason}`}`;
+    children.push(`<skipped message="${xmlAttribute(message)}"/>`);
+  } else if (c.status === 'fail') {
     const body = problems.deciding.map(problemLine).join('\n');
     children.push(
       `<failure type="fail" message="${xmlAttribute(reason)}">${xmlText(body)}</failure>`,

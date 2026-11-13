@@ -496,7 +496,8 @@
                       "data",
                       "code",
                       "probe",
-                      "import"
+                      "import",
+                      "template"
                     ]
                   },
                   "evidence": {

@@ -183,6 +183,32 @@ describe('runSuite', () => {
     expect(stricter).not.toBe(first);
   });
 
+  it('runs proposed cases marked as such, and never a rejected one (ADR-0004)', async () => {
+    const t = await target((_r, _i, response) => {
+      json(response, answer());
+    });
+    const by = (status: string) => ({ source: 'template', evidence: 'yokla init', status });
+    const results = await runSuite(
+      options(
+        profile(t.url),
+        cases(
+          { id: 'mine', turns: [{ user: 'a' }] },
+          { id: 'proposed', turns: [{ user: 'b' }], provenance: by('proposed') },
+          { id: 'rejected', turns: [{ user: 'c' }], provenance: by('rejected') },
+          { id: 'approved', turns: [{ user: 'd' }], provenance: by('approved') },
+        ),
+      ),
+    );
+    expect(Results.safeParse(results).success).toBe(true);
+    expect(t.received.map((r) => r.body['message'])).toEqual(['a', 'b', 'd']);
+    expect(results.cases.map((c) => [c.id, c.review])).toEqual([
+      ['mine', undefined],
+      ['proposed', 'proposed'],
+      ['approved', undefined],
+    ]);
+    expect(results.summary.cases).toBe(3);
+  });
+
   it('carries a server-issued id into the next turn and keeps the session', async () => {
     const t = await target((received, index, response) => {
       json(
