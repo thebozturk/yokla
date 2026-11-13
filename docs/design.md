@@ -389,6 +389,8 @@ The [checks guide](guide/checks.md) gives each check's exact conditions.
 | `evidence-count` | the turn expects evidence counts or ids | |
 | `graceful-under-fault` | the turn injects provider faults (ADR-0013) | The target still gives a usable answer. |
 | `answered-within-deadline` | the turn sets `deadlineMs` (ADR-0013) | The full answer arrived in time. |
+| `status-allowed` | the turn sets `allowStatus` (ADR-0018) | The target answered with a 2xx or an allowed status; a turn that allows statuses is judged on them, never stopped by them. |
+| `language-match` | the turn sets `language` (ADR-0018) | The answer is in that language, by the share of each language pack's most common words. Too short or too close to tell is unmeasured. |
 | `cost-budget` | the turn's budget sets `costUsd` or `modelCalls` (ADR-0014) | The turn's model calls stay within it. Unmeasured without proxy data. |
 | `prompt-budget` | the turn's budget sets `inputTokens` | No model call of the turn sends more input tokens. |
 | `prompt-leak` | the profile's canary reached a system prompt (ADR-0015) | The answer doesn't contain the canary. Long n-gram runs from the system prompt, without a canary, come with the red team's extraction attacks (v0.5). |
@@ -396,7 +398,6 @@ The [checks guide](guide/checks.md) gives each check's exact conditions.
 | `pii-in-prompt` | the turn lists `notSentToModel` values | None of them is in any message of the turn's model calls. |
 | `injection-canary` (v0.5) | the case seeds a canary | The answer neither contains nor acts on the canary instruction. |
 | `pii-leak` (v0.5) | the case seeds fake PII | Seeded values don't appear where they shouldn't. |
-| `language-match` (later) | always | The answer is in the user's language. |
 
 Latency has no per-turn check besides `deadlineMs`. Its percentiles are gate
 thresholds per suite (ADR-0014, §16).
@@ -574,6 +575,11 @@ hash, the text with patterns redacted, or the full text (ADR-0015).
   `gap-closed` for a case marked as a known gap. A case where no deciding
   dimension applied is `unmeasured`. `fixture-missing` comes with the data
   generators (v0.4).
+- **Approval (ADR-0004, ADR-0018).** A case yokla writes, such as a starter
+  case of `yokla init`, is `proposed`: it runs and is reported, but the gate
+  and the baseline leave it out until a person sets it to `approved`. A
+  `rejected` case doesn't run. A case without provenance was written by a
+  person and is approved.
 - **Clarifying questions.** A profile can name the routes that mean the target
   asked a clarifying question (`response.clarification`). Product expectations
   don't apply to such a turn, so a target that asks before it answers isn't
@@ -637,7 +643,7 @@ ADR-0014 sets how cost and latency are bounded.
 - **Secrets** are read only from the environment and never written to results.
 - **Target data.** Generated and recorded files may contain the target's data,
   so `yokla-data/` and `runs/` stay out of version control. `yokla init`
-  (v0.3) will write a `.gitignore` for them.
+  adds them to `.gitignore` (ADR-0018).
 - **Untrusted downloads.** Downloaded datasets and attack corpora are treated
   as data and never executed.
 
@@ -656,6 +662,8 @@ ADR-0014 sets how cost and latency are bounded.
   `yokla.config.yaml`. Exit codes: `0` passed, `1` gate broken, `2` run error.
   - By default a suite allows no `fail` and no `unmeasured` case;
     `maxFailures` and `allowUnmeasured` relax that per suite.
+  - A proposed case doesn't gate until a person approves it; the gate names
+    it in a notice (ADR-0004).
   - A case that passed in the baseline and no longer passes always breaks it,
     unless its definition changed (ADR-0011).
   - `yokla baseline --results <file>` accepts a run as the baseline and

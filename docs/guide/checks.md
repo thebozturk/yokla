@@ -19,11 +19,17 @@ These work for any assistant.
 | Check | Dimension | Applies when | Judges |
 |---|---|---|---|
 | `route-expected` | routing | the turn expects a `route` | The turn was answered by an expected route. Needs `response.route` in the profile; without it, the result says to map it. |
-| `answer-text` | answer-content | the turn has `answer.contains` or `answer.notContains` | The answer contains, or doesn't contain, each phrase after folding. |
+| `answer-text` | answer-content | the turn has `answer.contains`, `answer.notContains` or `answer.notEmpty` | The answer contains, or doesn't contain, each phrase after folding; with `notEmpty`, it has a letter or a digit. |
 | `evidence-count` | evidence | the turn expects `evidence` | Each collection has between `min` and `max` items and includes the listed ids. Not applicable when the target asked a clarifying question, or when the profile doesn't map the collection. |
 | `graceful-under-fault` | resilience | the turn injects faults | The target still gives a usable answer: a non-2xx status, an unreadable answer or no answer at all fails. |
 | `answered-within-deadline` | deadline | the turn has `deadlineMs` | The full answer arrived in time. |
+| `status-allowed` | robustness | the turn has `allowStatus` | The target answered with a 2xx or a listed status. Any other status fails, so a target that crashes on an edge case fails the case instead of making the run unjudgeable. |
+| `language-match` | language | the turn has `language`, and at least two language packs are loaded | The answer is in that language. Each pack's most common words are counted in the answer; the language whose words make up at least a tenth of it, and twice the share of any other, is its language. Fewer than five words, or no clear lead, is unmeasured. |
 | `cost-budget` | cost | the turn's `budget` sets `costUsd` or `modelCalls` | The turn's model calls stay within the budget. Unmeasured without proxy data, or when a call of the turn has no cost. |
+
+A turn without a usable answer, under faults or with a non-2xx status it
+allows, is judged only by `graceful-under-fault`, `answered-within-deadline`
+and `status-allowed`: the other checks need an answer.
 
 ### Prompt inspection (ADR-0015)
 
