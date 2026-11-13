@@ -121,6 +121,11 @@ export interface LanguagePack {
    * language-match tells languages apart by them (ADR-0018).
    */
   readonly commonWords: readonly string[];
+  /**
+   * Number words from 2 up, folded, and their values, for quantities such as
+   * "four bags" (ADR-0021). Words that also mean something else are left out.
+   */
+  readonly numberWords: Readonly<Record<string, number>>;
 }
 
 export interface CheckContext {

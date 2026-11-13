@@ -57,6 +57,19 @@ export const turkish: LanguagePack = {
       'cagri merkezi',
     ],
   },
+  // Number words for quantities such as "dört tulum" (ADR-0021). Left out: "altı"
+  // (six), which also means "under" as in "500 TL altı", and "on" (ten), which
+  // "ön" (front) folds to as well; in digits both still count.
+  numberWords: {
+    iki: 2,
+    uc: 3,
+    dort: 4,
+    bes: 5,
+    yedi: 7,
+    sekiz: 8,
+    dokuz: 9,
+    yirmi: 20,
+  },
   // Function words and words of a chat, folded; none is a common English word (ADR-0018).
   commonWords: [
     've',
