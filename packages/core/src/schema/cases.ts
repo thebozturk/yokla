@@ -19,10 +19,18 @@ export const coreExpectations = {
     .strictObject({
       contains: z.array(z.string().min(1)).min(1).optional(),
       notContains: z.array(z.string().min(1)).min(1).optional(),
+      notEmpty: z.literal(true).optional().meta({
+        description: 'The answer text has at least one letter or digit (ADR-0018).',
+      }),
     })
     .meta({
-      description: "Text the answer must or must not contain, after the language pack's folding.",
+      description:
+        "Text the answer must or must not contain, after the language pack's folding, and whether it may be empty.",
     }),
+  allowStatus: z.array(z.int().min(300).max(599)).min(1).meta({
+    description:
+      'Non-2xx statuses that count as a handled answer, such as 400 for an empty message. The turn is then judged on its status, never stopped by it (ADR-0018).',
+  }),
   deadlineMs: z
     .int()
     .min(1)

@@ -13,7 +13,7 @@ import {
   caseDefinition,
   checkTemplates,
   extractResponse,
-  FAULT_JUDGES,
+  UNANSWERED_JUDGES,
   queryJsonPath,
   readStream,
   RESULTS_SCHEMA_ID,
@@ -391,18 +391,25 @@ async function runSample(
         error = undefined;
         issues.push(`gave no usable answer under the injected faults: ${failure}`);
       }
+      // A turn that allows other statuses is judged on its status, not stopped by it (ADR-0018).
+      const statusOnly =
+        failure === undefined &&
+        turn.expect?.['allowStatus'] !== undefined &&
+        (result.status < 200 || result.status > 299);
+      if (statusOnly) error = undefined;
       const clarifying =
         extracted?.route !== undefined &&
         (target.response.clarification?.routes.includes(extracted.route) ?? false);
       const view: TurnView | undefined =
-        error === undefined && (extracted?.text !== undefined || failure !== undefined)
+        error === undefined &&
+        (extracted?.text !== undefined || failure !== undefined || statusOnly)
           ? {
               user: turn.user,
               expect: turn.expect ?? NO_EXPECTATIONS,
               response: {
                 status: result.status,
                 latencyMs: response.latencyMs,
-                text: failure === undefined ? (extracted?.text ?? '') : '',
+                text: failure === undefined && !statusOnly ? (extracted?.text ?? '') : '',
                 route: extracted?.route,
                 id: extracted?.id,
                 evidence: extracted?.evidence ?? {},
@@ -670,11 +677,15 @@ function judgeCase(
                 costUsd: proxy.costUsd,
               },
       };
-      // A turn with no usable answer under faults is judged only by the fault judges.
-      const applicable =
-        view.faults?.failure === undefined
-          ? prepared.checks
-          : prepared.checks.filter((check) => FAULT_JUDGES.has(check.id));
+      // A turn without a usable answer, under faults or with a non-2xx status it allows,
+      // is judged only by the checks that need no answer.
+      const unanswered =
+        view.faults?.failure !== undefined ||
+        view.response.status < 200 ||
+        view.response.status > 299;
+      const applicable = unanswered
+        ? prepared.checks.filter((check) => UNANSWERED_JUDGES.has(check.id))
+        : prepared.checks;
       const checks = runChecks(applicable, {
         case: testCase,
         turnIndex,

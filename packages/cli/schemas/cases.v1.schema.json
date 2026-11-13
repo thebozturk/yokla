@@ -273,10 +273,25 @@
                             "type": "string",
                             "minLength": 1
                           }
+                        },
+                        "notEmpty": {
+                          "description": "The answer text has at least one letter or digit (ADR-0018).",
+                          "type": "boolean",
+                          "const": true
                         }
                       },
                       "additionalProperties": false,
-                      "description": "Text the answer must or must not contain, after the language pack's folding."
+                      "description": "Text the answer must or must not contain, after the language pack's folding, and whether it may be empty."
+                    },
+                    "allowStatus": {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 300,
+                        "maximum": 599
+                      },
+                      "description": "Non-2xx statuses that count as a handled answer, such as 400 for an empty message. The turn is then judged on its status, never stopped by it (ADR-0018)."
                     },
                     "deadlineMs": {
                       "type": "integer",
