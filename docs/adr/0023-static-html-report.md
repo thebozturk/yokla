@@ -1,6 +1,6 @@
 # 0023. A static HTML report
 
-Status: Proposed · Date: 2026-11-13
+Status: Accepted · Date: 2026-11-13
 
 ## Context
 
