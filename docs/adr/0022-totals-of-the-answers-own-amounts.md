@@ -1,6 +1,6 @@
 # 0022. A total of the answer's own amounts
 
-Status: Proposed · Date: 2026-11-13
+Status: Accepted · Date: 2026-11-13
 
 ## Context
 
