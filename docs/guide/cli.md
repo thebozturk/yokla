@@ -5,6 +5,7 @@ From a checkout of the repository, run each command as `pnpm yokla <command>`.
 
 | Command | Does |
 |---|---|
+| `init` | Writes a first profile and starter cases from one message to the target. |
 | `run` | Runs cases against the profile's target and writes a results file. |
 | `report` | Prints the summary of a results file, and optionally writes JUnit XML. |
 | `gate` | Judges a results file against thresholds and a baseline. |
@@ -12,6 +13,32 @@ From a checkout of the repository, run each command as `pnpm yokla <command>`.
 | `proxy` | Runs the model proxy until stopped. |
 | `plan` | Estimates the cost of a run from an earlier one. |
 | `schema <name>` | Prints a JSON Schema: `profile`, `cases`, `config`, `results` or `baseline`. |
+
+## `yokla init`
+
+```sh
+pnpm yokla init --url <url> [--body <json>] [--header 'name: value']... \
+  [--session-url <url>] [--text <jsonpath>] [--language tr|en]... [--dir <path>] [--force]
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--url <url>` | | The target's chat endpoint. Required. |
+| `--body <json>` | `{"message": "{{message}}"}` | The request body, with the profile's placeholders. |
+| `--header <name: value>` | | A request header; repeatable. Values may use `{{env.NAME}}`. |
+| `--session-url <url>` | | A request that opens the target's session, a path or a URL. Its id goes to every turn as `{{carry.session}}`. |
+| `--text <jsonpath>` | | Where the answer text is, for a JSON answer, when init doesn't find it. |
+| `--language <tr\|en>` | `en` | A language of the profile; repeatable. The probe is written in the first. |
+| `--dir <path>` | `.` | Where to write the files. |
+| `--force` | | Overwrite existing files. |
+
+It sends the target one message, and one more with `--session-url`, and
+contacts nothing else. yokla makes no model call; the target may make its
+own. It writes `yokla.profile.yaml`, `cases/starter.yaml` (proposed cases)
+and the `.gitignore` entries, after loading both files as `yokla run` would.
+It exits with `0` when the files were written, and with `2` when the probe
+failed, the answer couldn't be read, a file exists without `--force`, or an
+option is wrong. Then nothing is written. See ADR-0018.
 
 ## `yokla run`
 

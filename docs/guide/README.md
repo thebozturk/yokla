@@ -15,48 +15,41 @@ How to test your own assistant with yokla 0.2. The
 ## A first run
 
 From a checkout of this repository, with Node.js 24 or later and pnpm, run
-`pnpm install` once.
+`pnpm install` once. `yokla init` is on the main branch and ships with 0.3.
 
-1. **Write a profile** that says how to reach your assistant and where its
-   answer is. For a chat API that takes `{"message": ...}` and answers
-   `{"reply": ...}`:
+1. **Let `yokla init` write the profile and the starter cases.** Describe the
+   request; init works out where the answer is (ADR-0018):
 
-   ```yaml
-   # yokla.profile.yaml
-   version: 1
-   target:
-     name: my-assistant
-     adapter: http
-     request:
-       url: http://127.0.0.1:8080/chat
-       headers: { authorization: 'Bearer {{env.ASSISTANT_TOKEN}}' }
-       body: { message: '{{message}}', session: '{{session}}' }
-     response:
-       text: $.reply
-   languages: [en]
-   domain: ecommerce
+   ```sh
+   export ASSISTANT_TOKEN=...      # the profile reads it; a missing one stops the run
+   pnpm yokla init --url http://127.0.0.1:8080/chat \
+     --body '{"message": "{{message}}", "session": "{{session}}"}' \
+     --header 'authorization: Bearer {{env.ASSISTANT_TOKEN}}'
    ```
 
-2. **Write a case** with what the answer must and must not say:
+   - **What it sends:** one greeting to the target. yokla makes no model call;
+     the target may make its own.
+   - **What it prints:** where it found the answer and the text it read back.
+   - **What it writes:** `yokla.profile.yaml`, `cases/starter.yaml` and the
+     `.gitignore` entries. It never overwrites a file without `--force`.
+   - **When it can't find the answer:** `--text $.reply` says where it is.
+   - **A streamed answer:** pass the header the target streams on, such as
+     `--header 'accept: text/event-stream'`.
+   - **A target that issues its own session:**
+     `--session-url /api/session --header 'x-session-id: {{carry.session}}'`.
+   - **Every option:** see [the CLI page](cli.md#yokla-init).
 
-   ```yaml
-   # cases/basics.yaml
-   version: 1
-   cases:
-     - id: greeting
-       suite: quality
-       language: en
-       turns:
-         - user: Hello! What can you help me with?
-           expect:
-             answer: { notContains: [error, exception] }
-             deadlineMs: 5000
-   ```
+2. **Review, and approve the starter cases.** Read both files: each inferred
+   line of the profile says which rule chose it. The starter cases are
+   proposed: they run, but don't gate until you set a case's `status` to
+   `approved` (ADR-0004). They check what holds for any assistant: a
+   non-empty greeting in time, a refused out-of-scope question, an injection
+   and a card number not repeated, an empty and a very long message handled,
+   and a switch of language when the profile has two.
 
 3. **Run it, then gate it:**
 
    ```sh
-   export ASSISTANT_TOKEN=...      # the profile reads it; a missing one stops the run
    pnpm yokla run --profile yokla.profile.yaml --cases cases
    pnpm yokla gate --results runs/<run id>.json
    ```
@@ -65,6 +58,8 @@ From a checkout of this repository, with Node.js 24 or later and pnpm, run
    `1` or `2`, ready for CI.
 
 4. **Grow it from there:**
+   - **Your own cases:** write the turns and expectations your assistant must
+     meet ([cases](cases.md)), and approve nothing you haven't read.
    - **Product evidence:** map the products your assistant returns as
      evidence. The e-commerce checks then judge its prices, stock claims and
      filters ([profile](profile.md#evidence), [checks](checks.md)).

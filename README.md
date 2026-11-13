@@ -62,6 +62,9 @@ pnpm yokla gate --results runs/<run id>.json
 pnpm yokla baseline --results runs/<run id>.json
 ```
 
+- On the main branch, `yokla init --url <url>` writes a first profile and
+  starter cases from one message to your assistant (ADR-0018); the guide
+  starts with it.
 - `run` exits with `0`, or with `2` for a configuration problem or a case that
   couldn't be measured.
 - `gate` exits with `0` passed, `1` broken, or `2` when the run can't be

@@ -38,7 +38,7 @@ cases:
 | `checks` | Run only these checks. By default every check that applies runs. |
 | `knownGap` | `{ reason, issue? }`: a known failure. A failing case is then `known-gap`, not `fail`. Once it passes, it is `gap-closed`, and the gate asks for the marker to be removed. |
 | `tags` | Free labels. |
-| `provenance` | Where the case comes from and whether a person approved it (ADR-0004). |
+| `provenance` | `{ source, evidence, status }`: where the case comes from, and whether a person approved it. See [approval](#approval). |
 
 Each sample opens a new session and bypasses the target's cache (see the
 [profile](profile.md)).
@@ -64,6 +64,9 @@ check does and when it doesn't apply.
 |---|---|---|
 | `route` | The route, or one of the routes, that may answer. Needs `response.route` in the profile. | `route-expected` |
 | `answer.contains`, `answer.notContains` | Phrases the answer must or must not contain, after the language pack's folding. | `answer-text` |
+| `answer.notEmpty` | The answer text has at least one letter or digit. | `answer-text` |
+| `language` | The language the answer must be in, `tr` or `en`. | `language-match` |
+| `allowStatus` | Non-2xx statuses that count as a handled answer, such as `[400, 413]` for a message too long. The turn is then judged on its status, never stopped by it. | `status-allowed` |
 | `evidence.<collection>` | `min` and `max` item counts, and `includes`: item ids that must be returned. | `evidence-count` |
 | `deadlineMs` | The answer must arrive within this many milliseconds. | `answered-within-deadline` |
 | `budget.costUsd`, `budget.modelCalls` | The most the turn's model calls may cost, and how many there may be. Needs the model proxy. | `cost-budget` |
@@ -111,6 +114,19 @@ turns:
   only by the fault checks, since the others need an answer.
 - **Requirement:** faults need a model proxy. A case with faults is refused
   up front without one.
+
+## Approval
+
+A case a person writes needs no `provenance`: it is approved. A case yokla
+writes, such as the starter cases of `yokla init`, carries
+`provenance: { source: template, evidence: ..., status: proposed }`
+(ADR-0004, ADR-0018):
+
+- **`proposed`:** the case runs, and its results say so, but the gate and the
+  baseline leave it out. The gate names it in a notice.
+- **`approved`:** the case gates like any other. Set it after reading the
+  case.
+- **`rejected`:** the case doesn't run.
 
 ## Statuses
 
