@@ -146,6 +146,9 @@ describe('phrases', () => {
   it.each([
     ['refusal', 'Bu konuda yardımcı olamıyorum.'],
     ['refusal', 'Maalesef öneri sunamıyorum.'],
+    ['refusal', 'Yatırım konusu yardımcı olabileceğim bir konu değil.'],
+    ['refusal', 'Bu, kapsamım dışında.'],
+    ['refusal', 'Hisse önerisi, yardımcı olabildiğim konuların dışında.'],
     ['inability', 'Kargo koşullarını doğrulayamıyorum.'],
     ['inability', 'stok durumu doğrulanamadı'],
     ['absence', 'Kataloğumuzda uyku matı bulunmuyor.'],
@@ -161,6 +164,7 @@ describe('phrases', () => {
 
   it.each([
     ['refusal', 'Size yardımcı olabilirim.'],
+    ['refusal', 'Yardımcı olabildiğim konular şunlar: ürünler ve siparişler.'],
     ['absence', 'Yoksa başka bir şey mi istersiniz?'],
     ['absence', 'Bulunduğu ürünler şunlar'],
     ['free', 'Ücret 50 TL.'],

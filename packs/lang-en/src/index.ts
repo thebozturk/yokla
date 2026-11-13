@@ -22,6 +22,11 @@ export const english: LanguagePack = {
       "i'm not able to help",
       "i can't provide",
       "i'm sorry, but i can't",
+      // Saying the request is out of scope, as a refusal does.
+      'outside what i can help with',
+      'outside of what i can help with',
+      'beyond what i can help with',
+      'not something i can help with',
     ],
     inability: [
       "i can't verify",

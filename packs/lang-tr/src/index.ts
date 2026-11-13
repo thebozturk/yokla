@@ -21,6 +21,10 @@ export const turkish: LanguagePack = {
       'bunu yapamam',
       'oneri sunamiyorum',
       'oneride bulunamiyorum',
+      // Saying the request is out of scope, as a refusal does.
+      'yardimci olabilecegim bir konu degil',
+      'yardimci olabildigim konularin disinda',
+      'kapsamim disinda',
     ],
     inability: [
       'dogrulayamiyorum',
