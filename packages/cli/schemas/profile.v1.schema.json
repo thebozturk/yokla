@@ -1245,6 +1245,63 @@
             ],
             "additionalProperties": false
           }
+        },
+        "priceSources": {
+          "default": [],
+          "description": "Further amounts an answer may quote, such as an order history's (ADR-0020). They ground amounts; they don't make price-grounded apply.",
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "evidence": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$",
+                    "description": "An evidence collection of this or an earlier turn."
+                  },
+                  "fields": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-z][A-Za-z0-9]*$"
+                    },
+                    "description": "Its fields that hold amounts."
+                  }
+                },
+                "required": [
+                  "evidence",
+                  "fields"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "A data snapshot, relative to the profile: JSON, or JSON Lines (.jsonl)."
+                  },
+                  "paths": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                    },
+                    "description": "Where the amounts are in it."
+                  }
+                },
+                "required": [
+                  "file",
+                  "paths"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
         }
       },
       "additionalProperties": false

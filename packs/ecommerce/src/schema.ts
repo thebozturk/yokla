@@ -1,6 +1,14 @@
 // What the ecommerce pack adds to the profile and to case expectations.
 
-import { FieldPath, Id, Provenance, z, type DomainPackSchemas } from '@yokla/core';
+import {
+  FieldName,
+  FieldPath,
+  Id,
+  JsonPath,
+  Provenance,
+  z,
+  type DomainPackSchemas,
+} from '@yokla/core';
 
 export const FACT_KINDS = [
   'price',
@@ -61,6 +69,26 @@ export const ecommerceProfile = z.strictObject({
     .array(Campaign)
     .default([])
     .meta({ description: 'Amounts an answer may show besides product prices (design §10).' }),
+  priceSources: z
+    .array(
+      z.union([
+        z.strictObject({
+          evidence: Id.meta({ description: 'An evidence collection of this or an earlier turn.' }),
+          fields: z.array(FieldName).min(1).meta({ description: 'Its fields that hold amounts.' }),
+        }),
+        z.strictObject({
+          file: z.string().min(1).meta({
+            description: 'A data snapshot, relative to the profile: JSON, or JSON Lines (.jsonl).',
+          }),
+          paths: z.array(JsonPath).min(1).meta({ description: 'Where the amounts are in it.' }),
+        }),
+      ]),
+    )
+    .default([])
+    .meta({
+      description:
+        "Further amounts an answer may quote, such as an order history's (ADR-0020). They ground amounts; they don't make price-grounded apply.",
+    }),
 });
 export type EcommerceProfile = z.output<typeof ecommerceProfile>;
 

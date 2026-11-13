@@ -70,7 +70,13 @@ export const fakeEnglish: LanguagePack = {
 };
 
 export function data(change: Partial<EcommerceData> = {}): EcommerceData {
-  return { config: ecommerceProfile.parse({}), catalog: undefined, policies: new Map(), ...change };
+  return {
+    config: ecommerceProfile.parse({}),
+    catalog: undefined,
+    policies: new Map(),
+    sourceAmounts: [],
+    ...change,
+  };
 }
 
 export function answer(text: string, products: EvidenceItem[] = [], user = 'soru'): TurnView {
