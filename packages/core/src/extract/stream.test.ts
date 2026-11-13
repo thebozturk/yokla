@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { ResponseStream } from '../schema/profile.ts';
-import { parseStream, readStream, type StreamChunk } from './stream.ts';
+import type { MessageStream, ResponseStream } from '../schema/profile.ts';
+import {
+  eventName,
+  messageEvents,
+  parseStream,
+  readEvents,
+  readStream,
+  type StreamChunk,
+} from './stream.ts';
 
 const at = (atMs: number, text: string): StreamChunk => ({ atMs, text });
 const one = (text: string): StreamChunk[] => [at(5, text)];
@@ -198,5 +205,56 @@ describe('readStream', () => {
       typeof last === 'object' && last !== null && !Array.isArray(last) ? Object.keys(last) : [],
     ).toEqual(['__proto__']);
     expect(Reflect.get({}, 'polluted')).toBeUndefined();
+  });
+});
+
+describe('WebSocket messages (ADR-0024)', () => {
+  const spec: MessageStream = {
+    event: '$.type',
+    text: { event: 'delta', from: '$.text' },
+    done: 'end',
+    error: { event: 'error', from: '$.message' },
+  };
+
+  it('reads each message as one event, JSON or text, multi-line or not', () => {
+    const messages = [
+      at(3, '{"type":"delta","text":"Mer"}'),
+      at(4, '{\n  "type": "delta",\n  "text": "haba"\n}'),
+      at(9, 'not json\nat all'),
+      at(12, '{"type":"end"}'),
+    ];
+    expect(messageEvents(messages)).toEqual([
+      { field: undefined, data: { type: 'delta', text: 'Mer' }, atMs: 3 },
+      { field: undefined, data: { type: 'delta', text: 'haba' }, atMs: 4 },
+      { field: undefined, data: 'not json\nat all', atMs: 9 },
+      { field: undefined, data: { type: 'end' }, atMs: 12 },
+    ]);
+    const read = readEvents(messageEvents(messages), spec);
+    expect(read.firstTextMs).toBe(3);
+    expect(read.problem).toBeUndefined();
+    expect(read.document).toMatchObject({
+      text: 'Merhaba',
+      last: { end: { type: 'end' }, message: 'not json\nat all' },
+    });
+  });
+
+  it('names events by the path, or message without one', () => {
+    expect(eventName({ field: undefined, data: { type: 'end' } }, spec)).toBe('end');
+    expect(eventName({ field: undefined, data: { kind: 'end' } }, spec)).toBe('message');
+    expect(eventName({ field: undefined, data: 'end' }, spec)).toBe('message');
+    const unnamed = { ...spec, event: undefined };
+    expect(eventName({ field: undefined, data: { type: 'end' } }, unnamed)).toBe('message');
+    // An answer in one message: its event is done.
+    const single = { text: { event: 'message', from: '$.text' }, done: 'message' };
+    const read = readEvents(messageEvents([at(7, '{"text":"Selam"}')]), single);
+    expect(read.document).toMatchObject({ text: 'Selam' });
+    expect(read.problem).toBeUndefined();
+  });
+
+  it('reports a missing done event and an error event as it does for a stream', () => {
+    const cut = readEvents(messageEvents([at(1, '{"type":"delta","text":"a"}')]), spec);
+    expect(cut.problem).toBe('the stream ended before its "end" event');
+    const failed = readEvents(messageEvents([at(1, '{"type":"error","message":"busy"}')]), spec);
+    expect(failed.problem).toBe('the stream reported an error: busy');
   });
 });

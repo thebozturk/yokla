@@ -158,23 +158,37 @@ export const languageMatch: Check = {
  * ADR-0019): with a complete 2xx answer, or a status the turn allows. Anything
  * else is a finding, never a run error.
  */
+/**
+ * Whether a turn's status means the target answered: 2xx over HTTP, or 101,
+ * the status a WebSocket turn records, whose answer is judged complete by its
+ * done event instead (ADR-0024).
+ */
+export function answeredStatus(status: number): boolean {
+  return (status >= 200 && status <= 299) || status === 101;
+}
+
+function answeredWith(status: number): string {
+  return status === 101 ? 'answered over a WebSocket' : `answered with ${String(status)}`;
+}
+
 export const statusAllowed: Check = {
   id: 'status-allowed',
-  description: 'The target handled the turn: a complete 2xx answer, or a status the turn allows.',
+  description:
+    'The target handled the turn: a complete 2xx answer (over a WebSocket, a complete one), or a status the turn allows.',
   run(context) {
     const parsed = coreExpectations.allowStatus.safeParse(context.turn.expect['allowStatus']);
     if (!parsed.success) return { applicable: false, reason: 'the turn allows no other status' };
     const { status } = context.turn.response;
     const { unusable } = context.turn;
     const allowed = parsed.data.includes(status);
-    const complete = status >= 200 && status <= 299 && unusable === undefined;
+    const complete = answeredStatus(status) && unusable === undefined;
     const ok = allowed || complete;
     const message = ok
-      ? `answered with ${String(status)}`
+      ? answeredWith(status)
       : status === 0
         ? `got no answer: ${unusable ?? ''}`
-        : status >= 200 && status <= 299
-          ? `answered with ${String(status)}, but the answer can't be used: ${unusable ?? ''}`
+        : answeredStatus(status)
+          ? `${answeredWith(status)}, but the answer can't be used: ${unusable ?? ''}`
           : `answered with ${String(status)}, which is neither 2xx nor one of ${parsed.data.join(', ')}`;
     return {
       applicable: true,

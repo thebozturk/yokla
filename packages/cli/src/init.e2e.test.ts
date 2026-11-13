@@ -221,6 +221,11 @@ describe('yokla init against the demo-shop', { timeout: 60_000 }, () => {
     expect(unknown.code).toBe(2);
     expect(unknown.err).toContain('--language is tr or en');
     expect((await cli(['init'])).err).toContain('--url is required');
+    const socketDir = mkdtempSync(join(tmpdir(), 'yokla-init-'));
+    const socket = await cli(['init', '--url', 'ws://127.0.0.1:1/chat', '--dir', socketDir]);
+    expect(existsSync(join(socketDir, 'yokla.profile.yaml'))).toBe(false);
+    expect(socket.code).toBe(2);
+    expect(socket.err).toContain('init probes HTTP targets only');
   });
 
   it('contacts nothing but the demo-shop', () => {

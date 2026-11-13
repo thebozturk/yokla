@@ -11,8 +11,12 @@ export {
 } from './config/parse.ts';
 export { getFieldPath, parseJsonPath, queryJsonPath, type Segment } from './extract/jsonpath.ts';
 export {
+  eventName,
+  messageEvents,
   parseStream,
+  readEvents,
   readStream,
+  type EventSpec,
   type ReadStream,
   type StreamChunk,
   type StreamEvent,
@@ -26,11 +30,13 @@ export {
   type JsonValue,
 } from './extract/response.ts';
 export {
+  buildMessage,
   buildRequest,
   checkTemplates,
   mergeJson,
   TemplateError,
   type BuiltRequest,
+  type RequestTemplate,
   type TemplateCheck,
   type TemplateValues,
 } from './request/build.ts';
@@ -60,8 +66,11 @@ export {
 export {
   FieldSpec,
   type ModelProxyConfig,
+  type HttpProfileTarget,
+  type MessageStream,
   type Profile,
   type ProfileTarget,
+  type WebSocketProfileTarget,
 } from './schema/profile.ts';
 export { PromptMessage, PromptRole, PromptStore, ProxyRecord, ProxyUsage } from './schema/proxy.ts';
 export { Fault, FAULT_KINDS, FaultPlan } from './schema/fault.ts';
@@ -137,6 +146,7 @@ export { findPhrases, hasPhrase, type PhraseMatch } from './text/phrases.ts';
 export { findQuantities, type QuantityMention } from './text/quantities.ts';
 export {
   answerText,
+  answeredStatus,
   answeredWithinDeadline,
   CORE_CHECKS,
   costBudget,

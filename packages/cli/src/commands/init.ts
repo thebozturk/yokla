@@ -24,7 +24,7 @@ import {
   starterCases,
   toJson,
   type JsonValue,
-  type ProfileTarget,
+  type HttpProfileTarget,
   type StarterLanguage,
 } from '@yokla/core';
 import { HttpClient, HttpError, type HttpResult } from '@yokla/runtime';
@@ -114,7 +114,7 @@ function shown(cwd: string, path: string): string {
 
 async function send(
   client: HttpClient,
-  request: ProfileTarget['request'],
+  request: HttpProfileTarget['request'],
   values: Parameters<typeof buildRequest>[2],
 ): Promise<HttpResult> {
   try {
@@ -176,6 +176,12 @@ async function init(
     url = new URL(values.url);
   } catch {
     throw new InitError(`--url "${values.url}" is not an absolute URL`);
+  }
+  // A WebSocket answer has no end to find without a declared done event (ADR-0024).
+  if (url.protocol === 'ws:' || url.protocol === 'wss:') {
+    throw new InitError(
+      'init probes HTTP targets only: for a WebSocket target, write the profile by hand (see "WebSocket targets" in the profile guide)',
+    );
   }
   const headers = parseHeaders(values.header ?? []);
   const body = parseBody(values.body ?? '{"message": "{{message}}"}');

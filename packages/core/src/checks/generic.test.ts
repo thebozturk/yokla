@@ -262,6 +262,24 @@ describe('status-allowed', () => {
     });
   });
 
+  it('passes a complete WebSocket answer, and names the transport when it fails (ADR-0024)', () => {
+    expect(runStatus(101, [400])).toMatchObject({
+      findings: [{ verdict: 'pass', message: 'answered over a WebSocket' }],
+    });
+    const cut = 'the connection closed before its "end" event (code 1011)';
+    expect(runUnusable(101, cut)).toMatchObject({
+      findings: [
+        {
+          verdict: 'fail',
+          message: `answered over a WebSocket, but the answer can't be used: ${cut}`,
+        },
+      ],
+    });
+    // Other 1xx statuses are no answer.
+    expect(verdicts(runStatus(100, [400]))).toEqual(['fail']);
+    expect(verdicts(runStatus(102, [400]))).toEqual(['fail']);
+  });
+
   it('catches a status changed to one the turn does not allow', () => {
     const base = statusTurn(400, [400]);
     const crashed = mutate(base, (view) => ({

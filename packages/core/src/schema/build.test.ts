@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { buildSchemas, type DomainPackSchemas } from './build.ts';
 import { reviewStatus } from './common.ts';
+import type { HttpProfileTarget, ProfileTarget } from './profile.ts';
 
 const shop: DomainPackSchemas = {
   id: 'shop',
@@ -27,6 +28,12 @@ const validProfile = {
   shop: { currency: 'TRY' },
 };
 
+/** The target, which these tests expect to be an HTTP one. */
+function http(target: ProfileTarget): HttpProfileTarget {
+  if (target.adapter !== 'http') throw new Error('expected an HTTP target');
+  return target;
+}
+
 function withChange(change: Record<string, unknown>): Record<string, unknown> {
   return { ...validProfile, ...change };
 }
@@ -38,7 +45,7 @@ function capability(provenance: unknown) {
 describe('profile schema', () => {
   it('accepts a minimal profile and applies defaults', () => {
     const parsed = profile.parse(validProfile);
-    expect(parsed.target.request.method).toBe('POST');
+    expect(http(parsed.target).request.method).toBe('POST');
     expect(parsed.target.request.timeoutMs).toBe(30_000);
     expect(parsed.target.session).toEqual({ mode: 'client', carry: [] });
     expect(parsed.target.cacheBypass).toEqual({ kind: 'none' });
@@ -153,6 +160,87 @@ describe('model proxy inspection (ADR-0015)', () => {
   });
 });
 
+const socket = {
+  name: 'chat',
+  adapter: 'websocket',
+  request: {
+    url: 'wss://chat.example.com/ws?session={{session}}',
+    headers: { authorization: 'Bearer {{env.TOKEN}}' },
+    body: { type: 'user_message', text: '{{message}}' },
+  },
+  response: {
+    stream: { event: '$.type', text: { event: 'delta', from: '$.text' }, done: 'end' },
+    text: '$.text',
+  },
+};
+
+const viaSocket = (change: Record<string, unknown> = {}, rest: Record<string, unknown> = {}) =>
+  profile.safeParse(withChange({ target: { ...socket, ...change }, ...rest }));
+
+const socketIssues = (change: Record<string, unknown>, rest: Record<string, unknown> = {}) =>
+  viaSocket(change, rest).error?.issues.map((issue) => [issue.path.join('.'), issue.message]);
+
+/** A model proxy section with this correlation. */
+const proxy = (correlation: string) => ({
+  modelProxy: {
+    upstreams: [{ id: 'openai', kind: 'openai-compatible', upstream: 'http://127.0.0.1:9' }],
+    correlation,
+  },
+});
+
+describe('WebSocket targets (ADR-0024)', () => {
+  it('accepts a WebSocket target, with defaults, and keeps http the default adapter', () => {
+    const parsed = viaSocket();
+    expect(parsed.error).toBeUndefined();
+    const target = parsed.data?.target;
+    expect(target?.adapter).toBe('websocket');
+    expect(target?.request.timeoutMs).toBe(30_000);
+    expect(target?.session).toEqual({ mode: 'client', carry: [] });
+    const { adapter: _adapter, ...withoutAdapter } = validProfile.target;
+    expect(profile.parse(withChange({ target: withoutAdapter })).target.adapter).toBe('http');
+  });
+
+  it('needs a ws or wss url, a message and a done event', () => {
+    expect(
+      socketIssues({ request: { ...socket.request, url: 'http://chat.example.com/ws' } }),
+    ).toEqual([['target.request.url', 'use a ws:// or wss:// url']]);
+    const { body: _body, ...noBody } = socket.request;
+    expect(socketIssues({ request: noBody })?.[0]?.[0]).toBe('target.request.body');
+    const { done: _done, ...noDone } = socket.response.stream;
+    expect(socketIssues({ response: { ...socket.response, stream: noDone } })?.[0]?.[0]).toBe(
+      'target.response.stream.done',
+    );
+    const { stream: _stream, ...noStream } = socket.response;
+    expect(socketIssues({ response: noStream })?.[0]?.[0]).toBe('target.response.stream');
+  });
+
+  it('has no stream format, no HTTP method and no request id header', () => {
+    const format = { ...socket.response.stream, format: 'sse' };
+    expect(socketIssues({ response: { ...socket.response, stream: format } })?.[0]?.[1]).toMatch(
+      /format/u,
+    );
+    expect(socketIssues({ request: { ...socket.request, method: 'POST' } })?.[0]?.[1]).toMatch(
+      /method/u,
+    );
+    expect(
+      socketIssues({
+        request: { ...socket.request, requestId: { header: 'x-request-id' } },
+      })?.[0]?.[1],
+    ).toMatch(/requestId/u);
+  });
+
+  it('refuses header correlation, which needs a header on every turn', () => {
+    expect(viaSocket({}, proxy('serial')).success).toBe(true);
+    expect(socketIssues({}, proxy('header'))).toEqual([
+      [
+        'modelProxy.correlation',
+        'a WebSocket target sends headers once, when the connection opens, so header correlation is not available: use serial',
+      ],
+    ]);
+    expect(profile.safeParse(withChange(proxy('header'))).success).toBe(true);
+  });
+});
+
 describe('case schema', () => {
   const validCase = {
     id: 'tents-tr',
@@ -252,7 +340,7 @@ describe('target configuration', () => {
       mode: 'client',
       carry: [{ name: 'conversationId', from: '$.metadata.conversationId' }],
     });
-    expect(parsed.target.request.requestId).toEqual({ header: 'x-request-id' });
+    expect(http(parsed.target).request.requestId).toEqual({ header: 'x-request-id' });
   });
 
   it('configures rate-limit headers and units, with defaults', () => {

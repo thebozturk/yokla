@@ -26,3 +26,13 @@ export {
 } from './runner/run.ts';
 export { correlate, parseLogLines, readField, stripAnsi } from './observe/logs.ts';
 export { ProxyControl, ProxyControlError } from './proxy/control.ts';
+export {
+  openWebSocket,
+  WebSocketConnection,
+  WebSocketError,
+  type Closed,
+  type Ends,
+  type WebSocketAnswer,
+  type WebSocketErrorKind,
+  type WebSocketOptions,
+} from './ws/client.ts';
