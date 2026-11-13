@@ -6,9 +6,9 @@
 // conversation, as when the profile maps no evidence, yokla can't tell a real
 // price from an invented one.
 
-import type { Check, CheckFinding } from '@yokla/core';
+import { findQuantities, type Check, type CheckFinding } from '@yokla/core';
 import type { EcommerceData } from '../data.ts';
-import { notApplicable, productsOf, userNumbers } from './common.ts';
+import { notApplicable, productsOf, segments, userNumbers } from './common.ts';
 
 interface Grounding {
   readonly amount: number;
@@ -54,6 +54,8 @@ export function priceGrounded(data: EcommerceData): Check {
       if (groundings.length === 0) {
         return notApplicable('no product in the conversation has a price');
       }
+      // Only product prices are multiplied by a stated quantity (ADR-0021).
+      const prices = [...groundings];
       for (const view of views) {
         for (const amount of userNumbers(view.user)) {
           groundings.push({ amount, currency: undefined, source: 'the user' });
@@ -95,15 +97,30 @@ export function priceGrounded(data: EcommerceData): Check {
       }
 
       const findings: CheckFinding[] = [];
-      for (const mention of mentions) {
-        const match = groundings.find(
-          (g) =>
-            Math.abs(g.amount - mention.amount) < CENT &&
-            (g.currency === undefined ||
-              mention.currency === undefined ||
-              g.currency === mention.currency),
-        );
-        if (match === undefined) {
+      const multiples: string[] = [];
+      for (const segment of segments(context.turn.response.text)) {
+        const quantities = findQuantities(segment, lang);
+        for (const mention of lang.findMoney(segment)) {
+          const sameCurrency = (g: Grounding) =>
+            g.currency === undefined ||
+            mention.currency === undefined ||
+            g.currency === mention.currency;
+          const match = groundings.find(
+            (g) => Math.abs(g.amount - mention.amount) < CENT && sameCurrency(g),
+          );
+          if (match !== undefined) continue;
+          // A price times a quantity the same sentence states, such as "$356 for four".
+          const multiple = prices
+            .filter(sameCurrency)
+            .flatMap((g) => quantities.map((q) => ({ g, q })))
+            .find(({ g, q }) => Math.abs(g.amount * q.value - mention.amount) < CENT);
+          if (multiple !== undefined) {
+            const { g, q } = multiple;
+            const price =
+              g.currency === undefined ? String(g.amount) : lang.formatMoney(g.amount, g.currency);
+            multiples.push(`"${mention.raw}" = ${String(q.value)} × ${price} (${g.source})`);
+            continue;
+          }
           findings.push({
             dimension: 'fabrication',
             verdict: 'fail',
@@ -122,7 +139,7 @@ export function priceGrounded(data: EcommerceData): Check {
           dimension: 'fabrication',
           verdict: 'pass',
           severity: 'high',
-          message: `${String(mentions.length)} amount(s) match returned prices, campaigns or the user's own amounts`,
+          message: `${String(mentions.length)} amount(s) match returned prices, campaigns or the user's own amounts${multiples.length === 0 ? '' : `; ${multiples.join('; ')}`}`,
         });
       }
       return { applicable: true, findings };
