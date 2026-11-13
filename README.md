@@ -15,8 +15,9 @@ cost, resilience and regression gates, in one run.
 - **Tests your assistant over HTTP.** A profile (`yokla.profile.yaml`) maps the
   request, the response, sessions, rate limits and cache control. Answers may
   be JSON or streamed as events, and a session may be opened before the first
-  turn. Cases (`cases/*.yaml`) hold the turns and their expectations. Nothing
-  about a particular assistant is built in: what a target needs is
+  turn. On the main branch, a target can talk over a WebSocket too
+  (ADR-0024). Cases (`cases/*.yaml`) hold the turns and their expectations.
+  Nothing about a particular assistant is built in: what a target needs is
   configuration.
 - **Sees your assistant's model calls.** Point the app's OpenAI-compatible or
   Anthropic client at `yokla proxy`. Each turn then shows its model calls,
@@ -46,7 +47,7 @@ cost, resilience and regression gates, in one run.
   - `yokla gate` checks thresholds per suite and regressions against a
     baseline.
   - The baseline is small enough to commit.
-- **Sends no data anywhere.** There is no telemetry. The HTTP client contacts
+- **Sends no data anywhere.** There is no telemetry. yokla's clients contact
   only the target. The model proxy listens on `127.0.0.1` only and forwards
   the app's own calls to the upstreams the profile names. An egress test in
   CI holds yokla to that.
@@ -87,9 +88,10 @@ target with seeded defects. Its README walks through a full run.
 
 - **v0.3:** a first run in five minutes (`yokla init` writes a profile from
   one message to your assistant, with starter cases that suit any assistant),
-  an HTML report (done on the main branch), and publishing to npm; more ways to reach a target and see
-  its model calls (WebSocket, Gemini, OpenTelemetry), tool-call checks, and a
-  simulated customer that shops with a goal.
+  an HTML report (done on the main branch), and publishing to npm; more ways
+  to reach a target and see its model calls (WebSocket, done on the main
+  branch; Gemini, OpenTelemetry), tool-call checks, and a simulated customer
+  that shops with a goal.
 - **v0.4:** an analyzer that reads your code, API contract, prompts, data
   schema and docs, and writes a profile for you to review.
 - **v0.5:** red teaming with local attack generation, mapped to OWASP, GDPR
