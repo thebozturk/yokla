@@ -1,10 +1,11 @@
 // Streamed answers (ADR-0016): server-sent events or newline-delimited JSON,
-// turned into one document that the profile's paths read as they read a JSON
-// body: {text, events, all, last}. The text pieces are joined in order. A
-// declared `done` event that never came, or an `error` event, makes the
-// answer incomplete: that is reported, never hidden.
+// or WebSocket messages, one event each (ADR-0024), turned into one document
+// that the profile's paths read as they read a JSON body: {text, events, all,
+// last}. The text pieces are joined in order. A declared `done` event that
+// never came, or an `error` event, makes the answer incomplete: that is
+// reported, never hidden.
 
-import type { ResponseStream } from '../schema/profile.ts';
+import type { MessageStream, ResponseStream } from '../schema/profile.ts';
 import { queryJsonPath } from './jsonpath.ts';
 import { toJson, type JsonValue } from './response.ts';
 
@@ -90,6 +91,18 @@ export function parseStream(
   return format === 'sse' ? sse(chunks) : ndjson(chunks);
 }
 
+/** WebSocket messages (ADR-0024): each one is an event, whatever it holds. */
+export function messageEvents(messages: readonly StreamChunk[]): StreamEvent[] {
+  return messages.map((message) => ({
+    field: undefined,
+    data: parsed(message.text),
+    atMs: message.atMs,
+  }));
+}
+
+/** How a stream's events are read, whatever carried them. */
+export type EventSpec = Omit<ResponseStream, 'format'> | MessageStream;
+
 export interface ReadStream {
   /** {text, events, all, last}, for the profile's paths. */
   readonly document: JsonValue;
@@ -103,17 +116,19 @@ function first(data: JsonValue, path: string): unknown {
   return queryJsonPath(data, path)[0];
 }
 
+/** An event's name: at `spec.event` in its data when set, else its SSE field, else message. */
+export function eventName(event: Pick<StreamEvent, 'field' | 'data'>, spec: EventSpec): string {
+  if (spec.event === undefined) return event.field ?? 'message';
+  const fromData = first(event.data, spec.event);
+  return typeof fromData === 'string' ? fromData : 'message';
+}
+
 export function readStream(chunks: readonly StreamChunk[], spec: ResponseStream): ReadStream {
-  const named = parseStream(chunks, spec.format).map((event) => {
-    const fromData = spec.event === undefined ? undefined : first(event.data, spec.event);
-    const name =
-      spec.event === undefined
-        ? (event.field ?? 'message')
-        : typeof fromData === 'string'
-          ? fromData
-          : 'message';
-    return { ...event, event: name };
-  });
+  return readEvents(parseStream(chunks, spec.format), spec);
+}
+
+export function readEvents(events: readonly StreamEvent[], spec: EventSpec): ReadStream {
+  const named = events.map((event) => ({ ...event, event: eventName(event, spec) }));
 
   const pieces: string[] = [];
   let firstTextMs: number | undefined;

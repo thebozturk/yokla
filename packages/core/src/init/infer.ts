@@ -7,7 +7,7 @@
 import { queryJsonPath } from '../extract/jsonpath.ts';
 import { toJson, extractResponse, type JsonValue } from '../extract/response.ts';
 import { parseStream, readStream } from '../extract/stream.ts';
-import type { ProfileTarget, ResponseStream } from '../schema/profile.ts';
+import type { HttpProfileTarget, ResponseStream } from '../schema/profile.ts';
 
 /** The probe's answer, and the values yokla sent, which an answer may echo. */
 export interface Probe {
@@ -27,7 +27,7 @@ export interface Candidate {
 
 export interface Inference {
   /** The profile's target.response, ready to write. */
-  readonly response: ProfileTarget['response'];
+  readonly response: HttpProfileTarget['response'];
   readonly text: Candidate;
   /** The next best text candidates, best first, at most three. */
   readonly alternatives: readonly Candidate[];
@@ -202,7 +202,7 @@ function inferJson(probe: Probe, textPath: string | undefined): InferOutcome {
     }
     const given = { path: textPath, sample: node, named: false, rule: GIVEN };
     const found = routeAndCarry(body, probe.sent);
-    const response: ProfileTarget['response'] = {
+    const response: HttpProfileTarget['response'] = {
       text: textPath,
       ...(found.route === undefined ? {} : { route: found.route.path }),
     };
@@ -226,7 +226,7 @@ function inferJson(probe: Probe, textPath: string | undefined): InferOutcome {
     };
   }
   const found = routeAndCarry(body, probe.sent);
-  const response: ProfileTarget['response'] = {
+  const response: HttpProfileTarget['response'] = {
     text: chosen.path,
     ...(found.route === undefined ? {} : { route: found.route.path }),
   };
@@ -308,7 +308,7 @@ function inferStream(probe: Probe, format: ResponseStream['format']): InferOutco
   // Route and session ids are read from the last event of each name.
   const lastOnly = isObject(document) ? { last: document['last'] ?? null } : null;
   const found = routeAndCarry(toJson(lastOnly), probe.sent);
-  const response: ProfileTarget['response'] = {
+  const response: HttpProfileTarget['response'] = {
     stream,
     text: '$.text',
     ...(found.route === undefined ? {} : { route: found.route.path }),
@@ -322,7 +322,7 @@ function ruleOf(named: boolean): string {
 }
 
 function finish(
-  response: ProfileTarget['response'],
+  response: HttpProfileTarget['response'],
   document: JsonValue,
   chosen: { path: string; sample: string; named: boolean; rule?: string },
   rest: readonly { path: string; sample: string; named: boolean }[],

@@ -58,28 +58,44 @@ const EvidenceCollection = z.strictObject({
 });
 
 /** ADR-0016: an answer streamed as events, turned into one document the other paths read. */
+const streamShape = {
+  event: JsonPath.optional().meta({
+    description:
+      "Where an event's name is in its data; by default the SSE event field, else message.",
+  }),
+  text: z
+    .strictObject({ event: z.string().min(1), from: JsonPath })
+    .meta({ description: 'The events that carry text pieces, and where the piece is.' }),
+  done: z.string().min(1).optional().meta({
+    description: 'The event that ends a complete answer; without it, the answer is incomplete.',
+  }),
+  error: z
+    .strictObject({ event: z.string().min(1), from: JsonPath.optional() })
+    .optional()
+    .meta({ description: 'The event that reports a failure, and where its message is.' }),
+};
+
+const STREAM_DOCUMENT =
+  'The paths below then read {text, events, all, last}: the joined text, every event, and per event name all its data and the last.';
+
 const ResponseStream = z
+  .strictObject({ format: z.enum(['sse', 'ndjson']), ...streamShape })
+  .meta({ description: STREAM_DOCUMENT });
+
+/** ADR-0024: a WebSocket answer, one event per message; only `done` ends it. */
+const MessageStream = z
   .strictObject({
-    format: z.enum(['sse', 'ndjson']),
+    ...streamShape,
     event: JsonPath.optional().meta({
       description:
-        "Where an event's name is in its data; by default the SSE event field, else message.",
+        "Where an event's name is in a message's data; without it, every event is message.",
     }),
-    text: z
-      .strictObject({ event: z.string().min(1), from: JsonPath })
-      .meta({ description: 'The events that carry text pieces, and where the piece is.' }),
-    done: z.string().min(1).optional().meta({
-      description: 'The event that ends a complete answer; without it, the answer is incomplete.',
+    done: z.string().min(1).meta({
+      description:
+        'The event that ends an answer, such as message for an answer given in one message. Required: the connection stays open.',
     }),
-    error: z
-      .strictObject({ event: z.string().min(1), from: JsonPath.optional() })
-      .optional()
-      .meta({ description: 'The event that reports a failure, and where its message is.' }),
   })
-  .meta({
-    description:
-      'The paths below then read {text, events, all, last}: the joined text, every event, and per event name all its data and the last.',
-  });
+  .meta({ description: STREAM_DOCUMENT });
 
 const HttpResponse = z.strictObject({
   stream: ResponseStream.optional(),
@@ -98,6 +114,35 @@ const HttpResponse = z.strictObject({
     }),
   evidence: z.record(Id, EvidenceCollection).optional(),
 });
+
+/** ADR-0024: a connection opened once per sample, and one message sent per turn. */
+const WebSocketRequest = z.strictObject({
+  url: z
+    .string()
+    .regex(/^wss?:\/\//iu, 'use a ws:// or wss:// url')
+    .meta({
+      description:
+        'ws:// or wss://. May contain {{env.NAME}}, {{session}} and the values session.open carries. Sent once, when the connection opens.',
+    }),
+  headers: z.record(z.string().min(1), z.string()).optional().meta({
+    description:
+      'Handshake headers, sent once, when the connection opens. Values may contain {{env.NAME}}. Secrets belong in the environment.',
+  }),
+  protocols: z
+    .array(z.string().min(1))
+    .min(1)
+    .optional()
+    .meta({ description: 'Subprotocols to ask for.' }),
+  body: z.json().meta({
+    description:
+      'The message sent for each turn, as JSON text. Strings may contain {{message}}, {{session}}, {{requestId}}, {{carry.NAME}} and {{env.NAME}}.',
+  }),
+  timeoutMs: z.int().min(1).max(600_000).default(30_000).meta({
+    description: 'Bounds opening the connection, and each answer up to its done event.',
+  }),
+});
+
+const WebSocketResponse = HttpResponse.extend({ stream: MessageStream });
 
 const Carry = z.array(z.strictObject({ name: FieldName, from: JsonPath }));
 
@@ -216,16 +261,29 @@ const LogSource = z
   })
   .meta({ description: 'ADR-0009. Lines are JSON; text before the first "{" is ignored.' });
 
-const Target = z.strictObject({
+const targetShape = {
   name: z.string().min(1),
-  adapter: z.literal('http'),
-  request: HttpRequest,
-  response: HttpResponse,
   session: Session.default({ mode: 'client', carry: [] }),
   limits: Limits.optional(),
   cacheBypass: CacheBypass.default({ kind: 'none' }),
   observe: z.strictObject({ logs: LogSource.optional() }).optional(),
+};
+
+const HttpTarget = z.strictObject({
+  ...targetShape,
+  adapter: z.literal('http').default('http'),
+  request: HttpRequest,
+  response: HttpResponse,
 });
+
+const WebSocketTarget = z.strictObject({
+  ...targetShape,
+  adapter: z.literal('websocket'),
+  request: WebSocketRequest,
+  response: WebSocketResponse,
+});
+
+const Target = z.discriminatedUnion('adapter', [HttpTarget, WebSocketTarget]);
 
 const Upstream = z.strictObject({
   id: Id.meta({ description: 'The app reaches this upstream at http://127.0.0.1:<port>/<id>.' }),
@@ -339,11 +397,17 @@ const BaseProfile = z.strictObject(profileShape);
 /** A validated profile. Domain packs read their own section by key. */
 export type Profile = z.output<typeof BaseProfile> & { readonly [section: string]: unknown };
 export type ProfileTarget = z.output<typeof Target>;
+export type HttpProfileTarget = z.output<typeof HttpTarget>;
+export type WebSocketProfileTarget = z.output<typeof WebSocketTarget>;
 export type ModelProxyConfig = z.output<typeof ModelProxy>;
 export type FieldSpec = z.output<typeof FieldSpec>;
 export type ResponseStream = z.output<typeof ResponseStream>;
+export type MessageStream = z.output<typeof MessageStream>;
 
-/** Problems between profile sections: untrusted fields must be evidence fields the profile maps. */
+/**
+ * Problems between profile sections: untrusted fields must be evidence fields
+ * the profile maps, and a WebSocket target can't correlate by header (ADR-0024).
+ */
 export function profileProblems(
   profile: Pick<Profile, 'target' | 'modelProxy'>,
 ): { path: (string | number)[]; message: string }[] {
@@ -364,6 +428,13 @@ export function profileProblems(
         });
       }
     }
+  }
+  if (profile.target.adapter === 'websocket' && profile.modelProxy?.correlation === 'header') {
+    problems.push({
+      path: ['modelProxy', 'correlation'],
+      message:
+        'a WebSocket target sends headers once, when the connection opens, so header correlation is not available: use serial',
+    });
   }
   return problems;
 }

@@ -1,5 +1,7 @@
-// Builds the HTTP request for one turn from the profile's request template.
-// Pure: the runtime supplies the environment, ids and carried values.
+// Builds the HTTP request for one turn from the profile's request template,
+// and for a WebSocket target the connection's url and headers and each turn's
+// message (ADR-0024). Pure: the runtime supplies the environment, ids and
+// carried values.
 //
 // Placeholders: {{message}}, {{session}}, {{requestId}}, {{carry.NAME}},
 // {{env.NAME}}. A string that is only a placeholder keeps the value's type;
@@ -27,6 +29,15 @@ export interface BuiltRequest {
   /** Header names are lower-case. */
   readonly headers: Readonly<Record<string, string>>;
   readonly body: string | undefined;
+}
+
+/** The parts of a request template that building reads, HTTP or WebSocket. */
+export interface RequestTemplate {
+  readonly url: string;
+  readonly method?: string;
+  readonly headers?: Readonly<Record<string, string>> | undefined;
+  readonly body?: unknown;
+  readonly requestId?: { readonly header: string } | undefined;
 }
 
 export class TemplateError extends Error {
@@ -128,8 +139,34 @@ function lowerKeys(headers: Readonly<Record<string, string>> | undefined): Recor
   );
 }
 
+/** A body template merged with a turn's, rendered; undefined when nothing is left. */
+function renderBody(
+  body: unknown,
+  turn: Pick<CaseTurn, 'request'> | undefined,
+  values: TemplateValues,
+): string | undefined {
+  const merged = mergeJson(
+    body === undefined ? undefined : toJson(body),
+    turn?.request?.body === undefined ? undefined : toJson(turn.request.body),
+  );
+  const rendered = merged === undefined ? OMIT : renderJson(merged, values);
+  return rendered === OMIT ? undefined : JSON.stringify(rendered);
+}
+
+/** The message a WebSocket target gets for one turn (ADR-0024). */
+export function buildMessage(
+  body: unknown,
+  turn: Pick<CaseTurn, 'request'> | undefined,
+  values: TemplateValues,
+): string {
+  const message = renderBody(body, turn, values);
+  if (message === undefined)
+    throw new TemplateError('the message uses a placeholder with no value');
+  return message;
+}
+
 export function buildRequest(
-  request: ProfileTarget['request'],
+  request: RequestTemplate,
   turn: Pick<CaseTurn, 'request'> | undefined,
   values: TemplateValues,
   /** Headers the runtime adds, such as a client identity or a cache bypass. */
@@ -156,16 +193,11 @@ export function buildRequest(
     headers[name] = text;
   }
 
-  const merged = mergeJson(
-    request.body === undefined ? undefined : toJson(request.body),
-    turn?.request?.body === undefined ? undefined : toJson(turn.request.body),
-  );
-  const rendered = merged === undefined ? OMIT : renderJson(merged, values);
-  const body = rendered === OMIT ? undefined : JSON.stringify(rendered);
+  const body = renderBody(request.body, turn, values);
   if (body !== undefined && !('content-type' in headers))
     headers['content-type'] = 'application/json';
 
-  return { url: asText(url), method: request.method, headers, body };
+  return { url: asText(url), method: request.method ?? 'POST', headers, body };
 }
 
 export interface TemplateCheck {
@@ -189,10 +221,17 @@ export function checkTemplates(
   turnRequests: readonly unknown[] = [],
 ): TemplateCheck {
   const strings: string[] = [];
-  collectStrings(
-    [target.request.url, target.request.headers, target.request.body, turnRequests],
-    strings,
-  );
+  // A WebSocket target sends its url and headers once, when the connection opens (ADR-0024).
+  const connection: string[] = [];
+  if (target.adapter === 'websocket') {
+    collectStrings([target.request.url, target.request.headers], connection);
+    collectStrings([target.request.body, turnRequests], strings);
+  } else {
+    collectStrings(
+      [target.request.url, target.request.headers, target.request.body, turnRequests],
+      strings,
+    );
+  }
   const open = target.session.open;
   const opening: string[] = [];
   if (open !== undefined) {
@@ -203,23 +242,34 @@ export function checkTemplates(
   );
   const issues = new Set<string>();
   const env = new Set<string>();
-  // session.open goes out before any message and before any value is carried.
-  const check = (text: string, opens: boolean) => {
+  const opened = new Set((open?.carry ?? []).map((entry) => entry.name));
+  // session.open goes out before any message and before any value is carried; a
+  // WebSocket connection opens after session.open, before any message.
+  const check = (text: string, when: 'opens' | 'connects' | 'turn') => {
+    const where =
+      when === 'opens'
+        ? 'session.open, which is sent'
+        : 'the WebSocket url or headers, which are sent once,';
     for (const [, name = ''] of text.matchAll(PLACEHOLDER)) {
       if (name === 'message') {
-        if (opens)
-          issues.add('{{message}} is used in session.open, which is sent before any message');
+        if (when !== 'turn') issues.add(`{{message}} is used in ${where} before any message`);
       } else if (name === 'session') {
         if (target.session.mode === 'none')
           issues.add('{{session}} is used but the session mode is "none"');
       } else if (name === 'requestId') {
-        if (target.request.requestId === undefined) {
+        if (when === 'connects') {
+          issues.add(`{{requestId}} is used in ${where} before any message`);
+        } else if (target.adapter === 'http' && target.request.requestId === undefined) {
           issues.add('{{requestId}} is used but request.requestId is not configured');
         }
       } else if (name.startsWith('carry.')) {
         const key = name.slice('carry.'.length);
-        if (opens)
+        if (when === 'opens')
           issues.add(`{{${name}}} is used in session.open, which comes before any carried value`);
+        else if (when === 'connects' && !opened.has(key))
+          issues.add(
+            `{{${name}}} is used in ${where} before any answer: only session.open's values exist then`,
+          );
         else if (!carried.has(key))
           issues.add(`{{${name}}} is used but session.carry has no "${key}"`);
       } else if (name.startsWith('env.') && name.length > 'env.'.length) {
@@ -229,7 +279,8 @@ export function checkTemplates(
       }
     }
   };
-  for (const text of strings) check(text, false);
-  for (const text of opening) check(text, true);
+  for (const text of strings) check(text, 'turn');
+  for (const text of connection) check(text, 'connects');
+  for (const text of opening) check(text, 'opens');
   return { issues: [...issues], env: [...env] };
 }

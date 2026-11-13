@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { ProfileTarget } from '../schema/profile.ts';
+import type { HttpProfileTarget, WebSocketProfileTarget } from '../schema/profile.ts';
 import {
+  buildMessage,
   buildRequest,
   checkTemplates,
   mergeJson,
@@ -8,7 +9,7 @@ import {
   type TemplateValues,
 } from './build.ts';
 
-type Request = ProfileTarget['request'];
+type Request = HttpProfileTarget['request'];
 
 const request = (change: Partial<Request> = {}): Request => ({
   url: 'http://127.0.0.1:3000/v1/chat',
@@ -160,7 +161,7 @@ describe('mergeJson', () => {
   });
 });
 
-const target = (change: Partial<ProfileTarget> = {}): ProfileTarget => ({
+const target = (change: Partial<HttpProfileTarget> = {}): HttpProfileTarget => ({
   name: 't',
   adapter: 'http',
   request: request(),
@@ -229,5 +230,78 @@ describe('checkTemplates', () => {
 
   it('also checks turn requests from case files', () => {
     expect(checkTemplates(target(), [{ headers: { 'x-a': '{{env.A}}' } }]).env).toEqual(['A']);
+  });
+});
+
+const socket = (
+  change: Partial<WebSocketProfileTarget['request']> = {},
+  session: WebSocketProfileTarget['session'] = { mode: 'client', carry: [] },
+): WebSocketProfileTarget => ({
+  name: 't',
+  adapter: 'websocket',
+  request: {
+    url: 'ws://127.0.0.1:3000/ws?session={{session}}',
+    headers: { authorization: 'Bearer {{env.TOKEN}}' },
+    body: { text: '{{message}}', id: '{{requestId}}' },
+    timeoutMs: 30_000,
+    ...change,
+  },
+  response: { stream: { text: { event: 'delta', from: '$.text' }, done: 'end' }, text: '$.text' },
+  session,
+  cacheBypass: { kind: 'none' },
+});
+
+describe('WebSocket messages and connections (ADR-0024)', () => {
+  it("builds each turn's message from the body and the turn's own body", () => {
+    const message = buildMessage(
+      { text: '{{message}}', id: '{{requestId}}', last: '{{carry.last}}' },
+      { request: { body: { extra: true } } },
+      values({ requestId: 'r-1' }),
+    );
+    expect(JSON.parse(message)).toEqual({ text: 'Çadır var mı?', id: 'r-1', extra: true });
+    expect(() => buildMessage('{{carry.none}}', undefined, values())).toThrow(TemplateError);
+  });
+
+  it('builds the connection from the url and headers, with no body', () => {
+    const built = buildRequest(
+      { url: 'ws://127.0.0.1:3000/ws?session={{session}}', headers: { 'X-Key': '{{env.KEY}}' } },
+      undefined,
+      values({ env: { KEY: 'k' } }),
+      { 'x-forwarded-for': '192.0.2.1' },
+    );
+    expect(built).toEqual({
+      url: 'ws://127.0.0.1:3000/ws?session=s-1',
+      method: 'POST',
+      headers: { 'x-key': 'k', 'x-forwarded-for': '192.0.2.1' },
+      body: undefined,
+    });
+  });
+
+  it('accepts a request id in the message, without a request id header', () => {
+    expect(checkTemplates(socket())).toEqual({ issues: [], env: ['TOKEN'] });
+  });
+
+  it('keeps per-turn values out of the url and headers, sent once', () => {
+    const check = checkTemplates(
+      socket(
+        {
+          url: 'ws://127.0.0.1:3000/ws?m={{message}}&r={{requestId}}',
+          headers: { 'x-last': '{{carry.last}}', 'x-session': '{{carry.sessionId}}' },
+        },
+        {
+          mode: 'client',
+          carry: [{ name: 'last', from: '$.last.end.id' }],
+          open: {
+            request: { url: '/session', method: 'POST', timeoutMs: 1_000 },
+            carry: [{ name: 'sessionId', from: '$.id' }],
+          },
+        },
+      ),
+    );
+    expect(check.issues).toEqual([
+      '{{message}} is used in the WebSocket url or headers, which are sent once, before any message',
+      '{{requestId}} is used in the WebSocket url or headers, which are sent once, before any message',
+      "{{carry.last}} is used in the WebSocket url or headers, which are sent once, before any answer: only session.open's values exist then",
+    ]);
   });
 });

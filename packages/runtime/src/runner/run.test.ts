@@ -22,6 +22,7 @@ import {
 } from '@yokla/core';
 import { stubLanguagePack } from '@yokla/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
+import { startTestServer, type TestServer, type TestServerOptions } from '../testing/ws-server.ts';
 import { ConfigError, runSuite, type RunOptions } from './run.ts';
 
 interface Received {
@@ -1953,5 +1954,339 @@ describe('runSuite with the model proxy', () => {
     await expect(runSuite(options(profile(t.url), twoCases, { maxCostUsd: 1 }))).rejects.toThrow(
       /a cost cap needs a modelProxy in the profile/u,
     );
+  });
+});
+
+const sockets: TestServer[] = [];
+
+afterEach(async () => {
+  await Promise.all(sockets.splice(0).map((server) => server.close()));
+});
+
+async function socketTarget(serverOptions: TestServerOptions): Promise<TestServer> {
+  const server = await startTestServer(serverOptions);
+  sockets.push(server);
+  return server;
+}
+
+const SOCKET_STREAM = {
+  event: '$.type',
+  text: { event: 'delta', from: '$.text' },
+  done: 'end',
+  error: { event: 'error', from: '$.message' },
+};
+
+/** A WebSocket target (ADR-0024): the answer's last end event holds the route and items. */
+function socketProfile(url: string, change: Record<string, unknown> = {}): Profile {
+  return profile(url, {
+    adapter: 'websocket',
+    request: {
+      url: `${url}/chat?session={{session}}`,
+      headers: { authorization: 'Bearer {{env.TOKEN}}' },
+      body: { text: '{{message}}', id: '{{requestId}}', last: '{{carry.last}}' },
+      timeoutMs: 2_000,
+    },
+    response: {
+      stream: SOCKET_STREAM,
+      text: '$.text',
+      route: '$.last.end.route',
+      evidence: {
+        items: {
+          items: '$.last.end.items[*]',
+          fields: { id: 'id', price: { from: 'price', as: 'number' } },
+        },
+      },
+    },
+    session: { mode: 'client', carry: [{ name: 'last', from: '$.last.end.id' }] },
+    ...change,
+  });
+}
+
+/** The parsed message a test server received. */
+function sent(text: string): Record<string, unknown> {
+  const value: unknown = JSON.parse(text);
+  return isRecord(value) ? value : {};
+}
+
+/** Answers like a shop: two text pieces, then the end with a route and an item. */
+function shop(text: string, socket: { send(data: string): void }, count: { n: number }): void {
+  const { text: question } = sent(text);
+  count.n += 1;
+  socket.send(JSON.stringify({ type: 'delta', text: 'Ta' }));
+  socket.send(JSON.stringify({ type: 'delta', text: question === 'ikinci' ? 'mam!' : 'mam' }));
+  socket.send(
+    JSON.stringify({
+      type: 'end',
+      route: 'search',
+      id: `a-${String(count.n)}`,
+      items: [{ id: 'P1', price: '19.90' }],
+    }),
+  );
+}
+
+describe('runSuite with a WebSocket target (ADR-0024)', () => {
+  it('runs each sample over one connection, and reads every answer from its messages', async () => {
+    const count = { n: 0 };
+    const server = await socketTarget({
+      onMessage: (text, socket) => {
+        shop(text, socket, count);
+      },
+    });
+    const results = await runSuite(
+      options(
+        socketProfile(server.url, { cacheBypass: { kind: 'header', name: 'x-no-cache' } }),
+        cases({ turns: [{ user: 'ilk', expect: { route: 'search' } }, { user: 'ikinci' }] }),
+        { checks: CORE_CHECKS, env: { TOKEN: 't-1' }, samples: 2 },
+      ),
+    );
+    expect(Results.safeParse(results).success).toBe(true);
+    expect(results.cases[0]?.status).toBe('pass');
+    const [first, second] = results.cases[0]?.samples[0]?.turns ?? [];
+    expect(first?.response).toMatchObject({
+      status: 101,
+      text: 'Tamam',
+      route: 'search',
+      evidence: { items: [{ id: 'P1', price: 19.9 }] },
+    });
+    expect(second?.response?.text).toBe('Tamam!');
+    const firstText = first?.response?.firstTextMs ?? -1;
+    expect(firstText).toBeGreaterThan(0);
+    expect(firstText).toBeLessThanOrEqual(first?.response?.latencyMs ?? 0);
+    // One connection per sample, its url and headers sent once.
+    expect(server.handshakes).toHaveLength(2);
+    const [handshake] = server.handshakes;
+    expect(handshake?.path).toMatch(/^\/chat\?session=id-\d{8}$/u);
+    expect(handshake?.headers['authorization']).toBe('Bearer t-1');
+    expect(handshake?.headers['x-no-cache']).toBe('1');
+    expect(server.closes).toEqual([1000, 1000]);
+    // Each message: the turn's text, its request id, and the value carried from the last answer.
+    const messages = server.received.slice(0, 2).map(sent);
+    expect(messages[0]).toEqual({ text: 'ilk', id: first?.requestId });
+    expect(messages[1]).toEqual({ text: 'ikinci', id: second?.requestId, last: 'a-1' });
+    expect(first?.requestId).toMatch(/^id-\d{8}$/u);
+  });
+
+  it('fails the first turn when the connection does not open', async () => {
+    const server = await socketTarget({ refuse: () => 403 });
+    const results = await runSuite(
+      options(socketProfile(server.url), cases({ turns: [{ user: 'a' }, { user: 'b' }] }), {
+        env: { TOKEN: 't' },
+      }),
+    );
+    expect(results.cases[0]?.status).toBe('error');
+    const turns = results.cases[0]?.samples[0]?.turns ?? [];
+    expect(turns).toHaveLength(1);
+    expect(turns[0]?.error).toMatch(
+      /^connection failed: connect: the connection could not be opened \(code \d+/u,
+    );
+  });
+
+  it('calls an answer incomplete when the connection closes, an error comes or time runs out', async () => {
+    const server = await socketTarget({
+      onMessage(text, socket) {
+        const { text: question } = sent(text);
+        socket.send(JSON.stringify({ type: 'delta', text: 'Half' }));
+        if (question === 'close') socket.close(1011, 'boom');
+        if (question === 'error') socket.send(JSON.stringify({ type: 'error', message: 'busy' }));
+      },
+    });
+    const results = await runSuite(
+      options(
+        socketProfile(server.url, {
+          request: { url: `${server.url}/chat`, body: { text: '{{message}}' }, timeoutMs: 200 },
+        }),
+        cases(
+          { id: 'closed', turns: [{ user: 'close' }, { user: 'next' }] },
+          { id: 'failed', turns: [{ user: 'error' }, { user: 'next' }] },
+          { id: 'slow', turns: [{ user: 'slow' }, { user: 'next' }] },
+        ),
+      ),
+    );
+    const errors = results.cases.map((c) => c.samples[0]?.turns.map((turn) => turn.error));
+    expect(errors).toEqual([
+      ['the connection closed before its "end" event (code 1011: boom)'],
+      ['the stream reported an error: busy'],
+      ['no "end" event within 200 ms'],
+    ]);
+    expect(results.cases.map((c) => c.status)).toEqual(['error', 'error', 'error']);
+    expect(results.cases[0]?.samples[0]?.turns[0]?.response).toMatchObject({
+      status: 101,
+      text: 'Half',
+    });
+  });
+
+  it('fails the next turn when the connection closed after an answer, sending nothing', async () => {
+    const count = { n: 0 };
+    const server = await socketTarget({
+      onMessage(text, socket) {
+        shop(text, socket, count);
+        socket.close(1000, 'one answer per connection');
+      },
+    });
+    const results = await runSuite(
+      options(socketProfile(server.url), cases({ turns: [{ user: 'a' }, { user: 'b' }] }), {
+        env: { TOKEN: 't' },
+      }),
+    );
+    const [first, second] = results.cases[0]?.samples[0]?.turns ?? [];
+    expect(first?.error).toBeUndefined();
+    expect(second?.error).toBe(
+      'the connection closed after the previous answer (code 1000: one answer per connection)',
+    );
+    expect(server.received).toHaveLength(1);
+  });
+
+  it("paces messages by the profile's limits", async () => {
+    const count = { n: 0 };
+    const server = await socketTarget({
+      onMessage: (text, socket) => {
+        shop(text, socket, count);
+      },
+    });
+    let now = 0;
+    const slept: number[] = [];
+    const clock = {
+      now: () => now,
+      sleep: (ms: number) => {
+        slept.push(ms);
+        now += ms;
+        return Promise.resolve();
+      },
+    };
+    const results = await runSuite(
+      options(
+        socketProfile(server.url, { limits: { perMinute: 1 } }),
+        cases({ turns: [{ user: 'a' }, { user: 'b' }] }),
+        { env: { TOKEN: 't' }, clock },
+      ),
+    );
+    expect(results.cases[0]?.samples[0]?.turns.map((turn) => turn.error)).toEqual([
+      undefined,
+      undefined,
+    ]);
+    // The second message waits for the minute's token.
+    expect(slept).toHaveLength(1);
+    expect(slept[0]).toBeGreaterThan(59_000);
+  });
+
+  it('notes messages after an answer as an issue of the next turn, and leaves a greeting unread', async () => {
+    const count = { n: 0 };
+    const server = await socketTarget({
+      onOpen(socket) {
+        socket.send(JSON.stringify({ type: 'hello' }));
+      },
+      onMessage(text, socket) {
+        shop(text, socket, count);
+        socket.send(JSON.stringify({ type: 'memory_saved' }));
+      },
+    });
+    const results = await runSuite(
+      options(socketProfile(server.url), cases({ turns: [{ user: 'a' }, { user: 'b' }] }), {
+        env: { TOKEN: 't' },
+      }),
+    );
+    const [first, second] = results.cases[0]?.samples[0]?.turns ?? [];
+    expect(first?.issues).toBeUndefined();
+    expect(second?.issues).toEqual([
+      '1 message arrived after the previous answer\'s "end" event; they belong to no turn',
+    ]);
+  });
+
+  it('judges an edge-case turn on whether its answer completed (ADR-0019)', async () => {
+    const count = { n: 0 };
+    const server = await socketTarget({
+      onMessage(text, socket) {
+        if (String(sent(text)['text']).trim() === '') {
+          socket.send(JSON.stringify({ type: 'error', message: 'empty message' }));
+        } else shop(text, socket, count);
+      },
+    });
+    const allow = { allowStatus: [400] };
+    const results = await runSuite(
+      options(
+        socketProfile(server.url),
+        cases(
+          { id: 'answered', turns: [{ user: 'merhaba', expect: allow }] },
+          { id: 'refused', turns: [{ user: ' ', expect: allow }] },
+        ),
+        { checks: CORE_CHECKS, env: { TOKEN: 't' } },
+      ),
+    );
+    const status = (index: number) =>
+      results.cases[index]?.samples[0]?.turns[0]?.checks.find((c) => c.check === 'status-allowed')
+        ?.findings[0];
+    expect(results.cases.map((c) => c.status)).toEqual(['pass', 'fail']);
+    expect(status(0)).toMatchObject({ verdict: 'pass', message: 'answered over a WebSocket' });
+    expect(status(1)).toMatchObject({
+      verdict: 'fail',
+      message:
+        "answered over a WebSocket, but the answer can't be used: the stream reported an error: empty message",
+    });
+    expect(results.cases[1]?.samples[0]?.turns[0]?.error).toBeUndefined();
+  });
+
+  it('opens a session over HTTP on the same origin, and puts its id in the url', async () => {
+    const count = { n: 0 };
+    const server = await socketTarget({
+      onHttp(request, response) {
+        response.writeHead(request.url === '/session' ? 201 : 404, {
+          'content-type': 'application/json',
+        });
+        response.end(JSON.stringify({ id: 's-9' }));
+      },
+      onMessage: (text, socket) => {
+        shop(text, socket, count);
+      },
+    });
+    const results = await runSuite(
+      options(
+        socketProfile(server.url, {
+          request: { url: `${server.url}/chat?sid={{carry.sid}}`, body: { text: '{{message}}' } },
+          session: {
+            mode: 'none',
+            open: {
+              request: { url: '/session', body: {} },
+              carry: [{ name: 'sid', from: '$.id' }],
+            },
+          },
+        }),
+        cases({ turns: [{ user: 'a' }] }),
+      ),
+    );
+    expect(results.cases[0]?.samples[0]?.turns[0]?.error).toBeUndefined();
+    expect(server.handshakes.map((handshake) => handshake.path)).toEqual(['/chat?sid=s-9']);
+  });
+
+  it('refuses turn headers, an http url and request-id logs without an id in the message', async () => {
+    const server = await socketTarget({});
+    const plain = socketProfile(server.url, {
+      request: { url: `${server.url}/chat`, body: { text: '{{message}}' } },
+    });
+    await expect(
+      runSuite(
+        options(plain, cases({ turns: [{ user: 'a', request: { headers: { 'x-a': '1' } } }] })),
+      ),
+    ).rejects.toThrow(/sets request headers, which a WebSocket target sends once/u);
+    await expect(
+      runSuite(
+        options(plain, cases({ turns: [{ user: 'a' }] }), {
+          targetUrl: server.url.replace('ws:', 'http:'),
+        }),
+      ),
+    ).rejects.toThrow(/is not a ws:\/\/ or wss:\/\/ url/u);
+    const byRequestId = socketProfile(server.url, {
+      request: { url: `${server.url}/chat`, body: { text: '{{message}}' } },
+      observe: {
+        logs: {
+          source: { kind: 'file', path: '/dev/null' },
+          correlate: { by: 'request-id', field: '$.id' },
+          fields: { costUsd: '$.cost' },
+        },
+      },
+    });
+    await expect(runSuite(options(byRequestId, cases({ turns: [{ user: 'a' }] })))).rejects.toThrow(
+      /the WebSocket message has no \{\{requestId\}\}/u,
+    );
+    expect(server.handshakes).toEqual([]);
   });
 });

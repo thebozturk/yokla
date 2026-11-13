@@ -6,3 +6,10 @@ export {
   type NetworkAttempt,
   type NetworkGuard,
 } from './testing/network-guard.ts';
+export {
+  startTestServer,
+  type Handshake,
+  type TestServer,
+  type TestServerOptions,
+  type TestSocket,
+} from './testing/ws-server.ts';

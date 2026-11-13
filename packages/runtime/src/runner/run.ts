@@ -8,13 +8,18 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   aggregateCase,
+  answeredStatus,
+  buildMessage,
   buildRequest,
   callCost,
   caseDefinition,
   checkTemplates,
+  eventName,
   extractResponse,
+  messageEvents,
   UNANSWERED_JUDGES,
   queryJsonPath,
+  readEvents,
   readStream,
   RESULTS_SCHEMA_ID,
   reviewStatus,
@@ -28,7 +33,9 @@ import {
   type LanguagePack,
   type TurnView,
   type JsonValue,
+  type MessageStream,
   type Profile,
+  type ProfileTarget,
   type FaultPlan,
   type PromptRole,
   type PromptStorage,
@@ -38,12 +45,18 @@ import {
   type YoklaConfig,
 } from '@yokla/core';
 import { HttpClient, HttpError } from '../http/client.ts';
-import { systemClock, type Clock } from '../http/rate-limit.ts';
+import { RateLimiter, systemClock, type Clock } from '../http/rate-limit.ts';
 import { testNetAddress } from '../http/test-net.ts';
 import { cacheBypass } from '../process/cache-bypass.ts';
 import { CommandError } from '../process/command.ts';
 import { correlate, observedFields, parseLogLines, readLogText } from '../observe/logs.ts';
 import { ProxyControl, ProxyControlError } from '../proxy/control.ts';
+import {
+  closeText,
+  openWebSocket,
+  WebSocketError,
+  type WebSocketConnection,
+} from '../ws/client.ts';
 import {
   attributeCalls,
   storeTurnProxy,
@@ -145,9 +158,42 @@ function prepare(options: RunOptions): Prepared {
 }
 
 function errorMessage(error: unknown): string {
-  if (error instanceof HttpError || error instanceof CommandError)
+  if (
+    error instanceof HttpError ||
+    error instanceof CommandError ||
+    error instanceof WebSocketError
+  )
     return `${error.kind}: ${error.message}`;
   return error instanceof Error ? error.message : String(error);
+}
+
+const REQUEST_ID = /\{\{\s*requestId\s*\}\}/u;
+
+/** Whether a template mentions {{requestId}} anywhere. */
+function mentionsRequestId(template: unknown): boolean {
+  return template !== undefined && REQUEST_ID.test(JSON.stringify(template));
+}
+
+/**
+ * Whether a turn gets a request id: in a header over HTTP, or where the
+ * WebSocket message uses {{requestId}} (ADR-0024).
+ */
+function sendsRequestId(target: ProfileTarget, turnBody?: unknown): boolean {
+  return target.adapter === 'http'
+    ? target.request.requestId !== undefined
+    : mentionsRequestId(target.request.body) || mentionsRequestId(turnBody);
+}
+
+/** Whether a WebSocket message ends the answer: the done event, or the error event. */
+function endsAnswer(text: string, spec: MessageStream): boolean {
+  const [event] = messageEvents([{ atMs: 0, text }]);
+  if (event === undefined) return false;
+  const name = eventName(event, spec);
+  return name === spec.done || name === spec.error?.event;
+}
+
+function counted(count: number, noun: string): string {
+  return `${String(count)} ${noun}${count === 1 ? '' : 's'}`;
 }
 
 /** Checks everything that can be checked before contacting the target. */
@@ -163,8 +209,21 @@ export function preflight(options: RunOptions): void {
     ...missingEnv.map((name) => `environment variable ${name} is not set`),
   ];
   const logs = target.observe?.logs;
-  if (logs?.correlate.by === 'request-id' && target.request.requestId === undefined) {
-    problems.push('observe.logs correlates by request id, but request.requestId is not configured');
+  if (logs?.correlate.by === 'request-id' && !sendsRequestId(target)) {
+    problems.push(
+      target.adapter === 'http'
+        ? 'observe.logs correlates by request id, but request.requestId is not configured'
+        : 'observe.logs correlates by request id, but the WebSocket message has no {{requestId}}',
+    );
+  }
+  if (target.adapter === 'websocket') {
+    for (const c of options.cases) {
+      if (c.turns.some((turn) => turn.request?.headers !== undefined)) {
+        problems.push(
+          `case "${c.id}" sets request headers, which a WebSocket target sends once, when the connection opens`,
+        );
+      }
+    }
   }
   if (logs?.correlate.by === 'target-id' && target.response.id === undefined) {
     problems.push('observe.logs correlates by target id, but response.id is not mapped');
@@ -229,6 +288,26 @@ type Arm = (
 /** Waits until the target's model calls stop (ADR-0016); says why when they didn't. */
 type Settle = () => Promise<string | undefined>;
 
+/** What the samples of a WebSocket target share (ADR-0024). */
+interface SocketSetup {
+  /** The origins a connection may go to: the target's. */
+  readonly origins: readonly string[];
+  /** Paces messages by the profile's limits. */
+  readonly pace: (() => Promise<void>) | undefined;
+}
+
+/** A turn's answer, whatever carried it. */
+interface Answered {
+  readonly status: number;
+  readonly latencyMs: number;
+  /** The document the profile's paths read; undefined when the body isn't JSON. */
+  readonly body: unknown;
+  readonly firstTextMs: number | undefined;
+  /** Why the answer is incomplete, when it is. */
+  readonly problem: string | undefined;
+  readonly issues: readonly string[];
+}
+
 interface ExchangedSample {
   readonly index: number;
   readonly exchanges: Exchange[];
@@ -248,14 +327,12 @@ async function runSample(
   arm: Arm | undefined,
   openUrl: string | undefined,
   settle: Settle | undefined,
+  socket: SocketSetup | undefined,
 ): Promise<ExchangedSample> {
   const target = options.profile.target;
   const ids = options.ids ?? randomUUID;
   const bypass = cacheBypass(target.cacheBypass, options.profileDir);
-  const request =
-    options.targetUrl === undefined
-      ? target.request
-      : { ...target.request, url: options.targetUrl };
+  const targetUrl = options.targetUrl ?? target.request.url;
   const identity = target.limits?.clientIdentity;
   const identityHeaders =
     identity === undefined
@@ -326,181 +403,269 @@ async function runSample(
     }
   }
 
-  for (const [turnIndex, turn] of testCase.turns.entries()) {
-    const requestId = request.requestId === undefined ? undefined : ids();
-    // With a model proxy, the turn's id: marked on the proxy before the request
-    // (serial), or sent for the app to pass on to its model calls (header).
-    const correlation = options.profile.modelProxy?.correlation;
-    const tag = correlation === undefined ? undefined : { id: requestId ?? ids() };
-    const trace = correlation === 'header' ? tag?.id : undefined;
-    const base = { user: turn.user, ...(requestId === undefined ? {} : { requestId }), checks: [] };
-    let outcome: Exchange;
-    const faults = turn.faults;
-    const started = performance.now();
+  // A WebSocket target's connection: one per sample, after session.open (ADR-0024).
+  let connection: WebSocketConnection | undefined;
+  if (target.adapter === 'websocket') {
     try {
-      if (tag !== undefined && (correlation === 'serial' || faults !== undefined)) {
-        await arm?.(tag.id, {
-          inFlight: correlation === 'serial',
-          // The jitter seed: what identifies this turn in every run (ADR-0017).
-          ...(faults === undefined
-            ? {}
-            : { faults, seed: `${testCase.id}|${String(sampleIndex)}|${String(turnIndex)}` }),
-        });
-      }
       const built = buildRequest(
-        request,
-        turn,
-        { message: turn.user, session, requestId, carry, env: options.env },
-        {
-          ...bypass.headers,
-          ...identityHeaders,
-          ...(trace === undefined ? {} : { 'x-yokla-trace': trace }),
-        },
+        { url: targetUrl, headers: target.request.headers },
+        undefined,
+        { message: '', session, requestId: undefined, carry, env: options.env },
+        { ...bypass.headers, ...identityHeaders },
       );
+      connection = await openWebSocket(built.url, {
+        allowedOrigins: socket?.origins ?? [],
+        timeoutMs: target.request.timeoutMs,
+        headers: built.headers,
+        protocols: target.request.protocols,
+        ...(socket?.pace === undefined ? {} : { pace: socket.pace }),
+      });
+    } catch (error) {
+      exchanges.push({
+        turn: {
+          user: testCase.turns[0]?.user ?? '',
+          error: `connection failed: ${errorMessage(error)}`,
+          checks: [],
+        },
+        view: undefined,
+      });
+      return { index: sampleIndex, exchanges };
+    }
+  }
+
+  /** Sends one turn and reads its answer, over HTTP or the sample's connection. */
+  const exchangeTurn = async (
+    turn: Case['turns'][number],
+    values: Parameters<typeof buildRequest>[2],
+    headers: Readonly<Record<string, string>>,
+  ): Promise<Answered> => {
+    if (target.adapter === 'http') {
+      const built = buildRequest({ ...target.request, url: targetUrl }, turn, values, headers);
       const stream = target.response.stream;
       const result = await client.send(built, { stream: stream !== undefined });
       // A streamed answer becomes one document that the profile's paths read (ADR-0016).
       const read = stream === undefined ? undefined : readStream(result.chunks ?? [], stream);
-      const body = read === undefined ? result.json : read.document;
-      const extracted = body === undefined ? undefined : extractResponse(body, target.response);
-      const response = {
+      return {
         status: result.status,
-        latencyMs: Math.round(result.latencyMs * 100) / 100,
-        ...(read?.firstTextMs === undefined
-          ? {}
-          : { firstTextMs: Math.round(read.firstTextMs * 100) / 100 }),
-        ...(extracted?.id === undefined ? {} : { id: extracted.id }),
-        ...(extracted?.text === undefined ? {} : { text: extracted.text }),
-        ...(extracted?.route === undefined ? {} : { route: extracted.route }),
-        evidence: Object.fromEntries(
-          Object.entries(extracted?.evidence ?? {}).map(([name, items]) => [
-            name,
-            items.map((item) => ({ ...item })),
-          ]),
-        ),
+        latencyMs: result.latencyMs,
+        body: read === undefined ? result.json : read.document,
+        firstTextMs: read?.firstTextMs,
+        problem: read?.problem,
+        issues: [],
       };
-      const issues = [...(extracted?.issues ?? [])];
-      let error: string | undefined;
-      if (result.status < 200 || result.status > 299) error = `HTTP ${String(result.status)}`;
-      else if (read?.problem !== undefined) error = read.problem;
-      else if (extracted === undefined) error = 'the response is not JSON';
-      else if (extracted.text === undefined) error = issues.shift() ?? 'answer text not found';
-      // Under injected faults, a failed answer is what the case judges, not a run error (ADR-0013).
-      const failure = faults === undefined ? undefined : error;
-      if (failure !== undefined) {
-        error = undefined;
-        issues.push(`gave no usable answer under the injected faults: ${failure}`);
-      }
-      // An edge-case turn, one that allows other statuses, is judged on whether the
-      // target handled it, never stopped by its answer (ADR-0018, ADR-0019).
-      const edgeCase = failure === undefined && turn.expect?.['allowStatus'] !== undefined;
-      const unusable = edgeCase ? error : undefined;
-      if (edgeCase) error = undefined;
-      const statusOnly = edgeCase && unusable !== undefined;
-      const clarifying =
-        extracted?.route !== undefined &&
-        (target.response.clarification?.routes.includes(extracted.route) ?? false);
-      const view: TurnView | undefined =
-        error === undefined &&
-        (extracted?.text !== undefined || failure !== undefined || statusOnly)
-          ? {
-              user: turn.user,
-              expect: turn.expect ?? NO_EXPECTATIONS,
-              response: {
-                status: result.status,
-                latencyMs: response.latencyMs,
-                text: failure === undefined && !statusOnly ? (extracted?.text ?? '') : '',
-                route: extracted?.route,
-                id: extracted?.id,
-                evidence: extracted?.evidence ?? {},
-              },
-              observed: undefined,
-              clarifying,
-              faults: faults === undefined ? undefined : { failure },
-              // A non-2xx status is judged by the status itself; anything else, by why.
-              unusable: result.status >= 200 && result.status <= 299 ? unusable : undefined,
-              proxy: undefined,
-            }
-          : undefined;
-      outcome = {
-        turn: {
-          ...base,
-          ...(clarifying ? { clarifying } : {}),
-          response,
-          ...(error === undefined ? {} : { error }),
-          ...(issues.length === 0 ? {} : { issues }),
-        },
-        view,
-        ...(tag === undefined ? {} : { tag }),
+    }
+    if (connection === undefined) throw new Error('the WebSocket connection is not open');
+    const spec = target.response.stream;
+    const answer = await connection.exchange(
+      buildMessage(target.request.body, turn, values),
+      (text) => endsAnswer(text, spec),
+    );
+    // Each message is one event of the answer's stream (ADR-0024).
+    const read = readEvents(messageEvents(answer.messages), spec);
+    const closed = answer.closed === undefined ? 'no close code' : closeText(answer.closed);
+    const problem =
+      answer.end === 'closed'
+        ? answer.sent
+          ? `the connection closed before its "${spec.done}" event (${closed})`
+          : `the connection closed after the previous answer (${closed})`
+        : answer.end === 'timeout'
+          ? `no "${spec.done}" event within ${String(target.request.timeoutMs)} ms`
+          : read.problem;
+    return {
+      // The status the connection opened with: the answer is judged by its done event.
+      status: 101,
+      latencyMs: answer.latencyMs,
+      body: read.document,
+      firstTextMs: read.firstTextMs,
+      problem,
+      issues:
+        answer.between === 0
+          ? []
+          : [
+              `${counted(answer.between, 'message')} arrived after the previous answer's "${spec.done}" event; they belong to no turn`,
+            ],
+    };
+  };
+
+  try {
+    for (const [turnIndex, turn] of testCase.turns.entries()) {
+      const requestId = sendsRequestId(target, turn.request?.body) ? ids() : undefined;
+      // With a model proxy, the turn's id: marked on the proxy before the request
+      // (serial), or sent for the app to pass on to its model calls (header).
+      const correlation = options.profile.modelProxy?.correlation;
+      const tag = correlation === undefined ? undefined : { id: requestId ?? ids() };
+      const trace = correlation === 'header' ? tag?.id : undefined;
+      const base = {
+        user: turn.user,
+        ...(requestId === undefined ? {} : { requestId }),
+        checks: [],
       };
-      for (const entry of target.session.carry) {
-        const [value] = body === undefined ? [] : queryJsonPath(body, entry.from);
-        carry[entry.name] = value === undefined ? null : toJson(value);
-      }
-    } catch (error) {
-      const failure = errorMessage(error);
-      // An edge-case turn that got no answer at all: judged like any unhandled answer (ADR-0019).
-      const edgeCase = faults === undefined && turn.expect?.['allowStatus'] !== undefined;
-      outcome =
-        faults === undefined && !edgeCase
-          ? {
-              turn: { ...base, error: failure },
-              view: undefined,
-              ...(tag === undefined ? {} : { tag }),
-            }
-          : {
-              // No answer at all under faults: judged, like any other failure under them.
-              turn: {
-                ...base,
-                ...(edgeCase
-                  ? {}
-                  : { issues: [`gave no usable answer under the injected faults: ${failure}`] }),
-              },
-              view: {
+      let outcome: Exchange;
+      const faults = turn.faults;
+      const started = performance.now();
+      try {
+        if (tag !== undefined && (correlation === 'serial' || faults !== undefined)) {
+          await arm?.(tag.id, {
+            inFlight: correlation === 'serial',
+            // The jitter seed: what identifies this turn in every run (ADR-0017).
+            ...(faults === undefined
+              ? {}
+              : { faults, seed: `${testCase.id}|${String(sampleIndex)}|${String(turnIndex)}` }),
+          });
+        }
+        const result = await exchangeTurn(
+          turn,
+          { message: turn.user, session, requestId, carry, env: options.env },
+          {
+            ...bypass.headers,
+            ...identityHeaders,
+            ...(trace === undefined ? {} : { 'x-yokla-trace': trace }),
+          },
+        );
+        const { body } = result;
+        const extracted = body === undefined ? undefined : extractResponse(body, target.response);
+        const response = {
+          status: result.status,
+          latencyMs: Math.round(result.latencyMs * 100) / 100,
+          ...(result.firstTextMs === undefined
+            ? {}
+            : { firstTextMs: Math.round(result.firstTextMs * 100) / 100 }),
+          ...(extracted?.id === undefined ? {} : { id: extracted.id }),
+          ...(extracted?.text === undefined ? {} : { text: extracted.text }),
+          ...(extracted?.route === undefined ? {} : { route: extracted.route }),
+          evidence: Object.fromEntries(
+            Object.entries(extracted?.evidence ?? {}).map(([name, items]) => [
+              name,
+              items.map((item) => ({ ...item })),
+            ]),
+          ),
+        };
+        const issues = [...(extracted?.issues ?? [])];
+        let error: string | undefined;
+        if (!answeredStatus(result.status)) error = `HTTP ${String(result.status)}`;
+        else if (result.problem !== undefined) error = result.problem;
+        else if (extracted === undefined) error = 'the response is not JSON';
+        else if (extracted.text === undefined) error = issues.shift() ?? 'answer text not found';
+        issues.push(...result.issues);
+        // Under injected faults, a failed answer is what the case judges, not a run error (ADR-0013).
+        const failure = faults === undefined ? undefined : error;
+        if (failure !== undefined) {
+          error = undefined;
+          issues.push(`gave no usable answer under the injected faults: ${failure}`);
+        }
+        // An edge-case turn, one that allows other statuses, is judged on whether the
+        // target handled it, never stopped by its answer (ADR-0018, ADR-0019).
+        const edgeCase = failure === undefined && turn.expect?.['allowStatus'] !== undefined;
+        const unusable = edgeCase ? error : undefined;
+        if (edgeCase) error = undefined;
+        const statusOnly = edgeCase && unusable !== undefined;
+        const clarifying =
+          extracted?.route !== undefined &&
+          (target.response.clarification?.routes.includes(extracted.route) ?? false);
+        const view: TurnView | undefined =
+          error === undefined &&
+          (extracted?.text !== undefined || failure !== undefined || statusOnly)
+            ? {
                 user: turn.user,
                 expect: turn.expect ?? NO_EXPECTATIONS,
                 response: {
-                  status: 0,
-                  latencyMs: Math.round((performance.now() - started) * 100) / 100,
-                  text: '',
-                  route: undefined,
-                  id: undefined,
-                  evidence: {},
+                  status: result.status,
+                  latencyMs: response.latencyMs,
+                  text: failure === undefined && !statusOnly ? (extracted?.text ?? '') : '',
+                  route: extracted?.route,
+                  id: extracted?.id,
+                  evidence: extracted?.evidence ?? {},
                 },
                 observed: undefined,
-                clarifying: false,
-                faults: edgeCase ? undefined : { failure },
-                unusable: edgeCase ? failure : undefined,
+                clarifying,
+                faults: faults === undefined ? undefined : { failure },
+                // A non-2xx status is judged by the status itself; anything else, by why.
+                unusable: answeredStatus(result.status) ? unusable : undefined,
                 proxy: undefined,
-              },
-              ...(tag === undefined ? {} : { tag }),
-            };
-    }
-    // Serial correlation: calls the target makes after its answer belong to this turn,
-    // so the next turn is marked only once they have stopped (ADR-0016).
-    if (correlation === 'serial' && settle !== undefined) {
-      const problem = await settle();
-      if (problem !== undefined) {
+              }
+            : undefined;
         outcome = {
-          ...outcome,
           turn: {
-            ...outcome.turn,
-            issues: [
-              ...(outcome.turn.issues ?? []),
-              `${problem} after its answer; later calls may be counted for the next turn`,
-            ],
+            ...base,
+            ...(clarifying ? { clarifying } : {}),
+            response,
+            ...(error === undefined ? {} : { error }),
+            ...(issues.length === 0 ? {} : { issues }),
           },
+          view,
+          ...(tag === undefined ? {} : { tag }),
         };
+        for (const entry of target.session.carry) {
+          const [value] = body === undefined ? [] : queryJsonPath(body, entry.from);
+          carry[entry.name] = value === undefined ? null : toJson(value);
+        }
+      } catch (error) {
+        const failure = errorMessage(error);
+        // An edge-case turn that got no answer at all: judged like any unhandled answer (ADR-0019).
+        const edgeCase = faults === undefined && turn.expect?.['allowStatus'] !== undefined;
+        outcome =
+          faults === undefined && !edgeCase
+            ? {
+                turn: { ...base, error: failure },
+                view: undefined,
+                ...(tag === undefined ? {} : { tag }),
+              }
+            : {
+                // No answer at all under faults: judged, like any other failure under them.
+                turn: {
+                  ...base,
+                  ...(edgeCase
+                    ? {}
+                    : { issues: [`gave no usable answer under the injected faults: ${failure}`] }),
+                },
+                view: {
+                  user: turn.user,
+                  expect: turn.expect ?? NO_EXPECTATIONS,
+                  response: {
+                    status: 0,
+                    latencyMs: Math.round((performance.now() - started) * 100) / 100,
+                    text: '',
+                    route: undefined,
+                    id: undefined,
+                    evidence: {},
+                  },
+                  observed: undefined,
+                  clarifying: false,
+                  faults: edgeCase ? undefined : { failure },
+                  unusable: edgeCase ? failure : undefined,
+                  proxy: undefined,
+                },
+                ...(tag === undefined ? {} : { tag }),
+              };
       }
+      // Serial correlation: calls the target makes after its answer belong to this turn,
+      // so the next turn is marked only once they have stopped (ADR-0016).
+      if (correlation === 'serial' && settle !== undefined) {
+        const problem = await settle();
+        if (problem !== undefined) {
+          outcome = {
+            ...outcome,
+            turn: {
+              ...outcome.turn,
+              issues: [
+                ...(outcome.turn.issues ?? []),
+                `${problem} after its answer; later calls may be counted for the next turn`,
+              ],
+            },
+          };
+        }
+      }
+      exchanges.push(outcome);
+      options.onTurn?.({
+        caseId: testCase.id,
+        sample: sampleIndex,
+        turn: turnIndex,
+        ...(outcome.turn.error === undefined ? {} : { error: outcome.turn.error }),
+      });
+      if (outcome.turn.error !== undefined) break;
     }
-    exchanges.push(outcome);
-    options.onTurn?.({
-      caseId: testCase.id,
-      sample: sampleIndex,
-      turn: turnIndex,
-      ...(outcome.turn.error === undefined ? {} : { error: outcome.turn.error }),
-    });
-    if (outcome.turn.error !== undefined) break;
+  } finally {
+    await connection?.close();
   }
   return { index: sampleIndex, exchanges };
 }
@@ -514,12 +679,13 @@ async function exchangeCase(
   cap: Cap | undefined,
   openUrl: string | undefined,
   settle: Settle | undefined,
+  socket: SocketSetup | undefined,
 ): Promise<ExchangedCase> {
   const samples: ExchangedSample[] = [];
   const count = testCase.samples ?? options.samples ?? 1;
   for (let index = 0; index < count && cap?.stopped() !== true; index += 1) {
     samples.push(
-      await runSample(options, client, testCase, caseIndex, index, arm, openUrl, settle),
+      await runSample(options, client, testCase, caseIndex, index, arm, openUrl, settle, socket),
     );
     await cap?.check();
   }
@@ -689,8 +855,7 @@ function judgeCase(
       const unanswered =
         view.faults?.failure !== undefined ||
         view.unusable !== undefined ||
-        view.response.status < 200 ||
-        view.response.status > 299;
+        !answeredStatus(view.response.status);
       const applicable = unanswered
         ? prepared.checks.filter((check) => UNANSWERED_JUDGES.has(check.id))
         : prepared.checks;
@@ -830,17 +995,30 @@ export async function runSuite(input: RunOptions): Promise<Results> {
     throw new ConfigError(`the target url "${url}" is not a valid absolute url`);
   }
 
-  // A session.open url that is a path is resolved against the target url.
+  // A session.open url that is a path is resolved against the target url; for a
+  // WebSocket target, with ws read as http and wss as https (ADR-0024).
   const openTemplate = target.session.open?.request.url;
   let openUrl: string | undefined;
   if (openTemplate !== undefined) {
     const raw = withEnv(openTemplate, options.env);
+    const base = url.replace(/^ws(s?):/iu, 'http$1:');
     try {
-      openUrl = raw.startsWith('/') ? new URL(raw, url).href : new URL(raw).href;
+      openUrl = raw.startsWith('/') ? new URL(raw, base).href : new URL(raw).href;
     } catch {
       throw new ConfigError(`the session.open url "${raw}" is not a valid url or path`);
     }
   }
+  if (target.adapter === 'websocket' && !/^wss?:$/u.test(new URL(url).protocol)) {
+    throw new ConfigError(`the target url "${url}" is not a ws:// or wss:// url`);
+  }
+  const limiter =
+    target.adapter === 'websocket' && target.limits !== undefined
+      ? new RateLimiter(target.limits, options.clock ?? systemClock)
+      : undefined;
+  const socket: SocketSetup | undefined =
+    target.adapter === 'websocket'
+      ? { origins: [origin], pace: limiter === undefined ? undefined : () => limiter.acquire() }
+      : undefined;
 
   const client = new HttpClient({
     allowedOrigins: [origin, ...(openUrl === undefined ? [] : [new URL(openUrl).origin])],
@@ -867,7 +1045,7 @@ export async function runSuite(input: RunOptions): Promise<Results> {
       options.cases,
       options.concurrency ?? 1,
       (testCase, index) =>
-        exchangeCase(options, client, testCase, index, arm, cap, openUrl, settle),
+        exchangeCase(options, client, testCase, index, arm, cap, openUrl, settle, socket),
       () => cap?.stopped() === true,
     );
   } finally {

@@ -7,379 +7,33 @@
       "const": 1
     },
     "target": {
-      "type": "object",
-      "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "adapter": {
-          "type": "string",
-          "const": "http"
-        },
-        "request": {
+      "oneOf": [
+        {
           "type": "object",
           "properties": {
-            "url": {
+            "name": {
               "type": "string",
-              "minLength": 1,
-              "description": "May contain {{env.NAME}}."
+              "minLength": 1
             },
-            "method": {
-              "default": "POST",
-              "type": "string",
-              "enum": [
-                "POST",
-                "PUT",
-                "PATCH"
-              ]
-            },
-            "headers": {
-              "description": "Values may contain {{env.NAME}}. Secrets belong in the environment.",
-              "type": "object",
-              "propertyNames": {
-                "type": "string",
-                "minLength": 1
+            "session": {
+              "default": {
+                "mode": "client",
+                "carry": []
               },
-              "additionalProperties": {
-                "type": "string"
-              }
-            },
-            "body": {
-              "description": "JSON body. Strings may contain {{message}}, {{session}}, {{requestId}}, {{carry.NAME}} and {{env.NAME}}. A string that is only a placeholder with no value is left out.",
-              "$ref": "#/$defs/__schema0"
-            },
-            "timeoutMs": {
-              "default": 30000,
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 600000
-            },
-            "requestId": {
-              "description": "Send a unique id per request in this header, for log correlation.",
               "type": "object",
               "properties": {
-                "header": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "required": [
-                "header"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "required": [
-            "url"
-          ],
-          "additionalProperties": false
-        },
-        "response": {
-          "type": "object",
-          "properties": {
-            "stream": {
-              "type": "object",
-              "properties": {
-                "format": {
+                "mode": {
+                  "default": "client",
+                  "description": "client: yokla sends a new {{session}} id per sample.",
                   "type": "string",
                   "enum": [
-                    "sse",
-                    "ndjson"
+                    "client",
+                    "none"
                   ]
                 },
-                "event": {
-                  "description": "Where an event's name is in its data; by default the SSE event field, else message.",
-                  "type": "string",
-                  "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
-                },
-                "text": {
-                  "type": "object",
-                  "properties": {
-                    "event": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "from": {
-                      "type": "string",
-                      "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
-                    }
-                  },
-                  "required": [
-                    "event",
-                    "from"
-                  ],
-                  "additionalProperties": false,
-                  "description": "The events that carry text pieces, and where the piece is."
-                },
-                "done": {
-                  "description": "The event that ends a complete answer; without it, the answer is incomplete.",
-                  "type": "string",
-                  "minLength": 1
-                },
-                "error": {
-                  "description": "The event that reports a failure, and where its message is.",
-                  "type": "object",
-                  "properties": {
-                    "event": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "from": {
-                      "type": "string",
-                      "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
-                    }
-                  },
-                  "required": [
-                    "event"
-                  ],
-                  "additionalProperties": false
-                }
-              },
-              "required": [
-                "format",
-                "text"
-              ],
-              "additionalProperties": false,
-              "description": "The paths below then read {text, events, all, last}: the joined text, every event, and per event name all its data and the last."
-            },
-            "text": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
-                },
-                {
-                  "minItems": 1,
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
-                  }
-                }
-              ],
-              "description": "Where the assistant's answer text is; or several paths, every string at each joined in order with a blank line, for answers given as components (ADR-0020)."
-            },
-            "route": {
-              "type": "string",
-              "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
-            },
-            "id": {
-              "description": "Where the target's own request id is.",
-              "type": "string",
-              "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
-            },
-            "clarification": {
-              "description": "Routes that mean the target asked a clarifying question; product expectations then do not apply to that turn.",
-              "type": "object",
-              "properties": {
-                "routes": {
-                  "minItems": 1,
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                }
-              },
-              "required": [
-                "routes"
-              ],
-              "additionalProperties": false
-            },
-            "evidence": {
-              "type": "object",
-              "propertyNames": {
-                "type": "string",
-                "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
-              },
-              "additionalProperties": {
-                "type": "object",
-                "properties": {
-                  "items": {
-                    "anyOf": [
-                      {
-                        "type": "string",
-                        "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
-                      },
-                      {
-                        "minItems": 1,
-                        "type": "array",
-                        "items": {
-                          "type": "string",
-                          "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
-                        }
-                      }
-                    ],
-                    "description": "Where the items are in the response, e.g. $.data.products[*]; or several paths, read in order, an item with an id an earlier path returned left out (ADR-0020)."
-                  },
-                  "fields": {
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string",
-                      "pattern": "^[a-z][A-Za-z0-9]*$"
-                    },
-                    "additionalProperties": {
-                      "anyOf": [
-                        {
-                          "type": "string",
-                          "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
-                        },
-                        {
-                          "type": "object",
-                          "properties": {
-                            "from": {
-                              "anyOf": [
-                                {
-                                  "type": "string",
-                                  "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
-                                },
-                                {
-                                  "minItems": 1,
-                                  "type": "array",
-                                  "items": {
-                                    "type": "string",
-                                    "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
-                                  }
-                                }
-                              ]
-                            },
-                            "as": {
-                              "description": "Convert the value, e.g. a decimal string to a number.",
-                              "type": "string",
-                              "enum": [
-                                "string",
-                                "number",
-                                "boolean"
-                              ]
-                            }
-                          },
-                          "required": [
-                            "from"
-                          ],
-                          "additionalProperties": false
-                        }
-                      ]
-                    },
-                    "description": "Evidence field → where it is in each item, e.g. price: price.amount, or price: { from: [price.salePrice, price.listPrice], as: number }."
-                  }
-                },
-                "required": [
-                  "items",
-                  "fields"
-                ],
-                "additionalProperties": false
-              }
-            }
-          },
-          "required": [
-            "text"
-          ],
-          "additionalProperties": false
-        },
-        "session": {
-          "default": {
-            "mode": "client",
-            "carry": []
-          },
-          "type": "object",
-          "properties": {
-            "mode": {
-              "default": "client",
-              "description": "client: yokla sends a new {{session}} id per sample.",
-              "type": "string",
-              "enum": [
-                "client",
-                "none"
-              ]
-            },
-            "carry": {
-              "default": [],
-              "description": "Values read from each response and sent with the next turn as {{carry.NAME}}, e.g. a server-issued conversation id.",
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string",
-                    "pattern": "^[a-z][A-Za-z0-9]*$"
-                  },
-                  "from": {
-                    "type": "string",
-                    "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
-                  }
-                },
-                "required": [
-                  "name",
-                  "from"
-                ],
-                "additionalProperties": false
-              }
-            },
-            "open": {
-              "type": "object",
-              "properties": {
-                "request": {
-                  "type": "object",
-                  "properties": {
-                    "url": {
-                      "type": "string",
-                      "minLength": 1,
-                      "description": "May contain {{env.NAME}}."
-                    },
-                    "method": {
-                      "default": "POST",
-                      "type": "string",
-                      "enum": [
-                        "POST",
-                        "PUT",
-                        "PATCH"
-                      ]
-                    },
-                    "headers": {
-                      "description": "Values may contain {{env.NAME}}. Secrets belong in the environment.",
-                      "type": "object",
-                      "propertyNames": {
-                        "type": "string",
-                        "minLength": 1
-                      },
-                      "additionalProperties": {
-                        "type": "string"
-                      }
-                    },
-                    "body": {
-                      "description": "JSON body. Strings may contain {{message}}, {{session}}, {{requestId}}, {{carry.NAME}} and {{env.NAME}}. A string that is only a placeholder with no value is left out.",
-                      "$ref": "#/$defs/__schema0"
-                    },
-                    "timeoutMs": {
-                      "default": 30000,
-                      "type": "integer",
-                      "minimum": 1,
-                      "maximum": 600000
-                    },
-                    "requestId": {
-                      "description": "Send a unique id per request in this header, for log correlation.",
-                      "type": "object",
-                      "properties": {
-                        "header": {
-                          "type": "string",
-                          "minLength": 1
-                        }
-                      },
-                      "required": [
-                        "header"
-                      ],
-                      "additionalProperties": false
-                    }
-                  },
-                  "required": [
-                    "url"
-                  ],
-                  "additionalProperties": false,
-                  "description": "The url may be a path, such as /api/session, resolved against the target url. No {{message}}."
-                },
                 "carry": {
-                  "minItems": 1,
+                  "default": [],
+                  "description": "Values read from each response and sent with the next turn as {{carry.NAME}}, e.g. a server-issued conversation id.",
                   "type": "array",
                   "items": {
                     "type": "object",
@@ -398,347 +52,1413 @@
                       "from"
                     ],
                     "additionalProperties": false
-                  },
-                  "description": "Values read from its answer and sent with every turn as {{carry.NAME}}."
-                }
-              },
-              "required": [
-                "request",
-                "carry"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
-        },
-        "limits": {
-          "type": "object",
-          "properties": {
-            "burstPerSecond": {
-              "type": "number",
-              "exclusiveMinimum": 0
-            },
-            "perMinute": {
-              "type": "number",
-              "exclusiveMinimum": 0
-            },
-            "perHour": {
-              "type": "number",
-              "exclusiveMinimum": 0
-            },
-            "retryAfter": {
-              "default": {
-                "headers": [
-                  "retry-after"
-                ],
-                "unit": "seconds",
-                "maxWaitMs": 60000
-              },
-              "type": "object",
-              "properties": {
-                "headers": {
-                  "default": [
-                    "retry-after"
-                  ],
-                  "description": "Header names to read; a trailing * matches a prefix, e.g. retry-after-*.",
-                  "minItems": 1,
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "minLength": 1
                   }
                 },
-                "unit": {
-                  "default": "seconds",
-                  "type": "string",
-                  "enum": [
-                    "seconds",
-                    "milliseconds"
-                  ]
-                },
-                "maxWaitMs": {
-                  "default": 60000,
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 3600000
-                }
-              },
-              "additionalProperties": false
-            },
-            "clientIdentity": {
-              "description": "Opt-in: send a rotating client address when the target limits per address.",
-              "type": "object",
-              "properties": {
-                "header": {
-                  "type": "string",
-                  "minLength": 1,
-                  "description": "e.g. x-forwarded-for"
-                },
-                "pool": {
-                  "type": "string",
-                  "const": "test-net",
-                  "description": "Addresses from the TEST-NET ranges (RFC 5737)."
-                },
-                "per": {
-                  "default": "case",
-                  "type": "string",
-                  "enum": [
-                    "case",
-                    "sample"
-                  ]
-                }
-              },
-              "required": [
-                "header",
-                "pool"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
-        },
-        "cacheBypass": {
-          "default": {
-            "kind": "none"
-          },
-          "oneOf": [
-            {
-              "type": "object",
-              "properties": {
-                "kind": {
-                  "type": "string",
-                  "const": "header"
-                },
-                "name": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "value": {
-                  "default": "1",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "kind",
-                "name"
-              ],
-              "additionalProperties": false
-            },
-            {
-              "type": "object",
-              "properties": {
-                "kind": {
-                  "type": "string",
-                  "const": "command"
-                },
-                "run": {
-                  "minItems": 1,
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "description": "Program and arguments, e.g. [docker, compose, logs, backend]. No shell."
-                },
-                "timeoutMs": {
-                  "default": 30000,
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 600000
-                }
-              },
-              "required": [
-                "kind",
-                "run"
-              ],
-              "additionalProperties": false,
-              "description": "Runs before each cold sample, e.g. to clear the target cache."
-            },
-            {
-              "type": "object",
-              "properties": {
-                "kind": {
-                  "type": "string",
-                  "const": "none"
-                }
-              },
-              "required": [
-                "kind"
-              ],
-              "additionalProperties": false
-            }
-          ]
-        },
-        "observe": {
-          "type": "object",
-          "properties": {
-            "logs": {
-              "type": "object",
-              "properties": {
-                "source": {
-                  "oneOf": [
-                    {
+                "open": {
+                  "type": "object",
+                  "properties": {
+                    "request": {
                       "type": "object",
                       "properties": {
-                        "kind": {
+                        "url": {
                           "type": "string",
-                          "const": "file"
+                          "minLength": 1,
+                          "description": "May contain {{env.NAME}}."
                         },
-                        "path": {
+                        "method": {
+                          "default": "POST",
                           "type": "string",
-                          "minLength": 1
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "path"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "kind": {
-                          "type": "string",
-                          "const": "command"
+                          "enum": [
+                            "POST",
+                            "PUT",
+                            "PATCH"
+                          ]
                         },
-                        "run": {
-                          "minItems": 1,
-                          "type": "array",
-                          "items": {
+                        "headers": {
+                          "description": "Values may contain {{env.NAME}}. Secrets belong in the environment.",
+                          "type": "object",
+                          "propertyNames": {
                             "type": "string",
                             "minLength": 1
                           },
-                          "description": "Program and arguments, e.g. [docker, compose, logs, backend]. No shell."
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        },
+                        "body": {
+                          "description": "JSON body. Strings may contain {{message}}, {{session}}, {{requestId}}, {{carry.NAME}} and {{env.NAME}}. A string that is only a placeholder with no value is left out.",
+                          "$ref": "#/$defs/__schema0"
                         },
                         "timeoutMs": {
                           "default": 30000,
                           "type": "integer",
                           "minimum": 1,
                           "maximum": 600000
+                        },
+                        "requestId": {
+                          "description": "Send a unique id per request in this header, for log correlation.",
+                          "type": "object",
+                          "properties": {
+                            "header": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": [
+                            "header"
+                          ],
+                          "additionalProperties": false
                         }
                       },
                       "required": [
-                        "kind",
-                        "run"
+                        "url"
                       ],
                       "additionalProperties": false,
-                      "description": "Arguments may contain {{startedAt}}, the run start as an ISO 8601 time."
-                    }
-                  ]
-                },
-                "contains": {
-                  "description": "Only lines whose text (colour codes removed) contains this, e.g. a log context outside the JSON.",
-                  "type": "string",
-                  "minLength": 1
-                },
-                "match": {
-                  "default": [],
-                  "description": "Only lines where every path has this value, e.g. a log context.",
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "path": {
-                        "type": "string",
-                        "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
-                      },
-                      "equals": {
-                        "type": [
-                          "string",
-                          "number",
-                          "boolean"
-                        ]
-                      }
+                      "description": "The url may be a path, such as /api/session, resolved against the target url. No {{message}}."
                     },
-                    "required": [
-                      "path",
-                      "equals"
-                    ],
-                    "additionalProperties": false
-                  }
-                },
-                "correlate": {
-                  "type": "object",
-                  "properties": {
-                    "by": {
-                      "type": "string",
-                      "enum": [
-                        "request-id",
-                        "target-id",
-                        "order"
-                      ]
-                    },
-                    "field": {
-                      "description": "The line field holding the id.",
-                      "type": "string",
-                      "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
-                    }
-                  },
-                  "required": [
-                    "by"
-                  ],
-                  "additionalProperties": false
-                },
-                "fields": {
-                  "type": "object",
-                  "propertyNames": {
-                    "type": "string",
-                    "pattern": "^[a-z][A-Za-z0-9]*$"
-                  },
-                  "additionalProperties": {
-                    "anyOf": [
-                      {
-                        "type": "string",
-                        "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
-                      },
-                      {
+                    "carry": {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
                         "type": "object",
                         "properties": {
+                          "name": {
+                            "type": "string",
+                            "pattern": "^[a-z][A-Za-z0-9]*$"
+                          },
                           "from": {
                             "type": "string",
                             "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "from"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "description": "Values read from its answer and sent with every turn as {{carry.NAME}}."
+                    }
+                  },
+                  "required": [
+                    "request",
+                    "carry"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "limits": {
+              "type": "object",
+              "properties": {
+                "burstPerSecond": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "perMinute": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "perHour": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "retryAfter": {
+                  "default": {
+                    "headers": [
+                      "retry-after"
+                    ],
+                    "unit": "seconds",
+                    "maxWaitMs": 60000
+                  },
+                  "type": "object",
+                  "properties": {
+                    "headers": {
+                      "default": [
+                        "retry-after"
+                      ],
+                      "description": "Header names to read; a trailing * matches a prefix, e.g. retry-after-*.",
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "unit": {
+                      "default": "seconds",
+                      "type": "string",
+                      "enum": [
+                        "seconds",
+                        "milliseconds"
+                      ]
+                    },
+                    "maxWaitMs": {
+                      "default": 60000,
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 3600000
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "clientIdentity": {
+                  "description": "Opt-in: send a rotating client address when the target limits per address.",
+                  "type": "object",
+                  "properties": {
+                    "header": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "e.g. x-forwarded-for"
+                    },
+                    "pool": {
+                      "type": "string",
+                      "const": "test-net",
+                      "description": "Addresses from the TEST-NET ranges (RFC 5737)."
+                    },
+                    "per": {
+                      "default": "case",
+                      "type": "string",
+                      "enum": [
+                        "case",
+                        "sample"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "header",
+                    "pool"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "cacheBypass": {
+              "default": {
+                "kind": "none"
+              },
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "header"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "value": {
+                      "default": "1",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "command"
+                    },
+                    "run": {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "description": "Program and arguments, e.g. [docker, compose, logs, backend]. No shell."
+                    },
+                    "timeoutMs": {
+                      "default": 30000,
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 600000
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "run"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Runs before each cold sample, e.g. to clear the target cache."
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "none"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "observe": {
+              "type": "object",
+              "properties": {
+                "logs": {
+                  "type": "object",
+                  "properties": {
+                    "source": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "file"
+                            },
+                            "path": {
+                              "type": "string",
+                              "minLength": 1
+                            }
                           },
-                          "reduce": {
-                            "default": "first",
+                          "required": [
+                            "kind",
+                            "path"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "command"
+                            },
+                            "run": {
+                              "minItems": 1,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "description": "Program and arguments, e.g. [docker, compose, logs, backend]. No shell."
+                            },
+                            "timeoutMs": {
+                              "default": 30000,
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 600000
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "run"
+                          ],
+                          "additionalProperties": false,
+                          "description": "Arguments may contain {{startedAt}}, the run start as an ISO 8601 time."
+                        }
+                      ]
+                    },
+                    "contains": {
+                      "description": "Only lines whose text (colour codes removed) contains this, e.g. a log context outside the JSON.",
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "match": {
+                      "default": [],
+                      "description": "Only lines where every path has this value, e.g. a log context.",
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
                             "type": "string",
-                            "enum": [
-                              "first",
-                              "sum",
-                              "count",
-                              "any",
-                              "all"
+                            "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                          },
+                          "equals": {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean"
                             ]
                           }
                         },
                         "required": [
-                          "from"
+                          "path",
+                          "equals"
                         ],
                         "additionalProperties": false
                       }
-                    ]
+                    },
+                    "correlate": {
+                      "type": "object",
+                      "properties": {
+                        "by": {
+                          "type": "string",
+                          "enum": [
+                            "request-id",
+                            "target-id",
+                            "order"
+                          ]
+                        },
+                        "field": {
+                          "description": "The line field holding the id.",
+                          "type": "string",
+                          "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                        }
+                      },
+                      "required": [
+                        "by"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "fields": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "pattern": "^[a-z][A-Za-z0-9]*$"
+                      },
+                      "additionalProperties": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "from": {
+                                "type": "string",
+                                "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                              },
+                              "reduce": {
+                                "default": "first",
+                                "type": "string",
+                                "enum": [
+                                  "first",
+                                  "sum",
+                                  "count",
+                                  "any",
+                                  "all"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "from"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "source",
+                    "correlate",
+                    "fields"
+                  ],
+                  "additionalProperties": false,
+                  "description": "ADR-0009. Lines are JSON; text before the first \"{\" is ignored."
+                }
+              },
+              "additionalProperties": false
+            },
+            "adapter": {
+              "default": "http",
+              "type": "string",
+              "const": "http"
+            },
+            "request": {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "May contain {{env.NAME}}."
+                },
+                "method": {
+                  "default": "POST",
+                  "type": "string",
+                  "enum": [
+                    "POST",
+                    "PUT",
+                    "PATCH"
+                  ]
+                },
+                "headers": {
+                  "description": "Values may contain {{env.NAME}}. Secrets belong in the environment.",
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "body": {
+                  "description": "JSON body. Strings may contain {{message}}, {{session}}, {{requestId}}, {{carry.NAME}} and {{env.NAME}}. A string that is only a placeholder with no value is left out.",
+                  "$ref": "#/$defs/__schema0"
+                },
+                "timeoutMs": {
+                  "default": 30000,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 600000
+                },
+                "requestId": {
+                  "description": "Send a unique id per request in this header, for log correlation.",
+                  "type": "object",
+                  "properties": {
+                    "header": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "header"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "url"
+              ],
+              "additionalProperties": false
+            },
+            "response": {
+              "type": "object",
+              "properties": {
+                "stream": {
+                  "type": "object",
+                  "properties": {
+                    "format": {
+                      "type": "string",
+                      "enum": [
+                        "sse",
+                        "ndjson"
+                      ]
+                    },
+                    "event": {
+                      "description": "Where an event's name is in its data; by default the SSE event field, else message.",
+                      "type": "string",
+                      "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                    },
+                    "text": {
+                      "type": "object",
+                      "properties": {
+                        "event": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "from": {
+                          "type": "string",
+                          "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                        }
+                      },
+                      "required": [
+                        "event",
+                        "from"
+                      ],
+                      "additionalProperties": false,
+                      "description": "The events that carry text pieces, and where the piece is."
+                    },
+                    "done": {
+                      "description": "The event that ends a complete answer; without it, the answer is incomplete.",
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "error": {
+                      "description": "The event that reports a failure, and where its message is.",
+                      "type": "object",
+                      "properties": {
+                        "event": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "from": {
+                          "type": "string",
+                          "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                        }
+                      },
+                      "required": [
+                        "event"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "format",
+                    "text"
+                  ],
+                  "additionalProperties": false,
+                  "description": "The paths below then read {text, events, all, last}: the joined text, every event, and per event name all its data and the last."
+                },
+                "text": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                    },
+                    {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                      }
+                    }
+                  ],
+                  "description": "Where the assistant's answer text is; or several paths, every string at each joined in order with a blank line, for answers given as components (ADR-0020)."
+                },
+                "route": {
+                  "type": "string",
+                  "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                },
+                "id": {
+                  "description": "Where the target's own request id is.",
+                  "type": "string",
+                  "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                },
+                "clarification": {
+                  "description": "Routes that mean the target asked a clarifying question; product expectations then do not apply to that turn.",
+                  "type": "object",
+                  "properties": {
+                    "routes": {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "required": [
+                    "routes"
+                  ],
+                  "additionalProperties": false
+                },
+                "evidence": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                          },
+                          {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                            }
+                          }
+                        ],
+                        "description": "Where the items are in the response, e.g. $.data.products[*]; or several paths, read in order, an item with an id an earlier path returned left out (ADR-0020)."
+                      },
+                      "fields": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string",
+                          "pattern": "^[a-z][A-Za-z0-9]*$"
+                        },
+                        "additionalProperties": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "from": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                                    },
+                                    {
+                                      "minItems": 1,
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                                      }
+                                    }
+                                  ]
+                                },
+                                "as": {
+                                  "description": "Convert the value, e.g. a decimal string to a number.",
+                                  "type": "string",
+                                  "enum": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "from"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        "description": "Evidence field → where it is in each item, e.g. price: price.amount, or price: { from: [price.salePrice, price.listPrice], as: number }."
+                      }
+                    },
+                    "required": [
+                      "items",
+                      "fields"
+                    ],
+                    "additionalProperties": false
                   }
                 }
               },
               "required": [
-                "source",
-                "correlate",
-                "fields"
+                "text"
               ],
-              "additionalProperties": false,
-              "description": "ADR-0009. Lines are JSON; text before the first \"{\" is ignored."
+              "additionalProperties": false
             }
           },
+          "required": [
+            "name",
+            "request",
+            "response"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "session": {
+              "default": {
+                "mode": "client",
+                "carry": []
+              },
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "default": "client",
+                  "description": "client: yokla sends a new {{session}} id per sample.",
+                  "type": "string",
+                  "enum": [
+                    "client",
+                    "none"
+                  ]
+                },
+                "carry": {
+                  "default": [],
+                  "description": "Values read from each response and sent with the next turn as {{carry.NAME}}, e.g. a server-issued conversation id.",
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "pattern": "^[a-z][A-Za-z0-9]*$"
+                      },
+                      "from": {
+                        "type": "string",
+                        "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "from"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "open": {
+                  "type": "object",
+                  "properties": {
+                    "request": {
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "May contain {{env.NAME}}."
+                        },
+                        "method": {
+                          "default": "POST",
+                          "type": "string",
+                          "enum": [
+                            "POST",
+                            "PUT",
+                            "PATCH"
+                          ]
+                        },
+                        "headers": {
+                          "description": "Values may contain {{env.NAME}}. Secrets belong in the environment.",
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        },
+                        "body": {
+                          "description": "JSON body. Strings may contain {{message}}, {{session}}, {{requestId}}, {{carry.NAME}} and {{env.NAME}}. A string that is only a placeholder with no value is left out.",
+                          "$ref": "#/$defs/__schema0"
+                        },
+                        "timeoutMs": {
+                          "default": 30000,
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 600000
+                        },
+                        "requestId": {
+                          "description": "Send a unique id per request in this header, for log correlation.",
+                          "type": "object",
+                          "properties": {
+                            "header": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": [
+                            "header"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "url"
+                      ],
+                      "additionalProperties": false,
+                      "description": "The url may be a path, such as /api/session, resolved against the target url. No {{message}}."
+                    },
+                    "carry": {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "pattern": "^[a-z][A-Za-z0-9]*$"
+                          },
+                          "from": {
+                            "type": "string",
+                            "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "from"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "description": "Values read from its answer and sent with every turn as {{carry.NAME}}."
+                    }
+                  },
+                  "required": [
+                    "request",
+                    "carry"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "limits": {
+              "type": "object",
+              "properties": {
+                "burstPerSecond": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "perMinute": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "perHour": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "retryAfter": {
+                  "default": {
+                    "headers": [
+                      "retry-after"
+                    ],
+                    "unit": "seconds",
+                    "maxWaitMs": 60000
+                  },
+                  "type": "object",
+                  "properties": {
+                    "headers": {
+                      "default": [
+                        "retry-after"
+                      ],
+                      "description": "Header names to read; a trailing * matches a prefix, e.g. retry-after-*.",
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "unit": {
+                      "default": "seconds",
+                      "type": "string",
+                      "enum": [
+                        "seconds",
+                        "milliseconds"
+                      ]
+                    },
+                    "maxWaitMs": {
+                      "default": 60000,
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 3600000
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "clientIdentity": {
+                  "description": "Opt-in: send a rotating client address when the target limits per address.",
+                  "type": "object",
+                  "properties": {
+                    "header": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "e.g. x-forwarded-for"
+                    },
+                    "pool": {
+                      "type": "string",
+                      "const": "test-net",
+                      "description": "Addresses from the TEST-NET ranges (RFC 5737)."
+                    },
+                    "per": {
+                      "default": "case",
+                      "type": "string",
+                      "enum": [
+                        "case",
+                        "sample"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "header",
+                    "pool"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "cacheBypass": {
+              "default": {
+                "kind": "none"
+              },
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "header"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "value": {
+                      "default": "1",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "command"
+                    },
+                    "run": {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "description": "Program and arguments, e.g. [docker, compose, logs, backend]. No shell."
+                    },
+                    "timeoutMs": {
+                      "default": 30000,
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 600000
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "run"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Runs before each cold sample, e.g. to clear the target cache."
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "none"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "observe": {
+              "type": "object",
+              "properties": {
+                "logs": {
+                  "type": "object",
+                  "properties": {
+                    "source": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "file"
+                            },
+                            "path": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "path"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "command"
+                            },
+                            "run": {
+                              "minItems": 1,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "description": "Program and arguments, e.g. [docker, compose, logs, backend]. No shell."
+                            },
+                            "timeoutMs": {
+                              "default": 30000,
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 600000
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "run"
+                          ],
+                          "additionalProperties": false,
+                          "description": "Arguments may contain {{startedAt}}, the run start as an ISO 8601 time."
+                        }
+                      ]
+                    },
+                    "contains": {
+                      "description": "Only lines whose text (colour codes removed) contains this, e.g. a log context outside the JSON.",
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "match": {
+                      "default": [],
+                      "description": "Only lines where every path has this value, e.g. a log context.",
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string",
+                            "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                          },
+                          "equals": {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "path",
+                          "equals"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "correlate": {
+                      "type": "object",
+                      "properties": {
+                        "by": {
+                          "type": "string",
+                          "enum": [
+                            "request-id",
+                            "target-id",
+                            "order"
+                          ]
+                        },
+                        "field": {
+                          "description": "The line field holding the id.",
+                          "type": "string",
+                          "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                        }
+                      },
+                      "required": [
+                        "by"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "fields": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "pattern": "^[a-z][A-Za-z0-9]*$"
+                      },
+                      "additionalProperties": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "from": {
+                                "type": "string",
+                                "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                              },
+                              "reduce": {
+                                "default": "first",
+                                "type": "string",
+                                "enum": [
+                                  "first",
+                                  "sum",
+                                  "count",
+                                  "any",
+                                  "all"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "from"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "source",
+                    "correlate",
+                    "fields"
+                  ],
+                  "additionalProperties": false,
+                  "description": "ADR-0009. Lines are JSON; text before the first \"{\" is ignored."
+                }
+              },
+              "additionalProperties": false
+            },
+            "adapter": {
+              "type": "string",
+              "const": "websocket"
+            },
+            "request": {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "pattern": "^wss?:\\/\\/",
+                  "description": "ws:// or wss://. May contain {{env.NAME}}, {{session}} and the values session.open carries. Sent once, when the connection opens."
+                },
+                "headers": {
+                  "description": "Handshake headers, sent once, when the connection opens. Values may contain {{env.NAME}}. Secrets belong in the environment.",
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "protocols": {
+                  "description": "Subprotocols to ask for.",
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "body": {
+                  "description": "The message sent for each turn, as JSON text. Strings may contain {{message}}, {{session}}, {{requestId}}, {{carry.NAME}} and {{env.NAME}}.",
+                  "$ref": "#/$defs/__schema1"
+                },
+                "timeoutMs": {
+                  "default": 30000,
+                  "description": "Bounds opening the connection, and each answer up to its done event.",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 600000
+                }
+              },
+              "required": [
+                "url",
+                "body"
+              ],
+              "additionalProperties": false
+            },
+            "response": {
+              "type": "object",
+              "properties": {
+                "stream": {
+                  "type": "object",
+                  "properties": {
+                    "event": {
+                      "description": "Where an event's name is in a message's data; without it, every event is message.",
+                      "type": "string",
+                      "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                    },
+                    "text": {
+                      "type": "object",
+                      "properties": {
+                        "event": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "from": {
+                          "type": "string",
+                          "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                        }
+                      },
+                      "required": [
+                        "event",
+                        "from"
+                      ],
+                      "additionalProperties": false,
+                      "description": "The events that carry text pieces, and where the piece is."
+                    },
+                    "done": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "The event that ends an answer, such as message for an answer given in one message. Required: the connection stays open."
+                    },
+                    "error": {
+                      "description": "The event that reports a failure, and where its message is.",
+                      "type": "object",
+                      "properties": {
+                        "event": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "from": {
+                          "type": "string",
+                          "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                        }
+                      },
+                      "required": [
+                        "event"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "done"
+                  ],
+                  "additionalProperties": false,
+                  "description": "The paths below then read {text, events, all, last}: the joined text, every event, and per event name all its data and the last."
+                },
+                "text": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                    },
+                    {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                      }
+                    }
+                  ],
+                  "description": "Where the assistant's answer text is; or several paths, every string at each joined in order with a blank line, for answers given as components (ADR-0020)."
+                },
+                "route": {
+                  "type": "string",
+                  "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                },
+                "id": {
+                  "description": "Where the target's own request id is.",
+                  "type": "string",
+                  "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                },
+                "clarification": {
+                  "description": "Routes that mean the target asked a clarifying question; product expectations then do not apply to that turn.",
+                  "type": "object",
+                  "properties": {
+                    "routes": {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "required": [
+                    "routes"
+                  ],
+                  "additionalProperties": false
+                },
+                "evidence": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                          },
+                          {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                            }
+                          }
+                        ],
+                        "description": "Where the items are in the response, e.g. $.data.products[*]; or several paths, read in order, an item with an id an earlier path returned left out (ADR-0020)."
+                      },
+                      "fields": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string",
+                          "pattern": "^[a-z][A-Za-z0-9]*$"
+                        },
+                        "additionalProperties": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "from": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                                    },
+                                    {
+                                      "minItems": 1,
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                                      }
+                                    }
+                                  ]
+                                },
+                                "as": {
+                                  "description": "Convert the value, e.g. a decimal string to a number.",
+                                  "type": "string",
+                                  "enum": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "from"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        "description": "Evidence field → where it is in each item, e.g. price: price.amount, or price: { from: [price.salePrice, price.listPrice], as: number }."
+                      }
+                    },
+                    "required": [
+                      "items",
+                      "fields"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "stream",
+                "text"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "name",
+            "adapter",
+            "request",
+            "response"
+          ],
           "additionalProperties": false
         }
-      },
-      "required": [
-        "name",
-        "adapter",
-        "request",
-        "response"
-      ],
-      "additionalProperties": false
+      ]
     },
     "languages": {
       "minItems": 1,
@@ -1355,6 +2075,37 @@
           },
           "additionalProperties": {
             "$ref": "#/$defs/__schema0"
+          }
+        }
+      ]
+    },
+    "__schema1": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema1"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema1"
           }
         }
       ]
