@@ -1,6 +1,6 @@
 # 0020. Richer evidence mapping: several paths, availability, price sources, component text
 
-Status: Proposed · Date: 2026-11-13
+Status: Accepted · Date: 2026-11-13
 
 ## Context
 
