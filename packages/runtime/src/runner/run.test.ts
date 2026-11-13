@@ -139,6 +139,12 @@ const answer = (extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
+/** A stub language pack with these common words (ADR-0018). */
+const languagePack = (language: string, commonWords: string[]) => ({
+  ...stubLanguagePack(language),
+  commonWords,
+});
+
 /** A provenance from yokla's templates, with this review status (ADR-0004). */
 const by = (status: string) => ({ source: 'template', evidence: 'yokla init', status });
 
@@ -1454,6 +1460,40 @@ describe('runSuite with the model proxy', () => {
     // A 2xx answer is judged by every check.
     expect(answered?.status).toBe('pass');
     expect(ran).toEqual(['d']);
+  });
+
+  it('judges the language of an answer with every loaded language pack (ADR-0018)', async () => {
+    const t = await target((_r, index, response) => {
+      json(
+        response,
+        answer({
+          answer: index === 0 ? 'I can help you with the tent.' : 'Bu çadır ve bir tane daha var.',
+        }),
+      );
+    });
+    const results = await runSuite(
+      options(
+        profile(t.url),
+        cases({
+          turns: [
+            { user: 'a', expect: { language: 'en' } },
+            { user: 'b', expect: { language: 'en' } },
+          ],
+        }),
+        {
+          checks: CORE_CHECKS,
+          languages: [
+            languagePack('tr', ['bu', 've', 'bir', 'var']),
+            languagePack('en', ['i', 'can', 'you', 'the']),
+          ],
+        },
+      ),
+    );
+    const turns = results.cases[0]?.samples[0]?.turns ?? [];
+    const language = (index: number) =>
+      turns[index]?.checks.find((c) => c.check === 'language-match')?.findings[0]?.verdict;
+    expect([language(0), language(1)]).toEqual(['pass', 'fail']);
+    expect(results.cases[0]?.status).toBe('fail');
   });
 
   it('judges no answer at all under faults the same way', async () => {

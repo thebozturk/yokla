@@ -110,6 +110,11 @@ export interface LanguagePack {
   findDurations(text: string): DurationMention[];
   formatMoney(amount: number, currency: string): string;
   readonly phrases: Readonly<Record<PhraseKind, readonly string[]>>;
+  /**
+   * The language's most common words, folded, shared with no other pack's list;
+   * language-match tells languages apart by them (ADR-0018).
+   */
+  readonly commonWords: readonly string[];
 }
 
 export interface CheckContext {
@@ -121,6 +126,8 @@ export interface CheckContext {
   readonly profile: Profile;
   /** The pack for the case's language, when one is loaded. */
   readonly lang: LanguagePack | undefined;
+  /** Every loaded language pack, by language (ADR-0018). */
+  readonly languages: ReadonlyMap<string, LanguagePack>;
 }
 
 export interface Check {

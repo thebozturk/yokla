@@ -142,3 +142,11 @@ describe('phrases', () => {
     expect(hits(kind, text)).toBe(false);
   });
 });
+
+describe('commonWords', () => {
+  it('holds each word once, already folded, as language-match compares them', () => {
+    expect(english.commonWords.length).toBeGreaterThan(50);
+    expect(new Set(english.commonWords).size).toBe(english.commonWords.length);
+    for (const word of english.commonWords) expect(fold(word)).toBe(word);
+  });
+});

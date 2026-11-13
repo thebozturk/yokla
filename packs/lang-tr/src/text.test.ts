@@ -168,3 +168,11 @@ describe('phrases', () => {
     expect(hits(kind, text)).toBe(false);
   });
 });
+
+describe('commonWords', () => {
+  it('holds each word once, already folded, as language-match compares them', () => {
+    expect(turkish.commonWords.length).toBeGreaterThan(50);
+    expect(new Set(turkish.commonWords).size).toBe(turkish.commonWords.length);
+    for (const word of turkish.commonWords) expect(fold(word)).toBe(word);
+  });
+});

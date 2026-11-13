@@ -81,6 +81,78 @@ export const answerText: Check = {
   },
 };
 
+/** Fewer words than this can't show which language an answer is in. */
+const MIN_WORDS = 5;
+/** The leading language's common words must make up at least this share of the answer. */
+const MIN_SHARE = 0.1;
+/** And at least this many times the share of the next language. */
+const LEAD = 2;
+
+/** The language of the answer couldn't be told: unmeasured, never a pass. */
+const languageUnmeasured = (reason: string) => ({
+  applicable: true as const,
+  findings: [],
+  unmeasured: [{ dimension: 'language', reason }],
+});
+
+const percent = (share: number) => `${String(Math.round(share * 100))}%`;
+
+/**
+ * The answer is in the turn's language (ADR-0018): each loaded pack's common
+ * words are counted in it, and the language with the clearly largest share is
+ * the answer's. Too short or too close to tell is unmeasured, never a pass.
+ */
+export const languageMatch: Check = {
+  id: 'language-match',
+  description:
+    "The answer is in the turn's language, by the share of each language's common words.",
+  run(context) {
+    const parsed = coreExpectations.language.safeParse(context.turn.expect['language']);
+    if (!parsed.success) return { applicable: false, reason: 'the turn expects no language' };
+    const expected = parsed.data;
+    if (!context.languages.has(expected)) {
+      return { applicable: false, reason: `no language pack for "${expected}"` };
+    }
+    if (context.languages.size < 2) {
+      return { applicable: false, reason: 'one language pack is loaded: nothing to tell it from' };
+    }
+    const words = context.turn.response.text.split(/[^\p{L}]+/u).filter((word) => word !== '');
+    if (words.length < MIN_WORDS) {
+      return languageUnmeasured(`the answer has fewer than ${String(MIN_WORDS)} words`);
+    }
+    const shares = [...context.languages.values()]
+      .map((pack) => {
+        const common = new Set(pack.commonWords);
+        const hits = words.filter((word) => common.has(pack.fold(word))).length;
+        return { language: pack.language, share: hits / words.length };
+      })
+      .toSorted((a, b) => b.share - a.share);
+    const [first, second] = shares;
+    if (
+      first === undefined ||
+      first.share < MIN_SHARE ||
+      first.share < LEAD * (second?.share ?? 0)
+    ) {
+      return languageUnmeasured("no language's common words clearly lead in the answer");
+    }
+    const ok = first.language === expected;
+    return {
+      applicable: true,
+      findings: [
+        {
+          dimension: 'language',
+          verdict: ok ? 'pass' : 'fail',
+          severity: 'medium',
+          message: ok
+            ? `the answer is in ${expected} (${percent(first.share)} common ${expected} words)`
+            : `the answer is in ${first.language}, not ${expected} (${percent(first.share)} common ${first.language} words)`,
+          evidence: Object.fromEntries(shares.map((s) => [s.language, Number(s.share.toFixed(3))])),
+        },
+      ],
+    };
+  },
+};
+
 /** A turn that lists allowed statuses is judged on its status, not stopped by it (ADR-0018). */
 export const statusAllowed: Check = {
   id: 'status-allowed',
@@ -270,6 +342,7 @@ export const CORE_CHECKS: readonly Check[] = [
   gracefulUnderFault,
   answeredWithinDeadline,
   statusAllowed,
+  languageMatch,
   costBudget,
   promptBudget,
   promptLeak,

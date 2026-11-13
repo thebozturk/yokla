@@ -117,6 +117,8 @@ export {
   UNANSWERED_JUDGES,
   gracefulUnderFault,
   evidenceCount,
+  languageMatch,
   routeExpected,
+  statusAllowed,
 } from './checks/generic.ts';
 export { piiInPrompt, promptBudget, promptLeak, untrustedInSystem } from './checks/inspection.ts';
