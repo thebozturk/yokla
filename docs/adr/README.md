@@ -32,8 +32,8 @@ old one.
 | [0017](0017-fault-jitter-seed.md) | Fault jitter seeded by case, sample and turn | Accepted |
 | [0018](0018-init-and-starter-cases.md) | yokla init: a profile from one message, and starter cases | Accepted; amended by 0019 |
 | [0019](0019-edge-case-turns-judged-on-handling.md) | An edge-case turn is judged on whether the target handled it | Accepted |
-| [0020](0020-richer-evidence-mapping.md) | Richer evidence mapping: several paths, availability, price sources, component text | Accepted |
-| [0021](0021-price-times-quantity-and-item-text.md) | A price times a stated quantity, and text that belongs to one item | Proposed |
+| [0020](0020-richer-evidence-mapping.md) | Richer evidence mapping: several paths, availability, price sources, component text | Accepted; amended by 0021 |
+| [0021](0021-price-times-quantity-and-item-text.md) | A price times a stated quantity, and text that belongs to one item | Accepted |
 
 ## Template
 

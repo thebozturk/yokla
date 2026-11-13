@@ -1,6 +1,6 @@
 # 0021. A price times a stated quantity, and text that belongs to one item
 
-Status: Proposed · Date: 2026-11-13 · Amends 0020
+Status: Accepted · Date: 2026-11-13 · Amends 0020
 
 ## Context
 
