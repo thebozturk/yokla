@@ -37,6 +37,7 @@ old one.
 | [0022](0022-totals-of-the-answers-own-amounts.md) | A total of the answer's own amounts | Accepted |
 | [0023](0023-static-html-report.md) | A static HTML report | Accepted |
 | [0024](0024-websocket-targets.md) | WebSocket targets | Accepted |
+| [0025](0025-tool-calls.md) | Tool calls: what the proxy reads, and the checks on them | Proposed |
 
 ## Template
 
