@@ -1,6 +1,6 @@
 # 0025. Tool calls: what the proxy reads, and the checks on them
 
-Status: Proposed · Date: 2026-11-14
+Status: Accepted · Date: 2026-11-14
 
 ## Context
 
