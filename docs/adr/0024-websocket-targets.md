@@ -1,6 +1,6 @@
 # 0024. WebSocket targets
 
-Status: Proposed · Date: 2026-11-14
+Status: Accepted · Date: 2026-11-14
 
 ## Context
 
