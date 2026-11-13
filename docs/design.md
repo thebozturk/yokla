@@ -779,7 +779,11 @@ Each version is usable on its own. A version ships when its exit criteria hold.
 | **0.6 — ecosystem** | import and export for other evaluation tools; CI recipes and a GitHub Action; a library API; two runs compared side by side; documentation site | |
 
 **Later:** sampling production logs, more domains (banking, travel), more
-languages, SDK adapters.
+languages, SDK adapters. Checks that understand more of an answer:
+- `price-grounded` grounding the price of a product an answer names but
+  doesn't return, as the open-source target's answers do, and differences and
+  discounts (ADR-0022);
+- text about one item, read with that item (ADR-0021).
 
 ## 21. Risks
 
