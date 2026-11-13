@@ -622,6 +622,104 @@ describe('price-grounded with a price times a stated quantity (ADR-0021)', () =>
   });
 });
 
+describe("price-grounded with totals of the answer's own amounts (ADR-0022)", () => {
+  const check = priceGrounded(data());
+  const judge = (
+    text: string,
+    products: EvidenceItem[] = tents,
+    lang: LanguagePack = fakeTurkish,
+    user = 'çadır',
+  ) => check.run(checkContext(answer(text, products, user), { lang }));
+
+  it('accepts a total of grounded amounts stated after them, and names the parts', () => {
+    const outcome = judge(
+      'Plaj Çadırı 899,50 TL. Kubbe Çadır 2.499,90 TL. İkisi birlikte 3.399,40 TL.',
+    );
+    expect(verdicts(outcome)).toEqual(['pass']);
+    expect(outcome.applicable && outcome.findings[0]?.message).toContain(
+      '"3.399,40 TL" = 899,50 TL + 2.499,90 TL',
+    );
+  });
+
+  it('accepts a total stated before its parts', () => {
+    expect(
+      verdicts(judge('Toplam 3.399,40 TL: Plaj Çadırı 899,50 TL, Kubbe Çadır 2.499,90 TL.')),
+    ).toEqual(['pass']);
+  });
+
+  it('counts a price times a stated quantity as a part', () => {
+    expect(
+      verdicts(judge('4 Plaj Çadırı 3.598,00 TL. Kubbe Çadır 2.499,90 TL. Hepsi 6.097,90 TL.')),
+    ).toEqual(['pass']);
+  });
+
+  it("never adds the user's own amounts, though the answer states them", () => {
+    expect(
+      verdicts(
+        judge(
+          'Bütçeniz 1.000,00 TL; Plaj Çadırı 899,50 TL; ikisi 1.899,50 TL.',
+          tents,
+          fakeTurkish,
+          '1000 TL altında çadır',
+        ),
+      ),
+    ).toEqual(['fail']);
+  });
+
+  it('takes two parts at least: a derived amount restated alone is no total', () => {
+    // 3.598,00 is grounded as 4 × 899,50 in the first sentence only.
+    expect(verdicts(judge('4 Plaj Çadırı 3.598,00 TL. Ödeyeceğiniz tutar 3.598,00 TL.'))).toEqual([
+      'fail',
+    ]);
+  });
+
+  it('uses each stated amount once, and a sum never as a part', () => {
+    expect(verdicts(judge('Plaj Çadırı 899,50 TL. İki kez 1.799,00 TL.'))).toEqual(['fail']);
+    expect(verdicts(judge('Plaj Çadırı 899,50 TL, yine 899,50 TL; ikisi 1.799,00 TL.'))).toEqual([
+      'pass',
+    ]);
+    // 3.399,40 is grounded only as a sum, so 899,50 + 3.399,40 is no total.
+    expect(
+      verdicts(judge('Plaj 899,50 TL, Kubbe 2.499,90 TL, ikisi 3.399,40 TL, üçü 4.298,90 TL.')),
+    ).toEqual(['fail']);
+  });
+
+  it("adds only amounts in the total's currency", () => {
+    const usd = [
+      { id: 'A', price: 15, currency: 'USD' },
+      { id: 'B', price: 25, currency: 'USD' },
+    ];
+    expect(verdicts(judge('A $15, B $25, together $40', usd, fakeEnglish))).toEqual(['pass']);
+    expect(verdicts(judge('A $15, B $25, together TRY 40.00', usd, fakeEnglish))).toEqual(['fail']);
+  });
+
+  it('combines only the first twelve parts', () => {
+    // Powers of two: every sum has exactly one set of parts.
+    const priced = Array.from({ length: 13 }, (_v, i) => ({
+      id: `P${String(i)}`,
+      price: 2 ** i,
+      currency: 'USD',
+    }));
+    // Thousands written with commas, as the fake English pack reads them.
+    const listed = priced.map((p) => `$${p.price.toLocaleString('en-US')}`).join(', ');
+    expect(verdicts(judge(`${listed}. Total $2,049.`, priced, fakeEnglish))).toEqual(['pass']);
+    expect(verdicts(judge(`${listed}. Total $4,097.`, priced, fakeEnglish))).toEqual(['fail']);
+  });
+
+  it('catches a total changed so that no parts add up to it', () => {
+    const base = answer(
+      'Plaj Çadırı 899,50 TL. Kubbe Çadır 2.499,90 TL. İkisi 3.399,40 TL.',
+      tents,
+    );
+    const changed = mutate(base, (view) => ({
+      ...view,
+      response: { ...view.response, text: view.response.text.replace('3.399,40', '3.399,50') },
+    }));
+    expect(verdicts(check.run(checkContext(base, { lang: fakeTurkish })))).toEqual(['pass']);
+    expect(verdicts(check.run(checkContext(changed, { lang: fakeTurkish })))).toEqual(['fail']);
+  });
+});
+
 describe('price-grounded with price sources (ADR-0020)', () => {
   const ordersSource = data({
     config: ecommerceProfile.parse({
