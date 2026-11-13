@@ -693,6 +693,7 @@ function judgeCase(
         history: [...history],
         profile: options.profile,
         lang: prepared.languages.get(testCase.language),
+        languages: prepared.languages,
       });
       history.push(view);
       return { ...turn, checks };

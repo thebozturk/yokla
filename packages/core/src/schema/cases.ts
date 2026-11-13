@@ -27,6 +27,9 @@ export const coreExpectations = {
       description:
         "Text the answer must or must not contain, after the language pack's folding, and whether it may be empty.",
     }),
+  language: LanguageCode.meta({
+    description: 'The language the answer must be in, judged by language-match (ADR-0018).',
+  }),
   allowStatus: z.array(z.int().min(300).max(599)).min(1).meta({
     description:
       'Non-2xx statuses that count as a handled answer, such as 400 for an empty message. The turn is then judged on its status, never stopped by it (ADR-0018).',

@@ -283,6 +283,11 @@
                       "additionalProperties": false,
                       "description": "Text the answer must or must not contain, after the language pack's folding, and whether it may be empty."
                     },
+                    "language": {
+                      "type": "string",
+                      "pattern": "^[a-z]{2}$",
+                      "description": "The language the answer must be in, judged by language-match (ADR-0018)."
+                    },
                     "allowStatus": {
                       "minItems": 1,
                       "type": "array",

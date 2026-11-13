@@ -85,6 +85,7 @@ export function checkContext(
     history: [],
     profile: MINIMAL_PROFILE,
     lang: undefined,
+    languages: new Map(change.lang === undefined ? [] : [[change.lang.language, change.lang]]),
     ...change,
     turn,
   };
@@ -99,5 +100,6 @@ export function stubLanguagePack(language: string): LanguagePack {
     findDurations: () => [],
     formatMoney: (amount, currency) => `${String(amount)} ${currency}`,
     phrases: { refusal: [], inability: [], absence: [], alternative: [], free: [], deflection: [] },
+    commonWords: [],
   };
 }

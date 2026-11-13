@@ -7,6 +7,7 @@ import {
   evidenceCount,
   UNANSWERED_JUDGES,
   gracefulUnderFault,
+  languageMatch,
   routeExpected,
   statusAllowed,
 } from './generic.ts';
@@ -129,6 +130,83 @@ describe('answer-text', () => {
     }));
     expect(verdicts(answerText.run(checkContext(base)))).toEqual(['pass']);
     expect(verdicts(answerText.run(checkContext(emptied)))).toEqual(['fail']);
+  });
+});
+
+const packOf = (language: string, commonWords: string[]): LanguagePack => ({
+  ...stubLanguagePack(language),
+  commonWords,
+});
+const LANGUAGES = new Map([
+  ['tr', packOf('tr', ['ve', 'bir', 'bu', 'size', 'icin', 'nasil'])],
+  ['en', packOf('en', ['the', 'and', 'you', 'can', 'i', 'help'])],
+]);
+const runLanguage = (
+  text: string,
+  language: unknown,
+  languages: ReadonlyMap<string, LanguagePack> = LANGUAGES,
+) =>
+  languageMatch.run(
+    checkContext(turnView({ expect: { language }, response: { text } }), { languages }),
+  );
+
+describe('language-match', () => {
+  const turkish = 'bu ürün ve bir çadır sizin için nasil';
+  const english = 'I can help you find the tent and more';
+
+  it('passes an answer in the expected language and fails one in another', () => {
+    expect(verdicts(runLanguage(turkish, 'tr'))).toEqual(['pass']);
+    expect(verdicts(runLanguage(english, 'en'))).toEqual(['pass']);
+    expect(verdicts(runLanguage(english, 'tr'))).toEqual(['fail']);
+    expect(verdicts(runLanguage(turkish, 'en'))).toEqual(['fail']);
+    expect(runLanguage(english, 'tr')).toMatchObject({
+      findings: [
+        { dimension: 'language', message: 'the answer is in en, not tr (67% common en words)' },
+      ],
+    });
+  });
+
+  it('is unmeasured when the answer is too short or no language clearly leads', () => {
+    expect(runLanguage('I can help', 'en')).toMatchObject({
+      applicable: true,
+      findings: [],
+      unmeasured: [{ dimension: 'language', reason: 'the answer has fewer than 5 words' }],
+    });
+    // Two Turkish and two English common words: neither leads by a factor of two.
+    expect(runLanguage('bu ve the and xx yy', 'tr')).toMatchObject({
+      unmeasured: [{ reason: "no language's common words clearly lead in the answer" }],
+    });
+    // Common words are under a tenth of the answer.
+    const sparse = `the ${'word '.repeat(12)}`;
+    expect(runLanguage(sparse, 'en')).toMatchObject({ findings: [], unmeasured: [{}] });
+  });
+
+  it('reads words between punctuation, not only between spaces', () => {
+    expect(verdicts(runLanguage('i, can, help, you, the, and.', 'en'))).toEqual(['pass']);
+  });
+
+  it('does not apply without an expected language, its pack, or a second pack', () => {
+    expect(runLanguage(english, undefined)).toMatchObject({ applicable: false });
+    expect(runLanguage(english, 'de')).toMatchObject({ applicable: false });
+    const onlyEnglish = new Map([['en', packOf('en', ['the'])]]);
+    expect(runLanguage(english, 'en', onlyEnglish)).toMatchObject({
+      applicable: false,
+      reason: 'one language pack is loaded: nothing to tell it from',
+    });
+  });
+
+  it('catches an answer switched to another language', () => {
+    const base = turnView({ expect: { language: 'en' }, response: { text: english } });
+    const switched = mutate(base, (view) => ({
+      ...view,
+      response: { ...view.response, text: turkish },
+    }));
+    expect(verdicts(languageMatch.run(checkContext(base, { languages: LANGUAGES })))).toEqual([
+      'pass',
+    ]);
+    expect(verdicts(languageMatch.run(checkContext(switched, { languages: LANGUAGES })))).toEqual([
+      'fail',
+    ]);
   });
 });
 
