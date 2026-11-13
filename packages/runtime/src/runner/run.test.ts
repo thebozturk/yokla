@@ -1462,6 +1462,85 @@ describe('runSuite with the model proxy', () => {
     expect(ran).toEqual(['d']);
   });
 
+  it('judges an unusable answer to an edge-case turn as a finding, not an error (ADR-0019)', async () => {
+    const t = await target((_r, index, response) => {
+      if (index === 0) {
+        response.writeHead(200, { 'content-type': 'text/html' });
+        response.end('<h1>oops</h1>');
+      } else if (index === 1) json(response, { nothing: 'here' });
+      else if (index === 2) response.destroy();
+      else {
+        response.writeHead(200, { 'content-type': 'text/html' });
+        response.end('<h1>oops</h1>');
+      }
+    });
+    const edge = { allowStatus: [400] };
+    const results = await runSuite(
+      options(
+        profile(t.url),
+        cases(
+          // notEmpty needs an answer: an unusable one is judged by status-allowed alone.
+          { id: 'html', turns: [{ user: 'a', expect: { ...edge, answer: { notEmpty: true } } }] },
+          { id: 'no-text', turns: [{ user: 'b', expect: edge }] },
+          { id: 'dropped', turns: [{ user: 'c', expect: edge }] },
+          { id: 'plain', turns: [{ user: 'd' }] },
+        ),
+        { checks: CORE_CHECKS },
+      ),
+    );
+    expect(Results.safeParse(results).success).toBe(true);
+    const finding = (id: string) => {
+      const turn = results.cases.find((c) => c.id === id)?.samples[0]?.turns[0];
+      return {
+        error: turn?.error,
+        status: results.cases.find((c) => c.id === id)?.status,
+        message: turn?.checks.find((c) => c.check === 'status-allowed')?.findings[0]?.message,
+      };
+    };
+    const applied = results.cases[0]?.samples[0]?.turns[0]?.checks
+      .filter((c) => c.applicable)
+      .map((c) => c.check);
+    expect(applied).toEqual(['status-allowed']);
+    expect(finding('html')).toEqual({
+      error: undefined,
+      status: 'fail',
+      message: "answered with 200, but the answer can't be used: the response is not JSON",
+    });
+    expect(finding('no-text')).toEqual({
+      error: undefined,
+      status: 'fail',
+      message: "answered with 200, but the answer can't be used: answer text not found at $.answer",
+    });
+    expect(finding('dropped')).toMatchObject({ error: undefined, status: 'fail' });
+    // The finding says why there was no answer.
+    expect(finding('dropped').message).toMatch(/^got no answer: \S/u);
+    // Without allowStatus, an answer yokla can't read is still an error.
+    expect(finding('plain')).toEqual({
+      error: 'the response is not JSON',
+      status: 'error',
+      message: undefined,
+    });
+  });
+
+  it('judges an edge-case turn whose stream ends before its done event as unhandled', async () => {
+    const t = await target((_r, _i, response) => {
+      events(response, [['text_delta', { text: 'Ta' }]]);
+    });
+    const results = await runSuite(
+      options(
+        profile(t.url, { response: STREAMED }),
+        cases({ turns: [{ user: ' ', expect: { allowStatus: [400, 422] } }] }),
+        { checks: CORE_CHECKS },
+      ),
+    );
+    const turn = results.cases[0]?.samples[0]?.turns[0];
+    expect(turn?.error).toBeUndefined();
+    expect(turn?.checks.find((c) => c.check === 'status-allowed')?.findings[0]?.message).toBe(
+      'answered with 200, but the answer can\'t be used: the stream ended before its "turn_complete" event',
+    );
+    expect(results.cases[0]?.status).toBe('fail');
+  });
+
   it('judges the language of an answer with every loaded language pack (ADR-0018)', async () => {
     const t = await target((_r, index, response) => {
       json(

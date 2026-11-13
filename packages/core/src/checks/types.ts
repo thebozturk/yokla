@@ -56,6 +56,12 @@ export interface TurnView {
    * target gave no usable answer under them; the text is then empty.
    */
   readonly faults: { readonly failure: string | undefined } | undefined;
+  /**
+   * Why the answer can't be used, in a turn that allows other statuses
+   * (ADR-0019): an incomplete stream, a body that isn't JSON, no answer text.
+   * The text is then empty, and status-allowed judges the turn.
+   */
+  readonly unusable: string | undefined;
   /** The model calls the proxy tied to this turn; undefined without proxy data (ADR-0012). */
   readonly proxy:
     { readonly calls: readonly ProxyCallView[]; readonly costUsd: number | null } | undefined;
