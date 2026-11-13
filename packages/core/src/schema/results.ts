@@ -131,6 +131,8 @@ export const CaseResult = z.object({
   /** true when samples disagree. */
   unstable: z.boolean(),
   knownGap: z.object({ reason: z.string(), issue: z.string().optional() }).optional(),
+  /** A proposed case ran, but doesn't gate until a person approves it (ADR-0004, ADR-0018). */
+  review: z.literal('proposed').optional(),
   dimensions: z.array(DimensionResult),
   samples: z.array(Sample),
 });

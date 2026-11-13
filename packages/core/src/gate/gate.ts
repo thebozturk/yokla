@@ -129,14 +129,22 @@ export function evaluateGate(
   const notices: string[] = [];
 
   if (results.run.partial) problems.push('the run is partial: it stopped before every case ran');
+  // Only approved cases gate (ADR-0004): a proposed case ran, and waits for a person.
+  const judged = results.cases.filter((c) => c.review !== 'proposed');
+  const proposed = results.cases.filter((c) => c.review === 'proposed');
+  if (proposed.length > 0) {
+    notices.push(
+      `${counted(proposed.length, 'proposed case')} not gating until a person approves: ${ids(proposed)}`,
+    );
+  }
   for (const status of ['error', 'fixture-missing'] as const) {
-    const cases = results.cases.filter((c) => c.status === status);
+    const cases = judged.filter((c) => c.status === status);
     if (cases.length > 0)
       problems.push(`${counted(cases.length, `${status} case`)}: ${ids(cases)}`);
   }
 
   const suites = new Map<CaseResult['suite'], CaseResult[]>();
-  for (const c of results.cases) suites.set(c.suite, [...(suites.get(c.suite) ?? []), c]);
+  for (const c of judged) suites.set(c.suite, [...(suites.get(c.suite) ?? []), c]);
   for (const [suite, cases] of suites) {
     const own = config.suites?.[suite];
     const maxFailures = own?.maxFailures ?? config.maxFailures ?? 0;
@@ -163,7 +171,7 @@ export function evaluateGate(
     const { suites: _suites, ...wide } = config;
     breaches.push(...budgetBreaches(suite, cases, { ...wide, ...own, allowUnmeasured }));
   }
-  for (const c of results.cases) {
+  for (const c of judged) {
     if (c.status === 'gap-closed')
       notices.push(`${c.id} passes now; remove its known-gap marker and update the baseline`);
   }
@@ -177,6 +185,8 @@ export function evaluateGate(
       const now = current.get(before.id);
       if (now === undefined) {
         notices.push(`${before.id} passed in the baseline but is not in this run`);
+      } else if (now.review === 'proposed') {
+        notices.push(`${now.id} passed in the baseline but is proposed now, so it isn't compared`);
       } else if (
         before.definitionSha256 !== undefined &&
         now.definitionSha256 !== undefined &&

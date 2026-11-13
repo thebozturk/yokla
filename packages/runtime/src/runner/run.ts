@@ -17,6 +17,7 @@ import {
   queryJsonPath,
   readStream,
   RESULTS_SCHEMA_ID,
+  reviewStatus,
   runChecks,
   summariseChecks,
   toJson,
@@ -696,6 +697,7 @@ function judgeCase(
     status: aggregate.status,
     unstable: aggregate.unstable,
     ...(testCase.knownGap === undefined ? {} : { knownGap: testCase.knownGap }),
+    ...(reviewStatus(testCase) === 'proposed' ? { review: 'proposed' as const } : {}),
     dimensions: aggregate.dimensions,
     samples,
   };
@@ -792,7 +794,9 @@ function withEnv(text: string, env: RunOptions['env']): string {
   return text.replaceAll(/\{\{\s*env\.(\w+)\s*\}\}/gu, (_m, name: string) => env[name] ?? '');
 }
 
-export async function runSuite(options: RunOptions): Promise<Results> {
+export async function runSuite(input: RunOptions): Promise<Results> {
+  // ADR-0004: a rejected case doesn't run; a proposed one runs, and doesn't gate.
+  const options = { ...input, cases: input.cases.filter((c) => reviewStatus(c) !== 'rejected') };
   preflight(options);
   const prepared = prepare(options);
   const target = options.profile.target;

@@ -166,6 +166,18 @@ describe('terminalSummary', () => {
     ]);
   });
 
+  it('marks proposed cases, and says they gate once approved (ADR-0004)', () => {
+    const { out } = terminalSummary(
+      results([{ ...typeFail, review: 'proposed' }, kase('ok', 'pass', { review: 'proposed' })]),
+    );
+    expect(out.slice(0, 3)).toEqual([
+      '2 cases: pass 1, fail 1',
+      '  2 proposed: they ran, and gate once a person sets their status to approved',
+      '  fail  high-chair  filter-honesty 1/1: presents 7 product(s) of other types [proposed]',
+    ]);
+    expect(terminalSummary(mixed).out.join('\n')).not.toContain('proposed');
+  });
+
   it('reports turn errors and run issues on stderr', () => {
     const { err } = terminalSummary(results(mixed.cases, { issues: ['logs unreadable'] }));
     expect(err).toEqual(['  broken [sample 0]: HTTP 500', '  run: logs unreadable']);
@@ -235,6 +247,15 @@ describe('junitXml', () => {
       '<testsuite name="quality" tests="2" failures="1" errors="0" skipped="0" time="0.480"',
     );
     expect(xml.trimEnd().endsWith('</testsuites>')).toBe(true);
+  });
+
+  it('skips a proposed case whatever its status, and keeps the status in the message', () => {
+    const proposed = junitXml(results([{ ...typeFail, review: 'proposed' }]));
+    expect(proposed).toContain('tests="1" failures="0" errors="0" skipped="1"');
+    expect(proposed).toContain(
+      '<skipped message="proposed, not approved yet: fail: filter-honesty 1/1: presents 7 product(s) of other types"/>',
+    );
+    expect(proposed).not.toContain('<failure');
   });
 
   it('writes the failing findings of the deciding dimensions as the failure', () => {

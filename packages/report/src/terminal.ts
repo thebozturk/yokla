@@ -46,13 +46,20 @@ export function terminalSummary(results: Results): TerminalSummary {
     return count === undefined ? [] : [`${status} ${String(count)}`];
   });
   out.push(`${String(results.summary.cases)} cases: ${counts.join(', ')}`);
+  const proposed = results.cases.filter((c) => c.review === 'proposed').length;
+  if (proposed > 0) {
+    out.push(
+      `  ${String(proposed)} proposed: they ran, and gate once a person sets their status to approved`,
+    );
+  }
 
   const rows: [string, string, string][] = [];
   for (const c of results.cases) {
     const problems = caseProblems(c);
     const reason = caseReason(c, problems);
     if (reason !== undefined) {
-      rows.push([c.status, c.id, `${reason}${c.unstable ? ' [unstable]' : ''}`]);
+      const marks = `${c.unstable ? ' [unstable]' : ''}${c.review === 'proposed' ? ' [proposed]' : ''}`;
+      rows.push([c.status, c.id, `${reason}${marks}`]);
     }
     const advisory = dimensionSummary(c, problems.advisory, true);
     if (advisory !== '') rows.push(['advisory', c.id, advisory]);

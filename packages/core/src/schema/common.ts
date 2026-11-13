@@ -50,6 +50,8 @@ export const MACHINE_SOURCES = [
   'code',
   'probe',
   'import',
+  // Written from yokla's own templates, such as yokla init's starter cases (ADR-0018).
+  'template',
 ] as const;
 
 /**

@@ -136,6 +136,13 @@ describe('baselineOf', () => {
   });
 });
 
+describe('baselineOf and proposed cases', () => {
+  it('leaves a proposed case out: it gates only once a person approves it (ADR-0004)', () => {
+    const baseline = baselineOf(results([{ id: 'a' }, { id: 'p', review: 'proposed' }]));
+    expect(baseline.cases.map((c) => c.id)).toEqual(['a']);
+  });
+});
+
 describe('baselineChanges', () => {
   const before = baselineOf(
     results([
