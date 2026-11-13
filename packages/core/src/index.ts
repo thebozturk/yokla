@@ -134,6 +134,7 @@ export type {
   TurnView,
 } from './checks/types.ts';
 export { findPhrases, hasPhrase, type PhraseMatch } from './text/phrases.ts';
+export { findQuantities, type QuantityMention } from './text/quantities.ts';
 export {
   answerText,
   answeredWithinDeadline,

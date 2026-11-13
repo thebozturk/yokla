@@ -102,5 +102,6 @@ export function stubLanguagePack(language: string): LanguagePack {
     formatMoney: (amount, currency) => `${String(amount)} ${currency}`,
     phrases: { refusal: [], inability: [], absence: [], alternative: [], free: [], deflection: [] },
     commonWords: [],
+    numberWords: {},
   };
 }

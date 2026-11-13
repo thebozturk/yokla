@@ -69,6 +69,21 @@ export const english: LanguagePack = {
       'live chat',
     ],
   },
+  // Number words for quantities such as "four bags" (ADR-0021).
+  numberWords: {
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10,
+    eleven: 11,
+    twelve: 12,
+    twenty: 20,
+  },
   // Function words and words of a chat, folded; none is a common Turkish word (ADR-0018).
   commonWords: [
     'the',

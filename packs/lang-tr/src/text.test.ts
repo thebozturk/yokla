@@ -1,4 +1,4 @@
-import { findPhrases } from '@yokla/core';
+import { findPhrases, findQuantities } from '@yokla/core';
 import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { turkish } from './index.ts';
@@ -178,5 +178,31 @@ describe('commonWords', () => {
     expect(turkish.commonWords.length).toBeGreaterThan(50);
     expect(new Set(turkish.commonWords).size).toBe(turkish.commonWords.length);
     for (const word of turkish.commonWords) expect(fold(word)).toBe(word);
+  });
+});
+
+describe('numberWords', () => {
+  it('holds folded words from 2 up, as findQuantities compares them', () => {
+    for (const [word, value] of Object.entries(turkish.numberWords)) {
+      expect(fold(word)).toBe(word);
+      expect(value).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it.each([
+    ['Dört tulum, dört kişi için 356 TL.', [4, 4]],
+    ['İki kişilik çadır ve 3 mat.', [2, 3]],
+  ] as const)('finds the quantities in %s', (text, expected) => {
+    expect(findQuantities(text, turkish).map((q) => q.value)).toEqual(expected);
+  });
+
+  it.each([
+    '500 TL altı çadırlar',
+    'ön cep',
+    'dördüncü tulum',
+    '14 gün içinde iade',
+    'Fiyatı 89 TL.',
+  ])('finds no quantity in %s', (text) => {
+    expect(findQuantities(text, turkish)).toEqual([]);
   });
 });

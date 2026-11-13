@@ -1,4 +1,4 @@
-import { findPhrases } from '@yokla/core';
+import { findPhrases, findQuantities } from '@yokla/core';
 import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { english } from './index.ts';
@@ -158,4 +158,27 @@ describe('commonWords', () => {
     expect(new Set(english.commonWords).size).toBe(english.commonWords.length);
     for (const word of english.commonWords) expect(fold(word)).toBe(word);
   });
+});
+
+describe('numberWords', () => {
+  it('holds folded words from 2 up, as findQuantities compares them', () => {
+    for (const [word, value] of Object.entries(english.numberWords)) {
+      expect(fold(word)).toBe(word);
+      expect(value).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it.each([
+    ['Four sleeping bags, one per person: $356 for four.', [4, 4]],
+    ['A tent for two and 3 mats.', [2, 3]],
+  ] as const)('finds the quantities in %s', (text, expected) => {
+    expect(findQuantities(text, english).map((q) => q.value)).toEqual(expected);
+  });
+
+  it.each(['The fourth bag', 'fourteen pegs', 'We often ship in 14 days.', 'Only $89.'])(
+    'finds no quantity in %s',
+    (text) => {
+      expect(findQuantities(text, english)).toEqual([]);
+    },
+  );
 });
