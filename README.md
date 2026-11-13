@@ -41,6 +41,8 @@ cost, resilience and regression gates, in one run.
   answered, when it writes one structured line per request.
 - **Reports and gates.**
   - A terminal summary and JUnit XML for CI.
+  - On the main branch, an offline HTML report that shows each answer next to
+    its findings (ADR-0023).
   - `yokla gate` checks thresholds per suite and regressions against a
     baseline.
   - The baseline is small enough to commit.
@@ -85,7 +87,7 @@ target with seeded defects. Its README walks through a full run.
 
 - **v0.3:** a first run in five minutes (`yokla init` writes a profile from
   one message to your assistant, with starter cases that suit any assistant),
-  an HTML report, and publishing to npm; more ways to reach a target and see
+  an HTML report (done on the main branch), and publishing to npm; more ways to reach a target and see
   its model calls (WebSocket, Gemini, OpenTelemetry), tool-call checks, and a
   simulated customer that shops with a goal.
 - **v0.4:** an analyzer that reads your code, API contract, prompts, data

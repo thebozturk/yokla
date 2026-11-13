@@ -142,8 +142,10 @@ pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml \
 `packages/cli/src/demo-shop.e2e.test.ts` does the same in CI.
 
 - **JUnit XML.** `--junit <file>` also writes a JUnit XML report for CI.
+- **HTML.** `--html <file>` also writes an offline HTML report with every
+  answer and finding (ADR-0023).
 - **Earlier runs.** `pnpm yokla report --results runs/<run id>.json` prints the
-  summary of a results file and can write the same JUnit report.
+  summary of a results file and can write the same reports.
 - **Gate.** `pnpm yokla gate --results <file> [--baseline <file>]` exits with
   `0` passed, `1` broken or `2` when the run can't be judged (ADR-0010).
 - **Baseline.** `pnpm yokla baseline --results <file>` accepts a run as

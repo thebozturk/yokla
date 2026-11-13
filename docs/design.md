@@ -643,7 +643,8 @@ ADR-0014 sets how cost and latency are bounded.
 - **Secrets** are read only from the environment and never written to results.
 - **Target data.** Generated and recorded files may contain the target's data,
   so `yokla-data/` and `runs/` stay out of version control. `yokla init`
-  adds them to `.gitignore` (ADR-0018).
+  adds them to `.gitignore` (ADR-0018). The HTML report holds the target's
+  answers too (ADR-0023).
 - **Untrusted downloads.** Downloaded datasets and attack corpora are treated
   as data and never executed.
 
@@ -656,8 +657,9 @@ ADR-0014 sets how cost and latency are bounded.
   - each turn's model calls and cost, and the fields observed in the target's
     logs,
   - aggregates and timings.
-- **Reports:** a terminal summary and JUnit XML. A single-file offline HTML
-  report comes in v0.3, and a Markdown summary for pull requests later.
+- **Reports:** a terminal summary, JUnit XML, and a single-file offline HTML
+  report with no script that shows every turn (ADR-0023). A Markdown summary
+  for pull requests comes later.
 - **Gate (ADR-0010).** `yokla gate` applies the thresholds per suite from
   `yokla.config.yaml`. Exit codes: `0` passed, `1` gate broken, `2` run error.
   - By default a suite allows no `fail` and no `unmeasured` case;
@@ -811,7 +813,9 @@ languages, SDK adapters. Checks that understand more of an answer:
    `results.v1`; other tools are reached by mapping in `interop-*` packages.
 4. **Default attacker and judge model:** none (the user must choose), or a
    recommended local model?
-5. **HTML report:** static, with or without a framework?
+5. ~~**HTML report.**~~ Decided in
+   [ADR-0023](adr/0023-static-html-report.md): one static file, with no
+   framework and no script.
 6. **Contribution terms:** DCO or CLA. DCO is the usual choice for Apache-2.0
    projects.
 7. **Turkish README:** maintain one alongside the English one?
