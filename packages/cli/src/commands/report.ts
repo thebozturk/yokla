@@ -4,7 +4,7 @@
 
 import { parseArgs } from 'node:util';
 import type { Results } from '@yokla/core';
-import { junitXml, terminalSummary } from '@yokla/report';
+import { htmlReport, junitXml, terminalSummary } from '@yokla/report';
 import { readResults, ResultsError } from '../load.ts';
 import { writeReport, type Output } from './run.ts';
 
@@ -12,11 +12,13 @@ export const REPORT_HELP = `Usage: yokla report --results <file> [options]
 
 Options:
   --results <file>      the results file of a run
-  --junit <file>        also write a JUnit XML report`;
+  --junit <file>        also write a JUnit XML report
+  --html <file>         also write an HTML report; it holds the target's answers`;
 
 const REPORT_OPTIONS = {
   results: { type: 'string' },
   junit: { type: 'string' },
+  html: { type: 'string' },
   help: { type: 'boolean' },
 } as const;
 
@@ -59,5 +61,6 @@ export function reportCommand(args: readonly string[], io: Output): number {
   for (const line of summary.out) io.out(line);
   for (const line of summary.err) io.err(line);
   if (values.junit !== undefined) io.out(`junit: ${writeReport(values.junit, junitXml(results))}`);
+  if (values.html !== undefined) io.out(`html: ${writeReport(values.html, htmlReport(results))}`);
   return 0;
 }

@@ -244,6 +244,18 @@ describe('yokla report', () => {
     );
   });
 
+  it('writes an HTML report of a results file', async () => {
+    const dir = workspace({ 'run.json': JSON.stringify(valid) });
+    const html = join(dir, 'reports', 'run.html');
+    const { io, out, err } = capture();
+    expect(await main(['report', '--results', join(dir, 'run.json'), '--html', html], io)).toBe(0);
+    expect(out.at(-1)).toBe(`html: ${html}`);
+    expect(err).toEqual([]);
+    const page = readFileSync(html, 'utf8');
+    expect(page).toMatch(/^<!doctype html>\n/u);
+    expect(page).toContain('<details class="case" id="case-a" open>');
+  });
+
   it('refuses a file it cannot read, another schema or invalid results', async () => {
     const dir = workspace({
       'broken.json': '{',
