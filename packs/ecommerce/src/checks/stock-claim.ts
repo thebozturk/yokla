@@ -16,26 +16,50 @@ import { namedProducts, notApplicable, productsOf, segments } from './common.ts'
 type Claim = 'in' | 'out';
 
 function verdictFor(claim: Claim, product: Product): CheckFinding | undefined {
-  if (product.stock === undefined) return undefined;
+  const { stock, inStock } = product;
+  if (stock === undefined && inStock === undefined) return undefined;
   const label = product.name ?? product.id ?? 'a product';
-  if (product.stock === null) {
+  const said = claim === 'in' ? 'in stock' : 'out of stock';
+  const evidence = {
+    product: product.id ?? null,
+    claim,
+    ...(stock === undefined ? {} : { stock }),
+    ...(inStock === undefined ? {} : { inStock }),
+  };
+  // A quantity says more than a boolean, so it decides when both are known (ADR-0020).
+  if (typeof stock === 'number') {
+    const ok = claim === 'in' ? stock > 0 : stock === 0;
+    const disagree = typeof inStock === 'boolean' && inStock !== stock > 0;
     return {
       dimension: 'fabrication',
-      verdict: 'fail',
+      verdict: ok ? 'pass' : 'fail',
       severity: 'high',
-      message: `claims ${label} is ${claim === 'in' ? 'in stock' : 'out of stock'}, but its stock is unknown`,
-      evidence: { product: product.id ?? null, claim, stock: null },
+      message: `${
+        ok
+          ? `${label}: the ${claim === 'in' ? 'in-stock' : 'out-of-stock'} claim matches stock ${String(stock)}`
+          : `claims ${label} is ${said}, but stock is ${String(stock)}`
+      }${disagree ? `; the quantity decides over inStock ${String(inStock)}` : ''}`,
+      evidence,
     };
   }
-  const ok = claim === 'in' ? product.stock > 0 : product.stock === 0;
+  if (typeof inStock === 'boolean') {
+    const ok = claim === 'in' ? inStock : !inStock;
+    return {
+      dimension: 'fabrication',
+      verdict: ok ? 'pass' : 'fail',
+      severity: 'high',
+      message: ok
+        ? `${label}: the ${claim === 'in' ? 'in-stock' : 'out-of-stock'} claim matches its availability`
+        : `claims ${label} is ${said}, but it is ${inStock ? 'in stock' : 'out of stock'}`,
+      evidence,
+    };
+  }
   return {
     dimension: 'fabrication',
-    verdict: ok ? 'pass' : 'fail',
+    verdict: 'fail',
     severity: 'high',
-    message: ok
-      ? `${label}: the ${claim === 'in' ? 'in-stock' : 'out-of-stock'} claim matches stock ${String(product.stock)}`
-      : `claims ${label} is ${claim === 'in' ? 'in stock' : 'out of stock'}, but stock is ${String(product.stock)}`,
-    evidence: { product: product.id ?? null, claim, stock: product.stock },
+    message: `claims ${label} is ${said}, but its stock is unknown`,
+    evidence,
   };
 }
 
@@ -52,7 +76,9 @@ export function stockClaim(data: EcommerceData): Check {
       if (phrases === undefined) return notApplicable(`no stock wording for "${lang.language}"`);
       const products = productsOf(context.turn, data) ?? [];
       if (products.length === 0) return notApplicable('no products returned');
-      if (products.every((product) => product.stock === undefined)) {
+      if (
+        products.every((product) => product.stock === undefined && product.inStock === undefined)
+      ) {
         return notApplicable('stock is neither in the response nor in the catalog');
       }
 

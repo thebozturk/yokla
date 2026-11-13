@@ -36,6 +36,9 @@ const Catalog = z.strictObject({
     price: FieldPath,
     currency: FieldPath.optional(),
     stock: FieldPath.optional().meta({ description: 'null in the data means unknown, not zero.' }),
+    inStock: FieldPath.optional().meta({
+      description: 'Available or not, a boolean, for a catalog without quantities (ADR-0020).',
+    }),
   }),
 });
 

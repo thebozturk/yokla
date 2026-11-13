@@ -22,6 +22,10 @@ const tents = [
   { id: 'T2', name: 'Kubbe Çadır', price: 2499.9, currency: 'TRY', stock: 12 },
   { id: 'T3', name: 'Ultra Hafif Çadır', price: 4250, currency: 'TRY', stock: null },
 ];
+/** A headlamp whose availability is this (ADR-0020). */
+const lamp = (inStock: boolean | string): EvidenceItem[] => [
+  { id: 'H', name: 'Headlamp', inStock },
+];
 const honest = [
   'Çadır seçeneklerimiz:',
   '- Plaj Çadırı: 899,50 TL (stokta yok)',
@@ -216,9 +220,69 @@ describe('stock-claim', () => {
     ).toEqual(['fail']);
   });
 
+  it('judges claims by availability when only inStock is known (ADR-0020)', () => {
+    expect(run('The Headlamp is in stock.', lamp(true), fakeEnglish)).toEqual(['pass']);
+    expect(run('The Headlamp is out of stock.', lamp(false), fakeEnglish)).toEqual(['pass']);
+    expect(run('The Headlamp is in stock.', lamp(false), fakeEnglish)).toEqual(['fail']);
+    expect(run('The Headlamp is out of stock.', lamp(true), fakeEnglish)).toEqual(['fail']);
+    // A value that isn't a boolean is unknown: a claim about it is invented.
+    expect(run('The Headlamp is in stock.', lamp('yes'), fakeEnglish)).toEqual(['fail']);
+    const failed = check.run(
+      checkContext(answer('The Headlamp is in stock.', lamp(false)), { lang: fakeEnglish }),
+    );
+    expect(failed.applicable && failed.findings[0]?.message).toBe(
+      'claims Headlamp is in stock, but it is out of stock',
+    );
+  });
+
+  it('lets the quantity decide when it disagrees with inStock, and says so', () => {
+    const outcome = check.run(
+      checkContext(
+        answer('The Headlamp is in stock.', [
+          { id: 'H', name: 'Headlamp', stock: 0, inStock: true },
+        ]),
+        { lang: fakeEnglish },
+      ),
+    );
+    expect(verdicts(outcome)).toEqual(['fail']);
+    expect(outcome.applicable && outcome.findings[0]?.message).toBe(
+      'claims Headlamp is in stock, but stock is 0; the quantity decides over inStock true',
+    );
+  });
+
+  it('catches an availability flipped in the evidence', () => {
+    const base = answer('The Headlamp is in stock.', [
+      { id: 'H', name: 'Headlamp', inStock: true },
+    ]);
+    const flipped = mutate(base, (view) => ({
+      ...view,
+      response: {
+        ...view.response,
+        evidence: { products: [{ id: 'H', name: 'Headlamp', inStock: false }] },
+      },
+    }));
+    expect(verdicts(check.run(checkContext(base, { lang: fakeEnglish })))).toEqual(['pass']);
+    expect(verdicts(check.run(checkContext(flipped, { lang: fakeEnglish })))).toEqual(['fail']);
+  });
+
+  it('reads availability from the catalog when the response has none', () => {
+    const catalog = new Map([
+      ['H', { id: 'H', type: 'lamp', price: 1, currency: 'TRY', stock: undefined, inStock: false }],
+    ]);
+    const outcome = stockClaim(data({ catalog })).run(
+      checkContext(answer('The Headlamp is in stock.', [{ id: 'H', name: 'Headlamp' }]), {
+        lang: fakeEnglish,
+      }),
+    );
+    expect(verdicts(outcome)).toEqual(['fail']);
+  });
+
   it('reads stock from the catalog when the response has none', () => {
     const catalog = new Map([
-      ['T9', { id: 'T9', type: 'tent', price: 10, currency: 'TRY', stock: null }],
+      [
+        'T9',
+        { id: 'T9', type: 'tent', price: 10, currency: 'TRY', stock: null, inStock: undefined },
+      ],
     ]);
     const outcome = stockClaim(data({ catalog })).run(
       checkContext(answer('- Dağ Çadırı (stokta var)', [{ id: 'T9', name: 'Dağ Çadırı' }]), {
@@ -233,7 +297,7 @@ describe('stock-claim', () => {
       /neither in the response nor in the catalog/u,
     );
     const catalog = new Map([
-      ['Y', { id: 'Y', type: 'tent', price: 1, currency: 'TRY', stock: 3 }],
+      ['Y', { id: 'Y', type: 'tent', price: 1, currency: 'TRY', stock: 3, inStock: undefined }],
     ]);
     const unseen = stockClaim(data({ catalog })).run(
       checkContext(
@@ -268,8 +332,8 @@ describe('stock-claim', () => {
 describe('loadData', () => {
   const files: Record<string, string> = {
     'catalog.jsonl': [
-      JSON.stringify({ sku: 'A', path: 'x/tent', amount: '10.50', cur: 'TRY', qty: 3 }),
-      JSON.stringify({ sku: 'B', path: 'x/tent', amount: 20, cur: 'TRY', qty: null }),
+      JSON.stringify({ sku: 'A', path: 'x/tent', amount: '10.50', cur: 'TRY', qty: 3, ok: true }),
+      JSON.stringify({ sku: 'B', path: 'x/tent', amount: 20, cur: 'TRY', qty: null, ok: 'maybe' }),
     ].join('\n'),
     'faq.jsonl': [
       JSON.stringify({ topic: 'returns', lang: 'tr', answer: '14 gün' }),
@@ -294,7 +358,14 @@ describe('loadData', () => {
           catalog: {
             kind: 'file',
             path: 'catalog.jsonl',
-            fields: { id: 'sku', type: 'path', price: 'amount', currency: 'cur', stock: 'qty' },
+            fields: {
+              id: 'sku',
+              type: 'path',
+              price: 'amount',
+              currency: 'cur',
+              stock: 'qty',
+              inStock: 'ok',
+            },
           },
           policies: {
             returns: { source: 'faq', path: 'faq.jsonl' },
@@ -311,8 +382,11 @@ describe('loadData', () => {
       price: 10.5,
       currency: 'TRY',
       stock: 3,
+      inStock: true,
     });
     expect(loaded.catalog?.get('B')?.stock).toBeNull();
+    // A value that isn't a boolean is unknown, like a null stock.
+    expect(loaded.catalog?.get('B')?.inStock).toBeNull();
     expect(loaded.policies.get('returns')?.answers).toEqual({ tr: '14 gün', en: '14 days' });
     expect(loaded.policies.get('shipping')?.answers).toEqual({});
     expect(loaded.policies.get('warranty')?.answers).toEqual({ '*': 'Two years.' });
@@ -721,8 +795,28 @@ describe('type-matched-or-disclosed', () => {
 
   it('reads types from the catalog and does not judge products of unknown type', () => {
     const catalog = new Map([
-      ['T1', { id: 'T1', type: 'outdoor/camping/tent', price: 1, currency: 'TRY', stock: 1 }],
-      ['B1', { id: 'B1', type: 'outdoor/bags/backpack', price: 1, currency: 'TRY', stock: 1 }],
+      [
+        'T1',
+        {
+          id: 'T1',
+          type: 'outdoor/camping/tent',
+          price: 1,
+          currency: 'TRY',
+          stock: 1,
+          inStock: undefined,
+        },
+      ],
+      [
+        'B1',
+        {
+          id: 'B1',
+          type: 'outdoor/bags/backpack',
+          price: 1,
+          currency: 'TRY',
+          stock: 1,
+          inStock: undefined,
+        },
+      ],
     ]);
     const d = data({ config: nested.config, catalog });
     const plain = [{ id: 'T1' }, { id: 'B1' }];
@@ -738,7 +832,17 @@ describe('type-matched-or-disclosed', () => {
 
   it('refuses a requested type that no catalog type matches', () => {
     const catalog = new Map([
-      ['T1', { id: 'T1', type: 'outdoor/camping/tent', price: 1, currency: 'TRY', stock: 1 }],
+      [
+        'T1',
+        {
+          id: 'T1',
+          type: 'outdoor/camping/tent',
+          price: 1,
+          currency: 'TRY',
+          stock: 1,
+          inStock: undefined,
+        },
+      ],
     ]);
     const d = data({ config: nested.config, catalog });
     expect(() => run('Çadırlar:', [{ id: 'T1' }], 'outdoor/camping/tnet', { d })).toThrow(

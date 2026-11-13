@@ -1125,6 +1125,11 @@
                   "description": "null in the data means unknown, not zero.",
                   "type": "string",
                   "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                },
+                "inStock": {
+                  "description": "Available or not, a boolean, for a catalog without quantities (ADR-0020).",
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
                 }
               },
               "required": [
