@@ -1,6 +1,6 @@
 # 0019. An edge-case turn is judged on whether the target handled it
 
-Status: Proposed · Date: 2026-11-13 · Amends 0018
+Status: Accepted · Date: 2026-11-13 · Amends 0018
 
 ## Context
 
