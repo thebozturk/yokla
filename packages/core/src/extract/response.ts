@@ -101,21 +101,40 @@ export function extractResponse(
 
   const evidence: Record<string, EvidenceItem[]> = {};
   for (const [name, collection] of Object.entries(mapping.evidence ?? {})) {
-    const nodes = queryJsonPath(body, collection.items);
-    const [only] = nodes;
-    if (nodes.length === 1 && Array.isArray(only) && !collection.items.endsWith('[*]')) {
-      issues.push(
-        `evidence "${name}": ${collection.items} selects an array; did you mean ${collection.items}[*]?`,
-      );
+    const paths = typeof collection.items === 'string' ? [collection.items] : collection.items;
+    const items: EvidenceItem[] = [];
+    // Several paths (ADR-0020): an id an earlier path returned is the same item, shown
+    // twice; within one path a repeated item stays, for no-duplicates to see.
+    const earlier = new Set<string>();
+    for (const path of paths) {
+      const nodes = queryJsonPath(body, path);
+      const [only] = nodes;
+      if (nodes.length === 1 && Array.isArray(only) && !path.endsWith('[*]')) {
+        issues.push(`evidence "${name}": ${path} selects an array; did you mean ${path}[*]?`);
+      }
+      const ids = new Set<string>();
+      for (const node of nodes) {
+        const item = Object.fromEntries(
+          Object.entries(collection.fields).map(([field, spec]) => [
+            field,
+            extractField(
+              node,
+              spec,
+              issues,
+              `evidence "${name}"[${String(items.length)}].${field}`,
+            ),
+          ]),
+        );
+        const itemId = item['id'];
+        const key =
+          typeof itemId === 'string' || typeof itemId === 'number' ? String(itemId) : undefined;
+        if (key !== undefined && earlier.has(key)) continue;
+        if (key !== undefined) ids.add(key);
+        items.push(item);
+      }
+      for (const seen of ids) earlier.add(seen);
     }
-    evidence[name] = nodes.map((node, index) =>
-      Object.fromEntries(
-        Object.entries(collection.fields).map(([field, spec]) => [
-          field,
-          extractField(node, spec, issues, `evidence "${name}"[${String(index)}].${field}`),
-        ]),
-      ),
-    );
+    evidence[name] = items;
   }
 
   return { text, route, id, evidence, issues };

@@ -147,3 +147,60 @@ describe('extractResponse', () => {
     expect(extractResponse({ t: 'no results', p: [] }, mapping).evidence).toEqual({ products: [] });
   });
 });
+
+const pathsMapping = (items: string | string[]): Mapping => ({
+  text: '$.t',
+  evidence: { products: { items, fields: { id: 'id', price: 'p' } } },
+});
+
+describe('extractResponse, evidence from several paths (ADR-0020)', () => {
+  const ui = {
+    t: 'Here you go',
+    cards: [{ product: { id: 'A', p: 1 } }, { product: { id: 'B', p: 2 } }],
+    compare: [{ product: { id: 'B', p: 2 } }, { product: { id: 'C', p: 3 } }],
+  };
+
+  it('reads every path in order, and leaves out an id an earlier path returned', () => {
+    const result = extractResponse(
+      ui,
+      pathsMapping(['$.cards[*].product', '$.compare[*].product']),
+    );
+    expect(result.evidence['products']).toEqual([
+      { id: 'A', price: 1 },
+      { id: 'B', price: 2 },
+      { id: 'C', price: 3 },
+    ]);
+    expect(result.issues).toEqual([]);
+  });
+
+  it('keeps an item repeated within one path, for no-duplicates to see', () => {
+    const twice = { t: 'x y', cards: [{ product: { id: 'A' } }, { product: { id: 'A' } }] };
+    expect(
+      extractResponse(twice, pathsMapping(['$.cards[*].product', '$.none[*]'])).evidence[
+        'products'
+      ],
+    ).toEqual([
+      { id: 'A', price: null },
+      { id: 'A', price: null },
+    ]);
+  });
+
+  it('never leaves out an item without an id', () => {
+    const anonymous = { t: 'x y', a: [{ p: 1 }], b: [{ p: 1 }] };
+    expect(
+      extractResponse(anonymous, pathsMapping(['$.a[*]', '$.b[*]'])).evidence['products'],
+    ).toEqual([
+      { id: null, price: 1 },
+      { id: null, price: 1 },
+    ]);
+  });
+
+  it('reads one path as before, and warns per path that selects an array', () => {
+    expect(
+      extractResponse(ui, pathsMapping('$.cards[*].product')).evidence['products'],
+    ).toHaveLength(2);
+    expect(extractResponse(ui, pathsMapping(['$.cards[*].product', '$.compare'])).issues).toEqual([
+      'evidence "products": $.compare selects an array; did you mean $.compare[*]?',
+    ]);
+  });
+});
