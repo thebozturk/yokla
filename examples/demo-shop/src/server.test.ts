@@ -84,10 +84,11 @@ describe('demo-shop HTTP server', () => {
             category: 'outdoor/lighting/headlamp',
             price: { amount: 349.9, currency: 'TRY' },
             stockQuantity: 40,
+            available: true,
             attributes: {},
           },
-          { id: 'HLP-002', stockQuantity: null },
-          { id: 'HLP-003', stockQuantity: 0 },
+          { id: 'HLP-002', stockQuantity: null, available: null },
+          { id: 'HLP-003', stockQuantity: 0, available: false },
         ],
       },
     });
