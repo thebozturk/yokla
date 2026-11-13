@@ -204,3 +204,42 @@ describe('extractResponse, evidence from several paths (ADR-0020)', () => {
     ]);
   });
 });
+
+describe('extractResponse, answer text from several paths (ADR-0020)', () => {
+  const card = {
+    text: 'Here are two tents.',
+    ui: [
+      { payload: { items: [{ reason: 'Light for two.' }, { reason: 'Roomy for four.' }] } },
+      { payload: { title: 'Compare', items: [] } },
+    ],
+  };
+
+  it('joins every string at every path, in order, with a blank line between', () => {
+    const result = extractResponse(card, {
+      text: ['$.text', '$.ui[*].payload.items[*].reason', '$.ui[*].payload.title'],
+    });
+    expect(result.text).toBe('Here are two tents.\n\nLight for two.\n\nRoomy for four.\n\nCompare');
+    expect(result.issues).toEqual([]);
+  });
+
+  it('reads a card when the answer gave no text pieces, and skips empty strings', () => {
+    const silent = { ...card, text: '' };
+    expect(
+      extractResponse(silent, { text: ['$.text', '$.ui[*].payload.items[*].reason'] }).text,
+    ).toBe('Light for two.\n\nRoomy for four.');
+    // Only empty strings: the answer has text, none to show.
+    expect(extractResponse({ text: '' }, { text: ['$.text', '$.none'] }).text).toBe('');
+  });
+
+  it('has no text only when no path has a string, and names every path', () => {
+    const result = extractResponse({ n: 1 }, { text: ['$.a', '$.n'] });
+    expect(result.text).toBeUndefined();
+    expect(result.issues).toEqual(['answer text not found at $.a, $.n']);
+  });
+
+  it('reads one path as before: its first match only', () => {
+    expect(extractResponse(card, { text: '$.ui[*].payload.items[*].reason' }).text).toBe(
+      'Light for two.',
+    );
+  });
+});

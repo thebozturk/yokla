@@ -83,7 +83,10 @@ const ResponseStream = z
 
 const HttpResponse = z.strictObject({
   stream: ResponseStream.optional(),
-  text: JsonPath.meta({ description: "Where the assistant's answer text is." }),
+  text: z.union([JsonPath, z.array(JsonPath).min(1)]).meta({
+    description:
+      "Where the assistant's answer text is; or several paths, every string at each joined in order with a blank line, for answers given as components (ADR-0020).",
+  }),
   route: JsonPath.optional(),
   id: JsonPath.optional().meta({ description: "Where the target's own request id is." }),
   clarification: z
