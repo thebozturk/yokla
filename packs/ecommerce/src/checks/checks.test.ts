@@ -565,6 +565,63 @@ function withOrders(text: string, orders: EvidenceItem[]): TurnView {
   return { ...view, response: { ...view.response, evidence: { products: tents, orders } } };
 }
 
+describe('price-grounded with a price times a stated quantity (ADR-0021)', () => {
+  const check = priceGrounded(data());
+  const judge = (
+    text: string,
+    lang: LanguagePack = fakeTurkish,
+    products: EvidenceItem[] = tents,
+  ) => check.run(checkContext(answer(text, products), { lang }));
+
+  it('accepts a returned price times a quantity in digits in the same sentence', () => {
+    const outcome = judge('4 Plaj Çadırı için 3.598,00 TL.');
+    expect(verdicts(outcome)).toEqual(['pass']);
+    expect(outcome.applicable && outcome.findings[0]?.message).toContain('= 4 × ');
+    expect(outcome.applicable && outcome.findings[0]?.message).toContain('(product T1)');
+  });
+
+  it("accepts a quantity in a number word of the case's language", () => {
+    const withWords = { ...fakeTurkish, numberWords: { dort: 4 } };
+    expect(verdicts(judge('Dört Plaj Çadırı için 3.598,00 TL.', withWords))).toEqual(['pass']);
+  });
+
+  it('takes the quantity only from the same sentence', () => {
+    expect(verdicts(judge('4 kişi geliyor. Plaj Çadırı ile 3.598,00 TL.'))).toEqual(['fail']);
+  });
+
+  it('multiplies only product prices, not campaigns', () => {
+    const withCampaign = priceGrounded(
+      data({
+        config: ecommerceProfile.parse({
+          campaigns: [{ id: 'cargo', amount: 49.9, currency: 'TRY' }],
+        }),
+      }),
+    );
+    const outcome = withCampaign.run(
+      checkContext(answer('Kargo 4 kez 199,60 TL.', tents), { lang: fakeTurkish }),
+    );
+    expect(verdicts(outcome)).toEqual(['fail']);
+  });
+
+  it('does not multiply a price in another currency', () => {
+    const fourWords = { ...fakeEnglish, numberWords: { four: 4 } };
+    const lira = [{ id: 'X', price: 15, currency: 'TRY' }];
+    expect(verdicts(judge('Four of them for $60', fourWords, lira))).toEqual(['fail']);
+    const dollars = [{ id: 'X', price: 15, currency: 'USD' }];
+    expect(verdicts(judge('Four of them for $60', fourWords, dollars))).toEqual(['pass']);
+  });
+
+  it('catches a quantity that no longer matches the amount', () => {
+    const base = answer('4 Plaj Çadırı için 3.598,00 TL.', tents);
+    const changed = mutate(base, (view) => ({
+      ...view,
+      response: { ...view.response, text: view.response.text.replace('4 Plaj', '5 Plaj') },
+    }));
+    expect(verdicts(check.run(checkContext(base, { lang: fakeTurkish })))).toEqual(['pass']);
+    expect(verdicts(check.run(checkContext(changed, { lang: fakeTurkish })))).toEqual(['fail']);
+  });
+});
+
 describe('price-grounded with price sources (ADR-0020)', () => {
   const ordersSource = data({
     config: ecommerceProfile.parse({
