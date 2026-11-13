@@ -391,12 +391,12 @@ async function runSample(
         error = undefined;
         issues.push(`gave no usable answer under the injected faults: ${failure}`);
       }
-      // A turn that allows other statuses is judged on its status, not stopped by it (ADR-0018).
-      const statusOnly =
-        failure === undefined &&
-        turn.expect?.['allowStatus'] !== undefined &&
-        (result.status < 200 || result.status > 299);
-      if (statusOnly) error = undefined;
+      // An edge-case turn, one that allows other statuses, is judged on whether the
+      // target handled it, never stopped by its answer (ADR-0018, ADR-0019).
+      const edgeCase = failure === undefined && turn.expect?.['allowStatus'] !== undefined;
+      const unusable = edgeCase ? error : undefined;
+      if (edgeCase) error = undefined;
+      const statusOnly = edgeCase && unusable !== undefined;
       const clarifying =
         extracted?.route !== undefined &&
         (target.response.clarification?.routes.includes(extracted.route) ?? false);
@@ -417,6 +417,8 @@ async function runSample(
               observed: undefined,
               clarifying,
               faults: faults === undefined ? undefined : { failure },
+              // A non-2xx status is judged by the status itself; anything else, by why.
+              unusable: result.status >= 200 && result.status <= 299 ? unusable : undefined,
               proxy: undefined,
             }
           : undefined;
@@ -437,8 +439,10 @@ async function runSample(
       }
     } catch (error) {
       const failure = errorMessage(error);
+      // An edge-case turn that got no answer at all: judged like any unhandled answer (ADR-0019).
+      const edgeCase = faults === undefined && turn.expect?.['allowStatus'] !== undefined;
       outcome =
-        faults === undefined
+        faults === undefined && !edgeCase
           ? {
               turn: { ...base, error: failure },
               view: undefined,
@@ -448,7 +452,9 @@ async function runSample(
               // No answer at all under faults: judged, like any other failure under them.
               turn: {
                 ...base,
-                issues: [`gave no usable answer under the injected faults: ${failure}`],
+                ...(edgeCase
+                  ? {}
+                  : { issues: [`gave no usable answer under the injected faults: ${failure}`] }),
               },
               view: {
                 user: turn.user,
@@ -463,7 +469,8 @@ async function runSample(
                 },
                 observed: undefined,
                 clarifying: false,
-                faults: { failure },
+                faults: edgeCase ? undefined : { failure },
+                unusable: edgeCase ? failure : undefined,
                 proxy: undefined,
               },
               ...(tag === undefined ? {} : { tag }),
@@ -681,6 +688,7 @@ function judgeCase(
       // is judged only by the checks that need no answer.
       const unanswered =
         view.faults?.failure !== undefined ||
+        view.unusable !== undefined ||
         view.response.status < 200 ||
         view.response.status > 299;
       const applicable = unanswered

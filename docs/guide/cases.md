@@ -66,7 +66,7 @@ check does and when it doesn't apply.
 | `answer.contains`, `answer.notContains` | Phrases the answer must or must not contain, after the language pack's folding. | `answer-text` |
 | `answer.notEmpty` | The answer text has at least one letter or digit. | `answer-text` |
 | `language` | The language the answer must be in, `tr` or `en`. | `language-match` |
-| `allowStatus` | Non-2xx statuses that count as a handled answer, such as `[400, 413]` for a message too long. The turn is then judged on its status, never stopped by it. | `status-allowed` |
+| `allowStatus` | Marks an edge-case turn, and lists the non-2xx statuses that count as handled, such as `[400, 413]` for a message too long. The turn is judged on whether the target handled it, never stopped by its answer: another status, an incomplete stream, an unreadable body or no answer at all is a finding (ADR-0019). | `status-allowed` |
 | `evidence.<collection>` | `min` and `max` item counts, and `includes`: item ids that must be returned. | `evidence-count` |
 | `deadlineMs` | The answer must arrive within this many milliseconds. | `answered-within-deadline` |
 | `budget.costUsd`, `budget.modelCalls` | The most the turn's model calls may cost, and how many there may be. Needs the model proxy. | `cost-budget` |

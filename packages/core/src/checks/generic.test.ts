@@ -216,6 +216,11 @@ const statusTurn = (status: number, allowStatus: unknown): TurnView =>
 const runStatus = (status: number, allowStatus: unknown) =>
   statusAllowed.run(checkContext(statusTurn(status, allowStatus)));
 
+const runUnusable = (status: number, why: string) =>
+  statusAllowed.run(
+    checkContext(turnView({ expect: { allowStatus: [400] }, response: { status }, unusable: why })),
+  );
+
 describe('status-allowed', () => {
   it('passes a 2xx and a listed status, and fails any other', () => {
     expect(verdicts(runStatus(200, [400]))).toEqual(['pass']);
@@ -239,6 +244,22 @@ describe('status-allowed', () => {
     expect(runStatus(500, undefined)).toMatchObject({ applicable: false });
     expect(runStatus(500, [200])).toMatchObject({ applicable: false });
     expect(runStatus(500, [])).toMatchObject({ applicable: false });
+  });
+
+  it('fails a 2xx answer that cannot be used, and no answer at all, saying why (ADR-0019)', () => {
+    const cut = 'the stream ended before its "turn_complete" event';
+    expect(runUnusable(200, cut)).toMatchObject({
+      findings: [
+        {
+          verdict: 'fail',
+          message: `answered with 200, but the answer can't be used: ${cut}`,
+          evidence: { status: 200, allowed: [400], unusable: cut },
+        },
+      ],
+    });
+    expect(runUnusable(0, 'connection reset')).toMatchObject({
+      findings: [{ verdict: 'fail', message: 'got no answer: connection reset' }],
+    });
   });
 
   it('catches a status changed to one the turn does not allow', () => {

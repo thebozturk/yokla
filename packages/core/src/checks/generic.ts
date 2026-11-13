@@ -153,15 +153,29 @@ export const languageMatch: Check = {
   },
 };
 
-/** A turn that lists allowed statuses is judged on its status, not stopped by it (ADR-0018). */
+/**
+ * An edge-case turn is judged on whether the target handled it (ADR-0018,
+ * ADR-0019): with a complete 2xx answer, or a status the turn allows. Anything
+ * else is a finding, never a run error.
+ */
 export const statusAllowed: Check = {
   id: 'status-allowed',
-  description: 'The target answered with a 2xx status, or one the turn allows.',
+  description: 'The target handled the turn: a complete 2xx answer, or a status the turn allows.',
   run(context) {
     const parsed = coreExpectations.allowStatus.safeParse(context.turn.expect['allowStatus']);
     if (!parsed.success) return { applicable: false, reason: 'the turn allows no other status' };
     const { status } = context.turn.response;
-    const ok = (status >= 200 && status <= 299) || parsed.data.includes(status);
+    const { unusable } = context.turn;
+    const allowed = parsed.data.includes(status);
+    const complete = status >= 200 && status <= 299 && unusable === undefined;
+    const ok = allowed || complete;
+    const message = ok
+      ? `answered with ${String(status)}`
+      : status === 0
+        ? `got no answer: ${unusable ?? ''}`
+        : status >= 200 && status <= 299
+          ? `answered with ${String(status)}, but the answer can't be used: ${unusable ?? ''}`
+          : `answered with ${String(status)}, which is neither 2xx nor one of ${parsed.data.join(', ')}`;
     return {
       applicable: true,
       findings: [
@@ -169,10 +183,12 @@ export const statusAllowed: Check = {
           dimension: 'robustness',
           verdict: ok ? 'pass' : 'fail',
           severity: 'high',
-          message: ok
-            ? `answered with ${String(status)}`
-            : `answered with ${String(status)}, which is neither 2xx nor one of ${parsed.data.join(', ')}`,
-          evidence: { status, allowed: parsed.data },
+          message,
+          evidence: {
+            status,
+            allowed: parsed.data,
+            ...(unusable === undefined ? {} : { unusable }),
+          },
         },
       ],
     };

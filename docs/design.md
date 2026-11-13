@@ -389,7 +389,7 @@ The [checks guide](guide/checks.md) gives each check's exact conditions.
 | `evidence-count` | the turn expects evidence counts or ids | |
 | `graceful-under-fault` | the turn injects provider faults (ADR-0013) | The target still gives a usable answer. |
 | `answered-within-deadline` | the turn sets `deadlineMs` (ADR-0013) | The full answer arrived in time. |
-| `status-allowed` | the turn sets `allowStatus` (ADR-0018) | The target answered with a 2xx or an allowed status; a turn that allows statuses is judged on them, never stopped by them. |
+| `status-allowed` | the turn sets `allowStatus` (ADR-0018, ADR-0019) | The target handled the edge case: a complete 2xx answer or an allowed status. An edge-case turn is judged on its answer, never stopped by it. |
 | `language-match` | the turn sets `language` (ADR-0018) | The answer is in that language, by the share of each language pack's most common words. Too short or too close to tell is unmeasured. |
 | `cost-budget` | the turn's budget sets `costUsd` or `modelCalls` (ADR-0014) | The turn's model calls stay within it. Unmeasured without proxy data. |
 | `prompt-budget` | the turn's budget sets `inputTokens` | No model call of the turn sends more input tokens. |
