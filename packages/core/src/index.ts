@@ -74,6 +74,15 @@ export { Baseline, BASELINE_SCHEMA_ID } from './schema/baseline.ts';
 export { baselineChanges, baselineOf } from './baseline/baseline.ts';
 export { caseDefinition, stableJson } from './baseline/definition.ts';
 export {
+  inferResponse,
+  inferSessionId,
+  shapeOf,
+  type Candidate,
+  type Inference,
+  type InferOutcome,
+  type Probe,
+} from './init/infer.ts';
+export {
   CASE_STATUSES,
   CaseResult,
   CaseStatus,
