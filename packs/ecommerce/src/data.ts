@@ -13,6 +13,8 @@ export interface CatalogRow {
   readonly currency: string | undefined;
   /** null means unknown, undefined means the snapshot has no stock field. */
   readonly stock: number | null | undefined;
+  /** Available or not (ADR-0020); null means unknown, undefined not mapped. */
+  readonly inStock: boolean | null | undefined;
 }
 
 export interface PolicySource {
@@ -41,6 +43,12 @@ function jsonLines(text: string, path: string): unknown[] {
     });
 }
 
+function asBoolean(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') return value;
+  if (value === 'true' || value === 'false') return value === 'true';
+  return undefined;
+}
+
 function asNumber(value: unknown): number | undefined {
   if (typeof value === 'number') return value;
   if (typeof value === 'string' && /^-?\d+(?:\.\d+)?$/u.test(value.trim())) return Number(value);
@@ -61,12 +69,15 @@ export function loadData(profile: Profile, io: PackIo): EcommerceData {
       const currency =
         fields.currency === undefined ? undefined : getFieldPath(row, fields.currency);
       const stockValue = fields.stock === undefined ? undefined : getFieldPath(row, fields.stock);
+      const inStockValue =
+        fields.inStock === undefined ? undefined : getFieldPath(row, fields.inStock);
       catalog.set(String(id), {
         id: String(id),
         type: typeof type === 'string' ? type : undefined,
         price: asNumber(getFieldPath(row, fields.price)),
         currency: typeof currency === 'string' ? currency : undefined,
         stock: fields.stock === undefined ? undefined : (asNumber(stockValue) ?? null),
+        inStock: fields.inStock === undefined ? undefined : (asBoolean(inStockValue) ?? null),
       });
     }
   }
@@ -102,6 +113,8 @@ export interface Product {
   readonly currency: string | undefined;
   /** null: unknown; undefined: neither the response nor the catalog says. */
   readonly stock: number | null | undefined;
+  /** Available or not (ADR-0020); null: unknown; undefined: neither says. */
+  readonly inStock: boolean | null | undefined;
   readonly type: string | undefined;
 }
 
@@ -112,6 +125,7 @@ export function productOf(item: EvidenceItem, catalog: EcommerceData['catalog'])
       : undefined;
   const row = id === undefined ? undefined : catalog?.get(id);
   const stock = 'stock' in item ? (asNumber(item['stock']) ?? null) : row?.stock;
+  const inStock = 'inStock' in item ? (asBoolean(item['inStock']) ?? null) : row?.inStock;
   const type = typeof item['category'] === 'string' ? item['category'] : row?.type;
   return {
     id,
@@ -119,6 +133,7 @@ export function productOf(item: EvidenceItem, catalog: EcommerceData['catalog'])
     price: asNumber(item['price']) ?? row?.price,
     currency: typeof item['currency'] === 'string' ? item['currency'] : row?.currency,
     stock,
+    inStock,
     type,
   };
 }
