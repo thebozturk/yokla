@@ -166,6 +166,7 @@ pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml \
         "category": "outdoor/lighting/headlamp",
         "price": { "amount": 349.9, "currency": "TRY" },
         "stockQuantity": 40,
+        "available": true,
         "attributes": {}
       }
     ],
@@ -175,6 +176,9 @@ pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml \
 ```
 
 - **`stockQuantity`.** `null` means the stock is unknown, not zero.
+- **`available`.** The same stock as a boolean, as shops without quantities
+  give it; `null` when the stock is unknown. yokla's evidence end-to-end test
+  reads stock through it (ADR-0020).
 - **Routes.** `metadata.route` is one of `product-search`, `policy`,
   `follow-up-cheapest`, `refusal` and `fallback`. `fallback` answers a model
   failure, a message the shop doesn't understand, such as a greeting, and a

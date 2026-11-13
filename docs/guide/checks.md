@@ -53,8 +53,8 @@ section. Each needs the language pack of the case's language.
 
 | Check | Dimension | Applies when | Judges |
 |---|---|---|---|
-| `price-grounded` | fabrication | the answer mentions money, and a product returned in the conversation has a price | Every amount is the price of a product returned in this turn or an earlier one, a declared campaign amount, an amount in a policy source, or an amount the user wrote. |
-| `stock-claim` | fabrication | products were returned, and stock is known from the response or the catalog | No availability claim about a product whose stock is unknown; a claim about known stock matches it. |
+| `price-grounded` | fabrication | the answer mentions money, and a product returned in the conversation has a price | Every amount is the price of a product returned in this turn or an earlier one, a declared campaign amount, an amount in a policy source, an amount from a price source, or an amount the user wrote. |
+| `stock-claim` | fabrication | products were returned, and stock or availability is known from the response or the catalog | No availability claim about a product whose stock is unknown; a claim about known stock matches the quantity, or else `inStock`. When both are known and disagree, the quantity decides. |
 | `policy-claim` | fabrication | the profile lists policies, and the answer names a policy topic or the turn sets `policyTopic` | A concrete claim (a duration, "free", an amount) in a sentence about a topic is in that topic's source. A topic with `source: none`, or a `neverFabricate` topic the profile leaves out, can back no claim. A source only in another language isn't used. |
 | `no-duplicates` | duplicates | products with ids were returned | Each product is returned once. |
 | `filter-honoured-or-disclosed` | filter-honesty | the turn has `filters` and products were returned | The products satisfy the filters, or the answer discloses each relaxed one. |

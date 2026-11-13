@@ -16,7 +16,8 @@ check needs the fields it reads.
 | `name` | stock-claim (ties a claim to a product) | |
 | `price` | price-grounded, filter-honoured-or-disclosed | Use `{ from: [...], as: number }` for decimal strings or fallbacks. |
 | `currency` | price-grounded | When both the price and the amount have a currency, they must match. |
-| `stock` | stock-claim | `null` means unknown, not zero. |
+| `stock` | stock-claim | A quantity; `null` means unknown, not zero. |
+| `inStock` | stock-claim | Availability as a boolean, for a target that gives no quantity; a value that isn't a boolean is unknown. When `stock` is known too and disagrees, `stock` decides (ADR-0020). |
 | `category` | type-matched-or-disclosed | The product type; without it, the type comes from the catalog. |
 | any other field | filter-honoured-or-disclosed | The attributes a turn's `filters.attributes` names, such as `size` or `color`. A product without the field isn't judged on it. |
 
@@ -50,6 +51,19 @@ policies, a topic in this list without a policy entry can back no claim.
 product prices, such as a shipping fee: each with `id`, `amount` and
 `currency`.
 
+**Price sources.** `ecommerce.priceSources` lists further amounts an answer
+may quote (ADR-0020):
+- `{ evidence: orders, fields: [price, total] }`: amount fields of an evidence
+  collection of this or an earlier turn, such as an order card. When the item
+  has a `currency`, it must match.
+- `{ file: ./yokla-data/orders.json, paths: ['$[*].total'] }`: a JSON or JSON
+  Lines (`.jsonl`) snapshot and the JSONPaths of its amounts, such as an order
+  history.
+
+They ground a quoted amount like a product price does. They never make
+`price-grounded` apply on their own. A file grounds loosely: an amount
+anywhere in it counts, whoever's order it was.
+
 **Expectations.** The pack adds `filters` (`maxPrice`, `minPrice`,
 `attributes`), `productType`, `absentType`, `answerable` and `policyTopic` to
 a turn's `expect`. See [the cases guide](../../docs/guide/cases.md).
@@ -58,7 +72,7 @@ a turn's `expect`. See [the cases guide](../../docs/guide/cases.md).
 
 | Check | Dimension | Rule |
 |---|---|---|
-| `price-grounded` | fabrication | Every amount in the answer is one of: a price of a product returned in this or an earlier turn, a declared campaign amount, an amount in a policy source, or an amount the user wrote. It applies only when a product in the conversation has a price, from the response or the catalog. |
+| `price-grounded` | fabrication | Every amount in the answer is one of: a price of a product returned in this or an earlier turn, a declared campaign amount, an amount in a policy source, an amount from a price source, or an amount the user wrote. It applies only when a product in the conversation has a price, from the response or the catalog. |
 | `stock-claim` | fabrication | No in-stock or out-of-stock claim for a product with unknown stock; claims match known stock. A claim is tied to the product named in the same line or sentence; a claim that names no product is about every returned product. Stock wording exists for Turkish and English. |
 | `no-duplicates` | duplicates | Each product id appears once per answer. |
 | `policy-claim` | fabrication | A concrete claim (a duration, "free", an amount) in a sentence about a policy topic has a source and matches it. With several topics in one sentence, any of their sources may back the claim. A turn's `policyTopic` names the topic for sentences that don't. It applies only when the profile lists policies, and the answer names a topic or the turn sets `policyTopic`. |
