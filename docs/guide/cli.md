@@ -40,6 +40,10 @@ It exits with `0` when the files were written, and with `2` when the probe
 failed, the answer couldn't be read, a file exists without `--force`, or an
 option is wrong. Then nothing is written. See ADR-0018.
 
+It probes HTTP targets only. For a WebSocket target it exits with `2`: write
+the profile by hand (see
+[WebSocket targets](profile.md#websocket-targets), ADR-0024).
+
 ## `yokla run`
 
 | Option | Default | Meaning |

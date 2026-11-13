@@ -201,6 +201,16 @@ pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml \
 - **Sessions the shop issues.** `POST /v1/sessions` returns `201` with
   `{"data": {"sessionId": string}}`. A chat that sends it in `x-session-id`
   uses it over any `sessionId` in the body.
+- **Chat over a WebSocket.** `/v1/ws` takes the same JSON message as
+  `POST /v1/chat`, one per turn, and answers with the events of the stream,
+  one message each, named by `type`: `products`, `delta` and `done`.
+  - A `session` in the url, as in `/v1/ws?session=abc`, holds for every
+    message.
+  - An invalid message or a rate limit comes back as
+    `{"type": "error", "error": ..., "detail": ...}`, and the connection stays
+    open.
+  - `x-cache-bypass` goes with the handshake.
+  - The acceptance end-to-end test also runs over it (ADR-0024).
 
 The proxy end-to-end test (`packages/cli/src/proxy.e2e.test.ts`) tests the
 demo-shop this way too: with a session it issues, answers as events and a

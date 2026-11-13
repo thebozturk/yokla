@@ -27,6 +27,9 @@ Two kinds of path appear in a profile:
 
 ## `target.request`
 
+This section is for an HTTP target, `adapter: http`, the default. A WebSocket
+target has its own request (see [WebSocket targets](#websocket-targets)).
+
 | Field | Meaning |
 |---|---|
 | `url` | The chat endpoint. `--target-url` overrides it for one run. |
@@ -131,6 +134,93 @@ incomplete and the turn an error. Under injected faults it is a finding. The
 results record `firstTextMs`, the time to the first text piece. Latency stays
 the time to the full answer.
 
+## WebSocket targets
+
+A target that talks over a WebSocket sets `adapter: websocket` (ADR-0024):
+
+```yaml
+target:
+  name: my-assistant
+  adapter: websocket
+  request:
+    url: wss://chat.example.com/ws?session={{session}}
+    headers: { authorization: 'Bearer {{env.CHAT_TOKEN}}' }
+    protocols: [chat.v1]           # optional subprotocols
+    body: { type: user_message, text: '{{message}}', id: '{{requestId}}' }
+    timeoutMs: 30000
+  response:
+    stream:
+      event: $.type
+      text: { event: text_delta, from: $.text }
+      done: turn_complete          # required
+      error: { event: error, from: $.message }
+    text: $.text
+    route: $.last.turn_complete.route
+```
+
+**The connection.**
+- A sample opens one connection, after its cache bypass and `session.open`,
+  and closes it with code 1000 after its last turn.
+- `url` (`ws://` or `wss://`) and `headers` are sent once, when it opens.
+  - They can use `{{env.NAME}}`, `{{session}}` and the values `session.open`
+    carries.
+  - They can't use `{{message}}`, `{{requestId}}` or values carried from an
+    answer, which change per turn.
+- The cache bypass header and the client identity go with the handshake.
+- yokla connects only to the target's origin. A `session.open` path resolves
+  against it, with `ws` read as `http` and `wss` as `https`.
+
+**Each turn.**
+- `body` is the message sent for the turn, as JSON text. A case turn can add
+  body fields, but not headers.
+- `{{requestId}}` in the body gives the turn a unique id. The turn records it,
+  and log observation can correlate by it.
+- Values `session.carry` reads from an answer reach the next message.
+
+**The answer.**
+- Each message is one event. Its data is the parsed JSON, or the text when it
+  isn't JSON. A binary message is read as UTF-8 text.
+- `stream.event` is where an event's name is in its data. Without it, every
+  event is named `message`. There is no `stream.format`.
+- `stream.done` is required, since nothing else ends an answer. For an answer
+  in one message, name that message's event, such as `done: message`.
+- The document `{text, events, all, last}` is built as for a streamed answer,
+  and the other response paths read it.
+- `timeoutMs` bounds opening the connection, and each answer up to its done
+  event.
+
+**An incomplete answer.** The turn is an error, and the sample's later turns
+don't run, when:
+- the connection closes before `done`; the error gives the close code and
+  reason;
+- the `error` event arrives;
+- `timeoutMs` runs out.
+
+Under injected faults it is a finding instead. On an edge-case turn,
+`status-allowed` judges it.
+
+**Status.** A WebSocket turn records the status `101`, the status its
+connection opened with. Wherever yokla asks for a 2xx answer, it asks a
+WebSocket turn for a complete one. An `error` event is not a handled answer,
+as over SSE, and `allowStatus` can't name one.
+
+**Messages outside a turn.**
+- A greeting before the first message is left unread.
+- Messages that arrive after an answer's `done` event, before the next message
+  goes, become an issue of the next turn. Late messages may mean that `done`
+  comes too early.
+- A message that arrives after the next message went is read as part of the
+  next answer.
+
+**Not available yet.**
+- **The model proxy's `header` correlation.** The connection sends headers
+  once, so the profile is refused with it. Use `serial`.
+- **Waiting out rate limits.** A message gets no `429`.
+  - `limits` paces the messages. Set it below the target's own limit, since
+    a rate-limit `error` event fails the turn.
+  - `retryAfter` doesn't apply.
+- **`yokla init`.** Write the profile by hand.
+
 ## `target.session`
 
 | Field | Meaning |
@@ -162,7 +252,7 @@ session:
 
 | Field | Meaning |
 |---|---|
-| `burstPerSecond`, `perMinute`, `perHour` | A token bucket over all requests of the run. |
+| `burstPerSecond`, `perMinute`, `perHour` | A token bucket over all requests of the run, or all messages to a WebSocket target. |
 | `retryAfter.headers` | Headers that say how long to wait after a `429`, default `retry-after`. A trailing `*` matches a prefix. |
 | `retryAfter.unit` | `seconds` (default) or `milliseconds`. |
 | `retryAfter.maxWaitMs` | The longest wait yokla accepts, default 60000. A longer wait, or a sixth `429` in a row, makes the turn an error. |

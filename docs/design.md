@@ -107,7 +107,7 @@ Other evaluation tools are described here by kind, not by name.
 
 | Term | Meaning |
 |---|---|
-| **Target** | The assistant under test, reached through an adapter (HTTP in v1). |
+| **Target** | The assistant under test, reached through an adapter: HTTP, or WebSocket (ADR-0024). |
 | **System profile** | What yokla knows about the target: `yokla.profile.yaml`. |
 | **Pack** | A domain pack (`ecommerce`) or a language pack (`tr`, `en`). |
 | **Suite** | One test family: quality, factual, redteam, robustness, perf, resilience. |
@@ -431,8 +431,8 @@ These are lessons from building a production harness.
 
 ## 11. Runner
 
-- **Adapters:** HTTP in v1; WebSocket in v0.3; in-process function, SDK and
-  CLI adapters later.
+- **Adapters:** HTTP; WebSocket, one connection per sample (ADR-0024);
+  in-process function, SDK and CLI adapters later.
 - **Multi-turn:** session modes `client | none`. A server-issued id, such as a
   conversation id, is carried from each response into the next turn
   (`session.carry`). A target that opens its own session gets a request before
