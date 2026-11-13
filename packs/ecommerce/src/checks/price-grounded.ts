@@ -18,6 +18,13 @@ interface Grounding {
 
 const CENT = 0.005;
 
+/** A number, or a decimal string such as "24.00". */
+function amountOf(value: unknown): number | undefined {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string' && /^-?\d+(?:\.\d+)?$/u.test(value.trim())) return Number(value);
+  return undefined;
+}
+
 export function priceGrounded(data: EcommerceData): Check {
   return {
     id: 'price-grounded',
@@ -68,6 +75,23 @@ export function priceGrounded(data: EcommerceData): Check {
           currency: campaign.currency,
           source: `campaign ${campaign.id}`,
         });
+      }
+      // Price sources (ADR-0020): amounts the conversation showed, and amounts in data files.
+      for (const source of data.config.priceSources) {
+        if (!('evidence' in source)) continue;
+        for (const view of views) {
+          for (const item of view.response.evidence[source.evidence] ?? []) {
+            const currency = typeof item['currency'] === 'string' ? item['currency'] : undefined;
+            for (const field of source.fields) {
+              const amount = amountOf(item[field]);
+              if (amount === undefined) continue;
+              groundings.push({ amount, currency, source: `${source.evidence}.${field}` });
+            }
+          }
+        }
+      }
+      for (const { amount, file } of data.sourceAmounts) {
+        groundings.push({ amount, currency: undefined, source: file });
       }
 
       const findings: CheckFinding[] = [];

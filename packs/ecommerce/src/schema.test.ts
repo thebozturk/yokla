@@ -7,6 +7,7 @@ describe('ecommerce profile section', () => {
       neverFabricate: [...FACT_KINDS],
       policies: {},
       campaigns: [],
+      priceSources: [],
     });
   });
 

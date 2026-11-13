@@ -1,4 +1,4 @@
-import type { CheckOutcome, EvidenceItem, LanguagePack } from '@yokla/core';
+import type { CheckOutcome, EvidenceItem, LanguagePack, TurnView } from '@yokla/core';
 import { checkContext, mutate } from '@yokla/core/testing';
 import { describe, expect, it } from 'vitest';
 import { loadData, type EcommerceData } from '../data.ts';
@@ -392,6 +392,51 @@ describe('loadData', () => {
     expect(loaded.policies.get('warranty')?.answers).toEqual({ '*': 'Two years.' });
   });
 
+  it('reads price source files, JSON or JSON Lines, at their paths (ADR-0020)', () => {
+    const profile = checkContext(answer('')).profile;
+    const sources = {
+      'orders.json': JSON.stringify([
+        { items: [{ price: 99 }, { price: '39.00' }], total: 138 },
+        { items: [{ price: 'free' }], total: null },
+      ]),
+      'orders.jsonl': [JSON.stringify({ total: 24 }), JSON.stringify({ total: 7.5 })].join('\n'),
+      'broken.json': '{oops',
+    };
+    const sourceIo = {
+      readText: (path: string) => {
+        const file = new Map(Object.entries(sources)).get(path);
+        if (file === undefined) throw new Error(`no ${path}`);
+        return file;
+      },
+    };
+    const loaded = loadData(
+      {
+        ...profile,
+        ecommerce: {
+          priceSources: [
+            { file: 'orders.json', paths: ['$[*].items[*].price', '$[*].total'] },
+            { file: 'orders.jsonl', paths: ['$[*].total'] },
+            { evidence: 'orders', fields: ['price'] },
+          ],
+        },
+      },
+      sourceIo,
+    );
+    expect(loaded.sourceAmounts).toEqual([
+      { amount: 99, file: 'orders.json' },
+      { amount: 39, file: 'orders.json' },
+      { amount: 138, file: 'orders.json' },
+      { amount: 24, file: 'orders.jsonl' },
+      { amount: 7.5, file: 'orders.jsonl' },
+    ]);
+    expect(() =>
+      loadData(
+        { ...profile, ecommerce: { priceSources: [{ file: 'broken.json', paths: ['$.x'] }] } },
+        sourceIo,
+      ),
+    ).toThrow('broken.json: not valid JSON');
+  });
+
   it('reports a broken catalog line with its position', () => {
     const profile = checkContext(answer('')).profile;
     const broken = { readText: () => '{"sku":"A"}\n{oops' };
@@ -511,6 +556,78 @@ describe('policy-claim', () => {
       response: { ...view.response, text: view.response.text.replace('14 gün', '15 gün') },
     }));
     expect(verdicts(check.run(checkContext(mutated, { lang: fakeTurkish })))).toEqual(['fail']);
+  });
+});
+
+/** A turn that shows the tents and these orders (ADR-0020). */
+function withOrders(text: string, orders: EvidenceItem[]): TurnView {
+  const view = answer(text, tents);
+  return { ...view, response: { ...view.response, evidence: { products: tents, orders } } };
+}
+
+describe('price-grounded with price sources (ADR-0020)', () => {
+  const ordersSource = data({
+    config: ecommerceProfile.parse({
+      priceSources: [{ evidence: 'orders', fields: ['price', 'total'] }],
+    }),
+  });
+  const reorder = 'Geçen sefer 24,00 TL ödediniz; bugün Plaj Çadırı 899,50 TL.';
+
+  it('grounds an amount in a field of an evidence collection the profile names', () => {
+    const order = [{ id: 'O1', price: '24.00', total: 138, currency: 'TRY' }];
+    expect(
+      verdicts(
+        priceGrounded(ordersSource).run(
+          checkContext(withOrders(reorder, order), { lang: fakeTurkish }),
+        ),
+      ),
+    ).toEqual(['pass']);
+    expect(
+      verdicts(
+        priceGrounded(ordersSource).run(
+          checkContext(withOrders('Toplam 138,00 TL; Plaj Çadırı 899,50 TL.', order), {
+            lang: fakeTurkish,
+          }),
+        ),
+      ),
+    ).toEqual(['pass']);
+    // Without the price source, the same amount is not grounded.
+    expect(
+      verdicts(
+        priceGrounded(data()).run(checkContext(withOrders(reorder, order), { lang: fakeTurkish })),
+      ),
+    ).toEqual(['fail']);
+    // Another currency doesn't ground it.
+    const dollars = [{ id: 'O1', price: 24, currency: 'USD' }];
+    expect(
+      verdicts(
+        priceGrounded(ordersSource).run(
+          checkContext(withOrders(reorder, dollars), { lang: fakeTurkish }),
+        ),
+      ),
+    ).toEqual(['fail']);
+  });
+
+  it('grounds an amount an earlier turn of the conversation showed', () => {
+    const earlier = withOrders('Siparişleriniz:', [{ id: 'O1', price: 24 }]);
+    const context = checkContext(answer(reorder, tents), { lang: fakeTurkish, history: [earlier] });
+    expect(verdicts(priceGrounded(ordersSource).run(context))).toEqual(['pass']);
+  });
+
+  it('grounds an amount from a data file, and never makes the check apply on its own', () => {
+    const fromFile = data({ sourceAmounts: [{ amount: 24, file: 'orders.json' }] });
+    expect(
+      verdicts(
+        priceGrounded(fromFile).run(checkContext(answer(reorder, tents), { lang: fakeTurkish })),
+      ),
+    ).toEqual(['pass']);
+    expect(
+      verdicts(
+        priceGrounded(fromFile).run(
+          checkContext(answer('Geçen sefer 24,00 TL ödediniz.', []), { lang: fakeTurkish }),
+        ),
+      ),
+    ).toEqual(['n/a: no product in the conversation has a price']);
   });
 });
 

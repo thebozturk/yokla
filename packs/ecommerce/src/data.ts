@@ -3,7 +3,14 @@
 // Evidence products come from the response; the catalog adds what the
 // response doesn't carry (stock, type), joined by id.
 
-import { getFieldPath, toJson, type EvidenceItem, type PackIo, type Profile } from '@yokla/core';
+import {
+  getFieldPath,
+  queryJsonPath,
+  toJson,
+  type EvidenceItem,
+  type PackIo,
+  type Profile,
+} from '@yokla/core';
 import { ecommerceProfile, type EcommerceProfile } from './schema.ts';
 
 export interface CatalogRow {
@@ -27,6 +34,8 @@ export interface EcommerceData {
   readonly config: EcommerceProfile;
   readonly catalog: ReadonlyMap<string, CatalogRow> | undefined;
   readonly policies: ReadonlyMap<string, PolicySource>;
+  /** Amounts read from the price source files (ADR-0020), with the file they came from. */
+  readonly sourceAmounts: readonly { readonly amount: number; readonly file: string }[];
 }
 
 function jsonLines(text: string, path: string): unknown[] {
@@ -102,7 +111,28 @@ export function loadData(profile: Profile, io: PackIo): EcommerceData {
       policies.set(topic, { topic, answers });
     }
   }
-  return { config, catalog, policies };
+  const sourceAmounts: { amount: number; file: string }[] = [];
+  for (const source of config.priceSources) {
+    if (!('file' in source)) continue;
+    const text = io.readText(source.file);
+    let document: unknown;
+    if (/\.(?:jsonl|ndjson)$/iu.test(source.file)) {
+      document = jsonLines(text, source.file);
+    } else {
+      try {
+        document = toJson(JSON.parse(text));
+      } catch {
+        throw new Error(`${source.file}: not valid JSON`);
+      }
+    }
+    for (const path of source.paths) {
+      for (const value of queryJsonPath(document, path)) {
+        const amount = asNumber(value);
+        if (amount !== undefined) sourceAmounts.push({ amount, file: source.file });
+      }
+    }
+  }
+  return { config, catalog, policies, sourceAmounts };
 }
 
 /** A product as the checks see it: the evidence item, completed from the catalog. */
