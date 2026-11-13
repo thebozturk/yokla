@@ -66,8 +66,44 @@ export const answerText: Check = {
         message: found ? `contains "${phrase}", which it must not` : `doesn't contain "${phrase}"`,
       });
     }
+    if (parsed.data.notEmpty === true) {
+      // A letter or a digit in any script: punctuation and spaces alone say nothing.
+      const said = /[\p{L}\p{N}]/u.test(context.turn.response.text);
+      findings.push({
+        dimension: 'answer-content',
+        verdict: said ? 'pass' : 'fail',
+        severity: 'medium',
+        message: said ? 'the answer is not empty' : 'the answer is empty',
+      });
+    }
     if (findings.length === 0) return { applicable: false, reason: 'no phrases to look for' };
     return { applicable: true, findings };
+  },
+};
+
+/** A turn that lists allowed statuses is judged on its status, not stopped by it (ADR-0018). */
+export const statusAllowed: Check = {
+  id: 'status-allowed',
+  description: 'The target answered with a 2xx status, or one the turn allows.',
+  run(context) {
+    const parsed = coreExpectations.allowStatus.safeParse(context.turn.expect['allowStatus']);
+    if (!parsed.success) return { applicable: false, reason: 'the turn allows no other status' };
+    const { status } = context.turn.response;
+    const ok = (status >= 200 && status <= 299) || parsed.data.includes(status);
+    return {
+      applicable: true,
+      findings: [
+        {
+          dimension: 'robustness',
+          verdict: ok ? 'pass' : 'fail',
+          severity: 'high',
+          message: ok
+            ? `answered with ${String(status)}`
+            : `answered with ${String(status)}, which is neither 2xx nor one of ${parsed.data.join(', ')}`,
+          evidence: { status, allowed: parsed.data },
+        },
+      ],
+    };
   },
 };
 
@@ -217,10 +253,14 @@ export const costBudget: Check = {
   },
 };
 
-/** The checks that judge a turn the target couldn't answer under faults; others need an answer. */
-export const FAULT_JUDGES: ReadonlySet<string> = new Set([
+/**
+ * The checks that judge a turn without a usable answer, under faults (ADR-0013)
+ * or with a non-2xx status the turn allows (ADR-0018); the others need an answer.
+ */
+export const UNANSWERED_JUDGES: ReadonlySet<string> = new Set([
   gracefulUnderFault.id,
   answeredWithinDeadline.id,
+  statusAllowed.id,
 ]);
 
 export const CORE_CHECKS: readonly Check[] = [
@@ -229,6 +269,7 @@ export const CORE_CHECKS: readonly Check[] = [
   evidenceCount,
   gracefulUnderFault,
   answeredWithinDeadline,
+  statusAllowed,
   costBudget,
   promptBudget,
   promptLeak,

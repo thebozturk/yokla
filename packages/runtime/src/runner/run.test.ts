@@ -1408,6 +1408,54 @@ describe('runSuite with the model proxy', () => {
     ]);
   });
 
+  it('judges a turn on a status it allows instead of stopping it (ADR-0018)', async () => {
+    const t = await target((_r, index, response) => {
+      if (index === 0) json(response, { error: 'empty message' }, 400);
+      else if (index === 1) json(response, { error: 'crashed' }, 500);
+      else if (index === 2) json(response, { error: 'empty message' }, 400);
+      else json(response, answer());
+    });
+    const ran: string[] = [];
+    const watcher: Check = {
+      id: 'watcher',
+      description: 'records the turns it sees',
+      run: (context) => {
+        ran.push(context.turn.user);
+        return { applicable: false, reason: 'records only' };
+      },
+    };
+    const allow = { allowStatus: [400], deadlineMs: 60_000 };
+    const results = await runSuite(
+      options(
+        profile(t.url),
+        cases(
+          { id: 'allowed', turns: [{ user: 'a', expect: allow }] },
+          { id: 'crashed', turns: [{ user: 'b', expect: allow }] },
+          { id: 'plain', turns: [{ user: 'c' }] },
+          { id: 'answered', turns: [{ user: 'd', expect: allow }] },
+        ),
+        { checks: [...CORE_CHECKS, watcher] },
+      ),
+    );
+    expect(Results.safeParse(results).success).toBe(true);
+    const [allowed, crashed, plain, answered] = results.cases;
+    const applied = (c: typeof allowed) =>
+      (c?.samples[0]?.turns[0]?.checks ?? []).filter((x) => x.applicable).map((x) => x.check);
+    // A listed status: no error, judged only by the checks that need no answer.
+    expect(allowed?.samples[0]?.turns[0]?.error).toBeUndefined();
+    expect(allowed?.status).toBe('pass');
+    expect(applied(allowed)).toEqual(['answered-within-deadline', 'status-allowed']);
+    // Another status: a finding, so the case fails instead of ending in error.
+    expect(crashed?.status).toBe('fail');
+    expect(crashed?.samples[0]?.turns[0]?.error).toBeUndefined();
+    // Without allowStatus, a non-2xx is an error, as before.
+    expect(plain?.status).toBe('error');
+    expect(plain?.samples[0]?.turns[0]?.error).toBe('HTTP 400');
+    // A 2xx answer is judged by every check.
+    expect(answered?.status).toBe('pass');
+    expect(ran).toEqual(['d']);
+  });
+
   it('judges no answer at all under faults the same way', async () => {
     const proxy = await fakeProxy();
     const t = await target((_r, _i, response) => {

@@ -5,9 +5,10 @@ import {
   answerText,
   costBudget,
   evidenceCount,
-  FAULT_JUDGES,
+  UNANSWERED_JUDGES,
   gracefulUnderFault,
   routeExpected,
+  statusAllowed,
 } from './generic.ts';
 import type { CheckOutcome, LanguagePack, TurnView } from './types.ts';
 
@@ -105,6 +106,71 @@ describe('answer-text', () => {
     expect(verdicts(answerText.run(checkContext(mutated, { lang: turkishLike })))).toEqual([
       'fail',
     ]);
+  });
+
+  it('checks that the answer is not empty: a letter or a digit, in any script', () => {
+    const run = (text: string) =>
+      verdicts(answerText.run(checkContext(answerTurn(text, { notEmpty: true }))));
+    expect(run('Merhaba!')).toEqual(['pass']);
+    expect(run('42')).toEqual(['pass']);
+    expect(run('Ω')).toEqual(['pass']);
+    expect(run('')).toEqual(['fail']);
+    expect(run('  ...!? \n')).toEqual(['fail']);
+    expect(
+      verdicts(answerText.run(checkContext(answerTurn('', { notEmpty: true, contains: ['x'] })))),
+    ).toEqual(['fail', 'fail']);
+  });
+
+  it('catches an answer emptied', () => {
+    const base = answerTurn('Size nasıl yardımcı olabilirim?', { notEmpty: true });
+    const emptied = mutate(base, (view) => ({
+      ...view,
+      response: { ...view.response, text: ' ' },
+    }));
+    expect(verdicts(answerText.run(checkContext(base)))).toEqual(['pass']);
+    expect(verdicts(answerText.run(checkContext(emptied)))).toEqual(['fail']);
+  });
+});
+
+const statusTurn = (status: number, allowStatus: unknown): TurnView =>
+  turnView({ expect: { allowStatus }, response: { status } });
+
+const runStatus = (status: number, allowStatus: unknown) =>
+  statusAllowed.run(checkContext(statusTurn(status, allowStatus)));
+
+describe('status-allowed', () => {
+  it('passes a 2xx and a listed status, and fails any other', () => {
+    expect(verdicts(runStatus(200, [400]))).toEqual(['pass']);
+    expect(verdicts(runStatus(204, [400]))).toEqual(['pass']);
+    expect(verdicts(runStatus(400, [400, 413]))).toEqual(['pass']);
+    expect(verdicts(runStatus(413, [400, 413]))).toEqual(['pass']);
+    expect(verdicts(runStatus(500, [400, 413]))).toEqual(['fail']);
+    expect(verdicts(runStatus(422, [400]))).toEqual(['fail']);
+    expect(runStatus(500, [400])).toMatchObject({
+      findings: [
+        {
+          dimension: 'robustness',
+          message: 'answered with 500, which is neither 2xx nor one of 400',
+          evidence: { status: 500, allowed: [400] },
+        },
+      ],
+    });
+  });
+
+  it('does not apply when the turn allows no other status, or a 2xx', () => {
+    expect(runStatus(500, undefined)).toMatchObject({ applicable: false });
+    expect(runStatus(500, [200])).toMatchObject({ applicable: false });
+    expect(runStatus(500, [])).toMatchObject({ applicable: false });
+  });
+
+  it('catches a status changed to one the turn does not allow', () => {
+    const base = statusTurn(400, [400]);
+    const crashed = mutate(base, (view) => ({
+      ...view,
+      response: { ...view.response, status: 500 },
+    }));
+    expect(verdicts(statusAllowed.run(checkContext(base)))).toEqual(['pass']);
+    expect(verdicts(statusAllowed.run(checkContext(crashed)))).toEqual(['fail']);
   });
 });
 
@@ -216,10 +282,11 @@ describe('answered-within-deadline', () => {
     expect(runDeadline(10, 0)).toMatchObject({ applicable: false });
   });
 
-  it('is one of the fault judges, with graceful-under-fault', () => {
-    expect([...FAULT_JUDGES].toSorted()).toEqual([
+  it('is one of the judges of an unanswered turn, with graceful-under-fault and status-allowed', () => {
+    expect([...UNANSWERED_JUDGES].toSorted()).toEqual([
       'answered-within-deadline',
       'graceful-under-fault',
+      'status-allowed',
     ]);
   });
 });

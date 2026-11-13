@@ -114,7 +114,7 @@ export {
   answeredWithinDeadline,
   CORE_CHECKS,
   costBudget,
-  FAULT_JUDGES,
+  UNANSWERED_JUDGES,
   gracefulUnderFault,
   evidenceCount,
   routeExpected,
