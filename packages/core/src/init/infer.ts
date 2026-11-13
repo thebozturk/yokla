@@ -4,6 +4,7 @@
 // choice names the rule that made it, the runners-up are kept, and the
 // mapping is replayed on the probe before it is offered. Pure: no I/O.
 
+import { queryJsonPath } from '../extract/jsonpath.ts';
 import { toJson, extractResponse, type JsonValue } from '../extract/response.ts';
 import { parseStream, readStream } from '../extract/stream.ts';
 import type { ProfileTarget, ResponseStream } from '../schema/profile.ts';
@@ -61,6 +62,7 @@ const PIECE_EVENT = /delta|text|token|content|chunk|message/iu;
 const ROUTE_KEYS = new Set(['route', 'intent', 'handler', 'agent']);
 const SESSION_KEY = /^(?:conversation|session|thread|chat)[-_]?id$/iu;
 const SAFE_KEY = /^[A-Za-z_][\w-]*$/u;
+const GIVEN = 'given with --text';
 
 interface Leaf {
   readonly path: string;
@@ -176,12 +178,35 @@ function streamFormat(probe: Probe): ResponseStream['format'] | undefined {
   return undefined;
 }
 
-function inferJson(probe: Probe): InferOutcome {
+function inferJson(probe: Probe, textPath: string | undefined): InferOutcome {
   let body: JsonValue;
   try {
     body = toJson(JSON.parse(probe.body));
   } catch {
     return { ok: false, problem: 'the answer is neither JSON nor an event stream', shape: 'text' };
+  }
+  if (textPath !== undefined) {
+    // The person said where the answer is: read it there, and nowhere else.
+    let node: unknown;
+    try {
+      [node] = queryJsonPath(body, textPath);
+    } catch {
+      return {
+        ok: false,
+        problem: `"${textPath}" is not a JSONPath yokla reads`,
+        shape: shapeOf(body),
+      };
+    }
+    if (typeof node !== 'string') {
+      return { ok: false, problem: `no text at ${textPath}`, shape: shapeOf(body) };
+    }
+    const given = { path: textPath, sample: node, named: false, rule: GIVEN };
+    const found = routeAndCarry(body, probe.sent);
+    const response: ProfileTarget['response'] = {
+      text: textPath,
+      ...(found.route === undefined ? {} : { route: found.route.path }),
+    };
+    return finish(response, body, given, [], found);
   }
   const candidates = best(
     leaves(body)
@@ -299,7 +324,7 @@ function ruleOf(named: boolean): string {
 function finish(
   response: ProfileTarget['response'],
   document: JsonValue,
-  chosen: { path: string; sample: string; named: boolean },
+  chosen: { path: string; sample: string; named: boolean; rule?: string },
   rest: readonly { path: string; sample: string; named: boolean }[],
   found: Pick<Inference, 'route' | 'carry'>,
 ): InferOutcome {
@@ -315,7 +340,7 @@ function finish(
     ok: true,
     inference: {
       response,
-      text: { path: chosen.path, sample: chosen.sample, rule: ruleOf(chosen.named) },
+      text: { path: chosen.path, sample: chosen.sample, rule: chosen.rule ?? ruleOf(chosen.named) },
       alternatives: rest
         .slice(0, 3)
         .map((c) => ({ path: c.path, sample: c.sample, rule: ruleOf(c.named) })),
@@ -326,8 +351,11 @@ function finish(
   };
 }
 
-/** Where the answer is in a probe's response (ADR-0018). */
-export function inferResponse(probe: Probe): InferOutcome {
+/** Where the answer is in a probe's response (ADR-0018); `text` is a path the person gave. */
+export function inferResponse(
+  probe: Probe,
+  options: { readonly text?: string } = {},
+): InferOutcome {
   if (probe.status < 200 || probe.status > 299) {
     return {
       ok: false,
@@ -336,7 +364,14 @@ export function inferResponse(probe: Probe): InferOutcome {
     };
   }
   const format = streamFormat(probe);
-  return format === undefined ? inferJson(probe) : inferStream(probe, format);
+  if (format !== undefined && options.text !== undefined) {
+    return {
+      ok: false,
+      problem: '--text reads a JSON answer, and this answer is an event stream',
+      shape: probe.contentType ?? 'no content type',
+    };
+  }
+  return format === undefined ? inferJson(probe, options.text) : inferStream(probe, format);
 }
 
 /** The session id in the answer of a session-opening request (ADR-0016, ADR-0018). */

@@ -83,6 +83,22 @@ export {
   type Probe,
 } from './init/infer.ts';
 export {
+  deadlineFromProbe,
+  LONG_MESSAGE_CHARS,
+  longMessage,
+  starterCases,
+  TEST_CARD,
+  type StarterLanguage,
+  type StarterOptions,
+} from './init/starter.ts';
+export {
+  casesYaml,
+  gitignoreAdditions,
+  profileYaml,
+  sessionMode,
+  type ProfileInput,
+} from './init/write.ts';
+export {
   CASE_STATUSES,
   CaseResult,
   CaseStatus,
