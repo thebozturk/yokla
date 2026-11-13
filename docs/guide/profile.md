@@ -57,7 +57,7 @@ A case turn can add headers or body fields for that turn only (see
 
 | Field | Meaning |
 |---|---|
-| `text` | Where the answer text is. Required. One path reads its first match; a list of paths reads every string at each, joined in order with a blank line, for answers given as cards or other components (ADR-0020). |
+| `text` | Where the answer text is. Required. One path reads its first match; a list of paths reads every string at each, joined in order with a blank line, for answers given as cards or other components (ADR-0020). Join only text that stands on its own: a component's title, a plan's steps, a guide's sections. Leave out a line that belongs to one item without naming it, such as a card's reason or a comparison's pros and cons: joined, it reads as being about every product (ADR-0021). |
 | `route` | Where the target says which path answered, if it does. `route-expected` needs it. |
 | `id` | Where the target's own request id is. Log observation can correlate by it. |
 | `clarification.routes` | Routes that mean the target asked a clarifying question. Product expectations then don't apply to that turn. |

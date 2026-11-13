@@ -375,7 +375,7 @@ The [checks guide](guide/checks.md) gives each check's exact conditions.
 
 | Check | Enabled when | Rule |
 |---|---|---|
-| `price-grounded` | the answer mentions money, and a product returned in the conversation has a price | Every money amount in the answer (parsed by the language pack) equals the price of a product returned in this turn or an earlier one, a campaign amount the profile declares, an amount in a policy source, an amount from a declared price source (ADR-0020), or an amount the user wrote. |
+| `price-grounded` | the answer mentions money, and a product returned in the conversation has a price | Every money amount in the answer (parsed by the language pack) equals the price of a product returned in this turn or an earlier one, a campaign amount the profile declares, an amount in a policy source, an amount from a declared price source (ADR-0020), a returned price times a quantity stated in the same sentence (ADR-0021), or an amount the user wrote. |
 | `stock-claim` | the evidence or the catalog gives stock, as a quantity or as availability (ADR-0020) | No availability claim when stock is unknown. Claims must match known stock. |
 | `policy-claim` | the profile lists policies | Concrete claims (durations, fees, "free shipping") need a source and must match it. |
 | `filter-honoured-or-disclosed` | the turn carries filters | Returned items satisfy the filters, or the answer discloses the relaxation. |
