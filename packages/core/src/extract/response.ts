@@ -88,9 +88,22 @@ export function extractResponse(
 ): ExtractedResponse {
   const issues: string[] = [];
 
-  const [textNode] = queryJsonPath(body, mapping.text);
-  const text = typeof textNode === 'string' ? textNode : undefined;
-  if (text === undefined) issues.push(`answer text not found at ${mapping.text}`);
+  let text: string | undefined;
+  if (typeof mapping.text === 'string') {
+    const [textNode] = queryJsonPath(body, mapping.text);
+    text = typeof textNode === 'string' ? textNode : undefined;
+  } else {
+    // Several paths (ADR-0020): every string at each, in order, a blank line between.
+    // An empty string still means the answer has text, just none to show.
+    const pieces = mapping.text.flatMap((path) =>
+      queryJsonPath(body, path).filter((node): node is string => typeof node === 'string'),
+    );
+    text = pieces.length === 0 ? undefined : pieces.filter((piece) => piece !== '').join('\n\n');
+  }
+  if (text === undefined) {
+    const where = typeof mapping.text === 'string' ? mapping.text : mapping.text.join(', ');
+    issues.push(`answer text not found at ${where}`);
+  }
 
   const route = scalarAt(body, mapping.route);
   if (mapping.route !== undefined && route === undefined)

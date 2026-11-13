@@ -144,9 +144,21 @@
               "description": "The paths below then read {text, events, all, last}: the joined text, every event, and per event name all its data and the last."
             },
             "text": {
-              "type": "string",
-              "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$",
-              "description": "Where the assistant's answer text is."
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                },
+                {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                  }
+                }
+              ],
+              "description": "Where the assistant's answer text is; or several paths, every string at each joined in order with a blank line, for answers given as components (ADR-0020)."
             },
             "route": {
               "type": "string",
