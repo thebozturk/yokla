@@ -31,6 +31,7 @@ old one.
 | [0016](0016-streaming-targets-sessions-and-calls-after-the-answer.md) | Streaming targets, session setup, and model calls after the answer | Accepted |
 | [0017](0017-fault-jitter-seed.md) | Fault jitter seeded by case, sample and turn | Accepted |
 | [0018](0018-init-and-starter-cases.md) | yokla init: a profile from one message, and starter cases | Accepted |
+| [0019](0019-edge-case-turns-judged-on-handling.md) | An edge-case turn is judged on whether the target handled it | Proposed |
 
 ## Template
 
