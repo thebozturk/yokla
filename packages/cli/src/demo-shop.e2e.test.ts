@@ -1,17 +1,19 @@
 // Acceptance (design §19): yokla runs the demo-shop's acceptance cases against
 // the demo-shop running as its own process, over HTTP, like any other target.
 // Without defects every case passes. With each defect, exactly the expected
-// check fails on exactly the expected cases, and nothing else fails.
+// check fails on exactly the expected cases, and nothing else fails. Over a
+// WebSocket (ADR-0024), the defect-free run gives the same answers, and a
+// seeded defect is caught the same way.
 // yokla never imports the demo-shop (layer rules).
 //
 // The egress test (ADR-0003, design §15): every run, gate and baseline here
 // runs behind a network guard that allows only the demo-shops' own ports.
 
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Results } from '@yokla/core';
+import { parseConfig, Results, z } from '@yokla/core';
 import { installNetworkGuard, type NetworkGuard } from '@yokla/runtime/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { main } from './main.ts';
@@ -143,6 +145,97 @@ async function runAgainst(defect: string): Promise<void> {
   });
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The demo-shop profile as a WebSocket target (ADR-0024): the same message per
+ * turn, and the answer read from the events the shop sends, one message each.
+ */
+function websocketProfile(dir: string): string {
+  const text = readFileSync(join(DEMO, 'yokla.profile.yaml'), 'utf8').replaceAll(
+    './data/',
+    join(DEMO, 'data/'),
+  );
+  const parsed = parseConfig(text, 'yokla.profile.yaml', z.record(z.string(), z.unknown()));
+  if (!parsed.ok) throw new Error('the demo-shop profile does not parse');
+  const target = parsed.value['target'];
+  if (!isRecord(target) || !isRecord(target['response'])) {
+    throw new Error('the demo-shop profile has no target');
+  }
+  const evidence = target['response']['evidence'];
+  const products = isRecord(evidence) ? evidence['products'] : undefined;
+  const fields = isRecord(products) ? products['fields'] : undefined;
+  const profile = {
+    ...parsed.value,
+    target: {
+      ...target,
+      adapter: 'websocket',
+      // Below the shop's own limit: a message gets no 429 to wait out, so pacing
+      // at the shop's limit would now and then lose a turn to its rate-limit event.
+      limits: { burstPerSecond: 2, perMinute: 120 },
+      request: {
+        url: 'ws://127.0.0.1:3000/v1/ws',
+        body: { message: '{{message}}', sessionId: '{{session}}' },
+      },
+      response: {
+        stream: {
+          event: '$.type',
+          text: { event: 'delta', from: '$.text' },
+          done: 'done',
+          error: { event: 'error', from: '$.detail' },
+        },
+        text: '$.text',
+        route: '$.last.done.route',
+        evidence: { products: { items: '$.last.products.products[*]', fields } },
+      },
+    },
+  };
+  const path = join(dir, 'websocket.profile.yaml');
+  // JSON is YAML too.
+  writeFileSync(path, JSON.stringify(profile, null, 2));
+  return path;
+}
+
+const socketRuns = new Map<string, { code: number; output: string; results: Results }>();
+
+async function runOverSocket(defect: string): Promise<void> {
+  const base = await startShop(defect);
+  const dir = mkdtempSync(join(tmpdir(), `yokla-e2e-ws-${defect}-`));
+  const out = join(dir, 'results.json');
+  const lines: string[] = [];
+  const io = { out: (line: string) => lines.push(line), err: (line: string) => lines.push(line) };
+  const code = await main(
+    [
+      'run',
+      '--profile',
+      websocketProfile(dir),
+      '--cases',
+      join(DEMO, 'cases'),
+      '--target-url',
+      `${base.replace('http:', 'ws:')}/v1/ws`,
+      '--out',
+      out,
+    ],
+    io,
+  );
+  socketRuns.set(defect, {
+    code,
+    output: lines.join('\n'),
+    results: Results.parse(JSON.parse(readFileSync(out, 'utf8'))),
+  });
+}
+
+/** Each case's answers, texts and routes, turn by turn. */
+const answers = (results: Results | undefined) =>
+  Object.fromEntries(
+    (results?.cases ?? []).map((c) => [
+      c.id,
+      c.samples[0]?.turns.map((turn) => [turn.response?.text, turn.response?.route]),
+    ]),
+  );
+
 /** check → the cases where it reported a failing finding. */
 function failingByCheck(results: Results | undefined): Record<string, string[]> {
   const failing: Record<string, Set<string>> = {};
@@ -167,7 +260,10 @@ beforeAll(async () => {
     (host, port) => host === '127.0.0.1' && port !== undefined && shopPorts.has(port),
   );
   // Each defect gets its own demo-shop process and port, so the runs go in parallel.
-  await Promise.all(['none', ...Object.keys(EXPECTED)].map((defect) => runAgainst(defect)));
+  await Promise.all([
+    ...['none', ...Object.keys(EXPECTED)].map((defect) => runAgainst(defect)),
+    ...['none', 'fabricated-price'].map((defect) => runOverSocket(defect)),
+  ]);
 }, 120_000);
 
 afterAll(() => {
@@ -281,6 +377,33 @@ describe('the demo-shop acceptance', () => {
     );
     // Not vacuous: the guard saw every demo-shop the runs talked to.
     expect(new Set(attempts.map((attempt) => attempt.port))).toEqual(shopPorts);
-    expect(shopPorts.size).toBe(Object.keys(EXPECTED).length + 1);
+    expect(shopPorts.size).toBe(Object.keys(EXPECTED).length + 1 + socketRuns.size);
+  });
+});
+
+describe('the demo-shop acceptance over a WebSocket (ADR-0024)', () => {
+  it('passes every case without defects, with the same answers as over HTTP', () => {
+    const run = socketRuns.get('none');
+    expect(run?.code, run?.output).toBe(0);
+    expect(run?.results.summary.statuses).toEqual({ pass: 18 });
+    const turns = run?.results.cases.flatMap((c) => c.samples.flatMap((s) => s.turns)) ?? [];
+    expect(new Set(turns.map((turn) => turn.response?.status))).toEqual(new Set([101]));
+    expect(answers(run?.results)).toEqual(answers(runs.get('none')?.results));
+    const relaxed = run?.results.cases.find((c) => c.id === 'tents-under-500-tr');
+    expect(relaxed?.samples[0]?.turns[0]?.response?.evidence['products']?.[0]).toMatchObject({
+      id: 'TNT-004',
+      price: 899.5,
+      stock: 0,
+    });
+  });
+
+  it('catches a fabricated price with exactly the check and cases it is caught by over HTTP', () => {
+    const run = socketRuns.get('fabricated-price');
+    expect(failingByCheck(run?.results)).toEqual(
+      failingByCheck(runs.get('fabricated-price')?.results),
+    );
+    expect(failingByCheck(run?.results)).toEqual({
+      'price-grounded': [...ALL_PRODUCT_CASES].toSorted(),
+    });
   });
 });

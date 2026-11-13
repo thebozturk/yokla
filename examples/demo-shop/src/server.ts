@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import type { Duplex } from 'node:stream';
 import type { Assistant, ChatReply } from './assistant.ts';
 import { RateLimiter, type RateLimitOptions } from './rate-limit.ts';
+import { acceptWebSocket, refuseUpgrade, type WebSocketPeer } from './websocket.ts';
 
 export interface DemoShopServerOptions {
   readonly assistant: Assistant;
@@ -75,6 +77,11 @@ function parseChatRequest(
   return { message, sessionId };
 }
 
+/** The text of an answer in pieces, as a streaming model would give it. */
+function pieces(answer: string): string[] {
+  return answer.match(/[\s\S]{1,40}/gu) ?? [];
+}
+
 /** The answer as server-sent events: the products, the text in pieces, then done. */
 function stream(response: ServerResponse, reply: ChatReply, cache: string): void {
   response.writeHead(200, {
@@ -85,10 +92,20 @@ function stream(response: ServerResponse, reply: ChatReply, cache: string): void
   const event = (name: string, data: unknown) =>
     response.write(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
   event('products', { products: reply.products });
-  for (const piece of reply.answer.match(/[\s\S]{1,40}/gu) ?? []) event('delta', { text: piece });
+  for (const piece of pieces(reply.answer)) event('delta', { text: piece });
   event('done', reply.metadata);
   response.end();
 }
+
+/** The same events over a WebSocket, one message each, named by their type. */
+function socketEvents(peer: WebSocketPeer, reply: ChatReply): void {
+  peer.send(JSON.stringify({ type: 'products', products: reply.products }));
+  for (const piece of pieces(reply.answer))
+    peer.send(JSON.stringify({ type: 'delta', text: piece }));
+  peer.send(JSON.stringify({ ...reply.metadata, type: 'done' }));
+}
+
+const INVALID_CHAT = `expected JSON {"message": non-empty string (max ${String(MAX_MESSAGE_LENGTH)}), "sessionId": non-empty string (max ${String(MAX_SESSION_ID_LENGTH)})}`;
 
 function wantsCacheBypass(request: IncomingMessage): boolean {
   const value = request.headers['x-cache-bypass'];
@@ -148,10 +165,7 @@ export function createDemoShopServer(options: DemoShopServerOptions): Server {
         : undefined,
     );
     if (chat === undefined) {
-      send(response, 400, {
-        error: 'invalid_request',
-        detail: `expected JSON {"message": non-empty string (max ${String(MAX_MESSAGE_LENGTH)}), "sessionId": non-empty string (max ${String(MAX_SESSION_ID_LENGTH)})}`,
-      });
+      send(response, 400, { error: 'invalid_request', detail: INVALID_CHAT });
       return;
     }
 
@@ -175,10 +189,69 @@ export function createDemoShopServer(options: DemoShopServerOptions): Server {
     }
   }
 
-  return createServer((request, response) => {
+  /**
+   * The chat over a WebSocket at /v1/ws: one JSON message per turn, as the HTTP
+   * body, and the stream's events back, one message each. A session in the url
+   * (?session=) holds for every message, as the x-session-id header does over HTTP.
+   */
+  function chatSocket(request: IncomingMessage, socket: Duplex, head: Buffer): void {
+    const url = new URL(request.url ?? '/', 'http://localhost');
+    if (url.pathname !== '/v1/ws') {
+      refuseUpgrade(socket, 404, 'Not Found');
+      return;
+    }
+    const session = url.searchParams.get('session') ?? '';
+    const bypassCache = wantsCacheBypass(request);
+    const address = request.socket.remoteAddress ?? 'unknown';
+    const answer = async (text: string, peer: WebSocketPeer): Promise<void> => {
+      const error = (code: string, detail: string) => {
+        peer.send(JSON.stringify({ type: 'error', error: code, detail }));
+      };
+      if (limiter !== undefined) {
+        const decision = limiter.take(address);
+        if (!decision.allowed) {
+          error('rate_limited', `retry after ${String(decision.retryAfterSeconds)} s`);
+          return;
+        }
+      }
+      const chat = parseChatRequest(
+        text,
+        session !== '' && session.length <= MAX_SESSION_ID_LENGTH ? session : undefined,
+      );
+      if (chat === undefined) {
+        error('invalid_request', INVALID_CHAT);
+        return;
+      }
+      const { reply } = await options.assistant.reply(chat.sessionId, chat.message, {
+        bypassCache,
+      });
+      socketEvents(peer, reply);
+      if (options.summarizeAfterAnswer === true) {
+        setTimeout(() => {
+          void options.assistant.summarize(reply.answer, {});
+        }, SUMMARY_DELAY_MS);
+      }
+    };
+    // One answer at a time, in the order the messages came.
+    let queue = Promise.resolve();
+    acceptWebSocket(request, socket, head, {
+      maxMessageBytes: MAX_BODY_BYTES,
+      onMessage(text, peer) {
+        queue = queue
+          .then(() => answer(text, peer))
+          .catch(() => {
+            peer.close(1011, 'internal error');
+          });
+      },
+    });
+  }
+
+  const server = createServer((request, response) => {
     handle(request, response).catch(() => {
       if (response.headersSent) response.destroy();
       else send(response, 500, { error: 'internal_error' });
     });
   });
+  server.on('upgrade', chatSocket);
+  return server;
 }
