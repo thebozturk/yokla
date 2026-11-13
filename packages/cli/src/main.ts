@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { BASELINE_HELP, baselineCommand } from './commands/baseline.ts';
 import { GATE_HELP, gateCommand } from './commands/gate.ts';
+import { INIT_HELP, initCommand } from './commands/init.ts';
 import { PLAN_HELP, planCommand } from './commands/plan.ts';
 import { PROXY_HELP, proxyCommand } from './commands/proxy.ts';
 import { REPORT_HELP, reportCommand } from './commands/report.ts';
@@ -12,6 +13,7 @@ import { jsonSchemas } from './schemas.ts';
 const HELP = `yokla — test conversational AI assistants end to end
 
 Usage:
+  yokla init [options]       write a first profile and starter cases from one message
   yokla run [options]        run cases against the profile's target
   yokla report [options]     render the reports of a results file
   yokla gate [options]       judge a results file; exit 0, 1 or 2
@@ -20,6 +22,8 @@ Usage:
   yokla plan [options]       estimate the cost of a run from a calibration
   yokla schema <name>        print a JSON Schema: profile, cases, config, results, baseline
   yokla --version
+
+${INIT_HELP}
 
 ${RUN_HELP}
 
@@ -56,6 +60,8 @@ const SCHEMA_FILES: Readonly<Record<string, string>> = {
 export async function main(argv: readonly string[], io: Output): Promise<number> {
   const [command, ...rest] = argv;
   switch (command) {
+    case 'init':
+      return initCommand(rest, io, version());
     case 'run':
       return runCommand(rest, io, version());
     case 'report':
