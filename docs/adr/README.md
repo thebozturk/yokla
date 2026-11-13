@@ -36,6 +36,7 @@ old one.
 | [0021](0021-price-times-quantity-and-item-text.md) | A price times a stated quantity, and text that belongs to one item | Accepted |
 | [0022](0022-totals-of-the-answers-own-amounts.md) | A total of the answer's own amounts | Accepted |
 | [0023](0023-static-html-report.md) | A static HTML report | Accepted |
+| [0024](0024-websocket-targets.md) | WebSocket targets | Proposed |
 
 ## Template
 
