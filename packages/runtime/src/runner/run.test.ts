@@ -139,6 +139,9 @@ const answer = (extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
+/** A provenance from yokla's templates, with this review status (ADR-0004). */
+const by = (status: string) => ({ source: 'template', evidence: 'yokla init', status });
+
 describe('runSuite', () => {
   it('runs a case and produces valid results.v1, unmeasured until checks run', async () => {
     const t = await target((_r, _i, response) => {
@@ -187,7 +190,6 @@ describe('runSuite', () => {
     const t = await target((_r, _i, response) => {
       json(response, answer());
     });
-    const by = (status: string) => ({ source: 'template', evidence: 'yokla init', status });
     const results = await runSuite(
       options(
         profile(t.url),

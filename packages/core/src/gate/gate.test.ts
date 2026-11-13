@@ -210,9 +210,9 @@ describe('evaluateGate with a baseline', () => {
   });
 });
 
-describe('evaluateGate and proposed cases (ADR-0004)', () => {
-  const proposed = (c: CaseResult): CaseResult => ({ ...c, review: 'proposed' });
+const proposed = (c: CaseResult): CaseResult => ({ ...c, review: 'proposed' });
 
+describe('evaluateGate and proposed cases (ADR-0004)', () => {
   it('leaves proposed cases out, whatever their status, and names them in a notice', () => {
     const results = run([
       kase('ok', 'pass'),
