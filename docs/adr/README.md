@@ -30,8 +30,8 @@ old one.
 | [0015](0015-prompt-inspection.md) | Prompt inspection: what the proxy captures, what is stored, and four checks | Accepted |
 | [0016](0016-streaming-targets-sessions-and-calls-after-the-answer.md) | Streaming targets, session setup, and model calls after the answer | Accepted |
 | [0017](0017-fault-jitter-seed.md) | Fault jitter seeded by case, sample and turn | Accepted |
-| [0018](0018-init-and-starter-cases.md) | yokla init: a profile from one message, and starter cases | Accepted |
-| [0019](0019-edge-case-turns-judged-on-handling.md) | An edge-case turn is judged on whether the target handled it | Proposed |
+| [0018](0018-init-and-starter-cases.md) | yokla init: a profile from one message, and starter cases | Accepted; amended by 0019 |
+| [0019](0019-edge-case-turns-judged-on-handling.md) | An edge-case turn is judged on whether the target handled it | Accepted |
 
 ## Template
 
