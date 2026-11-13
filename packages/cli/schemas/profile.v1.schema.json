@@ -185,9 +185,21 @@
                 "type": "object",
                 "properties": {
                   "items": {
-                    "type": "string",
-                    "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$",
-                    "description": "Where the items are in the response, e.g. $.data.products[*]."
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                      },
+                      {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                        }
+                      }
+                    ],
+                    "description": "Where the items are in the response, e.g. $.data.products[*]; or several paths, read in order, an item with an id an earlier path returned left out (ADR-0020)."
                   },
                   "fields": {
                     "type": "object",

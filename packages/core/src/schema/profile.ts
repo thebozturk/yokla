@@ -46,8 +46,9 @@ export const FieldSpec = z.union([
 ]);
 
 const EvidenceCollection = z.strictObject({
-  items: JsonPath.meta({
-    description: 'Where the items are in the response, e.g. $.data.products[*].',
+  items: z.union([JsonPath, z.array(JsonPath).min(1)]).meta({
+    description:
+      'Where the items are in the response, e.g. $.data.products[*]; or several paths, read in order, an item with an id an earlier path returned left out (ADR-0020).',
   }),
   fields: z.record(FieldName, FieldSpec).meta({
     description:
