@@ -1,6 +1,6 @@
 # 0018. yokla init: a profile from one message, and starter cases
 
-Status: Proposed · Date: 2026-11-13
+Status: Accepted · Date: 2026-11-13
 
 ## Context
 
