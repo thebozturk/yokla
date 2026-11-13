@@ -86,7 +86,7 @@ const shopPorts = new Set<number>();
 let guard: NetworkGuard | undefined;
 const runs = new Map<
   string,
-  { code: number; output: string; results: Results; junit: string; out: string }
+  { code: number; output: string; results: Results; junit: string; html: string; out: string }
 >();
 
 async function startShop(defect: string): Promise<string> {
@@ -119,6 +119,7 @@ async function runAgainst(defect: string): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), `yokla-e2e-${defect}-`));
   const out = join(dir, 'results.json');
   const junit = join(dir, 'junit.xml');
+  const html = join(dir, 'report.html');
   const lines: string[] = [];
   const io = { out: (line: string) => lines.push(line), err: (line: string) => lines.push(line) };
   const args = [
@@ -129,7 +130,7 @@ async function runAgainst(defect: string): Promise<void> {
     join(DEMO, 'cases'),
   ];
   const code = await main(
-    [...args, '--target-url', `${base}/v1/chat`, '--out', out, '--junit', junit],
+    [...args, '--target-url', `${base}/v1/chat`, '--out', out, '--junit', junit, '--html', html],
     io,
   );
   runs.set(defect, {
@@ -137,6 +138,7 @@ async function runAgainst(defect: string): Promise<void> {
     output: lines.join('\n'),
     results: Results.parse(JSON.parse(readFileSync(out, 'utf8'))),
     junit: readFileSync(junit, 'utf8'),
+    html: readFileSync(html, 'utf8'),
     out,
   });
 }
@@ -193,6 +195,12 @@ describe('the demo-shop acceptance', () => {
     expect(run?.junit).toMatch(
       /<testsuites name="yokla" tests="18" failures="0" errors="0" skipped="0"/u,
     );
+    // Every case in the HTML report, closed, since every case passed (ADR-0023).
+    const cases = [
+      ...(run?.html ?? '').matchAll(/<details class="case" id="case-[^"]+"( open)?>/gu),
+    ];
+    expect(cases).toHaveLength(18);
+    expect(cases.filter((match) => match[1] !== undefined)).toEqual([]);
   });
 
   it('keeps the evidence and the conversation of every turn', () => {

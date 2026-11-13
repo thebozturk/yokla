@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>yokla run run-1</title>
+<style>
+:root { color-scheme: light dark; --bg: #ffffff; --fg: #1d2025; --muted: #5d6570;
+  --line: #d8dce2; --panel: #f6f7f9; --code: #eef0f3;
+  --good: #1a7f37; --bad: #c42b2b; --warn: #8f6200; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #16181b; --fg: #e5e7ea; --muted: #9ba3ad; --line: #30353c;
+    --panel: #1c1f23; --code: #23272c; --good: #4fc26f; --bad: #ff6f6f; --warn: #d6a832; }
+}
+* { box-sizing: border-box; }
+body { margin: 0 auto; max-width: 76rem; padding: 1.5rem 1rem 3rem; background: var(--bg);
+  color: var(--fg); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+h1 { font-size: 1.4rem; margin: 0 0 1rem; }
+h2 { font-size: 1.1rem; margin: 2rem 0 .5rem; padding-bottom: .25rem; border-bottom: 1px solid var(--line); }
+h3 { font-size: 1rem; margin: 1rem 0 .25rem; }
+h4 { font-size: .95rem; margin: .75rem 0 .25rem; }
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+pre { margin: .25rem 0 .5rem; padding: .5rem .75rem; border-radius: 4px; background: var(--code);
+  font-size: 12.5px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+pre.text { font-family: inherit; font-size: 14px; line-height: 1.5; }
+.scroll { overflow-x: auto; }
+table { width: 100%; margin: .25rem 0 .75rem; border-collapse: collapse; }
+th, td { padding: .3rem .5rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+td { overflow-wrap: break-word; }
+td code { white-space: nowrap; }
+.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: .2rem 1rem; margin: 0; }
+dt { color: var(--muted); }
+dd { margin: 0; overflow-wrap: anywhere; }
+ul { margin: .25rem 0; padding-left: 1.25rem; }
+.counts { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; padding: 0; list-style: none; }
+.status { display: inline-block; padding: 0 .4rem; border: 1px solid currentColor; border-radius: 3px;
+  font-size: 12px; font-weight: 600; white-space: nowrap; }
+.good { color: var(--good); }
+.bad { color: var(--bad); }
+.warn { color: var(--warn); }
+.muted { color: var(--muted); }
+.mark { margin-left: .4rem; color: var(--muted); font-size: 12px; }
+.label { color: var(--muted); font-size: 12px; }
+details.case { margin: .5rem 0; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+details.case > summary { padding: .5rem .75rem; cursor: pointer; }
+details.case > div { padding: 0 .75rem .75rem; }
+.turn { margin-top: .75rem; padding-top: .5rem; border-top: 1px solid var(--line); }
+details details > summary { color: var(--muted); cursor: pointer; }
+a { color: inherit; }
+@media print { details.case { break-inside: avoid-page; } }
+</style>
+</head>
+<body>
+<h1>yokla run</h1>
+<p class="muted">This report holds the target's answers and evidence. Keep it as private as the results file.</p>
+<section id="run"><h2>Run</h2><dl><dt>Run</dt><dd><code>run-1</code></dd><dt>Target</dt><dd>&lt;script&gt;alert(1)&lt;/script&gt;
+&lt;img src=x onerror=alert(1)&gt;
+&quot;&gt;&lt;a href=&quot;https://example.com/&quot;&gt;x&lt;/a&gt;
+&#39;&gt;&lt;style&gt;body { display: none }&lt;/style&gt;
+&lt;meta http-equiv=&quot;refresh&quot; content=&quot;0; url=https://example.com/&quot;&gt;
+&lt;/pre&gt;&lt;/details&gt;&lt;/body&gt;</dd><dt>Profile</dt><dd><code>aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</code></dd><dt>Started</dt><dd>2026-11-10T12:00:00.000Z (UTC)</dd><dt>Finished</dt><dd>2026-11-10T12:00:02.500Z (UTC)</dd><dt>Duration</dt><dd>2.500 s</dd><dt>Completeness</dt><dd><span class="status warn">partial: the run stopped early</span></dd><dt>yokla</dt><dd>0.0.0-test</dd><dt>Environment</dt><dd>Node.js v24.0.0, darwin arm64</dd><dt>Correlation</dt><dd>serial</dd><dt>Model proxy</dt><dd>serial: 2 calls, 1 attributed, 1 unattributed; costUsd 0.001235, inputTokens 1200, reasoningTokens no value on 2 calls</dd><dt>Prompts kept</dt><dd>full</dd><dt>Target&#39;s logs</dt><dd>2 of 3 turns matched, by order; costUsd 0.0012</dd></dl><h3>Run issues</h3><ul class="bad"><li>&lt;script&gt;alert(1)&lt;/script&gt;
+&lt;img src=x onerror=alert(1)&gt;
+&quot;&gt;&lt;a href=&quot;https://example.com/&quot;&gt;x&lt;/a&gt;
+&#39;&gt;&lt;style&gt;body { display: none }&lt;/style&gt;
+&lt;meta http-equiv=&quot;refresh&quot; content=&quot;0; url=https://example.com/&quot;&gt;
+&lt;/pre&gt;&lt;/details&gt;&lt;/body&gt;</li></ul></section>
+<section id="cases"><h2>Cases</h2><p>4 cases</p><ul class="counts"><li><span class="status good">pass</span> 1</li><li><span class="status bad">fail</span> 1</li><li><span class="status muted">known-gap</span> 1</li><li><span class="status warn">unmeasured</span> 1</li></ul><p class="muted">1 proposed case: they ran, and gate once a person sets their status to approved.</p><div class="scroll"><table><thead><tr><th>Status</th><th>Case</th><th>Suite</th><th>Language</th><th>Reason</th></tr></thead><tbody><tr><td><span class="status bad">fail</span></td><td><a href="#case-hostile"><code>hostile</code></a><span class="mark">[proposed]</span><span class="mark">[unstable]</span></td><td>factual</td><td>tr</td><td>fabrication 1/2: &lt;script&gt;alert(1)&lt;/script&gt;
+&lt;img src=x onerror=alert(1)&gt;
+&quot;&gt;&lt;a href=&quot;https://example.com/&quot;&gt;x&lt;/a&gt;
+&#39;&gt;&lt;style&gt;body { display: none }&lt;/style&gt;
+&lt;meta http-equiv=&quot;refresh&quot; content=&quot;0; url=https://example.com/&quot;&gt;
+&lt;/pre&gt;&lt;/details&gt;&lt;/body&gt;</td></tr><tr><td><span class="status warn">unmeasured</span></td><td><a href="#case-greeting"><code>greeting</code></a></td><td>quality</td><td>en</td><td>no check applied to any turn</td></tr><tr><td><span class="status muted">known-gap</span></td><td><a href="#case-known"><code>known</code></a></td><td>factual</td><td>tr</td><td>known gap: &lt;script&gt;alert(1)&lt;/script&gt;
+&lt;img src=x onerror=alert(1)&gt;
+&quot;&gt;&lt;a href=&quot;https://example.com/&quot;&gt;x&lt;/a&gt;
+&#39;&gt;&lt;style&gt;body { display: none }&lt;/style&gt;
+&lt;meta http-equiv=&quot;refresh&quot; content=&quot;0; url=https://example.com/&quot;&gt;
+&lt;/pre&gt;&lt;/details&gt;&lt;/body&gt; (#12)</td></tr><tr><td><span class="status good">pass</span></td><td><a href="#case-stroller"><code>stroller</code></a></td><td>factual</td><td>tr</td><td></td></tr></tbody></table></div></section>
+<section id="checks"><h2>Checks</h2><p class="muted">Turns per check.</p><div class="scroll"><table><thead><tr><th>Check</th><th class="num">Applied</th><th class="num">Not applicable</th><th class="num">Passed</th><th class="num">Failed</th><th class="num">Errors</th><th class="num">Unmeasured</th></tr></thead><tbody><tr><td><code>price-grounded</code></td><td class="num">2</td><td class="num">0</td><td class="num">1</td><td class="num">1</td><td class="num">0</td><td class="num">0</td></tr><tr><td><code>policy-claim</code><span class="mark">never applied</span></td><td class="num">0</td><td class="num">2</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td></tr><tr><td><code>cost-budget</code></td><td class="num">1</td><td class="num">1</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">1</td></tr></tbody></table></div></section>
+<section id="details"><h2>Case details</h2>
+<details class="case" id="case-hostile" open><summary><span class="status bad">fail</span> <code>hostile</code><span class="mark">[proposed]</span><span class="mark">[unstable]</span> <span class="muted">factual · tr</span> · fabrication 1/2: &lt;script&gt;alert(1)&lt;/script&gt;
+&lt;img src=x onerror=alert(1)&gt;
+&quot;&gt;&lt;a href=&quot;https://example.com/&quot;&gt;x&lt;/a&gt;
+&#39;&gt;&lt;style&gt;body { display: none }&lt;/style&gt;
+&lt;meta http-equiv=&quot;refresh&quot; content=&quot;0; url=https://example.com/&quot;&gt;
+&lt;/pre&gt;&lt;/details&gt;&lt;/body&gt;</summary><div><h3>Dimensions</h3><div class="scroll"><table><thead><tr><th>Dimension</th><th>Policy</th><th>Verdict</th><th class="num">Failed samples</th><th class="num">Failure rate, 95 %</th></tr></thead><tbody><tr><td>fabrication</td><td>worst-of-n</td><td><span class="status bad">fail</span></td><td class="num">1 of 2</td><td class="num">0.095 to 0.905</td></tr></tbody></table></div><h3>Sample 0 · cold</h3><div class="turn"><h4>Sample 0, turn 0</h4><div class="label">User · request id req-1</div><pre class="text">&lt;script&gt;alert(1)&lt;/script&gt;
+&lt;img src=x onerror=alert(1)&gt;
+&quot;&gt;&lt;a href=&quot;https://example.com/&quot;&gt;x&lt;/a&gt;
+&#39;&gt;&lt;style&gt;body { display: none }&lt;/style&gt;
+&lt;meta http-equiv=&quot;refresh&quot; content=&quot;0; url=https://example.com/&quot;&gt;
+&lt;/pre&gt;&lt;/details&gt;&lt;/body&gt;</pre><div class="label">Answer · status 200 · 1533 ms · first text 210 ms · route &lt;script&gt;alert(1)&lt;/script&gt;
+&lt;img src=x onerror=alert(1)&gt;
+&quot;&gt;&lt;a href=&quot;https://example.com/&quot;&gt;x&lt;/a&gt;
+&#39;&gt;&lt;style&gt;body { display: none }&lt;/style&gt;
+&lt;meta http-equiv=&quot;refresh&quot; content=&quot;0; url=https://example.com/&quot;&gt;
+&lt;/pre&gt;&lt;/details&gt;&lt;/body&gt;</div><pre class="text">&lt;script&gt;alert(1)&lt;/script&gt;
+&lt;img src=x onerror=alert(1)&gt;
+&quot;&gt;&lt;a href=&quot;https://example.com/&quot;&gt;x&lt;/a&gt;
+&#39;&gt;&lt;style&gt;body { display: none }&lt;/style&gt;
+&lt;meta http-equiv=&quot;refresh&quot; content=&quot;0; url=https://example.com/&quot;&gt;
+&lt;/pre&gt;&lt;/details&gt;&lt;/body&gt;</pre><details><summary>Evidence: products 1</summary><pre>{
+  &quot;products&quot;: [
+    {
+      &quot;id&quot;: &quot;p1&quot;,
+      &quot;name&quot;: &quot;&lt;script&gt;alert(1)&lt;/script&gt;\n&lt;img src=x onerror=alert(1)&gt;\n\&quot;&gt;&lt;a href=\&quot;https://example.com/\&quot;&gt;x&lt;/a&gt;\n&#39;&gt;&lt;style&gt;body { display: none }&lt;/style&gt;\n&lt;meta http-equiv=\&quot;refresh\&quot; content=\&quot;0; url=https://example.com/\&quot;&gt;\n&lt;/pre&gt;&lt;/details&gt;&lt;/body&gt;&quot;,
+      &quot;price&quot;: 5
+    }
+  ]
+}</pre></details><div class="label">Mapping issues</div><ul class="warn"><li>&lt;script&gt;alert(1)&lt;/script&gt;
+&lt;img src=x onerror=alert(1)&gt;
+&quot;&gt;&lt;a href=&quot;https://example.com/&quot;&gt;x&lt;/a&gt;
+&#39;&gt;&lt;style&gt;body { display: none }&lt;/style&gt;
+&lt;meta http-equiv=&quot;refresh&quot; content=&quot;0; url=https://example.com/&quot;&gt;
+&lt;/pre&gt;&lt;/details&gt;&lt;/body&gt;</li></ul><div class="scroll"><table><thead><tr><th>Check</th><th>Verdict</th><th>Dimension</th><th>Severity</th><th>Message</th></tr></thead><tbody><tr><td><code>price-grounded</code></td><td><span class="status bad">fail</span></td><td>fabrication</td><td>high</td><td>&lt;script&gt;alert(1)&lt;/script&gt;
+&lt;img src=x onerror=alert(1)&gt;
+&quot;&gt;&lt;a href=&quot;https://example.com/&quot;&gt;x&lt;/a&gt;
+&#39;&gt;&lt;style&gt;body { display: none }&lt;/style&gt;
+&lt;meta http-equiv=&quot;refresh&quot; content=&quot;0; url=https://example.com/&quot;&gt;
+&lt;/pre&gt;&lt;/details&gt;&lt;/body&gt;<details><summary>evidence</summary><pre>{
+  &quot;raw&quot;: &quot;&lt;script&gt;alert(1)&lt;/script&gt;\n&lt;img src=x onerror=alert(1)&gt;\n\&quot;&gt;&lt;a href=\&quot;https://example.com/\&quot;&gt;x&lt;/a&gt;\n&#39;&gt;&lt;style&gt;body { display: none }&lt;/style&gt;\n&lt;meta http-equiv=\&quot;refresh\&quot; content=\&quot;0; url=https://example.com/\&quot;&gt;\n&lt;/pre&gt;&lt;/details&gt;&lt;/body&gt;&quot;
+}</pre></details></td></tr><tr><td><code>cost-budget</code></td><td><span class="status warn">unmeasured</span></td><td>cost</td><td></td><td>no model proxy data</td></tr></tbody></table></div><p class="muted">Not applicable: policy-claim, stock-claim</p><details><summary>Model calls: 1 call, $0.001235, serial correlation</summary><div class="scroll"><table><thead><tr><th>Call</th><th>Upstream</th><th>Model</th><th class="num">Status</th><th class="num">Duration</th><th class="num">Input</th><th class="num">Cached</th><th class="num">Cache write</th><th class="num">Output</th><th class="num">Reasoning</th><th class="num">Cost</th><th>Fault</th><th>Prompt, characters per message</th></tr></thead><tbody><tr><td><code>call-1</code></td><td>anthropic</td><td>model-a</td><td class="num">200</td><td class="num">812 ms</td><td class="num">1200</td><td class="num">1000</td><td class="num">–</td><td class="num">80</td><td class="num">–</td><td class="num">$0.001235</td><td></td><td>system 20, user 8</td></tr></tbody></table></div></details><details><summary>Observed in the target's logs, by order</summary><pre>{
+  &quot;route&quot;: &quot;&lt;script&gt;alert(1)&lt;/script&gt;\n&lt;img src=x onerror=alert(1)&gt;\n\&quot;&gt;&lt;a href=\&quot;https://example.com/\&quot;&gt;x&lt;/a&gt;\n&#39;&gt;&lt;style&gt;body { display: none }&lt;/style&gt;\n&lt;meta http-equiv=\&quot;refresh\&quot; content=\&quot;0; url=https://example.com/\&quot;&gt;\n&lt;/pre&gt;&lt;/details&gt;&lt;/body&gt;&quot;,
+  &quot;costUsd&quot;: 0.0012
+}</pre></details></div><h3>Sample 1 · warm</h3><div class="turn"><h4>Sample 1, turn 0</h4><div class="label">User</div><pre class="text">question</pre><p class="bad">No answer.</p><p class="bad">Error: &lt;script&gt;alert(1)&lt;/script&gt;
+&lt;img src=x onerror=alert(1)&gt;
+&quot;&gt;&lt;a href=&quot;https://example.com/&quot;&gt;x&lt;/a&gt;
+&#39;&gt;&lt;style&gt;body { display: none }&lt;/style&gt;
+&lt;meta http-equiv=&quot;refresh&quot; content=&quot;0; url=https://example.com/&quot;&gt;
+&lt;/pre&gt;&lt;/details&gt;&lt;/body&gt;</p><p class="muted">No check applied.</p></div></div></details>
+<details class="case" id="case-greeting" open><summary><span class="status warn">unmeasured</span> <code>greeting</code> <span class="muted">quality · en</span> · no check applied to any turn</summary><div><h3>Sample 0 · cold</h3><div class="turn"><h4>Sample 0, turn 0</h4><div class="label">User</div><pre class="text">question</pre><div class="label">Answer · status 200 · 120 ms</div><pre class="text">the target answer must never reach a report</pre><p class="muted">No check applied.</p></div></div></details>
+<details class="case" id="case-known" open><summary><span class="status muted">known-gap</span> <code>known</code> <span class="muted">factual · tr</span> · known gap: &lt;script&gt;alert(1)&lt;/script&gt;
+&lt;img src=x onerror=alert(1)&gt;
+&quot;&gt;&lt;a href=&quot;https://example.com/&quot;&gt;x&lt;/a&gt;
+&#39;&gt;&lt;style&gt;body { display: none }&lt;/style&gt;
+&lt;meta http-equiv=&quot;refresh&quot; content=&quot;0; url=https://example.com/&quot;&gt;
+&lt;/pre&gt;&lt;/details&gt;&lt;/body&gt; (#12)</summary><div><p>Known gap: &lt;script&gt;alert(1)&lt;/script&gt;
+&lt;img src=x onerror=alert(1)&gt;
+&quot;&gt;&lt;a href=&quot;https://example.com/&quot;&gt;x&lt;/a&gt;
+&#39;&gt;&lt;style&gt;body { display: none }&lt;/style&gt;
+&lt;meta http-equiv=&quot;refresh&quot; content=&quot;0; url=https://example.com/&quot;&gt;
+&lt;/pre&gt;&lt;/details&gt;&lt;/body&gt; (#12)</p><h3>Sample 0 · cold</h3><div class="turn"><h4>Sample 0, turn 0</h4><div class="label">User</div><pre class="text">question</pre><div class="label">Answer · status 200 · 120 ms</div><pre class="text">the target answer must never reach a report</pre><p class="muted">No check applied.</p></div></div></details>
+<details class="case" id="case-stroller"><summary><span class="status good">pass</span> <code>stroller</code> <span class="muted">factual · tr</span></summary><div><h3>Dimensions</h3><div class="scroll"><table><thead><tr><th>Dimension</th><th>Policy</th><th>Verdict</th><th class="num">Failed samples</th><th class="num">Failure rate, 95 %</th></tr></thead><tbody><tr><td>fabrication</td><td>worst-of-n</td><td><span class="status good">pass</span></td><td class="num">0 of 1</td><td class="num"></td></tr></tbody></table></div><h3>Sample 0 · cold</h3><div class="turn"><h4>Sample 0, turn 0</h4><div class="label">User</div><pre class="text">question</pre><div class="label">Answer · status 200 · 120 ms</div><pre class="text">the target answer must never reach a report</pre><div class="scroll"><table><thead><tr><th>Check</th><th>Verdict</th><th>Dimension</th><th>Severity</th><th>Message</th></tr></thead><tbody><tr><td><code>price-grounded</code></td><td><span class="status good">pass</span></td><td>fabrication</td><td>high</td><td>1 amount(s) match returned prices</td></tr></tbody></table></div></div></div></details>
+</section>
+</body>
+</html>

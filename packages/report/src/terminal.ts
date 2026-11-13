@@ -3,38 +3,12 @@
 // logs observed. Errors and run issues go to stderr.
 
 import { CASE_STATUSES, type Results } from '@yokla/core';
+import { counted, observedTotals } from './format.ts';
 import { caseProblems, caseReason, dimensionSummary } from './problems.ts';
 
 export interface TerminalSummary {
   readonly out: readonly string[];
   readonly err: readonly string[];
-}
-
-function counted(count: number, noun: string): string {
-  return `${String(count)} ${noun}${count === 1 ? '' : 's'}`;
-}
-
-function round(value: number): string {
-  return String(Math.round(value * 1e6) / 1e6);
-}
-
-/** "costUsd 0.0123 (no value on 2 turns), modelCalls 4" */
-function observedTotals(
-  totals: Readonly<Record<string, number>>,
-  missing: Readonly<Record<string, number>>,
-  noun: string,
-): string {
-  const names = [...new Set([...Object.keys(totals), ...Object.keys(missing)])];
-  return names
-    .map((name) => {
-      const total = totals[name];
-      const gap = missing[name];
-      const value = total === undefined ? '' : round(total);
-      if (gap === undefined) return `${name} ${value}`;
-      if (total === undefined) return `${name} no value on ${counted(gap, noun)}`;
-      return `${name} ${value} (no value on ${counted(gap, noun)})`;
-    })
-    .join(', ');
 }
 
 export function terminalSummary(results: Results): TerminalSummary {

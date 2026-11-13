@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { CORE_CHECKS, type Results } from '@yokla/core';
-import { junitXml, terminalSummary } from '@yokla/report';
+import { htmlReport, junitXml, terminalSummary } from '@yokla/report';
 import { ConfigError, runSuite } from '@yokla/runtime';
 import { LoadError, loadCases, loadConfig, loadProfile } from '../load.ts';
 import { DOMAIN_PACKS, LANGUAGE_PACKS } from '../packs.ts';
@@ -26,6 +26,7 @@ Options:
   --concurrency <n>     cases run in parallel (default: 1)
   --target-url <url>    use this url instead of the profile's request url
   --junit <file>        also write a JUnit XML report
+  --html <file>         also write an HTML report; it holds the target's answers
   --config <file>       prices and thresholds (default: yokla.config.yaml, when present)
   --proxy-url <url>     the model proxy, instead of 127.0.0.1 on modelProxy.port
   --max-cost <usd>      stop starting samples once the model cost reaches this; needs a proxy`;
@@ -61,6 +62,7 @@ const RUN_OPTIONS = {
   concurrency: { type: 'string' },
   'target-url': { type: 'string' },
   junit: { type: 'string' },
+  html: { type: 'string' },
   config: { type: 'string' },
   'proxy-url': { type: 'string' },
   'max-cost': { type: 'string' },
@@ -126,6 +128,7 @@ export async function runCommand(
     printSummary(results, outPath, io);
     if (values.junit !== undefined)
       io.out(`junit: ${writeReport(values.junit, junitXml(results))}`);
+    if (values.html !== undefined) io.out(`html: ${writeReport(values.html, htmlReport(results))}`);
     return results.cases.some((c) => c.status === 'error') ? 2 : 0;
   } catch (error) {
     if (error instanceof LoadError || error instanceof ConfigError) {
