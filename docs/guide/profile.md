@@ -57,7 +57,7 @@ A case turn can add headers or body fields for that turn only (see
 
 | Field | Meaning |
 |---|---|
-| `text` | Where the answer text is. Required. |
+| `text` | Where the answer text is. Required. One path reads its first match; a list of paths reads every string at each, joined in order with a blank line, for answers given as cards or other components (ADR-0020). |
 | `route` | Where the target says which path answered, if it does. `route-expected` needs it. |
 | `id` | Where the target's own request id is. Log observation can correlate by it. |
 | `clarification.routes` | Routes that mean the target asked a clarifying question. Product expectations then don't apply to that turn. |
@@ -82,16 +82,20 @@ evidence:
       stock: stockQuantity        # null means unknown, not zero
 ```
 
-- **`items`** is one JSONPath to the items.
+- **`items`** is one JSONPath to the items, or a list of them, read in order,
+  such as a card's products and a comparison's. An item with an `id` an
+  earlier path returned is left out, so a product shown twice in one answer
+  counts once; within one path a repeated item stays (ADR-0020).
 - **`fields`** maps each evidence field, in camelCase, to a field path in the
   item. A field may give several paths, tried in order until one is not null,
   and a conversion `as: string | number | boolean`. A value that can't be
   converted is read as null and reported.
 - **The e-commerce checks** read the `products` collection and its `id`,
-  `name`, `price`, `currency`, `stock` and `category` fields. Filter
-  attributes may name any other field. When the profile has a catalog, an
-  item's missing `price`, `currency`, `stock` and type are completed from it
-  by `id`.
+  `name`, `price`, `currency`, `stock`, `inStock` and `category` fields.
+  `stock` is a quantity; `inStock` is availability as a boolean, for targets
+  that give no quantity. Filter attributes may name any other field. When the
+  profile has a catalog, an item's missing `price`, `currency`, `stock`,
+  `inStock` and type are completed from it by `id`.
 
 ### Streamed answers
 
@@ -242,8 +246,9 @@ it).
 |---|---|
 | `neverFabricate` | The fact kinds the target must never invent: `price`, `stock`, `discount`, `shipping`, `returns` and `warranty`, all by default. Today `policy-claim` reads it, for `shipping`, `returns` and `warranty`: once the profile lists policies, a topic in this list without a policy entry can back no claim. |
 | `policies.<topic>` | The source for a policy topic: `{ source: none }` (any concrete claim is a finding), `{ source: faq, path, topic? }` (JSON Lines rows with `topic`, `lang` and `answer`) or `{ source: text, text }`. |
-| `catalog` | A JSON Lines snapshot of the catalog: `{ kind: file, path, fields: { id, type, price, currency?, stock? } }`. Evidence items are completed from it by id. A `null` stock means unknown. |
+| `catalog` | A JSON Lines snapshot of the catalog: `{ kind: file, path, fields: { id, type, price, currency?, stock?, inStock? } }`. Evidence items are completed from it by id. A `null` stock means unknown. |
 | `typeSeparator` | Separates the levels of a product type, such as `/` in `outdoor/camping/tent`. Without it, types match only exactly. |
 | `campaigns` | Amounts an answer may show besides product prices, each with `id`, `amount` and `currency`. |
+| `priceSources` | Further amounts an answer may quote (ADR-0020): `{ evidence, fields }`, the amount fields of an evidence collection of the conversation, such as an order card's; or `{ file, paths }`, a JSON or JSON Lines snapshot, such as an order history, and the JSONPaths of its amounts. They ground amounts but don't make `price-grounded` apply. An amount anywhere in a file grounds a quote, whoever's order it was. |
 
 Paths in the profile are relative to the profile file.
