@@ -7,7 +7,7 @@ From a checkout of the repository, run each command as `pnpm yokla <command>`.
 |---|---|
 | `init` | Writes a first profile and starter cases from one message to the target. |
 | `run` | Runs cases against the profile's target and writes a results file. |
-| `report` | Prints the summary of a results file, and optionally writes JUnit XML. |
+| `report` | Prints the summary of a results file, and optionally writes JUnit XML or an HTML report. |
 | `gate` | Judges a results file against thresholds and a baseline. |
 | `baseline` | Accepts a run as the baseline. |
 | `proxy` | Runs the model proxy until stopped. |
@@ -51,6 +51,7 @@ option is wrong. Then nothing is written. See ADR-0018.
 | `--concurrency <n>` | 1 | Cases run in parallel. Serial correlation needs 1. |
 | `--target-url <url>` | the profile's | Use this url instead of `target.request.url`. |
 | `--junit <file>` | | Also write a JUnit XML report. |
+| `--html <file>` | | Also write an HTML report. It holds the target's answers. |
 | `--config <file>` | `yokla.config.yaml`, when present | Prices and thresholds. |
 | `--proxy-url <url>` | `127.0.0.1` on `modelProxy.port` | Where the model proxy is. |
 | `--max-cost <usd>` | | Start no new sample once the model cost reaches this. Needs a proxy. |
@@ -66,11 +67,26 @@ Keep it out of version control when the answers may hold personal data.
 ## `yokla report`
 
 ```sh
-pnpm yokla report --results runs/<run id>.json [--junit runs/junit.xml]
+pnpm yokla report --results runs/<run id>.json [--junit runs/junit.xml] [--html runs/report.html]
 ```
 
 Prints the summary again from the results file alone, and optionally writes
-JUnit XML. Neither report contains the target's answers.
+JUnit XML or an HTML report.
+
+- **The terminal summary and JUnit XML** hold one line per case that didn't
+  pass, and none of the target's answers.
+- **The HTML report** (ADR-0023) is one offline file to read why a case
+  didn't pass.
+  - It shows the run, the status of each case, how often each check applied,
+    and every turn: the user's message, the answer, the findings, the mapped
+    evidence and the model calls. Cases that didn't pass come first, open.
+  - It has no script and loads nothing, so it opens offline and contacts
+    nobody. The answers are shown as text, never as markup or links.
+  - A model call's prompt is shown by role and size only, whatever the
+    results keep.
+  - It holds the target's answers and evidence, so it is target data like the
+    results file. Keep it out of version control when the answers may hold
+    personal data.
 
 ## The configuration file
 
