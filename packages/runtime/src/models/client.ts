@@ -1,6 +1,6 @@
 // yokla's own model calls (ADR-0028), such as the simulated customer's: a
-// chat completion from the model the configuration names, OpenAI-compatible
-// or Anthropic. They go only to that model's url, never through the model
+// chat completion from the model the configuration names, OpenAI-compatible,
+// Anthropic, or Gemini's native API (ADR-0032). They go only to that model's url, never through the model
 // proxy, which records the target's calls. The key is read from the
 // environment and never written anywhere.
 
@@ -55,36 +55,19 @@ export class ModelClient {
   async complete(prompt: CustomerPrompt, seed: string): Promise<OwnReply> {
     const config = this.#config;
     const base = config.url.replace(/\/$/u, '');
-    const anthropic = config.kind === 'anthropic';
-    const body = anthropic
-      ? {
-          model: config.model,
-          system: prompt.system,
-          messages: prompt.messages,
-          max_tokens: config.maxTokens,
-          temperature: config.temperature,
-        }
-      : {
-          model: config.model,
-          messages: [{ role: 'system', content: prompt.system }, ...prompt.messages],
-          max_tokens: config.maxTokens,
-          temperature: config.temperature,
-          seed: providerSeed(seed),
-        };
-    const headers: Record<string, string> = { 'content-type': 'application/json' };
-    if (anthropic) {
-      headers['anthropic-version'] = '2023-06-01';
-      if (this.#key !== undefined) headers['x-api-key'] = this.#key;
-    } else if (this.#key !== undefined) {
-      headers['authorization'] = `Bearer ${this.#key}`;
-    }
+    const call =
+      config.kind === 'anthropic'
+        ? this.#anthropic(prompt)
+        : config.kind === 'gemini'
+          ? this.#gemini(prompt, seed)
+          : this.#openAi(prompt, seed);
     let result;
     try {
       result = await this.#http.send({
-        url: `${base}/${anthropic ? 'messages' : 'chat/completions'}`,
+        url: `${base}/${call.path}`,
         method: 'POST',
-        headers,
-        body: JSON.stringify(body),
+        headers: { 'content-type': 'application/json', ...call.headers },
+        body: JSON.stringify(call.body),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -95,40 +78,131 @@ export class ModelClient {
     if (result.status < 200 || result.status > 299) {
       throw new ModelClientError(`the customer model answered ${String(result.status)}`);
     }
-    const json = result.json;
-    const content = field(json, 'content');
-    const blocks: unknown[] = Array.isArray(content) ? content : [];
-    const text = anthropic
-      ? blocks
-          .map((block) => (field(block, 'type') === 'text' ? field(block, 'text') : undefined))
-          .filter((piece): piece is string => typeof piece === 'string')
-          .join('')
-      : field(json, 'choices', 0, 'message', 'content');
-    if (typeof text !== 'string' || text.trim() === '') {
+    const read = call.read(result.json);
+    if (typeof read.text !== 'string' || read.text.trim() === '') {
       throw new ModelClientError('the customer model answered with no text');
     }
-    const input = count(field(json, 'usage', 'input_tokens'));
-    const usage = anthropic
-      ? {
-          // Every input token, cached and cache-write ones included, as the proxy counts them.
-          input:
-            input === null
-              ? null
-              : input +
-                (count(field(json, 'usage', 'cache_read_input_tokens')) ?? 0) +
-                (count(field(json, 'usage', 'cache_creation_input_tokens')) ?? 0),
-          output: count(field(json, 'usage', 'output_tokens')),
-        }
-      : {
-          input: count(field(json, 'usage', 'prompt_tokens')),
-          output: count(field(json, 'usage', 'completion_tokens')),
-        };
-    const model = field(json, 'model');
+    const model = field(result.json, 'model') ?? field(result.json, 'modelVersion');
     return {
-      text: text.trim(),
-      model: typeof model === 'string' ? model : config.model,
-      usage,
+      text: read.text.trim(),
+      model: typeof model === 'string' && model !== '' ? model : config.model,
+      usage: read.usage,
       durationMs: Math.round(result.latencyMs * 100) / 100,
     };
   }
+
+  #auth(header: string, value: (key: string) => string = (key) => key): Record<string, string> {
+    return this.#key === undefined ? {} : { [header]: value(this.#key) };
+  }
+
+  #openAi(prompt: CustomerPrompt, seed: string): Call {
+    const config = this.#config;
+    return {
+      path: 'chat/completions',
+      headers: this.#auth('authorization', (key) => `Bearer ${key}`),
+      body: {
+        model: config.model,
+        messages: [{ role: 'system', content: prompt.system }, ...prompt.messages],
+        max_tokens: config.maxTokens,
+        temperature: config.temperature,
+        seed: providerSeed(seed),
+      },
+      read: (json) => ({
+        text: field(json, 'choices', 0, 'message', 'content'),
+        usage: {
+          input: count(field(json, 'usage', 'prompt_tokens')),
+          output: count(field(json, 'usage', 'completion_tokens')),
+        },
+      }),
+    };
+  }
+
+  #anthropic(prompt: CustomerPrompt): Call {
+    const config = this.#config;
+    return {
+      path: 'messages',
+      headers: { 'anthropic-version': '2023-06-01', ...this.#auth('x-api-key') },
+      body: {
+        model: config.model,
+        system: prompt.system,
+        messages: prompt.messages,
+        max_tokens: config.maxTokens,
+        temperature: config.temperature,
+      },
+      read: (json) => {
+        const content = field(json, 'content');
+        const blocks: unknown[] = Array.isArray(content) ? content : [];
+        const input = count(field(json, 'usage', 'input_tokens'));
+        return {
+          text: blocks
+            .map((block) => (field(block, 'type') === 'text' ? field(block, 'text') : undefined))
+            .filter((piece): piece is string => typeof piece === 'string')
+            .join(''),
+          usage: {
+            // Every input token, cached and cache-write ones included, as the proxy counts them.
+            input:
+              input === null
+                ? null
+                : input +
+                  (count(field(json, 'usage', 'cache_read_input_tokens')) ?? 0) +
+                  (count(field(json, 'usage', 'cache_creation_input_tokens')) ?? 0),
+            output: count(field(json, 'usage', 'output_tokens')),
+          },
+        };
+      },
+    };
+  }
+
+  /** Gemini's native API (ADR-0032), with the key as AI Studio or Vertex AI takes it. */
+  #gemini(prompt: CustomerPrompt, seed: string): Call {
+    const config = this.#config;
+    return {
+      path: `models/${encodeURIComponent(config.model)}:generateContent`,
+      headers:
+        config.auth === 'bearer'
+          ? this.#auth('authorization', (key) => `Bearer ${key}`)
+          : this.#auth('x-goog-api-key'),
+      body: {
+        systemInstruction: { parts: [{ text: prompt.system }] },
+        contents: prompt.messages.map((message) => ({
+          role: message.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: message.content }],
+        })),
+        generationConfig: {
+          temperature: config.temperature,
+          maxOutputTokens: config.maxTokens,
+          seed: providerSeed(seed),
+        },
+      },
+      read: (json) => {
+        const parts = field(json, 'candidates', 0, 'content', 'parts');
+        const list: unknown[] = Array.isArray(parts) ? parts : [];
+        const usage = (name: string) => count(field(json, 'usageMetadata', name));
+        const prompted = usage('promptTokenCount');
+        const candidates = usage('candidatesTokenCount');
+        const thoughts = usage('thoughtsTokenCount');
+        return {
+          // A thought summary is the model's thinking, not its reply.
+          text: list
+            .map((part) => (field(part, 'thought') === true ? undefined : field(part, 'text')))
+            .filter((piece): piece is string => typeof piece === 'string')
+            .join(''),
+          usage: {
+            input: prompted === null ? null : prompted + (usage('toolUsePromptTokenCount') ?? 0),
+            // Thinking is billed as output, as the proxy counts it.
+            output:
+              candidates === null && thoughts === null ? null : (candidates ?? 0) + (thoughts ?? 0),
+          },
+        };
+      },
+    };
+  }
+}
+
+/** One provider's request, and how its answer is read. */
+interface Call {
+  readonly path: string;
+  readonly headers: Readonly<Record<string, string>>;
+  readonly body: unknown;
+  readonly read: (json: unknown) => { text: unknown; usage: OwnReply['usage'] };
 }

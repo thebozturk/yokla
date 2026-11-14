@@ -144,6 +144,87 @@ describe('the model client (ADR-0028)', () => {
     expect(request?.body['seed']).toBeUndefined();
   });
 
+  it("sends Gemini's native generateContent, and counts thinking as output (ADR-0032)", async () => {
+    const { url, seen } = await provider(() => [
+      200,
+      {
+        candidates: [
+          {
+            content: {
+              role: 'model',
+              parts: [
+                { text: 'I should ask for a tent.', thought: true },
+                { text: ' Çadır ' },
+                { text: 'var mı? ' },
+              ],
+            },
+          },
+        ],
+        usageMetadata: {
+          promptTokenCount: 40,
+          toolUsePromptTokenCount: 2,
+          candidatesTokenCount: 6,
+          thoughtsTokenCount: 9,
+        },
+        modelVersion: 'gemini-2.5-flash-001',
+      },
+    ]);
+    const twoTurns = {
+      ...prompt,
+      messages: [...prompt.messages, { role: 'assistant' as const, content: 'Merhaba' }],
+    };
+    const reply = await new ModelClient(
+      model(url, { kind: 'gemini', model: 'gemini-2.5-flash', apiKeyEnv: 'KEY' }),
+      { KEY: 'g-1' },
+    ).complete(twoTurns, 'c|0');
+    expect(reply).toMatchObject({
+      text: 'Çadır var mı?',
+      model: 'gemini-2.5-flash-001',
+      usage: { input: 42, output: 15 },
+    });
+    const [request] = seen;
+    expect(request?.path).toBe('/v1/models/gemini-2.5-flash:generateContent');
+    expect(request?.headers['x-goog-api-key']).toBe('g-1');
+    expect(request?.headers['authorization']).toBeUndefined();
+    expect(request?.body).toEqual({
+      systemInstruction: { parts: [{ text: prompt.system }] },
+      contents: [
+        { role: 'user', parts: [{ text: 'start' }] },
+        { role: 'model', parts: [{ text: 'Merhaba' }] },
+      ],
+      generationConfig: { temperature: 0, maxOutputTokens: 300, seed: providerSeed('c|0') },
+    });
+  });
+
+  it('sends the key as a bearer token for Vertex AI, and leaves counts it lacks null', async () => {
+    const { url, seen } = await provider(() => [
+      200,
+      { candidates: [{ content: { parts: [{ text: 'Merhaba' }] } }], usageMetadata: {} },
+    ]);
+    const reply = await new ModelClient(
+      model(url, { kind: 'gemini', model: 'gemini-2.5-pro', apiKeyEnv: 'TOKEN', auth: 'bearer' }),
+      { TOKEN: 'ya29.token' },
+    ).complete(prompt, 's');
+    expect(reply).toMatchObject({
+      text: 'Merhaba',
+      model: 'gemini-2.5-pro',
+      usage: { input: null, output: null },
+    });
+    expect(seen[0]?.headers['authorization']).toBe('Bearer ya29.token');
+    expect(seen[0]?.headers['x-goog-api-key']).toBeUndefined();
+    const thinking = await provider(() => [
+      200,
+      {
+        candidates: [{ content: { parts: [{ text: 'Merhaba' }] } }],
+        usageMetadata: { promptTokenCount: 3, thoughtsTokenCount: 4 },
+      },
+    ]);
+    expect(
+      (await new ModelClient(model(thinking.url, { kind: 'gemini' }), {}).complete(prompt, 's'))
+        .usage,
+    ).toEqual({ input: 3, output: 4 });
+  });
+
   it('fails clearly: a missing key, an error status, no text', async () => {
     const { url } = await provider((s) =>
       String(s.body['model']) === 'down'
