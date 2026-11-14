@@ -184,6 +184,46 @@ no answer asked for nothing.
 
 Cases state what they expect with `tools` (see [cases](cases.md)).
 
+## Tool results the model saw
+
+An agent's answer often names a product it got from a tool but doesn't
+return, such as a stand-in, a compared item or one left out of a plan. The
+app sends that tool's result back to the model in its next call. The proxy
+sees it there, and names the tool each result answers (ADR-0026).
+`modelProxy.toolResults` maps what to read from it:
+
+```yaml
+modelProxy:
+  toolResults:
+    search_products:
+      products:
+        items: $.results[*]
+        fields: { id: product_id, name: title, price: price, inStock: { from: in_stock, as: boolean } }
+```
+
+**How it maps.**
+- Per tool, it maps evidence collections in the form of `response.evidence`.
+- A collection must be one that `response.evidence` maps.
+
+**How a result is read.**
+- As JSON: its whole text, or else the text from its first `{` to its last
+  `}`. That covers a payload behind a header line or between fence tags.
+- A mapped result that is neither becomes an issue of the turn.
+
+**What the checks see.**
+- The items of every mapped result in the prompts of the turn's model calls,
+  deduplicated by id.
+- They are kept apart from what the answer returned, and the results keep
+  them as `seen`.
+- `price-grounded` accepts their prices.
+- `stock-claim` judges a claim about a product the sentence names against
+  its stock.
+- The checks that judge what the answer shows don't see them: filters,
+  types, duplicates and evidence counts.
+
+**What is kept.** Only the mapped fields are kept. The prompt text stays as
+`prompts.store` keeps it.
+
 ## Privacy
 
 The proxy listens on `127.0.0.1` only. It forwards each call to the upstream

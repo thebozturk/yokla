@@ -326,6 +326,7 @@ Present when the app's model calls go through `yokla proxy` (see the
 | `prompts.redact` | Regular expressions whose matches `redacted` replaces. |
 | `inspect.canary` | A string the app's system prompt contains, for `prompt-leak`. |
 | `inspect.untrusted` | Evidence fields that hold retrieved content, per collection, such as `{ products: [name] }`, for `untrusted-in-system`. |
+| `toolResults` | Per tool, evidence collections in the results the model saw, in the form of `response.evidence` (ADR-0026). See [the model proxy guide](model-proxy.md#tool-results-the-model-saw). |
 
 ## `ecommerce`
 

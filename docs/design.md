@@ -375,8 +375,8 @@ The [checks guide](guide/checks.md) gives each check's exact conditions.
 
 | Check | Enabled when | Rule |
 |---|---|---|
-| `price-grounded` | the answer mentions money, and a product returned in the conversation has a price | Every money amount in the answer (parsed by the language pack) equals the price of a product returned in this turn or an earlier one, a campaign amount the profile declares, an amount in a policy source, an amount from a declared price source (ADR-0020), a returned price times a quantity stated in the same sentence (ADR-0021), a total of the answer's own grounded amounts (ADR-0022), or an amount the user wrote. |
-| `stock-claim` | the evidence or the catalog gives stock, as a quantity or as availability (ADR-0020) | No availability claim when stock is unknown. Claims must match known stock. |
+| `price-grounded` | the answer mentions money, and a product returned or seen in the conversation has a price | Every money amount in the answer (parsed by the language pack) equals the price of a product returned in this turn or an earlier one, or seen by the model in a mapped tool result (ADR-0026), a campaign amount the profile declares, an amount in a policy source, an amount from a declared price source (ADR-0020), a returned price times a quantity stated in the same sentence (ADR-0021), a total of the answer's own grounded amounts (ADR-0022), or an amount the user wrote. |
+| `stock-claim` | the evidence, the catalog or a mapped tool result gives stock, as a quantity or as availability (ADR-0020) | No availability claim when stock is unknown. Claims must match known stock, of the product named, returned or seen by the model (ADR-0026). |
 | `policy-claim` | the profile lists policies | Concrete claims (durations, fees, "free shipping") need a source and must match it. |
 | `filter-honoured-or-disclosed` | the turn carries filters | Returned items satisfy the filters, or the answer discloses the relaxation. |
 | `type-matched-or-disclosed` | the turn names the requested type | Returned items are of that type or a type under it, or the answer says it shows other types. |
@@ -795,8 +795,8 @@ Each version is usable on its own. A version ships when its exit criteria hold.
 **Later:** sampling production logs, more domains (banking, travel), more
 languages, SDK adapters. Checks that understand more of an answer:
 - `price-grounded` grounding the price of a product an answer names but
-  doesn't return, as the open-source target's answers do, and differences and
-  discounts (ADR-0022);
+  doesn't return, when the model didn't see it in a mapped tool result
+  (ADR-0026), and differences and discounts (ADR-0022);
 - text about one item, read with that item (ADR-0021).
 
 ## 21. Risks
