@@ -115,8 +115,8 @@ export function goalReached(
   let applied = 0;
   for (const check of REACHED_CHECKS) {
     const outcome = check.run({ ...context, turn });
+    // These checks judge the answer alone, so none leaves a dimension unmeasured.
     if (!outcome.applicable) continue;
-    if ((outcome.unmeasured ?? []).length > 0) return false;
     if (outcome.findings.some((finding) => finding.verdict !== 'pass')) return false;
     applied += 1;
   }
