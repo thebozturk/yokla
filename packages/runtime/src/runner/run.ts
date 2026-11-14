@@ -3,7 +3,7 @@
 // profile (P9); everything domain-specific comes from the packs the caller
 // passes in (P7). A case where no check applied is `unmeasured`, never `pass`.
 
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
@@ -48,6 +48,7 @@ import {
   type ProxyCallView,
   type ProxyRecord,
   type Results,
+  type SpanCall,
   type YoklaConfig,
 } from '@yokla/core';
 import { HttpClient, HttpError } from '../http/client.ts';
@@ -67,9 +68,11 @@ import {
 } from '../ws/client.ts';
 import {
   attributeCalls,
+  attributeSpans,
   storeTurnProxy,
   type Correlation,
   type TurnProxy,
+  type TurnSpans,
   type TurnTag,
 } from './proxy.ts';
 
@@ -245,7 +248,12 @@ export function preflight(options: RunOptions): void {
   if (logs?.correlate.by === 'order' && (options.concurrency ?? 1) > 1) {
     problems.push('observe.logs correlates by order, which needs a concurrency of 1');
   }
-  if (options.profile.modelProxy?.correlation === 'serial' && (options.concurrency ?? 1) > 1) {
+  // Spans alone tie calls to turns by traceparent, which allows any concurrency (ADR-0029).
+  if (
+    proxiesCalls(options.profile) &&
+    options.profile.modelProxy?.correlation === 'serial' &&
+    (options.concurrency ?? 1) > 1
+  ) {
     problems.push('modelProxy correlates serially, which needs a concurrency of 1');
   }
   const simulated = options.cases.filter((c) => c.customer !== undefined);
@@ -274,11 +282,13 @@ export function preflight(options: RunOptions): void {
   if (simulated.length > 0 && keyEnv !== undefined && options.env[keyEnv] === undefined) {
     problems.push(`environment variable ${keyEnv} is not set`);
   }
-  if (options.profile.modelProxy === undefined) {
-    for (const c of options.cases) {
-      if (c.turns.some((turn) => turn.faults !== undefined)) {
-        problems.push(`case "${c.id}" injects faults, which needs a modelProxy in the profile`);
-      }
+  for (const c of options.cases) {
+    if (!c.turns.some((turn) => turn.faults !== undefined)) continue;
+    if (options.profile.modelProxy === undefined) {
+      problems.push(`case "${c.id}" injects faults, which needs a modelProxy in the profile`);
+    } else if (!proxiesCalls(options.profile)) {
+      // Faults are injected into calls the proxy forwards; spans only describe calls.
+      problems.push(`case "${c.id}" injects faults, which needs an upstream in modelProxy`);
     }
   }
   const languages = new Set<string>(options.profile.languages);
@@ -310,6 +320,11 @@ interface Exchange {
   readonly view: TurnView | undefined;
   /** What ties the model proxy's calls to this turn. */
   readonly tag?: TurnTag;
+}
+
+/** Whether the model proxy forwards the target's calls: without upstreams, only spans show them (ADR-0029). */
+function proxiesCalls(profile: Profile): boolean {
+  return (profile.modelProxy?.upstreams.length ?? 0) > 0;
 }
 
 /** Tells the model proxy about a turn: in flight, and its faults (ADR-0012, ADR-0013). */
@@ -423,7 +438,9 @@ async function runSample(
   if (open !== undefined && openUrl !== undefined) {
     try {
       // Serial correlation: a mark no turn has, so calls the opening causes stay unattributed.
-      if (options.profile.modelProxy?.correlation === 'serial') {
+      const serial =
+        options.profile.modelProxy?.correlation === 'serial' && proxiesCalls(options.profile);
+      if (serial) {
         await arm?.(`session-open-${ids()}`, { inFlight: true });
       }
       const built = buildRequest(
@@ -445,7 +462,7 @@ async function runSample(
         carry[entry.name] = toJson(value);
       }
       // Calls the opening caused finish before the first turn is marked.
-      if (options.profile.modelProxy?.correlation === 'serial') await settle?.();
+      if (serial) await settle?.();
     } catch (error) {
       exchanges.push({
         turn: {
@@ -549,9 +566,19 @@ async function runSample(
       const requestId = sendsRequestId(target, turn.request?.body) ? ids() : undefined;
       // With a model proxy, the turn's id: marked on the proxy before the request
       // (serial), or sent for the app to pass on to its model calls (header).
+      // Without upstreams, the proxy forwards no calls to tie to the turn.
+      const proxied = proxiesCalls(options.profile);
       const correlation = options.profile.modelProxy?.correlation;
-      const tag = correlation === undefined ? undefined : { id: requestId ?? ids() };
-      const trace = correlation === 'header' ? tag?.id : undefined;
+      // With spans on, a W3C traceparent of the turn's own (ADR-0029).
+      const traceId =
+        options.profile.modelProxy?.spans !== undefined && target.adapter === 'http'
+          ? randomBytes(16).toString('hex')
+          : undefined;
+      const tag =
+        correlation === undefined
+          ? undefined
+          : { id: requestId ?? ids(), ...(traceId === undefined ? {} : { traceId }) };
+      const trace = correlation === 'header' && proxied ? tag?.id : undefined;
       const base = {
         user: turn.user,
         ...(requestId === undefined ? {} : { requestId }),
@@ -561,7 +588,7 @@ async function runSample(
       const faults = turn.faults;
       const started = performance.now();
       try {
-        if (tag !== undefined && (correlation === 'serial' || faults !== undefined)) {
+        if (tag !== undefined && proxied && (correlation === 'serial' || faults !== undefined)) {
           await arm?.(tag.id, {
             inFlight: correlation === 'serial',
             // The jitter seed: what identifies this turn in every run (ADR-0017).
@@ -577,6 +604,9 @@ async function runSample(
             ...bypass.headers,
             ...identityHeaders,
             ...(trace === undefined ? {} : { 'x-yokla-trace': trace }),
+            ...(traceId === undefined
+              ? {}
+              : { traceparent: `00-${traceId}-${randomBytes(8).toString('hex')}-01` }),
           },
         );
         const { body } = result;
@@ -699,7 +729,7 @@ async function runSample(
       }
       // Serial correlation: calls the target makes after its answer belong to this turn,
       // so the next turn is marked only once they have stopped (ADR-0016).
-      if (correlation === 'serial' && settle !== undefined) {
+      if (correlation === 'serial' && settle !== undefined && proxied) {
         const problem = await settle();
         if (problem !== undefined) {
           outcome = {
@@ -1016,6 +1046,9 @@ interface ProxiedCalls {
   readonly prompts: PromptStorage;
 }
 
+/** The model calls spans showed, per turn (ADR-0029). */
+type SpannedCalls = ReadonlyMap<Exchange, TurnSpans>;
+
 /** Runs the checks over a case's exchanges, with what the logs observed, and aggregates. */
 function judgeCase(
   options: RunOptions,
@@ -1023,6 +1056,7 @@ function judgeCase(
   exchanged: ExchangedCase,
   observation: Observation,
   proxied: ProxiedCalls | undefined,
+  spanned: SpannedCalls | undefined,
 ): CaseResult {
   const { testCase } = exchanged;
   const correlation = options.profile.target.observe?.logs?.correlate.by;
@@ -1042,13 +1076,26 @@ function judgeCase(
       if (proxy !== undefined && proxied !== undefined) {
         turn = { ...turn, proxy: storeTurnProxy(proxy, proxied.prompts) };
       }
+      const spans = spanned?.get(exchange);
+      if (spans !== undefined) turn = { ...turn, spans };
       if (exchange.view === undefined) return turn;
-      const calls = (proxy?.calls ?? []).map((call) => ({
+      const proxyCalls = (proxy?.calls ?? []).map((call) => ({
         inputTokens: call.usage.input,
         prompt: promptView(call.prompt),
         offered: call.tools ?? null,
         toolCalls: toolCallsView(call.toolCalls),
       }));
+      // A turn without proxy calls is judged on the calls its spans showed, which carry no
+      // prompts or tool calls (ADR-0029).
+      const fromSpans = proxyCalls.length === 0 && spans !== undefined && spans.calls.length > 0;
+      const calls = fromSpans
+        ? spans.calls.map((call) => ({
+            inputTokens: call.usage.input,
+            prompt: null,
+            offered: null,
+            toolCalls: null,
+          }))
+        : proxyCalls;
       // What the model saw in the results of the tools the profile maps (ADR-0026).
       const found = seenEvidence(calls, options.profile.modelProxy?.toolResults);
       if (Object.keys(found.seen).length > 0) turn = { ...turn, seen: found.seen };
@@ -1059,7 +1106,11 @@ function judgeCase(
         ...exchange.view,
         observed: fields,
         seen: found.seen,
-        proxy: proxy === undefined ? undefined : { calls, costUsd: proxy.costUsd },
+        proxy: fromSpans
+          ? { calls, costUsd: spans.costUsd }
+          : proxy === undefined
+            ? undefined
+            : { calls, costUsd: proxy.costUsd },
       };
       // A turn without a usable answer, under faults or with a non-2xx status it allows,
       // is judged only by the checks that need no answer.
@@ -1146,9 +1197,26 @@ function costCap(
         reason = `stopped: a call of yokla's own model has no cost, so the cost cap of ${String(limit)} USD can't be enforced`;
         return;
       }
-      const records = recording === undefined ? [] : await recording.control.records(recording.id);
+      const recorded =
+        recording === undefined
+          ? { records: [], spans: [] }
+          : await recording.control.recorded(recording.id);
       let spent = own?.costUsd ?? 0;
-      for (const record of records) {
+      // Without upstreams, the calls spans showed are the target's spend (ADR-0029).
+      if (!proxiesCalls(options.profile)) {
+        for (const span of recorded.spans) {
+          const cost = callCost(
+            span.usage,
+            options.prices?.[span.provider ?? '']?.[span.model ?? ''],
+          );
+          if (cost === null) {
+            reason = `stopped: a span's model call has no cost, so the cost cap of ${String(limit)} USD can't be enforced`;
+            return;
+          }
+          spent += cost;
+        }
+      }
+      for (const record of recorded.records) {
         const cost = callCost(
           record.usage,
           options.prices?.[record.upstream]?.[record.model ?? ''],
@@ -1284,6 +1352,8 @@ export async function runSuite(input: RunOptions): Promise<Results> {
   let exchanged: ExchangedCase[] = [];
   // Undefined when there is no proxy, or its records couldn't be read.
   let records: ProxyRecord[] | undefined;
+  let spanCalls: SpanCall[] | undefined;
+  let spansSettled = true;
   const proxyIssues: string[] = [];
   try {
     exchanged = await pool(
@@ -1307,19 +1377,36 @@ export async function runSuite(input: RunOptions): Promise<Results> {
   } finally {
     if (recording !== undefined) {
       // Calls after the last answer are recorded only if the recording waits for them.
-      const problem = await settleRecording(recording);
+      // Without upstreams, the proxy forwards none to wait for.
+      const problem = proxiesCalls(options.profile) ? await settleRecording(recording) : undefined;
       if (problem !== undefined) {
         proxyIssues.push(`${problem} when the run ended; calls after that weren't recorded`);
       }
+      // Spans come in batches, after the calls they describe (ADR-0029).
+      const wait = options.profile.modelProxy?.spans;
+      if (wait !== undefined) {
+        try {
+          spansSettled = (await recording.control.settleSpans(recording.id, wait)).settled;
+          if (!spansSettled) {
+            proxyIssues.push(
+              `spans kept coming until spans.maxWaitMs ran out; spans after that weren't read`,
+            );
+          }
+        } catch (error) {
+          proxyIssues.push(`the spans could not be waited for: ${errorMessage(error)}`);
+        }
+      }
       try {
-        records = await recording.control.close(recording.id);
+        const closed = await recording.control.closeAll(recording.id);
+        records = closed.records;
+        if (wait !== undefined) spanCalls = closed.spans;
       } catch (error) {
         proxyIssues.push(`the model proxy's records could not be read: ${errorMessage(error)}`);
       }
     }
   }
   const calls =
-    recording === undefined || records === undefined
+    recording === undefined || records === undefined || !proxiesCalls(options.profile)
       ? undefined
       : {
           ...attributeCalls(
@@ -1341,7 +1428,29 @@ export async function runSuite(input: RunOptions): Promise<Results> {
     );
   }
   const observation = await observe(options, startedAt, exchanged);
-  const cases = exchanged.map((c) => judgeCase(options, prepared, c, observation, calls));
+  const spanned =
+    spanCalls === undefined
+      ? undefined
+      : attributeSpans(
+          spanCalls,
+          exchanged
+            .flatMap((c) => c.samples.flatMap((sample) => sample.exchanges))
+            .flatMap((exchange) =>
+              exchange.tag?.traceId === undefined
+                ? []
+                : [{ key: exchange, traceId: exchange.tag.traceId }],
+            ),
+          options.prices ?? {},
+          spansSettled,
+        );
+  if (spanned !== undefined && spanned.summary.received > 0 && spanned.summary.attributed === 0) {
+    proxyIssues.push(
+      "no span carried a turn's trace id: the app may not pass the incoming traceparent on to its model calls",
+    );
+  }
+  const cases = exchanged.map((c) =>
+    judgeCase(options, prepared, c, observation, calls, spanned?.byTurn),
+  );
   const stop = cap?.reason();
   const capIssues =
     options.maxCostUsd !== undefined && recording === undefined && simulation !== undefined
@@ -1369,10 +1478,17 @@ export async function runSuite(input: RunOptions): Promise<Results> {
       durationMs: Math.round(performance.now() - started),
       profile: { target: target.name, sha256: options.profileSha256 },
       environment: { node: process.version, platform: process.platform, arch: process.arch },
-      correlation: recording?.correlation ?? 'none',
+      // Without upstreams, spans tie the calls to turns, by traceparent (ADR-0029).
+      correlation:
+        recording === undefined
+          ? 'none'
+          : proxiesCalls(options.profile)
+            ? recording.correlation
+            : 'traceparent',
       partial: cap?.stopped() === true,
       ...(observation.summary === undefined ? {} : { observation: observation.summary }),
       ...(calls === undefined ? {} : { proxy: { ...calls.summary, prompts: calls.prompts.store } }),
+      ...(spanned === undefined ? {} : { spans: spanned.summary }),
       ...(own === undefined
         ? {}
         : {

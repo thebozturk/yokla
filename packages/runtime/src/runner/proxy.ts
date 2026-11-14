@@ -7,6 +7,7 @@
 import { createHash } from 'node:crypto';
 import {
   callCost,
+  type SpanCall,
   storePrompt,
   storeToolCalls,
   type PromptStorage,
@@ -23,6 +24,8 @@ export type Correlation = RunProxy['correlation'];
 /** What ties a turn's calls to it: the mark set while it was in flight, or the trace it sent. */
 export interface TurnTag {
   readonly id: string;
+  /** The W3C trace id the turn's traceparent carried, when spans are on (ADR-0029). */
+  readonly traceId?: string;
 }
 
 const TOTALS = {
@@ -137,5 +140,66 @@ export function storeTurnProxy(proxy: TurnProxy, storage: PromptStorage): TurnPr
         ? {}
         : { toolCalls: storeToolCalls(call.toolCalls, storage, sha256) }),
     })),
+  };
+}
+
+export type TurnSpans = NonNullable<TurnResult['spans']>;
+export type RunSpans = NonNullable<Results['run']['spans']>;
+
+/**
+ * Ties the model calls OpenTelemetry spans showed to turns, by the trace id of
+ * each turn's traceparent (ADR-0029), prices them by provider and model, and
+ * totals them. A span of any other trace is unattributed, and counted.
+ */
+export function attributeSpans<K>(
+  spans: readonly SpanCall[],
+  turns: readonly { readonly key: K; readonly traceId: string }[],
+  prices: YoklaConfig['prices'],
+  settled: boolean,
+): { byTurn: Map<K, TurnSpans>; summary: RunSpans } {
+  const costed = spans
+    .map((span) => ({
+      span,
+      costUsd: callCost(span.usage, prices[span.provider ?? '']?.[span.model ?? '']),
+    }))
+    .toSorted((a, b) => a.span.startedAt.localeCompare(b.span.startedAt));
+  const owners = new Map(turns.map((turn) => [turn.traceId, turn.key]));
+  const byTurn = new Map<K, TurnSpans>();
+  let attributed = 0;
+  for (const turn of turns) {
+    const calls = costed
+      .filter(({ span }) => span.traceId === turn.traceId)
+      .map(({ span, costUsd }) => ({
+        spanId: span.spanId,
+        provider: span.provider,
+        model: span.model,
+        durationMs: span.durationMs,
+        usage: span.usage,
+        costUsd,
+        error: span.error,
+      }));
+    attributed += calls.length;
+    byTurn.set(turn.key, { calls, costUsd: sum(calls.map((call) => call.costUsd)) });
+  }
+  const totals: Record<string, number> = { calls: spans.length };
+  const missing: Record<string, number> = {};
+  const add = (name: string, value: number | null) => {
+    if (value === null) missing[name] = (missing[name] ?? 0) + 1;
+    else totals[name] = (totals[name] ?? 0) + value;
+  };
+  for (const { span, costUsd } of costed) {
+    for (const [name, field] of Object.entries(TOTALS)) add(name, span.usage[field]);
+    add('costUsd', costUsd);
+  }
+  return {
+    byTurn,
+    summary: {
+      received: spans.length,
+      attributed,
+      unattributed: costed.filter(({ span }) => !owners.has(span.traceId)).length,
+      totals,
+      missing,
+      settled,
+    },
   };
 }

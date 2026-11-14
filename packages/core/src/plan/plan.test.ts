@@ -60,6 +60,11 @@ function calibration(cases: CaseResult[], proxy = true): Results {
   });
 }
 
+function withoutProxy(run: Results['run']): Results['run'] {
+  const { proxy: _proxy, ...rest } = run;
+  return rest;
+}
+
 describe('plan', () => {
   const cal = calibration([
     calibrated('tents', sha('1'), [[0.002, 0.004], [0.003]]),
@@ -89,6 +94,50 @@ describe('plan', () => {
     });
   });
 
+  it('prices turns by their spans when the proxy had no view of them (ADR-0029)', () => {
+    const proxied = calibration([calibrated('tents', sha('1'), [[0.002]])]);
+    const spanned: Results = {
+      ...proxied,
+      run: {
+        ...withoutProxy(proxied.run),
+        correlation: 'traceparent',
+        spans: {
+          received: 1,
+          attributed: 1,
+          unattributed: 0,
+          totals: {},
+          missing: {},
+          settled: true,
+        },
+      },
+      cases: proxied.cases.map((c) => ({
+        ...c,
+        samples: c.samples.map((sample) => ({
+          ...sample,
+          turns: sample.turns.map(({ proxy, ...turn }) => ({
+            ...turn,
+            spans: { calls: [], costUsd: (proxy?.costUsd ?? 0) * 2 },
+          })),
+        })),
+      })),
+    };
+    const planned = [{ id: 'tents', definitionSha256: sha('1'), turns: 1, samples: 1 }];
+    expect(plan(planned, spanned, 2)).toMatchObject({ ok: true, estimateUsd: 0.004 });
+    // With a proxy view of the turn, its cost is the proxy's, even when unknown.
+    const both = calibration([calibrated('tents', sha('1'), [[null]])]);
+    const unknown: Results = {
+      ...both,
+      cases: both.cases.map((c) => ({
+        ...c,
+        samples: c.samples.map((sample) => ({
+          ...sample,
+          turns: sample.turns.map((turn) => ({ ...turn, spans: { calls: [], costUsd: 0.001 } })),
+        })),
+      })),
+    };
+    expect(plan(planned, unknown, 2)).toMatchObject({ ok: false });
+  });
+
   it('leaves turns that got no answer out of the calibration', () => {
     const withError = calibrated('tents', sha('1'), [[0.002]]);
     const sample = withError.samples[0];
@@ -112,7 +161,8 @@ describe('plan', () => {
     const cases = [{ id: 'tents', definitionSha256: sha('1'), turns: 1, samples: 1 }];
     expect(plan(cases, calibration([calibrated('tents', sha('1'), [[0.001]])], false), 2)).toEqual({
       ok: false,
-      problem: 'the calibration run has no model proxy data: run it with a model proxy',
+      problem:
+        'the calibration run has no model proxy data: run it with a model proxy, or with spans',
     });
     expect(plan(cases, calibration([calibrated('tents', sha('1'), [[]])]), 2)).toEqual({
       ok: false,

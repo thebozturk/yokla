@@ -19,6 +19,7 @@ import {
   type Profile,
   type PromptStorage,
   type ProxyRecord,
+  type SpanCall,
 } from '@yokla/core';
 import { stubLanguagePack } from '@yokla/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -838,6 +839,10 @@ interface FakeProxy {
   readonly settles: unknown[];
   /** What the runner told the proxy about each turn. */
   readonly armed: { turn: string; body: unknown }[];
+  /** The model calls the app's spans showed; the fake target adds them (ADR-0029). */
+  readonly spans: SpanCall[];
+  /** What the runner asked of each spans settle call. */
+  readonly spanSettles: unknown[];
 }
 
 /** A stand-in for the proxy's control endpoint; the fake target adds its records. */
@@ -848,9 +853,13 @@ async function fakeProxy(
     close?: number;
     /** How the settle call answers: after `delayMs`, settled or not, or with an error status. */
     settle?: { delayMs?: number; settled?: boolean; status?: number };
+    /** Whether the spans settle call says the spans stopped coming (ADR-0029). */
+    spansSettled?: boolean;
   } = {},
 ): Promise<FakeProxy> {
   const records: ProxyRecord[] = [];
+  const spans: SpanCall[] = [];
+  const spanSettles: unknown[] = [];
   const calls: string[] = [];
   let mark: string | null = null;
   const armed: { turn: string; body: unknown }[] = [];
@@ -893,11 +902,26 @@ async function fakeProxy(
           );
         }, delayMs);
       });
+    } else if (key === 'POST /_yokla/recordings/rec-1/spans/settle') {
+      const chunks: Buffer[] = [];
+      request.on('data', (chunk: Buffer) => chunks.push(chunk));
+      request.on('end', () => {
+        spanSettles.push(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+        reply(200, {
+          id: 'rec-1',
+          settled: answers.spansSettled ?? true,
+          waitedMs: 0,
+          spans: spans.length,
+        });
+      });
     } else if (key === 'GET /_yokla/recordings/rec-1') {
-      reply(200, { id: 'rec-1', startedAt: 'x', records });
+      reply(200, { id: 'rec-1', startedAt: 'x', records, spans });
     } else if (key === 'DELETE /_yokla/recordings/rec-1') {
       const status = answers.close ?? 200;
-      reply(status, status === 200 ? { id: 'rec-1', startedAt: 'x', records } : { error: 'gone' });
+      reply(
+        status,
+        status === 200 ? { id: 'rec-1', startedAt: 'x', records, spans } : { error: 'gone' },
+      );
     } else reply(404, { error: 'nope' });
   });
   servers.push(server);
@@ -913,6 +937,8 @@ async function fakeProxy(
     mark: () => mark,
     armed,
     settles,
+    spans,
+    spanSettles,
   };
 }
 
@@ -2079,6 +2105,247 @@ describe('runSuite with the model proxy', () => {
     await expect(runSuite(options(profile(t.url), twoCases, { maxCostUsd: 1 }))).rejects.toThrow(
       /a cost cap needs a modelProxy in the profile/u,
     );
+  });
+});
+
+/** A model call a span showed, in the trace a turn's traceparent started (ADR-0029). */
+function spanCall(traceId: string, model = 'm'): SpanCall {
+  return {
+    traceId,
+    spanId: `span-${String((counter += 1))}`,
+    provider: 'fake',
+    model,
+    startedAt: new Date(Date.now() + counter).toISOString(),
+    durationMs: 3,
+    usage: { input: 1000, output: 100, cachedInput: null, cacheWrite: null, reasoning: null },
+    error: false,
+  };
+}
+
+const TRACEPARENT = /^00-([0-9a-f]{32})-[0-9a-f]{16}-01$/u;
+
+/** The trace id of the traceparent a request carried. */
+function traceOf(received: Received): string {
+  const header = received.headers['traceparent'];
+  const traceId = typeof header === 'string' ? TRACEPARENT.exec(header)?.[1] : undefined;
+  if (traceId === undefined) throw new Error(`no traceparent: ${String(header)}`);
+  return traceId;
+}
+
+/** A profile whose model calls only spans show: the proxy forwards none (ADR-0029). */
+const spanOnly = (url: string): Profile => ({
+  ...profile(url),
+  modelProxy: {
+    port: 1,
+    upstreams: [],
+    correlation: 'serial',
+    prompts: { store: 'sizes' },
+    settle: { quietMs: 0, maxWaitMs: 1_000 },
+    spans: { quietMs: 0, maxWaitMs: 1_000 },
+  },
+});
+
+describe('runSuite with model calls from spans (ADR-0029)', () => {
+  const prices = { fake: { m: { input: 1, output: 10 } } };
+
+  it('sends each turn a traceparent of its own, and ties the spans of its trace to it', async () => {
+    const proxy = await fakeProxy();
+    const t = await target((received, _i, response) => {
+      const traceId = traceOf(received);
+      const first = spanCall(traceId);
+      // The same model from a provider the prices don't list has no cost.
+      const second = { ...spanCall(traceId), provider: 'other' };
+      // Exports arrive in batches, in any order: the calls are kept in the order they started.
+      proxy.spans.push(second, first);
+      json(response, answer());
+    });
+    proxy.spans.push(spanCall('f'.repeat(32)));
+    const results = await runSuite(
+      options(spanOnly(t.url), cases({ turns: [{ user: 'a' }, { user: 'b' }] }), {
+        proxyUrl: proxy.url,
+        prices,
+      }),
+    );
+    expect(Results.safeParse(results).success).toBe(true);
+    const traces = t.received.map(traceOf);
+    expect(new Set(traces).size).toBe(2);
+    expect(t.received.map((r) => r.headers['x-yokla-trace'])).toEqual([undefined, undefined]);
+    const turns = results.cases[0]?.samples[0]?.turns ?? [];
+    expect(
+      turns.map((turn) => turn.spans?.calls.map((c) => [c.provider, c.model, c.costUsd])),
+    ).toEqual([
+      [
+        ['fake', 'm', 0.002],
+        ['other', 'm', null],
+      ],
+      [
+        ['fake', 'm', 0.002],
+        ['other', 'm', null],
+      ],
+    ]);
+    expect(turns[0]?.spans).toMatchObject({ costUsd: null });
+    expect(turns[0]?.spans?.calls[0]).toMatchObject({
+      provider: 'fake',
+      durationMs: 3,
+      usage: { input: 1000, output: 100 },
+      error: false,
+    });
+    // The proxy forwarded no calls, so the turns have no proxy view of them.
+    expect(turns.map((turn) => turn.proxy)).toEqual([undefined, undefined]);
+    expect(results.run.correlation).toBe('traceparent');
+    expect(results.run.proxy).toBeUndefined();
+    expect(results.run.spans).toEqual({
+      received: 5,
+      attributed: 4,
+      unattributed: 1,
+      totals: { calls: 5, inputTokens: 5000, outputTokens: 500, costUsd: 0.006 },
+      missing: { cachedInputTokens: 5, cacheWriteTokens: 5, reasoningTokens: 5, costUsd: 2 },
+      settled: true,
+    });
+    expect(results.run.issues).toBeUndefined();
+    // No turn is marked or settled on the proxy: the run waits once for the spans, at its end.
+    expect(proxy.calls).toEqual([
+      'GET /_yokla/health',
+      'POST /_yokla/recordings',
+      'POST /_yokla/recordings/rec-1/spans/settle',
+      'DELETE /_yokla/recordings/rec-1',
+    ]);
+    expect(proxy.spanSettles).toEqual([{ quietMs: 0, maxWaitMs: 1_000 }]);
+  });
+
+  it("judges a turn's budget by the calls its spans showed, when the proxy saw none", async () => {
+    const proxy = await fakeProxy();
+    const t = await target((received, _i, response) => {
+      const traceId = traceOf(received);
+      proxy.spans.push(spanCall(traceId), spanCall(traceId));
+      json(response, answer());
+    });
+    const results = await runSuite(
+      options(
+        spanOnly(t.url),
+        cases(
+          { turns: [{ user: 'a', expect: { budget: { costUsd: 0.005, modelCalls: 2 } } }] },
+          { turns: [{ user: 'b', expect: { budget: { costUsd: 0.003 } } }] },
+          { turns: [{ user: 'c', expect: { budget: { modelCalls: 1 } } }] },
+        ),
+        { proxyUrl: proxy.url, prices, checks: CORE_CHECKS },
+      ),
+    );
+    // Two calls of 1000 input and 100 output tokens at 1 and 10 $/MTok: 0.004 $ a turn.
+    expect(results.cases.map((c) => c.status)).toEqual(['pass', 'fail', 'fail']);
+  });
+
+  it('keeps the proxy view next to the spans when the proxy forwards calls too', async () => {
+    const proxy = await fakeProxy();
+    const t = await target((received, _i, response) => {
+      proxy.records.push(call(null, proxy.mark()));
+      proxy.spans.push(spanCall(traceOf(received)));
+      json(response, answer());
+    });
+    const base = proxied(t.url, 'serial');
+    const both: Profile =
+      base.modelProxy === undefined
+        ? base
+        : { ...base, modelProxy: { ...base.modelProxy, spans: { quietMs: 0, maxWaitMs: 1_000 } } };
+    const results = await runSuite(
+      options(both, cases({ turns: [{ user: 'a' }] }), { proxyUrl: proxy.url, prices }),
+    );
+    expect(Results.safeParse(results).success).toBe(true);
+    const turn = results.cases[0]?.samples[0]?.turns[0];
+    expect(turn?.proxy?.calls).toHaveLength(1);
+    expect(turn?.spans?.calls).toHaveLength(1);
+    expect(results.run.correlation).toBe('serial');
+    expect(results.run.proxy).toMatchObject({ records: 1, attributed: 1 });
+    expect(results.run.spans).toMatchObject({ received: 1, attributed: 1, unattributed: 0 });
+    // The proxy keeps its own correlation: the turn is marked, and settled after its answer.
+    expect(proxy.armed.map((a) => a.body)).toEqual([{ inFlight: true, faults: [] }]);
+    expect(proxy.calls).toContain('POST /_yokla/recordings/rec-1/settle');
+  });
+
+  it("says when no span carried a turn's trace id, and when the spans kept coming", async () => {
+    const proxy = await fakeProxy({ spansSettled: false });
+    const t = await target((_r, _i, response) => {
+      // An app that doesn't pass the incoming context on starts traces of its own.
+      proxy.spans.push(spanCall('a'.repeat(32)));
+      json(response, answer());
+    });
+    const results = await runSuite(
+      options(spanOnly(t.url), cases({ turns: [{ user: 'a' }] }), { proxyUrl: proxy.url, prices }),
+    );
+    expect(results.run.spans).toMatchObject({
+      received: 1,
+      attributed: 0,
+      unattributed: 1,
+      settled: false,
+    });
+    expect(results.cases[0]?.samples[0]?.turns[0]?.spans).toEqual({ calls: [], costUsd: 0 });
+    expect(results.run.issues).toEqual([
+      "spans kept coming until spans.maxWaitMs ran out; spans after that weren't read",
+      "no span carried a turn's trace id: the app may not pass the incoming traceparent on to its model calls",
+    ]);
+  });
+
+  it('allows any concurrency, and refuses faults, which need an upstream', async () => {
+    const proxy = await fakeProxy();
+    const t = await target((received, _i, response) => {
+      proxy.spans.push(spanCall(traceOf(received)));
+      json(response, answer());
+    });
+    const base = spanOnly(t.url);
+    const header: Profile =
+      base.modelProxy === undefined
+        ? base
+        : { ...base, modelProxy: { ...base.modelProxy, correlation: 'header' } };
+    const parallel = await runSuite(
+      options(header, cases({ turns: [{ user: 'a' }] }, { turns: [{ user: 'b' }] }), {
+        proxyUrl: proxy.url,
+        prices,
+        concurrency: 2,
+      }),
+    );
+    expect(parallel.run.spans).toMatchObject({ received: 2, attributed: 2 });
+    expect(parallel.run.correlation).toBe('traceparent');
+    // The proxy forwards no calls, so there is no trace header of its own to pass on.
+    expect(t.received.map((r) => r.headers['x-yokla-trace'])).toEqual([undefined, undefined]);
+    const faults = [{ fault: { kind: 'status', status: 503 } }];
+    await expect(
+      runSuite(
+        options(spanOnly(t.url), cases({ id: 'faulty', turns: [{ user: 'a', faults }] }), {
+          proxyUrl: proxy.url,
+        }),
+      ),
+    ).rejects.toThrow(/case "faulty" injects faults, which needs an upstream in modelProxy/u);
+  });
+
+  it('counts the costs of spans under the cost cap, and stops on a span with none', async () => {
+    const proxy = await fakeProxy();
+    let model = 'm';
+    const t = await target((received, _i, response) => {
+      const traceId = traceOf(received);
+      proxy.spans.push(spanCall(traceId, model), spanCall(traceId, model));
+      json(response, answer());
+    });
+    const twoCases = cases({ turns: [{ user: 'a' }] }, { turns: [{ user: 'b' }] });
+    const capped = await runSuite(
+      options(spanOnly(t.url), twoCases, { proxyUrl: proxy.url, prices, maxCostUsd: 0.003 }),
+    );
+    expect(capped.run.partial).toBe(true);
+    expect(capped.run.issues).toEqual([
+      'stopped at the cost cap: 0.004 USD spent, 0.003 USD allowed',
+    ]);
+    expect(capped.cases).toHaveLength(1);
+    proxy.spans.length = 0;
+    model = 'unpriced';
+    const unpriced = await runSuite(
+      options(spanOnly(t.url), twoCases, { proxyUrl: proxy.url, prices, maxCostUsd: 1 }),
+    );
+    expect(unpriced.run).toMatchObject({
+      partial: true,
+      issues: [
+        "stopped: a span's model call has no cost, so the cost cap of 1 USD can't be enforced",
+      ],
+    });
+    expect(unpriced.cases).toHaveLength(1);
   });
 });
 

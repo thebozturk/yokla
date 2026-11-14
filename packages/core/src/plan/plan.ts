@@ -5,6 +5,7 @@
 // A case with a simulated customer has no fixed turns: a sample of it costs
 // what one cost in its own calibration, the customer's calls included
 // (ADR-0028); without that calibration, the plan says so and gives no figure.
+// A turn the proxy saw no calls for is priced by its spans (ADR-0029).
 
 import type { Results } from '../schema/results.ts';
 
@@ -42,11 +43,19 @@ function mean(costs: readonly (number | null)[]): number {
   return costs.reduce<number>((total, cost) => total + (cost ?? 0), 0) / costs.length;
 }
 
+type TurnResult = Results['cases'][number]['samples'][number]['turns'][number];
+
+/** A turn's cost: the proxy's, or its spans' when the proxy has no view of it (ADR-0029). */
+function turnCost(turn: TurnResult): number | null {
+  return turn.proxy === undefined ? (turn.spans?.costUsd ?? null) : turn.proxy.costUsd;
+}
+
 export function plan(cases: readonly PlannedCase[], calibration: Results, factor: number): Plan {
-  if (calibration.run.proxy === undefined) {
+  if (calibration.run.proxy === undefined && calibration.run.spans === undefined) {
     return {
       ok: false,
-      problem: 'the calibration run has no model proxy data: run it with a model proxy',
+      problem:
+        'the calibration run has no model proxy data: run it with a model proxy, or with spans',
     };
   }
   const perCase = new Map<
@@ -60,14 +69,12 @@ export function plan(cases: readonly PlannedCase[], calibration: Results, factor
   >();
   for (const c of calibration.cases) {
     const costs = c.samples.flatMap((sample) =>
-      sample.turns
-        .filter((turn) => turn.response !== undefined)
-        .map((turn) => turn.proxy?.costUsd ?? null),
+      sample.turns.filter((turn) => turn.response !== undefined).map(turnCost),
     );
     const samples = c.samples.map((sample) => {
       const answered = sample.turns.filter((turn) => turn.response !== undefined);
       const parts = [
-        ...answered.map((turn) => turn.proxy?.costUsd ?? null),
+        ...answered.map(turnCost),
         ...(sample.customer === undefined ? [] : [sample.customer.costUsd]),
       ];
       return {
