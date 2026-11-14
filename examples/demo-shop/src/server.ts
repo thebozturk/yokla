@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
-import type { Assistant, ChatReply } from './assistant.ts';
+import type { Assistant, ChatReply, Tracing } from './assistant.ts';
 import { RateLimiter, type RateLimitOptions } from './rate-limit.ts';
 import { acceptWebSocket, refuseUpgrade, type WebSocketPeer } from './websocket.ts';
 
@@ -31,6 +31,20 @@ function send(
 ): void {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', ...headers });
   response.end(JSON.stringify(body));
+}
+
+/** The request's x-yokla-trace and W3C traceparent, for its model calls. */
+function tracingOf(request: IncomingMessage): Tracing {
+  const header = (name: string) => {
+    const value = request.headers[name];
+    return typeof value === 'string' && value !== '' ? value : undefined;
+  };
+  const trace = header('x-yokla-trace');
+  const traceparent = header('traceparent');
+  return {
+    ...(trace === undefined ? {} : { trace }),
+    ...(traceparent === undefined ? {} : { traceparent }),
+  };
 }
 
 function readBody(request: IncomingMessage): Promise<string | undefined> {
@@ -169,11 +183,11 @@ export function createDemoShopServer(options: DemoShopServerOptions): Server {
       return;
     }
 
-    // Passed on to the model calls, so a model proxy can tie them to this request.
-    const trace = request.headers['x-yokla-trace'];
+    // Passed on to the model calls, so a model proxy, or their spans, can tie them to this request.
+    const traced = tracingOf(request);
     const { reply, cache } = await options.assistant.reply(chat.sessionId, chat.message, {
       bypassCache: wantsCacheBypass(request),
-      ...(typeof trace === 'string' && trace !== '' ? { trace } : {}),
+      ...traced,
     });
     const accept = request.headers.accept ?? '';
     if (accept.includes('text/event-stream')) stream(response, reply, cache);
@@ -181,10 +195,7 @@ export function createDemoShopServer(options: DemoShopServerOptions): Server {
     if (options.summarizeAfterAnswer === true) {
       // Like apps that update a memory after answering: started later, never awaited.
       setTimeout(() => {
-        void options.assistant.summarize(
-          reply.answer,
-          typeof trace === 'string' && trace !== '' ? { trace } : {},
-        );
+        void options.assistant.summarize(reply.answer, traced);
       }, SUMMARY_DELAY_MS);
     }
   }

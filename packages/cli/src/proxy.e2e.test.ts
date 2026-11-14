@@ -4,8 +4,11 @@
 // for token. One run correlates serially with JSON answers, the other by
 // header with event streams. Then the resilience cases run against a
 // demo-shop for each resilience defect (ADR-0013), and the inspection cases
-// for each inspection defect (ADR-0015). Everything runs behind the network
-// guard.
+// for each inspection defect (ADR-0015). With spans on, the demo-shop exports
+// a span for each model call, once per protocol, and the calls read from them
+// must match the proxy's records, turn by turn; a demo-shop whose calls bypass
+// the proxy is measured from its spans alone (ADR-0029). Everything runs
+// behind the network guard.
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -407,6 +410,78 @@ async function runResilience(defect: string, providerUrl: string): Promise<void>
   resilience.set(defect, Results.parse(JSON.parse(readFileSync(out, 'utf8'))));
 }
 
+/** Each protocol the demo-shop exports spans in, with the correlation the proxy keeps (ADR-0029). */
+const SPAN_RUNS = { json: 'serial', protobuf: 'header' } as const;
+const SPANS = '  spans: { quietMs: 500, maxWaitMs: 10000 }\n';
+const spanRuns = new Map<
+  string,
+  { code: number; output: string; results: Results; before: number; after: number }
+>();
+
+/** Prices for the provider as the proxy names it, and as the spans name it. */
+function spansConfig(): string {
+  const path = join(dir, 'spans.config.yaml');
+  const price = `{ input: ${String(PRICES.input)}, output: ${String(PRICES.output)} }`;
+  writeFileSync(
+    path,
+    `version: 1\nprices:\n  fake:\n    demo-writer-1: ${price}\n  openai:\n    demo-writer-1: ${price}\n`,
+  );
+  return path;
+}
+
+/** Runs the acceptance cases against a demo-shop that exports its spans to the proxy. */
+async function runSpans(name: string, shopArgs: string[], profile: string): Promise<void> {
+  const shop = await start('src/main.ts', [
+    '--port',
+    '0',
+    ...shopArgs,
+    '--otel-url',
+    `${proxyUrl}/_yokla/otlp/v1/traces`,
+    '--otel-delay-ms',
+    '100',
+  ]);
+  const out = join(dir, `spans-${name}.json`);
+  const before = usageEntries().length;
+  const lines: string[] = [];
+  const io = { out: (line: string) => lines.push(line), err: (line: string) => lines.push(line) };
+  const code = await main(
+    [
+      'run',
+      '--profile',
+      profile,
+      '--cases',
+      join(DEMO, 'cases'),
+      '--target-url',
+      `${shop}/v1/chat`,
+      '--proxy-url',
+      proxyUrl,
+      '--config',
+      spansConfig(),
+      '--out',
+      out,
+    ],
+    io,
+  );
+  spanRuns.set(name, {
+    code,
+    output: lines.join('\n'),
+    results: Results.parse(JSON.parse(readFileSync(out, 'utf8'))),
+    before,
+    after: usageEntries().length,
+  });
+}
+
+/** A profile whose model calls only spans show: the proxy forwards none of them. */
+function spansOnlyProfile(): string {
+  const text = readFileSync(join(DEMO, 'yokla.profile.yaml'), 'utf8').replaceAll(
+    './data/',
+    join(DEMO, 'data/'),
+  );
+  const path = join(dir, 'spans-only.profile.yaml');
+  writeFileSync(path, `${text}\nmodelProxy:\n  port: 1\n  upstreams: []\n${SPANS}`);
+  return path;
+}
+
 beforeAll(async () => {
   guard = installNetworkGuard(
     (host, port) => host === '127.0.0.1' && port !== undefined && ports.has(port),
@@ -436,6 +511,21 @@ beforeAll(async () => {
   for (const defect of Object.keys(INSPECTION)) await runInspection(defect, providerUrl);
   for (const defect of Object.keys(TOOLS)) await runTools(defect, providerUrl);
   await runStreaming(providerUrl);
+  for (const [protocol, correlation] of Object.entries(SPAN_RUNS)) {
+    await runSpans(
+      protocol,
+      [
+        '--model-url',
+        `${proxyUrl}/fake`,
+        '--otel-protocol',
+        protocol,
+        ...(correlation === 'header' ? ['--model-stream'] : []),
+      ],
+      profileFor(correlation, providerUrl, `spans-${protocol}`, SPANS),
+    );
+  }
+  // The model calls go straight to the provider: only their spans show them.
+  await runSpans('only', ['--model-url', providerUrl], spansOnlyProfile());
 }, 300_000);
 
 afterAll(async () => {
@@ -519,6 +609,7 @@ describe('the model proxy against the demo-shop', () => {
       ...inspection.values(),
       ...toolRuns.values(),
       ...(streamed === undefined ? [] : [streamed.results]),
+      ...[...spanRuns.values()].map((done) => done.results),
     ].reduce((total, results) => total + (results.run.proxy?.records ?? 0), 0);
     expect(lines).toHaveLength(recorded);
     expect(lines.join('\n')).not.toMatch(/authorization|demo-key/iu);
@@ -677,6 +768,99 @@ describe('the model proxy against the demo-shop', () => {
     const turns = results?.cases.flatMap((c) => c.samples[0]?.turns ?? []) ?? [];
     expect(turns.length).toBeGreaterThan(0);
     for (const turn of turns) expect(turn.proxy?.calls, turn.user).toHaveLength(3);
+  });
+
+  it.each(Object.entries(SPAN_RUNS))(
+    'spans, %s: the acceptance passes, and every span is tied to its turn by traceparent',
+    (protocol, correlation) => {
+      const done = spanRuns.get(protocol);
+      expect(done?.code, done?.output).toBe(0);
+      expect(done?.results.summary.statuses).toEqual({ pass: 18 });
+      const measured = done?.results.run;
+      // The proxy keeps its own correlation for its calls.
+      expect(measured?.correlation).toBe(correlation);
+      expect(measured?.issues).toBeUndefined();
+      const records = measured?.proxy?.records ?? 0;
+      expect(records).toBeGreaterThan(0);
+      expect(measured?.spans).toMatchObject({
+        received: records,
+        attributed: records,
+        unattributed: 0,
+        settled: true,
+      });
+      expect(measured?.spans?.totals).toEqual(measured?.proxy?.totals);
+    },
+  );
+
+  it.each(Object.keys(SPAN_RUNS))(
+    "spans, %s: for every turn, the calls read from spans match the proxy's records",
+    (protocol) => {
+      const turns =
+        spanRuns.get(protocol)?.results.cases.flatMap((c) => c.samples.flatMap((s) => s.turns)) ??
+        [];
+      expect(turns.length).toBeGreaterThan(0);
+      for (const turn of turns) {
+        const proxied = turn.proxy?.calls.map((call) => ({
+          model: call.model,
+          input: call.usage.input,
+          output: call.usage.output,
+          costUsd: call.costUsd,
+        }));
+        const spanned = turn.spans?.calls.map((call) => ({
+          model: call.model,
+          input: call.usage.input,
+          output: call.usage.output,
+          costUsd: call.costUsd,
+        }));
+        expect(proxied, turn.user).toHaveLength(2);
+        // The same count, models and token counts, in the same order.
+        expect(spanned, turn.user).toEqual(proxied);
+        for (const call of turn.spans?.calls ?? []) {
+          expect(call, turn.user).toMatchObject({ provider: 'openai', error: false });
+          expect(call.durationMs).toBeGreaterThan(0);
+        }
+      }
+    },
+  );
+
+  it('spans only: a target whose calls the proxy never sees is measured from its spans', () => {
+    const done = spanRuns.get('only');
+    expect(done?.code, done?.output).toBe(0);
+    expect(done?.results.summary.statuses).toEqual({ pass: 18 });
+    const measured = done?.results.run;
+    expect(measured?.correlation).toBe('traceparent');
+    expect(measured?.proxy).toBeUndefined();
+    expect(measured?.issues).toBeUndefined();
+    // The provider's own records are what the spans must reconcile with.
+    const provider = usageEntries().slice(done?.before ?? 0, done?.after ?? 0);
+    const input = provider.reduce((total, entry) => total + entry.promptTokens, 0);
+    const output = provider.reduce((total, entry) => total + entry.completionTokens, 0);
+    expect(provider.length).toBeGreaterThan(0);
+    expect(measured?.spans).toEqual({
+      received: provider.length,
+      attributed: provider.length,
+      unattributed: 0,
+      totals: {
+        calls: provider.length,
+        inputTokens: input,
+        outputTokens: output,
+        costUsd: expect.closeTo(
+          (input * PRICES.input + output * PRICES.output) / 1e6,
+          12,
+        ) as unknown,
+      },
+      missing: {
+        cachedInputTokens: provider.length,
+        cacheWriteTokens: provider.length,
+        reasoningTokens: provider.length,
+      },
+      settled: true,
+    });
+    for (const turn of done?.results.cases.flatMap((c) => c.samples[0]?.turns ?? []) ?? []) {
+      expect(turn.proxy, turn.user).toBeUndefined();
+      expect(turn.spans?.calls, turn.user).toHaveLength(2);
+      expect(turn.spans?.costUsd, turn.user).toBeGreaterThan(0);
+    }
   });
 
   it('budgets: plan estimates a repeat of the serial run exactly from it', () => {

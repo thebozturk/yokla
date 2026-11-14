@@ -6,7 +6,9 @@
 // its system prompt: the app then falls back. Retrieved products go into the
 // user message, never the system message. The interpret call offers the
 // shop's lookups as tools, and the call that writes about products offers the
-// cart; the app runs what the model asks for (ADR-0025).
+// cart; the app runs what the model asks for (ADR-0025). With spans on, each
+// request to the provider is a GenAI span in the trace of the turn's
+// traceparent, with the model and token counts the provider reported (ADR-0029).
 
 import type {
   AnswerDraft,
@@ -17,6 +19,7 @@ import type {
 } from './model.ts';
 import type { Product } from './catalog.ts';
 import type { Defect } from './defects.ts';
+import type { ChatSpans, TokenUsage } from './otel.ts';
 import {
   CART_INSTRUCTION,
   cartProductOf,
@@ -40,6 +43,8 @@ export interface RemoteModelOptions {
   readonly stream?: boolean;
   /** A canary planted in every system prompt, so a test can see it leak. */
   readonly canary?: string;
+  /** Where each request to the provider becomes a span (ADR-0029). */
+  readonly spans?: ChatSpans;
 }
 
 /** The system message names the job on its first line, so a provider can tell the two calls apart. */
@@ -63,8 +68,44 @@ interface Completion {
   readonly toolCalls: readonly ToolCallText[];
 }
 
+/** A provider's answer: its completion, or why it has none, with the model and usage it reported. */
+interface Answer {
+  readonly completion: Completion | Error;
+  readonly model: string | undefined;
+  readonly usage: TokenUsage;
+}
+
 function field(value: unknown, key: string): unknown {
   return typeof value === 'object' && value !== null ? Reflect.get(value, key) : undefined;
+}
+
+function count(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
+}
+
+/** The token counts of a chat completion's usage. */
+function usageOf(usage: unknown): TokenUsage {
+  return {
+    input: count(field(usage, 'prompt_tokens')),
+    output: count(field(usage, 'completion_tokens')),
+    cacheRead: count(field(field(usage, 'prompt_tokens_details'), 'cached_tokens')),
+  };
+}
+
+function modelOf(body: unknown): string | undefined {
+  const model = field(body, 'model');
+  return typeof model === 'string' && model !== '' ? model : undefined;
+}
+
+/** A JSON answer: its usage stays readable when its completion isn't. */
+function answerOf(body: unknown): Answer {
+  let completion: Completion | Error;
+  try {
+    completion = completionOf(body);
+  } catch (error) {
+    completion = error instanceof Error ? error : new Error(String(error));
+  }
+  return { completion, model: modelOf(body), usage: usageOf(field(body, 'usage')) };
 }
 
 function firstChoice(body: unknown, key: 'message' | 'delta'): unknown {
@@ -89,13 +130,22 @@ function completionOf(body: unknown): Completion {
   return { content: typeof content === 'string' ? content : '', toolCalls };
 }
 
-/** The text and tool calls of a chat completions event stream, pieces joined by index. */
-function streamed(text: string): Completion {
+/**
+ * The text and tool calls of a chat completions event stream, pieces joined by
+ * index, with the usage its last chunk reports.
+ */
+function streamed(text: string): Answer {
   let content = '';
+  let model: string | undefined;
+  let usage: TokenUsage = { input: undefined, output: undefined, cacheRead: undefined };
   const calls = new Map<number, { name: string; arguments: string }>();
   for (const line of text.split('\n')) {
     if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
-    const delta = firstChoice(JSON.parse(line.slice(6)), 'delta');
+    const chunk: unknown = JSON.parse(line.slice(6));
+    model = modelOf(chunk) ?? model;
+    const reported = field(chunk, 'usage');
+    if (typeof reported === 'object' && reported !== null) usage = usageOf(reported);
+    const delta = firstChoice(chunk, 'delta');
     const piece = field(delta, 'content');
     if (typeof piece === 'string') content += piece;
     const pieces = field(delta, 'tool_calls');
@@ -114,8 +164,12 @@ function streamed(text: string): Completion {
     .toSorted(([a], [b]) => a - b)
     .map(([, call]) => call)
     .filter((call) => call.name !== '');
-  return { content, toolCalls };
+  return { completion: { content, toolCalls }, model, usage };
 }
+
+/** A request's outcome: the answer, or the status the provider refused it with. */
+type Attempt =
+  { readonly answer: Answer } | { readonly status: number; readonly retryAfter: string | null };
 
 export class RemoteModel implements ChatModel {
   readonly #options: RemoteModelOptions;
@@ -139,6 +193,28 @@ export class RemoteModel implements ChatModel {
     });
   }
 
+  /** One request to the provider, a span of its own when spans are on. */
+  async #attempt(body: string, model: string, call: ModelCall | undefined): Promise<Attempt> {
+    const end = this.#options.spans?.chat(model, call?.traceparent);
+    try {
+      const response = await this.#send(body, call);
+      if (!response.ok) {
+        await response.body?.cancel();
+        end?.({ error: String(response.status) });
+        return { status: response.status, retryAfter: response.headers.get('retry-after') };
+      }
+      const answer =
+        this.#options.stream === true
+          ? streamed(await response.text())
+          : answerOf(await response.json());
+      end?.({ model: answer.model, usage: answer.usage });
+      return { answer };
+    } catch (error) {
+      end?.({ error: error instanceof Error ? error.name : 'Error' });
+      throw error;
+    }
+  }
+
   async #complete(
     role: string,
     payload: unknown,
@@ -158,8 +234,9 @@ export class RemoteModel implements ChatModel {
         ? [CART_INSTRUCTION]
         : []),
     ].join('\n');
+    const model = this.#options.model ?? 'demo-writer-1';
     const body = JSON.stringify({
-      model: this.#options.model ?? 'demo-writer-1',
+      model,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: JSON.stringify(payload) },
@@ -167,20 +244,18 @@ export class RemoteModel implements ChatModel {
       ...(tools.length === 0 ? {} : { tools, tool_choice: 'auto' }),
       ...(stream ? { stream: true, stream_options: { include_usage: true } } : {}),
     });
-    let response = await this.#send(body, call);
-    if (response.status === 429 || response.status === 503) {
+    let attempt = await this.#attempt(body, model, call);
+    if ('status' in attempt && (attempt.status === 429 || attempt.status === 503)) {
       // One retry, after the wait the provider asks for, capped at 2 s.
-      const seconds = Number(response.headers.get('retry-after') ?? '1');
-      await response.body?.cancel();
+      const seconds = Number(attempt.retryAfter ?? '1');
       await new Promise((resolve) =>
         setTimeout(resolve, Math.min(2_000, Math.max(0, seconds * 1000))),
       );
-      response = await this.#send(body, call);
+      attempt = await this.#attempt(body, model, call);
     }
-    if (!response.ok) throw new Error(`the model answered ${String(response.status)}`);
-    const completion = stream
-      ? streamed(await response.text())
-      : completionOf(await response.json());
+    if ('status' in attempt) throw new Error(`the model answered ${String(attempt.status)}`);
+    const { completion } = attempt.answer;
+    if (completion instanceof Error) throw completion;
     const { content } = completion;
     if (
       content.trim() === '' &&

@@ -97,6 +97,19 @@ function remember<K, V>(map: Map<K, V>, key: K, value: V, max: number): void {
   }
 }
 
+/** What ties a request's model calls to it: a trace id for a model proxy, a W3C traceparent for spans. */
+export interface Tracing {
+  readonly trace?: string;
+  readonly traceparent?: string;
+}
+
+function tracing(options: Tracing): Tracing {
+  return {
+    ...(options.trace === undefined ? {} : { trace: options.trace }),
+    ...(options.traceparent === undefined ? {} : { traceparent: options.traceparent }),
+  };
+}
+
 export class Assistant {
   readonly #data: ShopData;
   readonly #model: ChatModel;
@@ -119,7 +132,7 @@ export class Assistant {
   async reply(
     sessionId: string,
     message: string,
-    options: { readonly bypassCache?: boolean; readonly trace?: string } = {},
+    options: Tracing & { readonly bypassCache?: boolean } = {},
   ): Promise<{ reply: ChatReply; cache: CacheStatus }> {
     const bypass = options.bypassCache === true;
     const context = this.#sessions.get(sessionId);
@@ -136,7 +149,7 @@ export class Assistant {
     // The model sees the message with personal data masked, and only the data it needs.
     const sent = this.#defect === 'unmasked-pii' ? message : maskPersonalData(message);
     const call: ModelCall = {
-      ...(options.trace === undefined ? {} : { trace: options.trace }),
+      ...tracing(options),
       question: sent,
       ...(this.#defect === 'prompt-bloat' ? { reference: this.#data.catalog } : {}),
       addToCart: (productId) => {
@@ -201,12 +214,9 @@ export class Assistant {
    * Summarises an answer for the session's memory, as apps do in the background
    * after answering. Failures are swallowed: the user already has the answer.
    */
-  async summarize(answer: string, options: { readonly trace?: string } = {}): Promise<void> {
+  async summarize(answer: string, options: Tracing = {}): Promise<void> {
     try {
-      await this.#model.summarize(
-        answer,
-        options.trace === undefined ? {} : { trace: options.trace },
-      );
+      await this.#model.summarize(answer, tracing(options));
     } catch {
       // Nothing to do: a lost summary only makes the memory shorter.
     }

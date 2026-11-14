@@ -86,6 +86,8 @@ export type AnswerDraft =
 /** Per-call details the app passes on, e.g. a trace id to forward to the provider. */
 export interface ModelCall {
   readonly trace?: string;
+  /** The W3C traceparent of the request, for the span of the call to continue (ADR-0029). */
+  readonly traceparent?: string;
   /** The user's message as the app lets the model see it, for the writer. */
   readonly question?: string;
   /** Products the app sends along with the draft, beyond those it shows. */

@@ -1,12 +1,14 @@
 // Starts the demo-shop: node src/main.ts [--port 3000] [--defect <name>] [--rate-limit off]
 //   [--model-url <OpenAI-compatible base URL>] [--model-stream] [--model-timeout-ms 3000]
 //   [--model-canary <text>] [--model-summary]
+//   [--otel-url <OTLP/HTTP traces endpoint>] [--otel-protocol json|protobuf] [--otel-delay-ms 5000]
 
 import { parseArgs } from 'node:util';
 import { Assistant } from './assistant.ts';
 import { loadShopData } from './catalog.ts';
 import { DEFECT_DESCRIPTIONS, DEFECTS, parseDefect } from './defects.ts';
 import { ScriptedModel } from './model.ts';
+import { parseOtelProtocol, SpanExporter } from './otel.ts';
 import { RemoteModel } from './remote-model.ts';
 import { createDemoShopServer, DEFAULT_RATE_LIMIT } from './server.ts';
 
@@ -22,6 +24,9 @@ function main(): void {
       'model-timeout-ms': { type: 'string' },
       'model-canary': { type: 'string' },
       'model-summary': { type: 'boolean' },
+      'otel-url': { type: 'string' },
+      'otel-protocol': { type: 'string' },
+      'otel-delay-ms': { type: 'string' },
     },
   });
 
@@ -41,6 +46,19 @@ function main(): void {
   // With a model URL both model calls of a turn go over HTTP; model defects
   // then belong to that provider, and only the app's own defects apply here.
   const modelUrl = values['model-url'] ?? process.env['DEMO_SHOP_MODEL_URL'];
+  // A GenAI span for each model call over HTTP, as OpenTelemetry's exporter settings name it (ADR-0029).
+  const otelUrl = values['otel-url'] ?? process.env['OTEL_EXPORTER_OTLP_TRACES_ENDPOINT'];
+  const protocol = parseOtelProtocol(values['otel-protocol'] ?? 'json');
+  if (protocol === undefined) throw new Error('--otel-protocol must be "json" or "protobuf"');
+  const delayMs = Number(
+    values['otel-delay-ms'] ?? process.env['OTEL_BSP_SCHEDULE_DELAY'] ?? '5000',
+  );
+  if (!Number.isInteger(delayMs) || delayMs < 0)
+    throw new Error('--otel-delay-ms must be a whole number of milliseconds');
+  if (otelUrl !== undefined && modelUrl === undefined)
+    throw new Error('--otel-url needs --model-url: only model calls over HTTP become spans');
+  const spans =
+    otelUrl === undefined ? undefined : new SpanExporter({ url: otelUrl, protocol, delayMs });
   const model =
     modelUrl === undefined
       ? new ScriptedModel(defect)
@@ -51,6 +69,7 @@ function main(): void {
           timeoutMs: Number(values['model-timeout-ms'] ?? '3000'),
           defect,
           ...(values['model-canary'] === undefined ? {} : { canary: values['model-canary'] }),
+          ...(spans === undefined ? {} : { spans }),
         });
   const assistant = new Assistant({ data: loadShopData(), model, defect });
   const server = createDemoShopServer({
@@ -64,12 +83,14 @@ function main(): void {
     const address = server.address();
     const actual = typeof address === 'object' && address !== null ? address.port : port;
     console.log(
-      `demo-shop listening on http://127.0.0.1:${String(actual)} (defect: ${defect ?? 'none'}, model: ${modelUrl ?? 'in process'})`,
+      `demo-shop listening on http://127.0.0.1:${String(actual)} (defect: ${defect ?? 'none'}, model: ${modelUrl ?? 'in process'}${otelUrl === undefined ? '' : `, spans: ${protocol}`})`,
     );
   });
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {
       server.close();
+      // The spans still waiting for their batch go out before the process ends.
+      void spans?.flush();
     });
   }
 }
