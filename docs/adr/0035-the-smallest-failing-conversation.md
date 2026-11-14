@@ -1,6 +1,6 @@
 # 0035. The smallest failing conversation: yokla shrink
 
-Status: Proposed · Date: 2026-11-15
+Status: Accepted · Date: 2026-11-15
 
 ## Context
 

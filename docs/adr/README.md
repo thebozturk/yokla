@@ -47,7 +47,7 @@ old one.
 | [0032](0032-gemini.md) | Gemini: the model proxy and yokla's own calls | Accepted |
 | [0033](0033-where-a-failure-arose.md) | Where a failure arose: the origin of the value a finding names | Accepted |
 | [0034](0034-publishing-to-npm.md) | Publishing to npm | Accepted |
-| [0035](0035-the-smallest-failing-conversation.md) | The smallest failing conversation: yokla shrink | Proposed |
+| [0035](0035-the-smallest-failing-conversation.md) | The smallest failing conversation: yokla shrink | Accepted |
 
 ## Template
 
