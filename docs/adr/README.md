@@ -41,7 +41,7 @@ old one.
 | [0026](0026-evidence-from-tool-results.md) | Evidence from the tool results the model saw | Accepted |
 | [0027](0027-a-product-named-by-the-start-of-its-name.md) | A product named by the start of its name | Accepted |
 | [0028](0028-the-simulated-customer.md) | The simulated customer, and yokla's own model calls | Accepted |
-| [0029](0029-model-calls-from-opentelemetry-spans.md) | Model calls read from OpenTelemetry spans | Proposed |
+| [0029](0029-model-calls-from-opentelemetry-spans.md) | Model calls read from OpenTelemetry spans | Accepted |
 
 ## Template
 

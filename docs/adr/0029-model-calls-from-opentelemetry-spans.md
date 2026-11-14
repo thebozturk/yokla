@@ -1,6 +1,6 @@
 # 0029. Model calls read from OpenTelemetry spans
 
-Status: Proposed · Date: 2026-11-14
+Status: Accepted · Date: 2026-11-14
 
 ## Context
 
