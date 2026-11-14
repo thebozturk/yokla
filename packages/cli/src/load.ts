@@ -9,12 +9,14 @@ import {
   BASELINE_SCHEMA_ID,
   baselineOf,
   formatIssue,
+  JsonSchemaValue,
   parseConfig,
   Results,
   RESULTS_SCHEMA_ID,
   YoklaConfig,
   type Case,
   type Profile,
+  SchemaRule,
   type z,
 } from '@yokla/core';
 import { schemas } from './schemas.ts';
@@ -44,6 +46,59 @@ function parseFile<T>(path: string, schema: z.ZodType<T>): { value: T; text: str
   return { value: result.value, text };
 }
 
+/** A rule with its schemaFile read, relative to `dir`, into schema (ADR-0030). */
+function readSchemaRule(rule: SchemaRule, dir: string): SchemaRule {
+  if (rule.schemaFile === undefined) return rule;
+  const { value } = parseFile(resolve(dir, rule.schemaFile), JsonSchemaValue);
+  return { at: rule.at, schema: value };
+}
+
+/** A turn's expectations with the files of their schemas read. */
+function readTurnSchemas<E extends Readonly<Record<string, unknown>> | undefined>(
+  expect: E,
+  dir: string,
+): E {
+  const rules: unknown = expect?.['schema'];
+  if (expect === undefined || !Array.isArray(rules)) return expect;
+  return {
+    ...expect,
+    schema: SchemaRule.array()
+      .parse(rules)
+      .map((rule) => readSchemaRule(rule, dir)),
+  };
+}
+
+/** A case with every schemaFile its expectations name read (ADR-0030). */
+function readCaseSchemas(testCase: Case, dir: string): Case {
+  return {
+    ...testCase,
+    turns: testCase.turns.map((turn) =>
+      turn.expect === undefined ? turn : { ...turn, expect: readTurnSchemas(turn.expect, dir) },
+    ),
+    ...(testCase.customer?.expect === undefined
+      ? {}
+      : {
+          customer: {
+            ...testCase.customer,
+            expect: readTurnSchemas(testCase.customer.expect, dir),
+          },
+        }),
+  };
+}
+
+/** The profile with the file of its response contract read (ADR-0030). */
+function withContract(profile: Profile, dir: string): Profile {
+  const { target } = profile;
+  const contract = target.response.schema;
+  if (contract === undefined) return profile;
+  const schema = readSchemaRule(contract, dir);
+  // Each adapter on its own, so the target keeps its own type.
+  if (target.adapter === 'websocket') {
+    return { ...profile, target: { ...target, response: { ...target.response, schema } } };
+  }
+  return { ...profile, target: { ...target, response: { ...target.response, schema } } };
+}
+
 export interface LoadedProfile {
   readonly profile: Profile;
   readonly sha256: string;
@@ -54,8 +109,9 @@ export interface LoadedProfile {
 export function loadProfile(path: string): LoadedProfile {
   const absolute = resolve(path);
   const { value, text } = parseFile(absolute, schemas.profile);
+  const profile = withContract(value, dirname(absolute));
   return {
-    profile: value,
+    profile,
     sha256: createHash('sha256').update(text).digest('hex'),
     dir: dirname(absolute),
     path: absolute,
@@ -85,7 +141,11 @@ export function loadCases(paths: readonly string[]): Case[] {
   const cases: Case[] = [];
   for (const file of files) {
     try {
-      cases.push(...parseFile(file, schemas.caseFile).value.cases);
+      cases.push(
+        ...parseFile(file, schemas.caseFile).value.cases.map((testCase) =>
+          readCaseSchemas(testCase, dirname(file)),
+        ),
+      );
     } catch (error) {
       problems.push(error instanceof Error ? error.message : String(error));
     }

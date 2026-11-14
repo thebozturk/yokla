@@ -1,7 +1,7 @@
 // Case files (design §9): cases/*.yaml. One file holds one or more cases.
 
 import { z } from 'zod';
-import { Id, LanguageCode, Pattern, Provenance, Suite } from './common.ts';
+import { Id, LanguageCode, Pattern, Provenance, SchemaRule, Suite } from './common.ts';
 import { squeeze } from '../text/match.ts';
 import { FaultPlan } from './fault.ts';
 
@@ -35,6 +35,10 @@ export const coreExpectations = {
     }),
   language: LanguageCode.meta({
     description: 'The language the answer must be in, judged by language-match (ADR-0018).',
+  }),
+  schema: z.array(SchemaRule).min(1).meta({
+    description:
+      'JSON Schemas the response, or parts of it, must match, judged by json-schema (ADR-0030).',
   }),
   allowStatus: z.array(z.int().min(300).max(599)).min(1).meta({
     description:

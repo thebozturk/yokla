@@ -3,6 +3,7 @@
 // or every member value of an object. Pure; no dependencies.
 
 import { JSON_PATH_PATTERN } from '../schema/common.ts';
+import { childPath } from './member.ts';
 
 export type Segment =
   | { readonly kind: 'name'; readonly name: string }
@@ -38,6 +39,44 @@ function step(value: unknown, segment: Segment): unknown[] {
       if (Array.isArray(value)) return value;
       return isObject(value) ? Object.values(value) : [];
   }
+}
+
+/** Every value the path selects, in document order, with where it is (ADR-0030). */
+export function selectJsonPath(
+  document: unknown,
+  path: string,
+): { readonly path: string; readonly value: unknown }[] {
+  let nodes: { path: string; value: unknown }[] = [{ path: '$', value: document }];
+  for (const segment of parseJsonPath(path)) {
+    nodes = nodes.flatMap((node) => {
+      const { value } = node;
+      if (segment.kind === 'name') {
+        return isObject(value) && Object.hasOwn(value, segment.name)
+          ? [{ path: childPath(node.path, segment.name), value: value[segment.name] }]
+          : [];
+      }
+      if (segment.kind === 'index') {
+        const items: readonly unknown[] = Array.isArray(value) ? value : [];
+        return segment.index < items.length
+          ? [{ path: `${node.path}[${String(segment.index)}]`, value: items[segment.index] }]
+          : [];
+      }
+      if (Array.isArray(value)) {
+        const items: readonly unknown[] = value;
+        return items.map((item, index) => ({
+          path: `${node.path}[${String(index)}]`,
+          value: item,
+        }));
+      }
+      return isObject(value)
+        ? Object.entries(value).map(([name, item]) => ({
+            path: childPath(node.path, name),
+            value: item,
+          }))
+        : [];
+    });
+  }
+  return nodes;
 }
 
 /** Every value the path selects, in document order. */

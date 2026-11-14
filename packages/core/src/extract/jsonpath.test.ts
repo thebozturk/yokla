@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getFieldPath, parseJsonPath, queryJsonPath } from './jsonpath.ts';
+import { getFieldPath, parseJsonPath, queryJsonPath, selectJsonPath } from './jsonpath.ts';
 
 const doc = {
   data: {
@@ -54,6 +54,40 @@ describe('queryJsonPath', () => {
 
   it('does not read inherited properties', () => {
     expect(queryJsonPath({}, '$.constructor')).toEqual([]);
+  });
+});
+
+describe('selectJsonPath (ADR-0030)', () => {
+  it('gives each value it selects with its own path', () => {
+    expect(selectJsonPath(doc, '$.data.products[*].price.amount')).toEqual([
+      { path: '$.data.products[0].price.amount', value: 10 },
+      { path: '$.data.products[1].price.amount', value: 20 },
+    ]);
+    expect(selectJsonPath(doc, "$.data['odd key']")).toEqual([
+      { path: '$.data["odd key"]', value: 1 },
+    ]);
+    expect(selectJsonPath(doc, '$.data.byId[*].n')).toEqual([
+      { path: '$.data.byId.x.n', value: 1 },
+      { path: '$.data.byId.y.n', value: 2 },
+    ]);
+    expect(selectJsonPath(doc, '$.data.products[1].id')).toEqual([
+      { path: '$.data.products[1].id', value: 'b' },
+    ]);
+    expect(selectJsonPath(doc, '$')).toEqual([{ path: '$', value: doc }]);
+  });
+
+  it('selects nothing where the document has nothing', () => {
+    expect(selectJsonPath(doc, '$.data.missing')).toEqual([]);
+    expect(selectJsonPath(doc, '$.data.products[5]')).toEqual([]);
+    expect(selectJsonPath(doc, '$.data.answer[*]')).toEqual([]);
+    expect(selectJsonPath(doc, '$.data.products.id')).toEqual([]);
+    expect(selectJsonPath(doc, '$.data[0]')).toEqual([]);
+  });
+
+  it('selects what queryJsonPath selects, in the same order', () => {
+    for (const path of ['$.data.products[*]', '$.data.byId[*]', '$.data[*]', '$..x'.slice(0, 1)]) {
+      expect(selectJsonPath(doc, path).map((node) => node.value)).toEqual(queryJsonPath(doc, path));
+    }
   });
 });
 

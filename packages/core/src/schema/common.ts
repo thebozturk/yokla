@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { schemaProblems } from '../jsonschema/jsonschema.ts';
 
 /** Identifiers: lowercase letters and digits, separated by "-" or ".". */
 export const ID_PATTERN = /^[a-z0-9]+(?:[-.][a-z0-9]+)*$/u;
@@ -69,6 +70,40 @@ export const Pattern = z
     description:
       'A JavaScript regular expression, always with the u flag; the object form adds i, m or s (ADR-0030). It sees the answer as it came, not folded.',
   });
+
+/**
+ * A JSON Schema in the subset yokla checks (ADR-0030); any other keyword
+ * refuses it, with where it is.
+ */
+export const JsonSchemaValue = z
+  .union([z.boolean(), z.record(z.string(), z.json())])
+  .superRefine((schema, context) => {
+    for (const problem of schemaProblems(schema)) {
+      context.addIssue({ code: 'custom', message: `the schema is refused: ${problem}` });
+    }
+  })
+  .meta({
+    description:
+      'A JSON Schema, in the subset of draft 2020-12 yokla checks; anything else refuses it (ADR-0030).',
+  });
+
+/** What part of a response a schema holds, and the schema (ADR-0030). */
+export const SchemaRule = z
+  .strictObject({
+    at: JsonPath.default('$').meta({
+      description:
+        'What is validated: every value this path selects in the response document, the JSON body or what a stream became. Selecting nothing fails.',
+    }),
+    schema: JsonSchemaValue.optional(),
+    schemaFile: z.string().min(1).optional().meta({
+      description: 'A JSON or YAML file holding the schema, relative to the file that names it.',
+    }),
+  })
+  .refine((rule) => (rule.schema === undefined) !== (rule.schemaFile === undefined), {
+    message: 'give the schema inline, as schema, or as schemaFile, not both',
+  })
+  .meta({ description: 'A JSON Schema the response, or a part of it, must match (ADR-0030).' });
+export type SchemaRule = z.output<typeof SchemaRule>;
 
 /** Names of evidence fields, such as `price` or `stock`. */
 export const FieldName = z.string().regex(/^[a-z][A-Za-z0-9]*$/u, 'use a camelCase field name');

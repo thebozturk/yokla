@@ -662,6 +662,8 @@ async function runSample(
                   route: extracted?.route,
                   id: extracted?.id,
                   evidence: extracted?.evidence ?? {},
+                  // What json-schema validates (ADR-0030).
+                  ...(body === undefined ? {} : { document: toJson(body) }),
                 },
                 observed: undefined,
                 seen: {},

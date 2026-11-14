@@ -727,6 +727,41 @@
                     ],
                     "additionalProperties": false
                   }
+                },
+                "schema": {
+                  "description": "A JSON Schema every usable answer, or a part of it, must match: the contract of the response, judged by json-schema (ADR-0030).",
+                  "type": "object",
+                  "properties": {
+                    "at": {
+                      "default": "$",
+                      "description": "What is validated: every value this path selects in the response document, the JSON body or what a stream became. Selecting nothing fails.",
+                      "type": "string",
+                      "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                    },
+                    "schema": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {
+                            "$ref": "#/$defs/__schema1"
+                          }
+                        }
+                      ],
+                      "description": "A JSON Schema, in the subset of draft 2020-12 yokla checks; anything else refuses it (ADR-0030)."
+                    },
+                    "schemaFile": {
+                      "description": "A JSON or YAML file holding the schema, relative to the file that names it.",
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "additionalProperties": false
                 }
               },
               "required": [
@@ -1237,7 +1272,7 @@
                 },
                 "body": {
                   "description": "The message sent for each turn, as JSON text. Strings may contain {{message}}, {{session}}, {{requestId}}, {{carry.NAME}} and {{env.NAME}}.",
-                  "$ref": "#/$defs/__schema1"
+                  "$ref": "#/$defs/__schema2"
                 },
                 "timeoutMs": {
                   "default": 30000,
@@ -1441,6 +1476,41 @@
                     ],
                     "additionalProperties": false
                   }
+                },
+                "schema": {
+                  "description": "A JSON Schema every usable answer, or a part of it, must match: the contract of the response, judged by json-schema (ADR-0030).",
+                  "type": "object",
+                  "properties": {
+                    "at": {
+                      "default": "$",
+                      "description": "What is validated: every value this path selects in the response document, the JSON body or what a stream became. Selecting nothing fails.",
+                      "type": "string",
+                      "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                    },
+                    "schema": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {
+                            "$ref": "#/$defs/__schema1"
+                          }
+                        }
+                      ],
+                      "description": "A JSON Schema, in the subset of draft 2020-12 yokla checks; anything else refuses it (ADR-0030)."
+                    },
+                    "schemaFile": {
+                      "description": "A JSON or YAML file holding the schema, relative to the file that names it.",
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "additionalProperties": false
                 }
               },
               "required": [
@@ -2264,6 +2334,37 @@
           },
           "additionalProperties": {
             "$ref": "#/$defs/__schema1"
+          }
+        }
+      ]
+    },
+    "__schema2": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema2"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema2"
           }
         }
       ]

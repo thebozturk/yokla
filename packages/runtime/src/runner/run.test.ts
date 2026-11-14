@@ -1004,6 +1004,87 @@ const STREAMED = {
   },
 };
 
+/** The json-schema findings of each turn, as verdict and message. */
+const schemaFindings = (results: Results) =>
+  results.cases.flatMap((c) =>
+    (c.samples[0]?.turns ?? []).map((turn) =>
+      turn.checks
+        .find((check) => check.check === 'json-schema')
+        ?.findings.map((f) => `${f.verdict}: ${f.message}`),
+    ),
+  );
+
+describe('runSuite with JSON Schemas (ADR-0030)', () => {
+  it('holds every JSON answer to the contract, and a turn to its own schema', async () => {
+    const t = await target((_r, index, response) => {
+      json(response, index === 0 ? answer() : answer({ items: [{ id: 7, price: '1' }] }));
+    });
+    const contracted = profile(t.url, {
+      response: {
+        text: '$.answer',
+        route: '$.route',
+        schema: { schema: { required: ['answer', 'route'] } },
+      },
+    });
+    const results = await runSuite(
+      options(
+        contracted,
+        cases({
+          turns: [
+            { user: 'a' },
+            {
+              user: 'b',
+              expect: {
+                schema: [{ at: '$.items[*].id', schema: { type: 'string', pattern: '^P' } }],
+              },
+            },
+          ],
+        }),
+        { checks: CORE_CHECKS },
+      ),
+    );
+    expect(schemaFindings(results)).toEqual([
+      ['pass: matches the schema at $ (target.response.schema)'],
+      [
+        'pass: matches the schema at $ (target.response.schema)',
+        'fail: breaks the schema at $.items[*].id: $.items[0].id: type, expected string, got integer',
+      ],
+    ]);
+  });
+
+  it("validates a stream as the document the profile's paths read", async () => {
+    const t = await target((_r, _i, response) => {
+      events(response, [
+        ['text_delta', { text: 'Tamam' }],
+        ['turn_complete', { route: 'search' }],
+      ]);
+    });
+    const streaming = profile(t.url, { response: STREAMED });
+    const results = await runSuite(
+      options(
+        streaming,
+        cases({
+          turns: [
+            {
+              user: 'a',
+              expect: {
+                schema: [
+                  { at: '$.last.turn_complete', schema: { required: ['route'] } },
+                  { at: '$.last.ui', schema: true },
+                ],
+              },
+            },
+          ],
+        }),
+        { checks: CORE_CHECKS },
+      ),
+    );
+    expect(schemaFindings(results)).toEqual([
+      ['pass: matches the schema at $.last.turn_complete', 'fail: nothing at $.last.ui'],
+    ]);
+  });
+});
+
 describe('runSuite with a streaming target (ADR-0016)', () => {
   it('reads the answer, route and evidence from the stream, and times the first text', async () => {
     const t = await target((received, _i, response) => {

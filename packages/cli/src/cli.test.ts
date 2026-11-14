@@ -84,6 +84,76 @@ describe('loading', () => {
     );
   });
 
+  it('reads each schemaFile relative to the file that names it (ADR-0030)', () => {
+    const dir = workspace({
+      'yokla.profile.yaml': PROFILE.replace(
+        'response: { text: $.answer }',
+        // A function, so the $' in the replacement is taken as it is.
+        () => "response: { text: $.answer, schema: { at: '$', schemaFile: schemas/reply.yaml } }",
+      ),
+      'schemas/reply.yaml': 'type: object\nrequired: [answer]\n',
+      'cases/a.yaml':
+        `${CASES}        expect:\n          schema: [{ schemaFile: ../schemas/turn.json }]\n`.replace(
+          'turns: [{ user: merhaba }]',
+          'turns:\n      - user: merhaba',
+        ),
+      'schemas/turn.json': '{ "properties": { "answer": { "type": "string" } } }',
+    });
+    const { profile } = loadProfile(join(dir, 'yokla.profile.yaml'));
+    expect(profile.target.response.schema).toEqual({
+      at: '$',
+      schema: { type: 'object', required: ['answer'] },
+    });
+    const [loaded] = loadCases([join(dir, 'cases')]);
+    expect(loaded?.turns[0]?.expect?.['schema']).toEqual([
+      { at: '$', schema: { properties: { answer: { type: 'string' } } } },
+    ]);
+    // A simulated customer's expectations, for every answer, too.
+    writeFileSync(
+      join(dir, 'cases/b.yaml'),
+      [
+        'version: 1',
+        'cases:',
+        '  - id: b',
+        '    suite: quality',
+        '    language: tr',
+        '    customer:',
+        '      persona: p',
+        '      goal: g',
+        '      maxTurns: 2',
+        '      reached: { route: cart }',
+        "      expect: { schema: [{ at: '$.data', schemaFile: ../schemas/turn.json }] }",
+        '',
+      ].join('\n'),
+    );
+    const customer = loadCases([join(dir, 'cases/b.yaml')])[0]?.customer;
+    expect(customer?.expect?.['schema']).toEqual([
+      { at: '$.data', schema: { properties: { answer: { type: 'string' } } } },
+    ]);
+  });
+
+  it('refuses a schema file yokla cannot check, naming the file and the keyword', () => {
+    const dir = workspace({
+      'yokla.profile.yaml': PROFILE.replace(
+        'response: { text: $.answer }',
+        'response: { text: $.answer, schema: { schemaFile: reply.json } }',
+      ),
+      'reply.json': '{ "patternProperties": {} }',
+    });
+    expect(() => loadProfile(join(dir, 'yokla.profile.yaml'))).toThrow(
+      /reply\.json[\s\S]*the schema is refused: #\/patternProperties: the keyword "patternProperties" isn't checked/u,
+    );
+    const missing = workspace({
+      'yokla.profile.yaml': PROFILE.replace(
+        'response: { text: $.answer }',
+        'response: { text: $.answer, schema: { schemaFile: nowhere.json } }',
+      ),
+    });
+    expect(() => loadProfile(join(missing, 'yokla.profile.yaml'))).toThrow(
+      /nowhere\.json: ENOENT/u,
+    );
+  });
+
   it('fails clearly on a missing path or an empty directory', () => {
     expect(() => loadCases(['/no/such/yokla/cases'])).toThrow(LoadError);
     const dir = workspace({ 'cases/readme.md': '' });

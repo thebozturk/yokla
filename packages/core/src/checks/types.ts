@@ -46,6 +46,11 @@ export interface TurnView {
     readonly route: string | undefined;
     readonly id: string | undefined;
     readonly evidence: Readonly<Record<string, readonly EvidenceItem[]>>;
+    /**
+     * The response as the profile's paths read it: the JSON body, or the
+     * document a stream became (ADR-0016, ADR-0024). Absent when it isn't JSON.
+     */
+    readonly document?: JsonValue;
   };
   /**
    * Items the model saw in the results of the tools the profile maps, per

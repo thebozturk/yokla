@@ -9,7 +9,23 @@ export {
   type ConfigIssue,
   type ParseResult,
 } from './config/parse.ts';
-export { getFieldPath, parseJsonPath, queryJsonPath, type Segment } from './extract/jsonpath.ts';
+export { childPath } from './extract/member.ts';
+export {
+  getFieldPath,
+  parseJsonPath,
+  queryJsonPath,
+  selectJsonPath,
+  type Segment,
+} from './extract/jsonpath.ts';
+export {
+  compileSchema,
+  schemaProblems,
+  validateCompiled,
+  validateJson,
+  type CompiledSchema,
+  type JsonSchema,
+  type Violation,
+} from './jsonschema/jsonschema.ts';
 export {
   eventName,
   messageEvents,
@@ -63,8 +79,14 @@ export {
   ID_PATTERN,
   JSON_PATH_PATTERN,
   JsonPath,
+  JsonSchemaValue,
   LanguageCode,
   MACHINE_SOURCES,
+  compilePattern,
+  Pattern,
+  type PatternSpec,
+  SchemaRule,
+  showPattern,
   Provenance,
   ReviewStatus,
   reviewStatus,
@@ -181,6 +203,7 @@ export {
 } from './checks/generic.ts';
 export { piiInPrompt, promptBudget, promptLeak, untrustedInSystem } from './checks/inspection.ts';
 export { toolCalls, toolCallValid } from './checks/tools.ts';
+export { jsonSchemaCheck, MAX_VIOLATIONS } from './checks/schema.ts';
 export { CORE_CHECKS } from './checks/all.ts';
 export { modelCallOf } from './otel/genai.ts';
 export { readOtlpJson, readOtlpProtobuf, type AttributeValue, type OtlpSpan } from './otel/otlp.ts';

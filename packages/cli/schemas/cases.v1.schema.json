@@ -350,6 +350,46 @@
                       "pattern": "^[a-z]{2}$",
                       "description": "The language the answer must be in, judged by language-match (ADR-0018)."
                     },
+                    "schema": {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "at": {
+                            "default": "$",
+                            "description": "What is validated: every value this path selects in the response document, the JSON body or what a stream became. Selecting nothing fails.",
+                            "type": "string",
+                            "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                          },
+                          "schema": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {
+                                  "$ref": "#/$defs/__schema1"
+                                }
+                              }
+                            ],
+                            "description": "A JSON Schema, in the subset of draft 2020-12 yokla checks; anything else refuses it (ADR-0030)."
+                          },
+                          "schemaFile": {
+                            "description": "A JSON or YAML file holding the schema, relative to the file that names it.",
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "additionalProperties": false,
+                        "description": "A JSON Schema the response, or a part of it, must match (ADR-0030)."
+                      },
+                      "description": "JSON Schemas the response, or parts of it, must match, judged by json-schema (ADR-0030)."
+                    },
                     "allowStatus": {
                       "minItems": 1,
                       "type": "array",
@@ -432,7 +472,7 @@
                               "minLength": 1
                             },
                             "additionalProperties": {
-                              "$ref": "#/$defs/__schema1"
+                              "$ref": "#/$defs/__schema2"
                             }
                           }
                         },
@@ -842,6 +882,46 @@
                     "pattern": "^[a-z]{2}$",
                     "description": "The language the answer must be in, judged by language-match (ADR-0018)."
                   },
+                  "schema": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "at": {
+                          "default": "$",
+                          "description": "What is validated: every value this path selects in the response document, the JSON body or what a stream became. Selecting nothing fails.",
+                          "type": "string",
+                          "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                        },
+                        "schema": {
+                          "anyOf": [
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "object",
+                              "propertyNames": {
+                                "type": "string"
+                              },
+                              "additionalProperties": {
+                                "$ref": "#/$defs/__schema1"
+                              }
+                            }
+                          ],
+                          "description": "A JSON Schema, in the subset of draft 2020-12 yokla checks; anything else refuses it (ADR-0030)."
+                        },
+                        "schemaFile": {
+                          "description": "A JSON or YAML file holding the schema, relative to the file that names it.",
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "additionalProperties": false,
+                      "description": "A JSON Schema the response, or a part of it, must match (ADR-0030)."
+                    },
+                    "description": "JSON Schemas the response, or parts of it, must match, judged by json-schema (ADR-0030)."
+                  },
                   "allowStatus": {
                     "minItems": 1,
                     "type": "array",
@@ -924,7 +1004,7 @@
                             "minLength": 1
                           },
                           "additionalProperties": {
-                            "$ref": "#/$defs/__schema1"
+                            "$ref": "#/$defs/__schema2"
                           }
                         }
                       },
@@ -1232,6 +1312,37 @@
           },
           "additionalProperties": {
             "$ref": "#/$defs/__schema1"
+          }
+        }
+      ]
+    },
+    "__schema2": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema2"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema2"
           }
         }
       ]

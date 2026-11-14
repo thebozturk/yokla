@@ -2,7 +2,16 @@
 // Everything specific to a target is configuration here, never code (P9).
 
 import { z } from 'zod';
-import { FieldName, FieldPath, Id, JsonPath, LanguageCode, Pattern, Provenance } from './common.ts';
+import {
+  FieldName,
+  FieldPath,
+  Id,
+  JsonPath,
+  LanguageCode,
+  Pattern,
+  Provenance,
+  SchemaRule,
+} from './common.ts';
 import { PromptStore } from './proxy.ts';
 
 /** A command run locally as an argument list, never through a shell. */
@@ -113,6 +122,10 @@ const HttpResponse = z.strictObject({
         'Routes that mean the target asked a clarifying question; product expectations then do not apply to that turn.',
     }),
   evidence: z.record(Id, EvidenceCollection).optional(),
+  schema: SchemaRule.optional().meta({
+    description:
+      'A JSON Schema every usable answer, or a part of it, must match: the contract of the response, judged by json-schema (ADR-0030).',
+  }),
 });
 
 /** ADR-0024: a connection opened once per sample, and one message sent per turn. */

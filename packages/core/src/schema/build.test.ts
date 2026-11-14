@@ -522,6 +522,62 @@ describe('patterns (ADR-0030)', () => {
   });
 });
 
+const withContract = (schema: unknown) =>
+  profile.safeParse(
+    withChange({
+      target: { ...validProfile.target, response: { ...validProfile.target.response, schema } },
+    }),
+  );
+
+const schemaTurn = (schema: unknown) =>
+  caseFile.safeParse({
+    version: 1,
+    cases: [
+      { id: 'c', suite: 'quality', language: 'tr', turns: [{ user: 'x', expect: { schema } }] },
+    ],
+  });
+
+describe('JSON Schema rules (ADR-0030)', () => {
+  it('accepts a schema inline or as a file, validating the whole response by default', () => {
+    const inline = withContract({ schema: { type: 'object' } });
+    expect(inline.success && http(inline.data.target).response.schema).toEqual({
+      at: '$',
+      schema: { type: 'object' },
+    });
+    const file = withContract({ at: '$.data', schemaFile: 'reply.json' });
+    expect(file.success && http(file.data.target).response.schema).toEqual({
+      at: '$.data',
+      schemaFile: 'reply.json',
+    });
+    expect(withContract({ schema: false }).success).toBe(true);
+  });
+
+  it('needs the schema inline or as a file, not both and not neither', () => {
+    for (const rule of [{ schema: true, schemaFile: 'x.json' }, { at: '$' }]) {
+      expect(JSON.stringify(withContract(rule).error?.issues)).toMatch(
+        /give the schema inline, as schema, or as schemaFile, not both/u,
+      );
+    }
+    expect(withContract({ at: 'data', schema: true }).success).toBe(false);
+  });
+
+  it('refuses a schema it cannot check, saying where', () => {
+    const refused = withContract({ schema: { properties: { a: { if: {} } } } });
+    expect(JSON.stringify(refused.error?.issues)).toContain(
+      'the schema is refused: #/properties/a/if: the keyword \\"if\\" isn\'t checked',
+    );
+  });
+
+  it('takes a list of schemas on a turn', () => {
+    expect(turnWith({ contains: ['x'] }).success).toBe(true);
+    expect(
+      schemaTurn([{ at: '$.data', schema: { type: 'object' } }, { schemaFile: 'x.json' }]).success,
+    ).toBe(true);
+    expect(schemaTurn([]).success).toBe(false);
+    expect(schemaTurn({ schema: true }).success).toBe(false);
+  });
+});
+
 describe('modelProxy.toolResults (ADR-0026)', () => {
   it('accepts collections that response.evidence maps, and refuses others, saying where', () => {
     expect(profile.safeParse(withChange(mapping('products'))).success).toBe(true);
