@@ -136,6 +136,9 @@ export const OUT_OF_SCOPE_TERMS: readonly string[] = [
 
 export const CHEAPER_TERMS: readonly string[] = ['daha ucuz', 'en ucuz', 'cheaper', 'cheapest'];
 
+/** Words that ask to put a product in the cart, such as "sepete ekle" or "add it to my cart". */
+export const CART_TERMS: readonly string[] = ['sepet', 'cart', 'basket'];
+
 function escape(term: string): string {
   return term.replaceAll(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }

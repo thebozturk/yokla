@@ -1,7 +1,8 @@
 // The demo-shop's tools, with the model over HTTP (yokla ADR-0025). The
-// interpret call offers the shop's lookups as tools, and the model asks for
-// the one the message needs; a refusal or a fallback needs none. The call
-// that writes about products offers adding one to the cart.
+// interpret call offers the shop's lookups as tools, and adding a product the
+// user asks for to the cart (yokla ADR-0028); the model asks for the one the
+// message needs, and a refusal or a fallback needs none. The call that writes
+// about products offers adding one to the cart too.
 
 import type { Interpretation } from './model.ts';
 import { isInterpretation } from './wire.ts';
@@ -61,6 +62,12 @@ export const INTERPRET_TOOLS = [
     { language: LANGUAGE },
     ['language'],
   ),
+  definition(
+    TOOL.cart,
+    "Add a product the customer asks for to the customer's cart.",
+    { productId: { type: 'string' }, language: LANGUAGE },
+    ['productId'],
+  ),
 ];
 
 /** What the call that writes about products offers. */
@@ -92,6 +99,10 @@ export function toolCallOf(interpretation: Interpretation): ToolCallText | undef
         name: TOOL.cheapest,
         arguments: JSON.stringify({ language: interpretation.language }),
       };
+    case 'cart': {
+      const { productId, language } = interpretation;
+      return { name: TOOL.cart, arguments: JSON.stringify({ productId, language }) };
+    }
     case 'refusal':
     case 'fallback':
       return undefined;
@@ -125,7 +136,9 @@ export function interpretationOf(call: ToolCallText): Interpretation | undefined
         ? { route: 'policy', language: args['language'], topic: args['topic'] }
         : call.name === TOOL.cheapest
           ? { route: 'follow-up-cheapest', language: args['language'] }
-          : undefined;
+          : call.name === TOOL.cart
+            ? { route: 'cart', language: args['language'], productId: args['productId'] }
+            : undefined;
   return isInterpretation(candidate) ? candidate : undefined;
 }
 

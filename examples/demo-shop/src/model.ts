@@ -8,6 +8,7 @@ import type { Defect } from './defects.ts';
 import { detectLanguage, fold, formatMoney, parseAmount, type Language } from './language.ts';
 import {
   ABSENT_TYPES,
+  CART_TERMS,
   CHEAPER_TERMS,
   COLORS,
   GENDERS,
@@ -28,7 +29,8 @@ export interface Filters {
   readonly gender?: Gender;
 }
 
-export type Route = 'product-search' | 'policy' | 'follow-up-cheapest' | 'refusal' | 'fallback';
+export type Route =
+  'product-search' | 'policy' | 'follow-up-cheapest' | 'cart' | 'refusal' | 'fallback';
 
 export type Interpretation =
   | {
@@ -38,6 +40,7 @@ export type Interpretation =
       readonly filters: Filters;
     }
   | { readonly route: 'policy'; readonly language: Language; readonly topic: PolicyTopic }
+  | { readonly route: 'cart'; readonly language: Language; readonly productId: string }
   | { readonly route: 'follow-up-cheapest' | 'refusal' | 'fallback'; readonly language: Language };
 
 /** What a session remembers between turns. */
@@ -64,6 +67,13 @@ export type AnswerDraft =
       readonly products: readonly Product[];
     }
   | { readonly kind: 'cheapest'; readonly language: Language; readonly product: Product }
+  | {
+      readonly kind: 'cart';
+      readonly language: Language;
+      readonly added: Product;
+      /** Everything in the cart now, the new product included. */
+      readonly cart: readonly Product[];
+    }
   | {
       readonly kind: 'policy';
       readonly language: Language;
@@ -226,6 +236,8 @@ const TEXT = {
       warranty:
         'Garanti koşullarını doğrulayamıyorum; ürün sayfasındaki bilgilere bakmanızı öneririm.',
     },
+    added: (name: string, cart: readonly string[]) =>
+      `${name} sepetinize eklendi. Sepetinizde ${String(cart.length)} ürün var: ${cart.join(', ')}.`,
     refusal: 'Bu konuda yardımcı olamıyorum.',
     fallback: 'Ürünler, fiyatlar ve iade koşulları hakkında yardımcı olabilirim. Ne aramıştınız?',
     unavailable: 'Şu anda yanıt hazırlayamıyorum. Lütfen biraz sonra tekrar deneyin.',
@@ -249,6 +261,8 @@ const TEXT = {
         "I can't verify shipping and delivery terms; please check the order page for current details.",
       warranty: "I can't verify warranty terms; please check the product page.",
     },
+    added: (name: string, cart: readonly string[]) =>
+      `Added ${name} to your cart. Your cart has ${String(cart.length)} item(s): ${cart.join(', ')}.`,
     refusal: "I can't help with that.",
     fallback: 'I can help with products, prices and return terms. What are you looking for?',
     unavailable: "I can't put an answer together right now. Please try again in a moment.",
@@ -288,6 +302,17 @@ export class ScriptedModel implements ChatModel {
 
     const topic = bestKey(text, POLICY_TOPICS);
     if (topic !== undefined) return { route: 'policy', language, topic };
+
+    // "Add it to my cart": a product shown before goes into the cart, the one the
+    // message names or else the first. Before any product was shown, it is a search.
+    const shown = context?.products ?? [];
+    if (longestMatch(text, CART_TERMS) > 0 && shown.length > 0) {
+      const named = shown.find(
+        (product) => text.includes(fold(product.name.tr)) || text.includes(fold(product.name.en)),
+      );
+      const chosen = named ?? shown[0];
+      if (chosen !== undefined) return { route: 'cart', language, productId: chosen.id };
+    }
 
     const filters = parseFilters(text, language);
     const namedType = matchProductType(text);
@@ -360,6 +385,11 @@ export class ScriptedModel implements ChatModel {
       }
       case 'cheapest':
         return this.#list(t.cheapest, [draft.product], language);
+      case 'cart':
+        return t.added(
+          draft.added.name[language],
+          draft.cart.map((product) => product.name[language]),
+        );
       case 'policy':
         if (draft.topic === 'returns' && this.#defect === 'invented-return-policy')
           return t.inventedReturns;

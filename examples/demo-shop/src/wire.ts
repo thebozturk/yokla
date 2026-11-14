@@ -18,6 +18,8 @@ export function isInterpretation(value: unknown): value is Interpretation {
       return typeof value['productType'] === 'string' && isRecord(value['filters']);
     case 'policy':
       return typeof value['topic'] === 'string';
+    case 'cart':
+      return typeof value['productId'] === 'string' && value['productId'] !== '';
     case 'follow-up-cheapest':
     case 'refusal':
     case 'fallback':
@@ -41,6 +43,8 @@ export function isDraft(value: unknown): value is AnswerDraft {
       return typeof value['absentType'] === 'string' && Array.isArray(value['products']);
     case 'cheapest':
       return isRecord(value['product']);
+    case 'cart':
+      return isRecord(value['added']) && Array.isArray(value['cart']);
     case 'policy':
       return typeof value['topic'] === 'string';
     case 'refusal':

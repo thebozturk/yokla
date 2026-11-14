@@ -4,11 +4,14 @@
 // records: the provider's side that the model proxy is reconciled with. It
 // costs nothing and contacts nothing. Offered tools, it answers the interpret
 // call with the matching tool call, and follows a writer's instruction to add
-// the first product to the cart (ADR-0025).
+// the first product to the cart (ADR-0025). It also plays yokla's simulated
+// customer (ADR-0028), by simple rules over the shop's catalog.
 
 import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { loadShopData, type Product } from './catalog.ts';
 import type { Defect } from './defects.ts';
+import { fold } from './language.ts';
 import { ScriptedModel } from './model.ts';
 import { ROLES } from './remote-model.ts';
 import { CART_INSTRUCTION, TOOL, toolCallOf, type ToolCallText } from './tools.ts';
@@ -45,6 +48,55 @@ interface ChatRequest {
   readonly includeUsage: boolean;
   /** The names of the tools the request offers. */
   readonly offered: readonly string[];
+  /** Every message, as role and text. */
+  readonly messages: readonly { readonly role: string; readonly content: string }[];
+}
+
+/** yokla marks the first line of its customer prompt so (ADR-0028). */
+export const CUSTOMER_MARK = 'yokla: simulated customer';
+
+/** The first number of a text, read whatever its thousands separator: "3.000" or "1,500". */
+function firstAmount(text: string): number | undefined {
+  const raw = /\d[\d.,]*/u.exec(text)?.[0];
+  if (raw === undefined) return undefined;
+  const value = Number(raw.replaceAll(/[.,](?=\d{3}(?:\D|$))/gu, '').replace(',', '.'));
+  return Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * The simulated customer's next message, by simple rules: first the goal
+ * itself; then, from the products the last answer names, the first that is in
+ * stock and within the goal's price, put in the cart; when none fits, ask for
+ * something cheaper.
+ */
+function customerReply(request: ChatRequest, catalog: readonly Product[]): string {
+  const lines = request.system.split('\n');
+  const turkish = lines.some((line) => line.startsWith('Ne istiyorsun:'));
+  const goal = (lines.find((line) => /^(?:What you want|Ne istiyorsun):/u.test(line)) ?? '')
+    .replace(/^[^:]*:\s*/u, '')
+    .trim();
+  const answers = request.messages.filter((m) => m.role === 'user').slice(1);
+  const last = answers.at(-1);
+  if (last === undefined) return goal;
+  const said = fold(last.content);
+  const limit = firstAmount(goal);
+  const named = catalog
+    .map((product) => ({
+      product,
+      at: Math.max(said.indexOf(fold(product.name.tr)), said.indexOf(fold(product.name.en))),
+    }))
+    .filter(({ at }) => at !== -1)
+    .toSorted((a, b) => a.at - b.at)
+    .map(({ product }) => product);
+  const [pick] = named.filter(
+    (product) => (product.stock ?? 0) > 0 && (limit === undefined || product.price <= limit),
+  );
+  if (pick !== undefined) {
+    return turkish
+      ? `${pick.name.tr} ürününü sepete ekler misin?`
+      : `Please add the ${pick.name.en} to my cart.`;
+  }
+  return turkish ? 'Daha ucuz bir seçenek var mı?' : 'Do you have anything cheaper?';
 }
 
 /** What the model answers: text, tool calls, or both. */
@@ -69,6 +121,11 @@ function parse(body: string): ChatRequest | undefined {
       typeof message === 'object' && message !== null ? Reflect.get(message, 'content') : undefined;
     return typeof content === 'string' ? content : '';
   });
+  const roles = messages.map((message: unknown) => {
+    const role: unknown =
+      typeof message === 'object' && message !== null ? Reflect.get(message, 'role') : undefined;
+    return typeof role === 'string' ? role : '';
+  });
   const options: unknown = Reflect.get(value, 'stream_options');
   const tools: unknown = Reflect.get(value, 'tools');
   const offered = (Array.isArray(tools) ? tools : []).flatMap((tool: unknown) => {
@@ -80,6 +137,7 @@ function parse(body: string): ChatRequest | undefined {
   });
   return {
     offered,
+    messages: contents.map((content, index) => ({ role: roles[index] ?? '', content })),
     model,
     role: (contents[0] ?? '').split('\n')[0] ?? '',
     system: contents[0] ?? '',
@@ -102,7 +160,12 @@ function asksForInstructions(question: string): boolean {
 
 const text = (content: string): Answer => ({ content, toolCalls: [] });
 
-async function answer(model: ScriptedModel, request: ChatRequest): Promise<Answer | undefined> {
+async function answer(
+  model: ScriptedModel,
+  request: ChatRequest,
+  catalog: readonly Product[],
+): Promise<Answer | undefined> {
+  if (request.role === CUSTOMER_MARK) return text(customerReply(request, catalog));
   const payload: unknown = JSON.parse(request.payload);
   if (typeof payload !== 'object' || payload === null) return undefined;
   if (request.role === ROLES.interpret) {
@@ -167,6 +230,7 @@ async function readAll(request: IncomingMessage): Promise<string> {
 
 export function createFakeProvider(options: FakeProviderOptions): Server {
   const model = new ScriptedModel(options.defect ?? null);
+  const { catalog } = loadShopData();
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     if (request.method !== 'POST' || request.url !== '/v1/chat/completions') {
@@ -179,7 +243,7 @@ export function createFakeProvider(options: FakeProviderOptions): Server {
     }
     const chat = parse(await readAll(request));
     const answered =
-      chat === undefined ? undefined : await answer(model, chat).catch(() => undefined);
+      chat === undefined ? undefined : await answer(model, chat, catalog).catch(() => undefined);
     if (chat === undefined || answered === undefined) {
       send(response, 400, { error: { message: 'invalid request' } });
       return;

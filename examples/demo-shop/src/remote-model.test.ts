@@ -57,6 +57,8 @@ const CONVERSATIONS = [
   ['Can you recommend a stock to invest in?'],
   ['Merhaba'],
   ["Do you have women's jackets in size M?", 'the cheaper one?'],
+  ['Kafa lambası önerir misin?', 'Kafa Lambası 200 Lümen ürününü sepete ekler misin?'],
+  ['Show me headlamps', 'Add the first one to my cart, please.'],
 ];
 
 async function replies(model: ChatModel): Promise<unknown[]> {
@@ -76,9 +78,9 @@ describe('the demo-shop model over HTTP', () => {
     const expected = await replies(new ScriptedModel());
     expect(await replies(new RemoteModel({ url, key: 'k' }))).toEqual(expected);
     expect(await replies(new RemoteModel({ url, key: 'k', stream: true }))).toEqual(expected);
-    // Two model calls per turn, ten turns, twice.
-    expect(usage).toHaveLength(40);
-    expect(usage.filter((entry) => entry.stream)).toHaveLength(20);
+    // Two model calls per turn, fourteen turns, twice.
+    expect(usage).toHaveLength(56);
+    expect(usage.filter((entry) => entry.stream)).toHaveLength(28);
   });
 
   it('forwards the turn trace to the provider', async () => {
@@ -538,7 +540,13 @@ describe('the demo-shop tools (ADR-0025)', () => {
     await shop.reply('s2', 'İade koşulları neler?', { bypassCache: true });
     await shop.reply('s3', 'Merhaba', { bypassCache: true });
     const [search, writeProducts, policy, writePolicy, greeting, writeGreeting] = exchanges;
-    expect(offered(search?.request)).toEqual(['search_products', 'get_policy', 'cheapest_shown']);
+    // The interpret call also offers the cart, for a user who asks to add something (ADR-0028).
+    expect(offered(search?.request)).toEqual([
+      'search_products',
+      'get_policy',
+      'cheapest_shown',
+      'add_to_cart',
+    ]);
     expect(asked(search?.answer ?? '{}')).toEqual([
       {
         name: 'search_products',

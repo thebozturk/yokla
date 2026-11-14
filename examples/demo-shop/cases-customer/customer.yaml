@@ -1,0 +1,48 @@
+# yaml-language-server: $schema=../../../packages/cli/schemas/cases.v1.schema.json
+#
+# Purchase goals for a simulated customer (ADR-0028). These cases need
+# models.customer in yokla.config.yaml. In CI the fake provider plays the
+# customer by simple rules, at no cost: it asks for the goal, then puts the
+# first product of the answer that is in stock and within the goal's price in
+# the cart. See packages/cli/src/customer.e2e.test.ts.
+# A goal is reached when the answer's own cart holds the product, never
+# because the customer says so.
+
+version: 1
+cases:
+  - id: tent-in-stock-to-cart-tr
+    title: Two tents fit the budget; the customer puts the one in stock in the cart
+    suite: quality
+    language: tr
+    customer:
+      persona: İki kişi ilk kez kampa gidecek.
+      goal: 3.000 TL altında, stokta olan bir çadırı sepete eklemek.
+      maxTurns: 4
+      reached:
+        evidence: { cart: { includes: [TNT-001] } }
+      expect: { answerable: true }
+
+  - id: women-jacket-to-cart-en
+    title: A women's jacket in size M within budget goes into the cart
+    suite: quality
+    language: en
+    customer:
+      persona: Hikes in autumn, wears size M.
+      goal: A women's jacket in size M under 1,500 TL, in my cart.
+      maxTurns: 4
+      reached:
+        evidence: { cart: { includes: [JKT-003] } }
+      expect: { answerable: true }
+
+  - id: headlamp-to-cart-en
+    title: The cheapest headlamp in stock goes into the cart, opened as written
+    suite: quality
+    language: en
+    customer:
+      persona: Needs a light for evening walks.
+      goal: The cheapest headlamp you have in stock, in my cart.
+      opening: Do you sell headlamps?
+      maxTurns: 4
+      reached:
+        evidence: { cart: { includes: [HLP-001] } }
+      expect: { answerable: true }

@@ -25,11 +25,13 @@ describe('the demo-shop config', () => {
   const cases = [
     ...parse('cases/acceptance.yaml', schemas.caseFile).cases,
     ...parse('cases-resilience/resilience.yaml', schemas.caseFile).cases,
+    ...parse('cases-tools/tools.yaml', schemas.caseFile).cases,
+    ...parse('cases-customer/customer.yaml', schemas.caseFile).cases,
   ];
 
   it('has a valid profile', () => {
     expect(profile.target.name).toBe('demo-shop');
-    expect(Object.keys(profile.target.response.evidence ?? {})).toEqual(['products']);
+    expect(Object.keys(profile.target.response.evidence ?? {})).toEqual(['products', 'cart']);
   });
 
   it('has valid cases with unique ids in the profile languages', () => {

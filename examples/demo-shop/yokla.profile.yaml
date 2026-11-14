@@ -32,6 +32,12 @@ target:
           size: attributes.size
           color: attributes.color
           gender: attributes.gender
+      # The cart, after a product was put in it (ADR-0028).
+      cart:
+        items: $.data.cart[*]
+        fields:
+          id: id
+          name: name
   session:
     mode: client
   limits:

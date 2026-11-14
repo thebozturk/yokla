@@ -31,6 +31,8 @@ export interface ProductView {
 export interface ChatReply {
   readonly answer: string;
   readonly products: readonly ProductView[];
+  /** The session's cart, after a product was put in it. */
+  readonly cart?: readonly { readonly id: string; readonly name: string }[];
   readonly metadata: { readonly route: Route; readonly language: Language };
 }
 
@@ -152,7 +154,7 @@ export class Assistant {
     let answer: string;
     try {
       interpretation = await this.#model.interpret(sent, context, call);
-      ({ draft, next } = this.#plan(interpretation, context));
+      ({ draft, next } = this.#plan(interpretation, context, sessionId));
       answer = await this.#model.write(draft, call);
     } catch (error) {
       if (this.#defect === 'no-model-fallback') throw error;
@@ -174,6 +176,14 @@ export class Assistant {
     const reply: ChatReply = {
       answer,
       products: shown.map((product) => view(product, interpretation.language)),
+      ...(draft.kind === 'cart'
+        ? {
+            cart: draft.cart.map((product) => ({
+              id: product.id,
+              name: product.name[interpretation.language],
+            })),
+          }
+        : {}),
       metadata: { route: interpretation.route, language: interpretation.language },
     };
 
@@ -205,9 +215,23 @@ export class Assistant {
   #plan(
     interpretation: Interpretation,
     context: ConversationContext | undefined,
+    sessionId: string,
   ): { draft: AnswerDraft; next: ConversationContext } {
     const { language } = interpretation;
     switch (interpretation.route) {
+      case 'cart': {
+        // The user asked for it: the product goes into the session's cart.
+        const product = this.#data.catalog.find((p) => p.id === interpretation.productId);
+        if (product === undefined)
+          return { draft: { kind: 'fallback', language }, next: context ?? EMPTY_CONTEXT };
+        const ids = [...(this.#carts.get(sessionId) ?? []), product.id];
+        remember(this.#carts, sessionId, ids, MAX_SESSIONS);
+        const cart = ids.flatMap((id) => this.#data.catalog.filter((p) => p.id === id));
+        return {
+          draft: { kind: 'cart', language, added: product, cart },
+          next: context ?? EMPTY_CONTEXT,
+        };
+      }
       case 'product-search':
         return this.#search(interpretation.productType, interpretation.filters, language);
       case 'policy': {
