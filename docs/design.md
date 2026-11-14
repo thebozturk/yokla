@@ -265,7 +265,7 @@ modelProxy:                                 # the app's model calls go through y
   correlation: serial                       # serial | header
   upstreams:
     - id: openai
-      kind: openai-compatible               # openai-compatible | anthropic
+      kind: openai-compatible               # openai-compatible | anthropic | gemini
       appBaseUrlEnv: OPENAI_BASE_URL        # how the app is pointed at the proxy
       upstream: https://api.openai.com/v1
   prompts: { store: sizes }                 # sizes | hashed | redacted | full (ADR-0015)
@@ -497,6 +497,10 @@ The proxy has three jobs:
 **Interfaces.**
 - OpenAI-compatible: `/v1/chat/completions`, `/v1/responses`, `/v1/embeddings`.
 - Anthropic Messages: `/v1/messages`.
+- Gemini's native API (ADR-0032), on AI Studio and Vertex AI alike:
+  `…/models/{model}:generateContent` and `:streamGenerateContent`, the model
+  read from the url. Thinking tokens count as output, as Google bills them,
+  and show apart as reasoning.
 - Streaming (SSE) passes through.
 
 **Setup (ADR-0012).** `yokla proxy` runs as its own process, started before the
