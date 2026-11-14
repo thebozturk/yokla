@@ -2,12 +2,14 @@
 //   [--model-url <OpenAI-compatible base URL>] [--model-stream] [--model-timeout-ms 3000]
 //   [--model-canary <text>] [--model-summary]
 //   [--otel-url <OTLP/HTTP traces endpoint>] [--otel-protocol json|protobuf] [--otel-delay-ms 5000]
+//   [--auth] [--token-ttl-ms 3600000] [--token-uses <n>]
 
 import { parseArgs } from 'node:util';
 import { Assistant } from './assistant.ts';
 import { loadShopData } from './catalog.ts';
 import { DEFECT_DESCRIPTIONS, DEFECTS, parseDefect } from './defects.ts';
 import { ScriptedModel } from './model.ts';
+import { TokenIssuer } from './auth.ts';
 import { parseOtelProtocol, SpanExporter } from './otel.ts';
 import { RemoteModel } from './remote-model.ts';
 import { createDemoShopServer, DEFAULT_RATE_LIMIT } from './server.ts';
@@ -27,6 +29,9 @@ function main(): void {
       'otel-url': { type: 'string' },
       'otel-protocol': { type: 'string' },
       'otel-delay-ms': { type: 'string' },
+      auth: { type: 'boolean' },
+      'token-ttl-ms': { type: 'string' },
+      'token-uses': { type: 'string' },
     },
   });
 
@@ -71,11 +76,30 @@ function main(): void {
           ...(values['model-canary'] === undefined ? {} : { canary: values['model-canary'] }),
           ...(spans === undefined ? {} : { spans }),
         });
+  // Bearer tokens the chat requires, from the shop's own token endpoints (ADR-0031).
+  const ttlMs = Number(values['token-ttl-ms'] ?? '3600000');
+  const maxUses = values['token-uses'] === undefined ? undefined : Number(values['token-uses']);
+  if (!Number.isInteger(ttlMs) || ttlMs < 1)
+    throw new Error('--token-ttl-ms must be a whole number of milliseconds, 1 or more');
+  if (maxUses !== undefined && (!Number.isInteger(maxUses) || maxUses < 1))
+    throw new Error('--token-uses must be a whole number, 1 or more');
+  const auth =
+    values.auth === true
+      ? new TokenIssuer({
+          clientId: process.env['DEMO_SHOP_CLIENT_ID'] ?? 'demo-shop-client',
+          clientSecret: process.env['DEMO_SHOP_CLIENT_SECRET'] ?? 'demo-shop-secret',
+          username: process.env['DEMO_SHOP_USER'] ?? 'tester',
+          password: process.env['DEMO_SHOP_PASSWORD'] ?? 'demo-password',
+          ttlMs,
+          ...(maxUses === undefined ? {} : { maxUses }),
+        })
+      : undefined;
   const assistant = new Assistant({ data: loadShopData(), model, defect });
   const server = createDemoShopServer({
     assistant,
     rateLimit: rateLimitSetting === 'off' ? false : DEFAULT_RATE_LIMIT,
     summarizeAfterAnswer: values['model-summary'] === true,
+    ...(auth === undefined ? {} : { auth }),
   });
 
   // Loopback only: the demo-shop is a local test target.
@@ -83,7 +107,7 @@ function main(): void {
     const address = server.address();
     const actual = typeof address === 'object' && address !== null ? address.port : port;
     console.log(
-      `demo-shop listening on http://127.0.0.1:${String(actual)} (defect: ${defect ?? 'none'}, model: ${modelUrl ?? 'in process'}${otelUrl === undefined ? '' : `, spans: ${protocol}`})`,
+      `demo-shop listening on http://127.0.0.1:${String(actual)} (defect: ${defect ?? 'none'}, model: ${modelUrl ?? 'in process'}${otelUrl === undefined ? '' : `, spans: ${protocol}`}${auth === undefined ? '' : ', auth: bearer tokens'})`,
     );
   });
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {

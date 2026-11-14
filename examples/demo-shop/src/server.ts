@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
 import type { Assistant, ChatReply, Tracing } from './assistant.ts';
+import type { TokenIssuer } from './auth.ts';
 import { RateLimiter, type RateLimitOptions } from './rate-limit.ts';
 import { acceptWebSocket, refuseUpgrade, type WebSocketPeer } from './websocket.ts';
 
@@ -12,6 +13,8 @@ export interface DemoShopServerOptions {
   readonly now?: () => number;
   /** After each answer has gone out, summarise it with a model call in the background. */
   readonly summarizeAfterAnswer?: boolean;
+  /** Bearer tokens the chat requires, and the endpoints that issue them (ADR-0031). */
+  readonly auth?: TokenIssuer;
 }
 
 /** How long after an answer the background summary starts. */
@@ -138,12 +141,26 @@ export function createDemoShopServer(options: DemoShopServerOptions): Server {
       send(response, 200, { status: 'ok' });
       return;
     }
-    if (path !== '/v1/chat' && path !== '/v1/sessions') {
+    const { auth } = options;
+    const issuing = auth !== undefined && (path === '/v1/oauth/token' || path === '/v1/login');
+    if (path !== '/v1/chat' && path !== '/v1/sessions' && !issuing) {
       send(response, 404, { error: 'not_found' });
       return;
     }
     if (request.method !== 'POST') {
       send(response, 405, { error: 'method_not_allowed' }, { allow: 'POST' });
+      return;
+    }
+    if (issuing) {
+      const body = (await readBody(request)) ?? '';
+      const answer =
+        path === '/v1/login' ? auth.login(body) : auth.token(body, request.headers.authorization);
+      send(response, answer.status, answer.body, answer.headers);
+      return;
+    }
+    if (auth !== undefined && !auth.admit(request.headers.authorization)) {
+      request.resume();
+      send(response, 401, { error: 'unauthorized' }, { 'www-authenticate': 'Bearer' });
       return;
     }
     if (limiter !== undefined) {
@@ -209,6 +226,10 @@ export function createDemoShopServer(options: DemoShopServerOptions): Server {
     const url = new URL(request.url ?? '/', 'http://localhost');
     if (url.pathname !== '/v1/ws') {
       refuseUpgrade(socket, 404, 'Not Found');
+      return;
+    }
+    if (options.auth !== undefined && !options.auth.admit(request.headers.authorization)) {
+      refuseUpgrade(socket, 401, 'Unauthorized');
       return;
     }
     const session = url.searchParams.get('session') ?? '';
