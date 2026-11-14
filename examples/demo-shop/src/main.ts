@@ -1,6 +1,6 @@
 // Starts the demo-shop: node src/main.ts [--port 3000] [--defect <name>] [--rate-limit off]
 //   [--model-url <OpenAI-compatible base URL>] [--model-stream] [--model-timeout-ms 3000]
-//   [--model-canary <text>] [--model-summary]
+//   [--model-canary <text>] [--model-summary] [--model-protocol chat-completions|gemini]
 //   [--otel-url <OTLP/HTTP traces endpoint>] [--otel-protocol json|protobuf] [--otel-delay-ms 5000]
 //   [--auth] [--token-ttl-ms 3600000] [--token-uses <n>]
 
@@ -11,7 +11,7 @@ import { DEFECT_DESCRIPTIONS, DEFECTS, parseDefect } from './defects.ts';
 import { ScriptedModel } from './model.ts';
 import { TokenIssuer } from './auth.ts';
 import { parseOtelProtocol, SpanExporter } from './otel.ts';
-import { RemoteModel } from './remote-model.ts';
+import { parseModelProtocol, RemoteModel } from './remote-model.ts';
 import { createDemoShopServer, DEFAULT_RATE_LIMIT } from './server.ts';
 
 function main(): void {
@@ -26,6 +26,7 @@ function main(): void {
       'model-timeout-ms': { type: 'string' },
       'model-canary': { type: 'string' },
       'model-summary': { type: 'boolean' },
+      'model-protocol': { type: 'string' },
       'otel-url': { type: 'string' },
       'otel-protocol': { type: 'string' },
       'otel-delay-ms': { type: 'string' },
@@ -62,6 +63,9 @@ function main(): void {
     throw new Error('--otel-delay-ms must be a whole number of milliseconds');
   if (otelUrl !== undefined && modelUrl === undefined)
     throw new Error('--otel-url needs --model-url: only model calls over HTTP become spans');
+  const modelProtocol = parseModelProtocol(values['model-protocol'] ?? 'chat-completions');
+  if (modelProtocol === undefined)
+    throw new Error('--model-protocol must be "chat-completions" or "gemini"');
   const spans =
     otelUrl === undefined ? undefined : new SpanExporter({ url: otelUrl, protocol, delayMs });
   const model =
@@ -75,6 +79,9 @@ function main(): void {
           defect,
           ...(values['model-canary'] === undefined ? {} : { canary: values['model-canary'] }),
           ...(spans === undefined ? {} : { spans }),
+          protocol: modelProtocol,
+          // Gemini names its models; the provider answers as it does over chat completions.
+          ...(modelProtocol === 'gemini' ? { model: 'gemini-demo-1' } : {}),
         });
   // Bearer tokens the chat requires, from the shop's own token endpoints (ADR-0031).
   const ttlMs = Number(values['token-ttl-ms'] ?? '3600000');

@@ -45,6 +45,17 @@ export interface RemoteModelOptions {
   readonly canary?: string;
   /** Where each request to the provider becomes a span (ADR-0029). */
   readonly spans?: ChatSpans;
+  /**
+   * The provider's API: chat completions (default), or Gemini's native API
+   * (ADR-0032), with the url ending before /models, e.g. …/v1beta.
+   */
+  readonly protocol?: ModelProtocol;
+}
+
+export type ModelProtocol = 'chat-completions' | 'gemini';
+
+export function parseModelProtocol(value: string): ModelProtocol | undefined {
+  return value === 'chat-completions' || value === 'gemini' ? value : undefined;
 }
 
 /** The system message names the job on its first line, so a provider can tell the two calls apart. */
@@ -167,6 +178,75 @@ function streamed(text: string): Answer {
   return { completion: { content, toolCalls }, model, usage };
 }
 
+/** Gemini's usage, as yokla counts it: thinking is output (ADR-0032). */
+function geminiUsage(metadata: unknown): TokenUsage {
+  const prompt = count(field(metadata, 'promptTokenCount'));
+  const candidates = count(field(metadata, 'candidatesTokenCount'));
+  const thoughts = count(field(metadata, 'thoughtsTokenCount'));
+  return {
+    input:
+      prompt === undefined
+        ? undefined
+        : prompt + (count(field(metadata, 'toolUsePromptTokenCount')) ?? 0),
+    output:
+      candidates === undefined && thoughts === undefined
+        ? undefined
+        : (candidates ?? 0) + (thoughts ?? 0),
+    cacheRead: count(field(metadata, 'cachedContentTokenCount')),
+  };
+}
+
+/** Gemini answers, one or a stream's: their text and function calls, and the last usage. */
+function geminiAnswer(answers: readonly unknown[]): Answer {
+  let content = '';
+  const toolCalls: ToolCallText[] = [];
+  let model: string | undefined;
+  let usage: TokenUsage = { input: undefined, output: undefined, cacheRead: undefined };
+  for (const answer of answers) {
+    const version = field(answer, 'modelVersion');
+    if (typeof version === 'string' && version !== '') model = version;
+    const metadata = field(answer, 'usageMetadata');
+    if (typeof metadata === 'object' && metadata !== null) usage = geminiUsage(metadata);
+    const candidates = field(answer, 'candidates');
+    const parts = field(Array.isArray(candidates) ? candidates[0] : undefined, 'content');
+    const list: unknown = field(parts, 'parts');
+    for (const part of Array.isArray(list) ? list : []) {
+      const text = field(part, 'text');
+      if (typeof text === 'string') content += text;
+      const name = field(field(part, 'functionCall'), 'name');
+      const args = field(field(part, 'functionCall'), 'args');
+      if (typeof name === 'string') {
+        toolCalls.push({ name, arguments: JSON.stringify(args ?? {}) });
+      }
+    }
+  }
+  const completion =
+    content === '' &&
+    toolCalls.length === 0 &&
+    answers.every((answer) => field(answer, 'candidates') === undefined)
+      ? new Error('the model answered without content')
+      : { content, toolCalls };
+  return { completion, model, usage };
+}
+
+/** The answers of a Gemini event stream. */
+function geminiEvents(text: string): unknown[] {
+  return text
+    .split('\n')
+    .filter((line) => line.startsWith('data: '))
+    .map((line): unknown => JSON.parse(line.slice(6)));
+}
+
+/** A tool, as chat completions writes it, as a Gemini function declaration. */
+function declaration(tool: unknown): unknown {
+  const fn = field(tool, 'function');
+  return {
+    name: field(fn, 'name'),
+    description: field(fn, 'description'),
+    parameters: field(fn, 'parameters'),
+  };
+}
+
 /** A request's outcome: the answer, or the status the provider refused it with. */
 type Attempt =
   { readonly answer: Answer } | { readonly status: number; readonly retryAfter: string | null };
@@ -178,14 +258,25 @@ export class RemoteModel implements ChatModel {
     this.#options = options;
   }
 
-  async #send(body: string, call: ModelCall | undefined): Promise<Response> {
+  get #gemini(): boolean {
+    return this.#options.protocol === 'gemini';
+  }
+
+  async #send(body: string, model: string, call: ModelCall | undefined): Promise<Response> {
     const timeout =
       this.#options.defect === 'no-model-timeout' ? undefined : (this.#options.timeoutMs ?? 3_000);
-    return fetch(`${this.#options.url.replace(/\/$/u, '')}/chat/completions`, {
+    const base = this.#options.url.replace(/\/$/u, '');
+    const stream = this.#options.stream === true;
+    const url = this.#gemini
+      ? `${base}/models/${model}:${stream ? 'streamGenerateContent?alt=sse' : 'generateContent'}`
+      : `${base}/chat/completions`;
+    return fetch(url, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        authorization: `Bearer ${this.#options.key}`,
+        ...(this.#gemini
+          ? { 'x-goog-api-key': this.#options.key }
+          : { authorization: `Bearer ${this.#options.key}` }),
         ...(call?.trace === undefined ? {} : { 'x-yokla-trace': call.trace }),
       },
       body,
@@ -195,16 +286,22 @@ export class RemoteModel implements ChatModel {
 
   /** One request to the provider, a span of its own when spans are on. */
   async #attempt(body: string, model: string, call: ModelCall | undefined): Promise<Attempt> {
-    const end = this.#options.spans?.chat(model, call?.traceparent);
+    const end = this.#options.spans?.chat(
+      model,
+      call?.traceparent,
+      this.#gemini ? 'gcp.gemini' : 'openai',
+    );
     try {
-      const response = await this.#send(body, call);
+      const response = await this.#send(body, model, call);
       if (!response.ok) {
         await response.body?.cancel();
         end?.({ error: String(response.status) });
         return { status: response.status, retryAfter: response.headers.get('retry-after') };
       }
-      const answer =
-        this.#options.stream === true
+      const stream = this.#options.stream === true;
+      const answer = this.#gemini
+        ? geminiAnswer(stream ? geminiEvents(await response.text()) : [await response.json()])
+        : stream
           ? streamed(await response.text())
           : answerOf(await response.json());
       end?.({ model: answer.model, usage: answer.usage });
@@ -235,15 +332,28 @@ export class RemoteModel implements ChatModel {
         : []),
     ].join('\n');
     const model = this.#options.model ?? 'demo-writer-1';
-    const body = JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: JSON.stringify(payload) },
-      ],
-      ...(tools.length === 0 ? {} : { tools, tool_choice: 'auto' }),
-      ...(stream ? { stream: true, stream_options: { include_usage: true } } : {}),
-    });
+    const body = JSON.stringify(
+      this.#gemini
+        ? {
+            systemInstruction: { parts: [{ text: system }] },
+            contents: [{ role: 'user', parts: [{ text: JSON.stringify(payload) }] }],
+            ...(tools.length === 0
+              ? {}
+              : {
+                  tools: [{ functionDeclarations: tools.map(declaration) }],
+                  toolConfig: { functionCallingConfig: { mode: 'AUTO' } },
+                }),
+          }
+        : {
+            model,
+            messages: [
+              { role: 'system', content: system },
+              { role: 'user', content: JSON.stringify(payload) },
+            ],
+            ...(tools.length === 0 ? {} : { tools, tool_choice: 'auto' }),
+            ...(stream ? { stream: true, stream_options: { include_usage: true } } : {}),
+          },
+    );
     let attempt = await this.#attempt(body, model, call);
     if ('status' in attempt && (attempt.status === 429 || attempt.status === 503)) {
       // One retry, after the wait the provider asks for, capped at 2 s.

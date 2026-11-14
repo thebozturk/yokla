@@ -369,17 +369,21 @@ describe('the span exporter', () => {
   });
 });
 
-/** Spans as the model's requests end them, kept in order. */
+/** Spans as the model's requests end them, kept in order, and the providers they name. */
 function recordSpans(): {
   spans: ChatSpans;
   ended: { model: string; traceparent: string | undefined; end: ChatEnd }[];
+  providers: (string | undefined)[];
 } {
   const ended: { model: string; traceparent: string | undefined; end: ChatEnd }[] = [];
+  const providers: (string | undefined)[] = [];
   return {
     ended,
+    providers,
     spans: {
-      chat: (model, traceparent) => (end) => {
+      chat: (model, traceparent, provider) => (end) => {
         ended.push({ model, traceparent, end });
+        providers.push(provider);
       },
     },
   };
@@ -416,6 +420,35 @@ describe('the demo-shop model over HTTP, with spans', () => {
       expect(ended).toHaveLength(2);
     },
   );
+
+  it('names Gemini as the provider, and counts its thinking as output (ADR-0032)', async () => {
+    const usage: UsageEntry[] = [];
+    const url = await listen(
+      createFakeProvider({ key: 'k', onUsage: (entry) => usage.push(entry) }),
+    );
+    const { spans, ended, providers } = recordSpans();
+    const model = new RemoteModel({
+      url: `${url}/v1beta`,
+      key: 'k',
+      protocol: 'gemini',
+      model: 'gemini-demo-1',
+      spans,
+    });
+    await model.write(FALLBACK);
+    const [entry] = usage;
+    expect(ended.map((span) => span.end)).toEqual([
+      {
+        model: 'gemini-demo-1',
+        usage: {
+          input: entry?.promptTokens,
+          output: entry?.completionTokens,
+          cacheRead: undefined,
+        },
+      },
+    ]);
+    expect(entry?.completionTokens).toBeGreaterThan(entry?.thoughtsTokens ?? 0);
+    expect(providers).toEqual(['gcp.gemini']);
+  });
 
   it('ends a span for a refused request and for its retry', async () => {
     let calls = 0;

@@ -5,7 +5,9 @@
 // costs nothing and contacts nothing. Offered tools, it answers the interpret
 // call with the matching tool call, and follows a writer's instruction to add
 // the first product to the cart (ADR-0025). It also plays yokla's simulated
-// customer (ADR-0028), by simple rules over the shop's catalog.
+// customer (ADR-0028), by simple rules over the shop's catalog. It speaks
+// Gemini's native API too (ADR-0032), at /v1beta/models/{model}:generateContent
+// and :streamGenerateContent, answering the same, with thinking tokens.
 
 import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
@@ -21,7 +23,10 @@ export interface UsageEntry {
   readonly id: string;
   readonly model: string;
   readonly promptTokens: number;
+  /** Every output token billed: for Gemini, the thinking tokens included. */
   readonly completionTokens: number;
+  /** For Gemini: the thinking tokens, part of completionTokens. */
+  readonly thoughtsTokens?: number;
   readonly stream: boolean;
 }
 
@@ -151,6 +156,63 @@ function parse(body: string): ChatRequest | undefined {
   };
 }
 
+function field(value: unknown, ...path: (string | number)[]): unknown {
+  let current = value;
+  for (const key of path) {
+    if (typeof current !== 'object' || current === null) return undefined;
+    current = Reflect.get(current, key);
+  }
+  return current;
+}
+
+/** The text parts of a Gemini content, joined. */
+function partsText(content: unknown): string {
+  const parts = field(content, 'parts');
+  return (Array.isArray(parts) ? parts : [])
+    .map((part: unknown) => field(part, 'text'))
+    .filter((piece): piece is string => typeof piece === 'string')
+    .join('');
+}
+
+/** A Gemini generateContent request, read as a chat: the system first, then each content. */
+function parseGemini(body: string, model: string, stream: boolean): ChatRequest | undefined {
+  let value: unknown;
+  try {
+    value = JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+  const contents = field(value, 'contents');
+  if (!Array.isArray(contents)) return undefined;
+  const system = partsText(field(value, 'systemInstruction'));
+  const messages = [
+    { role: 'system', content: system },
+    ...contents.map((content: unknown) => ({
+      role: field(content, 'role') === 'model' ? 'assistant' : 'user',
+      content: partsText(content),
+    })),
+  ];
+  const tools = field(value, 'tools');
+  const offered = (Array.isArray(tools) ? tools : []).flatMap((tool: unknown) => {
+    const declarations = field(tool, 'functionDeclarations');
+    return (Array.isArray(declarations) ? declarations : []).flatMap((declaration: unknown) => {
+      const name = field(declaration, 'name');
+      return typeof name === 'string' ? [name] : [];
+    });
+  });
+  return {
+    offered,
+    messages,
+    model,
+    role: system.split('\n')[0] ?? '',
+    system,
+    payload: messages[1]?.content ?? '',
+    prompt: messages.map((message) => message.content).join(''),
+    stream,
+    includeUsage: true,
+  };
+}
+
 const EXTRACTION = ['talimatların', 'sistem prompt', 'system prompt', 'your instructions'];
 
 function asksForInstructions(question: string): boolean {
@@ -232,7 +294,97 @@ export function createFakeProvider(options: FakeProviderOptions): Server {
   const model = new ScriptedModel(options.defect ?? null);
   const { catalog } = loadShopData();
 
+  /** Gemini's native API (ADR-0032): one answer, or a stream of events or a JSON array. */
+  async function gemini(
+    request: IncomingMessage,
+    response: ServerResponse,
+    url: URL,
+    route: RegExpExecArray,
+  ): Promise<void> {
+    const key = request.headers['x-goog-api-key'] ?? url.searchParams.get('key');
+    if (key !== options.key) {
+      send(response, 403, {
+        error: { code: 403, message: 'invalid api key', status: 'PERMISSION_DENIED' },
+      });
+      return;
+    }
+    const name = route[1] ?? '';
+    const stream = route[2] === 'streamGenerateContent';
+    const chat = parseGemini(await readAll(request), name, stream);
+    const answered =
+      chat === undefined ? undefined : await answer(model, chat, catalog).catch(() => undefined);
+    if (chat === undefined || answered === undefined) {
+      send(response, 400, {
+        error: { code: 400, message: 'invalid request', status: 'INVALID_ARGUMENT' },
+      });
+      return;
+    }
+    const { content, toolCalls } = answered;
+    const candidates = tokenCount(
+      (content ?? '') + toolCalls.map((call) => call.name + call.arguments).join(''),
+    );
+    // A deterministic stand-in for thinking: a token per started four bytes of the job's name.
+    const thoughts = tokenCount(chat.role);
+    const usageMetadata = {
+      promptTokenCount: tokenCount(chat.prompt),
+      candidatesTokenCount: candidates,
+      thoughtsTokenCount: thoughts,
+      totalTokenCount: tokenCount(chat.prompt) + candidates + thoughts,
+    };
+    options.onUsage?.({
+      id: `gemini-${randomUUID()}`,
+      model: name,
+      promptTokens: usageMetadata.promptTokenCount,
+      completionTokens: candidates + thoughts,
+      thoughtsTokens: thoughts,
+      stream,
+    });
+    const calls = toolCalls.map((call) => ({
+      functionCall: { name: call.name, args: JSON.parse(call.arguments) as unknown },
+    }));
+    const answerOf = (parts: unknown[], usage?: unknown) => ({
+      candidates: [{ content: { role: 'model', parts }, finishReason: 'STOP', index: 0 }],
+      ...(usage === undefined ? {} : { usageMetadata: usage }),
+      modelVersion: name,
+    });
+    if (!stream) {
+      send(
+        response,
+        200,
+        answerOf([...(content === null ? [] : [{ text: content }]), ...calls], usageMetadata),
+      );
+      return;
+    }
+    // The text in two pieces, then the calls, then the usage, as Gemini streams them.
+    const half = Math.ceil((content ?? '').length / 2);
+    const chunks = [
+      ...(content === null
+        ? []
+        : [
+            answerOf([{ text: content.slice(0, half) }]),
+            answerOf([{ text: content.slice(half) }]),
+          ]),
+      ...(calls.length === 0 ? [] : [answerOf(calls)]),
+      answerOf([], usageMetadata),
+    ];
+    if (url.searchParams.get('alt') === 'sse') {
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      for (const chunk of chunks) response.write(`data: ${JSON.stringify(chunk)}\r\n\r\n`);
+      response.end();
+      return;
+    }
+    send(response, 200, chunks);
+  }
+
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const url = new URL(request.url ?? '/', 'http://localhost');
+    const route = /^\/v1beta\/models\/([^/:]+):(generateContent|streamGenerateContent)$/u.exec(
+      url.pathname,
+    );
+    if (request.method === 'POST' && route !== null) {
+      await gemini(request, response, url, route);
+      return;
+    }
     if (request.method !== 'POST' || request.url !== '/v1/chat/completions') {
       send(response, 404, { error: { message: 'not found' } });
       return;

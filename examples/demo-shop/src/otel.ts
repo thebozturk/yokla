@@ -45,7 +45,7 @@ export type ChatEnd =
 
 /** Starts a span for a chat call; the function it returns ends it. */
 export interface ChatSpans {
-  chat(model: string, traceparent: string | undefined): (end: ChatEnd) => void;
+  chat(model: string, traceparent: string | undefined, provider?: string): (end: ChatEnd) => void;
 }
 
 const TRACEPARENT = /^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$/u;
@@ -228,7 +228,11 @@ export class SpanExporter implements ChatSpans {
     this.#options = options;
   }
 
-  chat(model: string, traceparent: string | undefined): (end: ChatEnd) => void {
+  chat(
+    model: string,
+    traceparent: string | undefined,
+    provider = 'openai',
+  ): (end: ChatEnd) => void {
     const parent = parentOf(traceparent);
     const traceId = parent?.traceId ?? randomBytes(16).toString('hex');
     const spanId = randomBytes(8).toString('hex');
@@ -236,8 +240,8 @@ export class SpanExporter implements ChatSpans {
     return (end) => {
       const attributes: Record<string, AttributeValue> = {
         'gen_ai.operation.name': 'chat',
-        // An OpenAI-compatible API, as the instrumentation of its client names it.
-        'gen_ai.provider.name': 'openai',
+        // The API, as the instrumentation of its client names it: openai, or gcp.gemini.
+        'gen_ai.provider.name': provider,
         'gen_ai.request.model': model,
       };
       if ('error' in end) {

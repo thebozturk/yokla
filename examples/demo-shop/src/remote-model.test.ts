@@ -10,7 +10,7 @@ import { loadShopData } from './catalog.ts';
 import { createFakeProvider, tokenCount, type UsageEntry } from './fake-provider.ts';
 import { ScriptedModel, type ChatModel, type ModelCall } from './model.ts';
 import { INSTRUCTIONS, RemoteModel, ROLES, systemPrompt } from './remote-model.ts';
-import { CART_INSTRUCTION, interpretationOf, toolCallOf } from './tools.ts';
+import { CART_INSTRUCTION, INTERPRET_TOOLS, interpretationOf, toolCallOf } from './tools.ts';
 import { createDemoShopServer } from './server.ts';
 
 const data = loadShopData();
@@ -40,10 +40,10 @@ async function listen(server: Server): Promise<string> {
   return `http://127.0.0.1:${String(address.port)}`;
 }
 
-async function provider(): Promise<{ url: string; usage: UsageEntry[] }> {
+async function provider(): Promise<{ url: string; root: string; usage: UsageEntry[] }> {
   const usage: UsageEntry[] = [];
   const url = await listen(createFakeProvider({ key: 'k', onUsage: (entry) => usage.push(entry) }));
-  return { url: `${url}/v1`, usage };
+  return { url: `${url}/v1`, root: url, usage };
 }
 
 /** Conversations covering every route, follow-ups included. */
@@ -81,6 +81,102 @@ describe('the demo-shop model over HTTP', () => {
     // Two model calls per turn, fourteen turns, twice.
     expect(usage).toHaveLength(56);
     expect(usage.filter((entry) => entry.stream)).toHaveLength(28);
+  });
+
+  it("answers the same over Gemini's native API, in JSON and in streams (ADR-0032)", async () => {
+    const { root, usage } = await provider();
+    const expected = await replies(new ScriptedModel());
+    const gemini = {
+      url: `${root}/v1beta`,
+      key: 'k',
+      protocol: 'gemini' as const,
+      model: 'gemini-demo-1',
+    };
+    expect(await replies(new RemoteModel(gemini))).toEqual(expected);
+    expect(await replies(new RemoteModel({ ...gemini, stream: true }))).toEqual(expected);
+    expect(usage).toHaveLength(56);
+    expect(usage.filter((entry) => entry.stream)).toHaveLength(28);
+    for (const entry of usage) {
+      expect(entry.model).toBe('gemini-demo-1');
+      // Thinking counts as output, as Gemini bills it.
+      expect(entry.thoughtsTokens).toBeGreaterThan(0);
+      expect(entry.completionTokens).toBeGreaterThan(entry.thoughtsTokens ?? 0);
+    }
+  });
+
+  it("sends Gemini's request shape: the system apart, the tools as declarations, the key in its header", async () => {
+    const seen: { url: string | undefined; headers: IncomingHttpHeaders; body: unknown }[] = [];
+    const url = await listen(
+      createServer((request, response) => {
+        const chunks: Buffer[] = [];
+        request.on('data', (chunk: Buffer) => chunks.push(chunk));
+        request.on('end', () => {
+          seen.push({
+            url: request.url,
+            headers: request.headers,
+            body: JSON.parse(Buffer.concat(chunks).toString('utf8')),
+          });
+          response.writeHead(200, { 'content-type': 'application/json' });
+          response.end(
+            JSON.stringify({
+              candidates: [
+                {
+                  content: {
+                    parts: [
+                      {
+                        functionCall: {
+                          name: 'search_products',
+                          args: {
+                            productType: 'outdoor/camping/tent',
+                            language: 'tr',
+                            filters: {},
+                          },
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+              usageMetadata: {
+                promptTokenCount: 9,
+                candidatesTokenCount: 2,
+                thoughtsTokenCount: 1,
+              },
+              modelVersion: 'gemini-demo-1',
+            }),
+          );
+        });
+      }),
+    );
+    const model = new RemoteModel({
+      url: `${url}/v1beta`,
+      key: 'g-key',
+      protocol: 'gemini',
+      model: 'gemini-demo-1',
+    });
+    await model.interpret('Çadır var mı?', undefined, { trace: 't-1' });
+    const [request] = seen;
+    expect(request?.url).toBe('/v1beta/models/gemini-demo-1:generateContent');
+    expect(request?.headers['x-goog-api-key']).toBe('g-key');
+    expect(request?.headers.authorization).toBeUndefined();
+    expect(request?.headers['x-yokla-trace']).toBe('t-1');
+    expect(request?.body).toMatchObject({
+      systemInstruction: { parts: [{ text: systemPrompt(ROLES.interpret) }] },
+      contents: [
+        { role: 'user', parts: [{ text: expect.stringContaining('Çadır var mı?') as unknown }] },
+      ],
+      toolConfig: { functionCallingConfig: { mode: 'AUTO' } },
+    });
+    const tools: unknown = Reflect.get(Object(request?.body), 'tools');
+    const names: unknown = Reflect.get(
+      Object(Array.isArray(tools) ? tools[0] : {}),
+      'functionDeclarations',
+    );
+    expect(
+      (Array.isArray(names) ? names : []).map((tool: unknown): unknown =>
+        Reflect.get(Object(tool), 'name'),
+      ),
+    ).toEqual(INTERPRET_TOOLS.map((tool) => tool.function.name));
   });
 
   it('forwards the turn trace to the provider', async () => {
@@ -154,6 +250,92 @@ async function post(url: string, body: unknown, key = 'k'): Promise<Response> {
     body: JSON.stringify(body),
   });
 }
+
+/** A Gemini generateContent call to the fake provider (ADR-0032). */
+async function geminiPost(
+  root: string,
+  method: string,
+  body: unknown,
+  headers: Record<string, string> = { 'x-goog-api-key': 'k' },
+) {
+  return fetch(`${root}/v1beta/models/gemini-demo-1:${method}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+  });
+}
+
+const GEMINI_FALLBACK = {
+  systemInstruction: { parts: [{ text: ROLES.write }] },
+  contents: [
+    {
+      role: 'user',
+      parts: [{ text: JSON.stringify({ draft: { kind: 'fallback', language: 'en' } }) }],
+    },
+  ],
+};
+
+describe("the fake provider's Gemini API (ADR-0032)", () => {
+  it('answers with candidates, usage with thinking, and its model, and records the usage', async () => {
+    const { root, usage } = await provider();
+    const response = await geminiPost(root, 'generateContent', GEMINI_FALLBACK);
+    const content = 'I can help with products, prices and return terms. What are you looking for?';
+    const prompt = ROLES.write + JSON.stringify({ draft: { kind: 'fallback', language: 'en' } });
+    const thoughts = tokenCount(ROLES.write);
+    expect(await response.json()).toEqual({
+      candidates: [
+        { content: { role: 'model', parts: [{ text: content }] }, finishReason: 'STOP', index: 0 },
+      ],
+      usageMetadata: {
+        promptTokenCount: tokenCount(prompt),
+        candidatesTokenCount: tokenCount(content),
+        thoughtsTokenCount: thoughts,
+        totalTokenCount: tokenCount(prompt) + tokenCount(content) + thoughts,
+      },
+      modelVersion: 'gemini-demo-1',
+    });
+    expect(usage).toEqual([
+      {
+        id: expect.stringMatching(/^gemini-/u) as unknown,
+        model: 'gemini-demo-1',
+        promptTokens: tokenCount(prompt),
+        completionTokens: tokenCount(content) + thoughts,
+        thoughtsTokens: thoughts,
+        stream: false,
+      },
+    ]);
+  });
+
+  it('streams as events with alt=sse, or else as a JSON array, the usage last', async () => {
+    const { root } = await provider();
+    const events = await (
+      await geminiPost(root, 'streamGenerateContent?alt=sse', GEMINI_FALLBACK)
+    ).text();
+    const chunks = events
+      .split('\r\n\r\n')
+      .filter((block) => block.startsWith('data: '))
+      .map((block): unknown => JSON.parse(block.slice(6)));
+    const array: unknown = await (
+      await geminiPost(root, 'streamGenerateContent', GEMINI_FALLBACK)
+    ).json();
+    expect(array).toEqual(chunks);
+    expect(chunks).toHaveLength(3);
+    expect(Reflect.get(Object(chunks.at(-1)), 'usageMetadata')).toBeDefined();
+    expect(Reflect.get(Object(chunks[0]), 'usageMetadata')).toBeUndefined();
+  });
+
+  it('takes the key from its header or the query, and refuses another', async () => {
+    const { root } = await provider();
+    expect((await geminiPost(root, 'generateContent?key=k', GEMINI_FALLBACK, {})).status).toBe(200);
+    const refused = await geminiPost(root, 'generateContent', GEMINI_FALLBACK, {
+      'x-goog-api-key': 'x',
+    });
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toMatchObject({ error: { status: 'PERMISSION_DENIED' } });
+    const invalid = await geminiPost(root, 'generateContent', { contents: 'x' });
+    expect(invalid.status).toBe(400);
+  });
+});
 
 describe('the fake provider', () => {
   it('counts tokens deterministically and records them, as the usage it reports', async () => {
