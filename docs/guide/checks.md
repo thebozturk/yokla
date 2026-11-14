@@ -151,6 +151,36 @@ The detectors are narrow: they match concrete claims, such as an amount or a
 duration, not bare words. A sentence such as "I can't verify the shipping
 terms" makes no claim.
 
+## Where a failure arose (ADR-0033)
+
+A failing finding about a value in the answer says where that value first
+appears, so the fix can start in the right place:
+
+| Origin | Means | The fix is likely in |
+|---|---|---|
+| what the model was sent | a message of one of the turn's model calls held it: a system prompt, the user's message, a tool result | the data, the retrieval or the prompt |
+| the model | no message held it, and a call's answer did | the prompt, the model, or a guard on its output |
+| the app | neither held it, and every message and answer was read | the app's code after the model call |
+| unknown | no proxy data, or a call whose messages or answer aren't known | |
+
+**Which findings carry one.**
+- `price-grounded`, for an amount it couldn't ground.
+- `policy-claim`, for its first unsupported duration, fee or "free".
+- `answer-text`, for a forbidden phrase or the text a `notMatches` pattern
+  matched.
+
+**How the value is found.**
+- An amount is found as the language packs read money, equal to the cent.
+  The answer's own pack is tried first, then the others.
+- A bare number counts only inside JSON, such as a tool result, and the
+  origin says "as a bare number": it is weaker evidence.
+- A duration is matched by amount and unit, and text after folding.
+
+**What it never does.** An origin explains a finding. It never changes a
+verdict, a status or the gate. It needs the model proxy (see
+[the model proxy](model-proxy.md#the-models-answer)), and it is never
+guessed.
+
 ## Aggregation
 
 A case's status comes from its dimensions, each judged across the samples:

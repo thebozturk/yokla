@@ -335,10 +335,25 @@ modelProxy:
 **What is kept.** Only the mapped fields are kept. The prompt text stays as
 `prompts.store` keeps it.
 
+## The model's answer
+
+For every call, the proxy also reads the text the model answered (ADR-0033):
+- from chat completions, the Responses API, Anthropic Messages and Gemini;
+- from JSON answers and event streams, with a streamed answer's pieces
+  joined;
+- as the app got it: when a fault changed the answer, the changed text.
+
+Tool calls stay apart, and thought summaries are left out. The text is kept
+as `prompts.store` keeps prompt text, and the checks read it in memory. With
+it, a failing finding can say whether its value came from what the model was
+sent, from the model, or from the app (see
+[checks](checks.md#where-a-failure-arose-adr-0033)).
+
 ## Privacy
 
 The proxy listens on `127.0.0.1` only. It forwards each call to the upstream
 the profile names, and nowhere else. A path under `/_yokla/` is never
 forwarded. Records never hold a credential or another header. Prompt text,
-and tool-call arguments, leave memory only as `prompts.store` allows. Of a
-span, only the fields above are kept, and only while a recording is open.
+tool-call arguments and the model's answer text leave memory only as
+`prompts.store` allows. Of a span, only the fields above are kept, and only
+while a recording is open.

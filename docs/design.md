@@ -409,6 +409,13 @@ The [checks guide](guide/checks.md) gives each check's exact conditions.
 Latency has no per-turn check besides `deadlineMs`. Its percentiles are gate
 thresholds per suite (ADR-0014, §16).
 
+**Where a failure arose (ADR-0033).** A failing finding can name its subject:
+the amount, duration or phrase in the answer it is about. `price-grounded`,
+`policy-claim` and `answer-text` do. Core then finds where that value first
+appears in the turn's model calls: in a message a call sent (`input`), in a
+call's answer (`model`), in neither (`app`), or `unknown` when the proxy's
+view is missing. The origin explains a finding and never changes a verdict.
+
 ### Judge checks (v0.5)
 
 Rubric-based checks (helpfulness, tone, faithfulness of free text) will have to
@@ -565,6 +572,10 @@ on them:
 - seeded PII present in prompts (`pii-in-prompt`),
 - prompt size against the declared budget (`prompt-budget`).
 
+**The model's answer (ADR-0033).** The proxy also reads the text each call
+answered, as the app got it, and keeps it as prompt text is. With the
+messages, it tells where a finding's value first appeared (§10).
+
 **Tool calls (ADR-0025).** The proxy also records the tools each call offers
 and the tool calls its answer asks for, with arguments kept as prompt text is.
 `tool-calls` judges a turn's trajectory against its case, and
@@ -703,7 +714,8 @@ ADR-0014 sets how cost and latency are bounded.
 - **Results file.** A versioned JSON schema (`results.v1`) holding:
   - run metadata: yokla version, profile hash, environment, correlation mode,
     and the model proxy's totals,
-  - findings per case, sample and turn,
+  - findings per case, sample and turn, with the origin of a failing
+    finding's value (ADR-0033),
   - each turn's model calls and cost, and the fields observed in the target's
     logs,
   - aggregates and timings.
@@ -793,6 +805,8 @@ turns on one seeded defect at a time:
 - leaking the system prompt,
 - adding a product to the cart the user didn't ask for,
 - asking for the same search twice in one turn,
+- a stale price given to the model, and a right price the app lowers after
+  the model wrote it,
 - later (v0.5): following an instruction injected in product text, and
   exposing another session's order.
 
@@ -807,7 +821,12 @@ template placeholder left in the greeting, caught by the profile's
 its contract; and catalog ids shown in answers, caught by the demo-shop's own
 check, `checks/no-internal-ids.ts`, which its `yokla.config.yaml` names. The
 returns case also holds the answer close to the FAQ's wording, so the invented
-return policy breaks `answer-similarity` too.
+return policy breaks `answer-similarity` too. The debugging track's D1 adds
+two price defects whose wrong price comes from elsewhere than
+`fabricated-price`'s (ADR-0033): `stale-price-in-prompt`, from what the model
+was sent, and `price-rewritten`, from the app. With `fabricated-price`, from
+the model, each is caught by `price-grounded` alone and traced to its own
+origin.
 
 **Spans.** With `--otel-url` and the model over HTTP, the demo-shop exports a
 GenAI span for each model call, in the trace of the incoming `traceparent`,
@@ -882,7 +901,7 @@ them.
 
 | Item | Scope | Exit criteria |
 |---|---|---|
-| **D1. Where a failure arose** | a failing finding that names a value (a price, a duration, a phrase) says where the value first appears: in what the model was sent, in what the model answered, or only in the app's answer; worked out from the proxy's records at check time, never guessed; shown in every report | on the demo-shop, three seeded price defects, one from each origin, are each attributed to their own origin; without proxy data the origin is unknown, not a guess |
+| **D1. Where a failure arose** (done, ADR-0033) | a failing finding that names a value (a price, a duration, a phrase) says where the value first appears: in what the model was sent, in what the model answered, or only in the app's answer; worked out from the proxy's records at check time, never guessed; shown in every report | on the demo-shop, three seeded price defects, one from each origin, are each attributed to their own origin; without proxy data the origin is unknown, not a guess |
 | **D2. The smallest failing conversation** | `yokla shrink` cuts a failing case down to the fewest turns and the shortest messages that still fail the same check, with the samples needed to tell a real failure from chance; it writes the result as a proposed case | every demo-shop defect's failing case shrinks to a case that still fails only its own check; a flaky failure is reported as flaky, not shrunk |
 | **D3. Sampling that stops when the verdict is settled** | a case runs samples until its interval decides the verdict or its sample cap is reached; the cap and the confidence are configuration | on the demo-shop, verdicts match fixed-N runs while fewer samples run; a case that never settles is `unstable` |
 | **D4. Recorded model calls, replayed** | the proxy records the target's model calls into a cassette and can answer from it, so a run repeats with no model cost; a replay can change one recorded answer, to ask what the app does when the model says something else | a recorded demo-shop run replays with identical results and no upstream call; each resilience defect is also caught by changing one recorded answer |
