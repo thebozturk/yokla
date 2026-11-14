@@ -62,8 +62,8 @@ the profile by hand (see
 | `--fresh-customer` | | Ask the customer model anew, whatever its reply cache holds (ADR-0028). |
 
 It exits with `0` when every case ran, whatever the verdicts: the gate judges
-them. It exits with `2` for a configuration problem, or when a case ended in
-`error`.
+them. It exits with `2` for a configuration problem, when `target.auth` can't
+get the run's first token, or when a case ended in `error`.
 
 The results file (`results.v1`) holds every turn: the answer, the evidence,
 the checks with their findings, timings, and the model calls with their cost.

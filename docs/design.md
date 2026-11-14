@@ -451,6 +451,12 @@ These are lessons from building a production harness.
   that the profile's paths read as they read a JSON body. A declared `done`
   event that never comes, or an `error` event, makes the answer incomplete.
   The results add the time to the first text piece.
+- **Authentication (ADR-0031):** with `target.auth`, the runner gets a token
+  for the run, by OAuth 2.0 client credentials or by a token request the
+  profile describes, and the profile puts it where the target expects it,
+  with `{{auth.token}}`. A token is replaced before it expires, and after the
+  target answers `401` or refuses a WebSocket handshake; the request is then
+  sent once more. One fetch serves every request waiting for it.
 - **Requests:** a case turn can add body fields and headers to the profile's
   request. With `request.requestId`, every request carries a unique id in a
   header, for correlating the target's logs (ADR-0009).
@@ -673,6 +679,10 @@ ADR-0014 sets how cost and latency are bounded.
   - Local commands a profile runs, such as a cache bypass or a log reader,
     are the user's own and run outside it.
 - **Secrets** are read only from the environment and never written to results.
+  A token yokla obtains is a secret too (ADR-0031): it, and every environment
+  value the auth section uses, show as `***` in whatever yokla writes, even
+  when the target echoes one. Token urls must use HTTPS, except to a loopback
+  host.
 - **Target data.** Generated and recorded files may contain the target's data,
   so `yokla-data/` and `runs/` stay out of version control. `yokla init`
   adds them to `.gitignore` (ADR-0018). The HTML report holds the target's

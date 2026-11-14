@@ -48,6 +48,7 @@ Strings in `url`, `headers` and `body` may contain placeholders:
 | `{{requestId}}` | The request id, when `requestId` is set. |
 | `{{carry.NAME}}` | A value carried from an earlier answer or from `session.open`. |
 | `{{env.NAME}}` | An environment variable. Secrets belong here, never in the file. |
+| `{{auth.token}}` | The token `target.auth` gets (below). Never left out: a request without its token would only be refused. |
 
 A string that is only a placeholder keeps the value's type. If that value
 doesn't exist yet, such as a carried value on the first turn, the field or
@@ -260,6 +261,76 @@ as over SSE, and `allowStatus` can't name one.
     a rate-limit `error` event fails the turn.
   - `retryAfter` doesn't apply.
 - **`yokla init`.** Write the profile by hand.
+
+## `target.auth`
+
+When the target needs a token that a token endpoint or a login issues, yokla
+gets it for the run (ADR-0031). The profile says where it goes, with
+`{{auth.token}}`:
+
+```yaml
+target:
+  request:
+    url: https://chat.example.com/v1/chat
+    headers: { authorization: 'Bearer {{auth.token}}' }
+    body: { message: '{{message}}' }
+  auth:
+    kind: oauth2-client-credentials
+    tokenUrl: https://auth.example.com/oauth/token
+    clientId: '{{env.CHAT_CLIENT_ID}}'
+    clientSecret: '{{env.CHAT_CLIENT_SECRET}}'
+    scope: chat
+    params: { audience: https://chat.example.com }
+```
+
+| Field | Meaning |
+|---|---|
+| `kind` | `oauth2-client-credentials`, as RFC 6749 §4.4 defines it, or `request`, a token request the profile describes. |
+| `tokenUrl` | For OAuth: the token endpoint. |
+| `clientId` | For OAuth: the client id, written or `{{env.NAME}}`. |
+| `clientSecret` | For OAuth: a single `{{env.NAME}}` placeholder. A secret written in the file refuses the profile. |
+| `clientAuth` | For OAuth: `basic` (default), HTTP Basic; or `body`, the id and secret in the form. |
+| `scope`, `params` | For OAuth: the scope, and further form fields such as `audience`. |
+| `request` | For `request`: the token request, in the form of `session.open`'s, with an absolute url. |
+| `token`, `expiresIn` | For `request`: where its answer holds the token, and its lifetime in seconds. |
+| `refreshBeforeMs` | A new token is fetched when less than this of its lifetime remains, or less than half of it. Default 30000. |
+| `timeoutMs` | For OAuth: how long the token request may take. Default 10000. |
+
+A login of the target's own:
+
+```yaml
+  auth:
+    kind: request
+    request:
+      url: https://chat.example.com/api/login
+      body: { username: '{{env.CHAT_USER}}', password: '{{env.CHAT_PASSWORD}}' }
+    token: $.data.jwt
+    expiresIn: $.data.ttlSeconds
+```
+
+- **When yokla fetches a token.**
+  - Once, before the first request of the run. If that fails, the run stops
+    before any case, with exit code `2`, and says why: the status, and the
+    `error` and `error_description` an OAuth server gives.
+  - Again before the token expires, when its lifetime is known.
+  - Again after the target answers `401`, or refuses a WebSocket handshake.
+    The request is sent once more with the new token; a second refusal is
+    the turn's error.
+  - Once at a time: requests that need a token at the same moment wait for
+    the same fetch.
+- **Where it can go.** In the target's request, `session.open`, and a
+  WebSocket's url, headers and messages. yokla adds no header of its own.
+  An `auth` whose token no request uses, or `{{auth.token}}` without an
+  `auth`, refuses the profile.
+- **Keeping it secret.**
+  - The token, and every environment value `auth` uses, show as `***` in
+    everything yokla writes: the results, the reports and the errors. That
+    holds even when the target echoes one in its answer.
+  - The token urls must use HTTPS, except to a loopback host.
+  - The token endpoint is the only host its request may reach.
+  - `auth` takes `{{env.NAME}}` placeholders only.
+- **What the results say.** `run.auth` holds the kind, the tokens fetched,
+  and the requests sent again after a `401`.
 
 ## `target.session`
 

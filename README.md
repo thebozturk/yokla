@@ -16,7 +16,9 @@ cost, resilience and regression gates, in one run.
   request, the response, sessions, rate limits and cache control. Answers may
   be JSON or streamed as events, and a session may be opened before the first
   turn. On the main branch, a target can talk over a WebSocket too
-  (ADR-0024). Cases (`cases/*.yaml`) hold the turns and their expectations.
+  (ADR-0024), and yokla can get and refresh the token a target needs, by
+  OAuth 2.0 client credentials or by its login, keeping it out of everything
+  it writes (ADR-0031). Cases (`cases/*.yaml`) hold the turns and their expectations.
   Nothing about a particular assistant is built in: what a target needs is
   configuration.
 - **Sees your assistant's model calls.** Point the app's OpenAI-compatible or
@@ -106,8 +108,9 @@ target with seeded defects. Its README walks through a full run.
 - **v0.3:** a first run in five minutes (`yokla init` writes a profile from
   one message to your assistant, with starter cases that suit any assistant),
   an HTML report (done on the main branch), and publishing to npm; more ways
-  to reach a target and see its model calls (WebSocket and OpenTelemetry
-  spans, done on the main branch; Gemini), tool-call checks and a simulated
+  to reach a target and see its model calls (WebSocket, tokens and
+  OpenTelemetry spans, done on the main branch; Gemini), tool-call checks and
+  a simulated
   customer that shops with a goal, and generic checks (all done on the main
   branch).
 - **v0.4:** an analyzer that reads your code, API contract, prompts, data

@@ -33,6 +33,11 @@ pnpm --filter yokla-demo-shop start --list-defects
 | `--otel-url` | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | none | An OTLP/HTTP traces endpoint: export a span for each model call. |
 | `--otel-protocol` | | `json` | `json` or `protobuf`. |
 | `--otel-delay-ms` | `OTEL_BSP_SCHEDULE_DELAY` | `5000` | How long a span waits before its batch is sent. |
+| `--auth` | | off | Require a bearer token on the chat, the session opening and the WebSocket (ADR-0031). |
+| `--token-ttl-ms` | | `3600000` | How long a token is valid. |
+| `--token-uses` | | unlimited | How many requests one token serves. |
+| | `DEMO_SHOP_CLIENT_ID`, `DEMO_SHOP_CLIENT_SECRET` | `demo-shop-client`, `demo-shop-secret` | The client credentials `/v1/oauth/token` takes. |
+| | `DEMO_SHOP_USER`, `DEMO_SHOP_PASSWORD` | `tester`, `demo-password` | The username and password `/v1/login` takes. |
 | | `DEMO_SHOP_MODEL_KEY` | `demo-key` | The key sent with the model calls. |
 
 The options from `--model-stream` down take effect only with `--model-url`:
@@ -241,6 +246,19 @@ pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml \
     open.
   - `x-cache-bypass` goes with the handshake.
   - The acceptance end-to-end test also runs over it (ADR-0024).
+- **Bearer tokens (ADR-0031).** With `--auth`, `POST /v1/chat`,
+  `POST /v1/sessions` and the WebSocket handshake need
+  `authorization: Bearer <token>`, with a token the shop issued, that hasn't
+  expired and has uses left. Otherwise the chat answers `401`, and the
+  handshake is refused with `401`.
+  - `POST /v1/oauth/token` issues tokens by OAuth 2.0 client credentials, by
+    HTTP Basic or in the form: `{"access_token", "token_type": "Bearer",
+    "expires_in"}`. A wrong client gets `401` with `invalid_client`, another
+    grant `400` with `unsupported_grant_type`.
+  - `POST /v1/login` with `{"username", "password"}` returns
+    `{"data": {"jwt", "ttlSeconds"}}`, or `401`.
+  - The acceptance end-to-end test runs behind them, with each way of getting
+    a token, and checks that yokla writes none of them.
 - **A cart.** After products were shown, a message that asks to put one in
   the cart, such as "ilkini sepete ekler misin?" or "add the Headlamp 200 lm
   to my cart", adds the product it names, or else the first one shown, to
