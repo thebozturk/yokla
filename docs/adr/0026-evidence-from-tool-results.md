@@ -1,6 +1,6 @@
 # 0026. Evidence from the tool results the model saw
 
-Status: Proposed · Date: 2026-11-14
+Status: Accepted · Date: 2026-11-14
 
 ## Context
 
