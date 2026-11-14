@@ -12,3 +12,6 @@ yokla-data/
 !.env.example
 
 .DS_Store
+
+# Worktrees Claude Code opens for parallel work
+.claude/worktrees/

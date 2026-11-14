@@ -8,3 +8,5 @@ LICENSE
 packages/cli/schemas/
 # A file snapshot of the HTML report (ADR-0023), written by its test (pnpm test -u).
 packages/report/src/__snapshots__/
+# Worktrees Claude Code opens for parallel work, each checked on its own.
+.claude/worktrees/
