@@ -101,6 +101,8 @@ const EXPECTED_CHANGES: Record<Defect, Probe[]> = {
   // The price defects of the model over HTTP (ADR-0033) change nothing in process either.
   'stale-price-in-prompt': [],
   'price-rewritten': [],
+  // Every other answer: tested on its own below, since which probes it hits depends on their order.
+  'flaky-price': [],
   // No probe carries personal data, and masking changes nothing else.
   'unmasked-pii': [],
   // The generic checks' defects (ADR-0030).
@@ -221,13 +223,31 @@ describe('defect switchboard', () => {
     expect(Object.keys(EXPECTED_CHANGES).toSorted()).toEqual([...DEFECTS].toSorted());
   });
 
-  it.each(DEFECTS)('%s changes exactly the expected probes', async (defect) => {
-    const baseline = await runProbes(null);
-    const broken = await runProbes(defect);
-    const changed = PROBE_LIST.filter(
-      (name) => JSON.stringify(get(broken, name)) !== JSON.stringify(get(baseline, name)),
-    );
-    expect(changed.toSorted()).toEqual(EXPECTED_CHANGES[defect].toSorted());
+  it.each(DEFECTS.filter((defect) => defect !== 'flaky-price'))(
+    '%s changes exactly the expected probes',
+    async (defect) => {
+      const baseline = await runProbes(null);
+      const broken = await runProbes(defect);
+      const changed = PROBE_LIST.filter(
+        (name) => JSON.stringify(get(broken, name)) !== JSON.stringify(get(baseline, name)),
+      );
+      expect(changed.toSorted()).toEqual(EXPECTED_CHANGES[defect].toSorted());
+    },
+  );
+
+  it('flaky-price changes every other answer that shows products, and nothing else', async () => {
+    const shop = assistant('flaky-price');
+    const answers = [];
+    for (let i = 0; i < 4; i += 1)
+      answers.push((await ask(shop, PROBES['tents-tr'], `s${String(i)}`)).answer);
+    expect(answers.map((answer) => answer.includes('Plaj Çadırı: 809,55 TL'))).toEqual([
+      false,
+      true,
+      false,
+      true,
+    ]);
+    const greeting = await ask(shop, 'Merhaba', 'g');
+    expect(greeting).toEqual(await ask(assistant(), 'Merhaba', 'g'));
   });
 
   it('fabricated-price changes the shown price, not the evidence', async () => {

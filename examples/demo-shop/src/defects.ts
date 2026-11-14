@@ -24,6 +24,7 @@ export const DEFECTS = [
   'internal-ids',
   'stale-price-in-prompt',
   'price-rewritten',
+  'flaky-price',
 ] as const;
 
 export type Defect = (typeof DEFECTS)[number];
@@ -63,6 +64,8 @@ export const DEFECT_DESCRIPTIONS: Readonly<Record<Defect, string>> = {
     'with the model over HTTP, the writer is given the first product at a price 10% above the catalog price',
   'price-rewritten':
     'with the model over HTTP, the app shows the first product 10% cheaper than the price the model wrote',
+  'flaky-price':
+    'every other answer that shows products shows the first one 10% cheaper than its catalog price',
 };
 
 /** Parses a defect name. Empty, undefined and "none" mean no defect. */

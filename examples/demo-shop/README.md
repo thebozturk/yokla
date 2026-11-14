@@ -107,6 +107,10 @@ simulated customer there too.
   products offers `add_to_cart`, and the app keeps a cart per session. The
   answers stay the same as with the model in process. `cases-tools/` holds
   the four cases for the tool-call checks (ADR-0025).
+- **Shrinking.** `cases-shrink/` holds a case with small talk before the
+  question that fails, for `yokla shrink` (ADR-0035). The `flaky-price`
+  defect shows the first product 10 % cheaper in every other answer that
+  shows products, a failure that comes and goes: shrink reports it as flaky.
 - **Where a price went wrong.** Three defects show the same wrong price from
   three places (ADR-0033). `fabricated-price`, given to the provider, is
   written by the model. `stale-price-in-prompt` gives the writer the first

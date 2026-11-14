@@ -2,7 +2,7 @@
 
 import type { Product, ShopData } from './catalog.ts';
 import type { Defect } from './defects.ts';
-import { detectLanguage, type Language } from './language.ts';
+import { detectLanguage, formatMoney, type Language } from './language.ts';
 import {
   hasFilters,
   type AnswerDraft,
@@ -119,6 +119,8 @@ export class Assistant {
   /** Per session, the products in its cart, added when the model asks (ADR-0025). */
   readonly #carts = new Map<string, readonly string[]>();
   readonly #cache = new Map<string, { reply: ChatReply; context: ConversationContext }>();
+  /** Answers that showed products, for the flaky-price defect. */
+  #shownAnswers = 0;
 
   constructor(options: AssistantOptions) {
     this.#data = options.data;
@@ -191,6 +193,18 @@ export class Assistant {
     // The unfilled-template defect: the greeting's template keeps its placeholder.
     if (this.#defect === 'unfilled-template' && draft.kind === 'fallback') {
       answer = `${language === 'tr' ? 'Merhaba' : 'Hello'} {{customer_name}}! ${answer}`;
+    }
+    // The flaky-price defect (ADR-0035): every other answer that shows products
+    // shows the first one 10 % cheaper, as a failure that comes and goes would.
+    const [first] = shown;
+    if (this.#defect === 'flaky-price' && first !== undefined) {
+      this.#shownAnswers += 1;
+      if (this.#shownAnswers % 2 === 0) {
+        answer = answer.replace(
+          formatMoney(first.price, language),
+          formatMoney(Math.round(first.price * 90) / 100, language),
+        );
+      }
     }
     // The internal-ids defect: each product shown is named with its catalog id.
     if (this.#defect === 'internal-ids') {

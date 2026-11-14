@@ -114,6 +114,13 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
   'internal-ids': { 'no-internal-ids': ALL_PRODUCT_CASES },
 };
 
+/**
+ * Defects tested elsewhere, never in this matrix. flaky-price fails every
+ * other answer with products, so which cases fail depends on their order;
+ * shrink.e2e.test.ts shows it reported as flaky (ADR-0035).
+ */
+const ELSEWHERE = ['flaky-price'];
+
 const children: ChildProcess[] = [];
 const shopPorts = new Set<number>();
 let guard: NetworkGuard | undefined;
@@ -433,7 +440,7 @@ describe('the demo-shop acceptance', () => {
       .split('\n')
       .filter((line) => line !== '')
       .map((line) => line.slice(0, line.indexOf(':')));
-    expect(listed.toSorted()).toEqual(Object.keys(EXPECTED).toSorted());
+    expect(listed.toSorted()).toEqual([...Object.keys(EXPECTED), ...ELSEWHERE].toSorted());
   });
 
   it('passes every case without defects', () => {

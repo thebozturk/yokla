@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=../../../packages/cli/schemas/cases.v1.schema.json
+#
+# A case for yokla shrink (ADR-0035): small talk before the question that
+# fails. With fabricated-price, the failure needs only the last turn, so
+# shrink cuts the case down to it.
+
+version: 1
+cases:
+  - id: tents-after-small-talk-tr
+    suite: factual
+    language: tr
+    turns:
+      - user: Merhaba
+      - user: Teşekkürler, iyi günler
+      - user: Çadır önerir misin?
+        expect:
+          answerable: true
+          productType: outdoor/camping/tent
