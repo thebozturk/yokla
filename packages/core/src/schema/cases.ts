@@ -56,6 +56,10 @@ export const coreExpectations = {
       description:
         "How close the answer's wording must stay to reference answers, or how far from them, from 0 to 1: the cosine similarity of character trigrams, after the language pack's folding. Judged by answer-similarity (ADR-0030).",
     }),
+  custom: z.record(z.string().min(1), z.json()).meta({
+    description:
+      "Values for the checks the configuration loads, by check id, each validated by the check's own expect schema (ADR-0030).",
+  }),
   schema: z.array(SchemaRule).min(1).meta({
     description:
       'JSON Schemas the response, or parts of it, must match, judged by json-schema (ADR-0030).',

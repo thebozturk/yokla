@@ -264,6 +264,17 @@ export const Results = z
           settled: z.boolean(),
         })
         .optional(),
+      /** The check modules the configuration loaded, so a changed check shows (ADR-0030). */
+      checkModules: z
+        .array(
+          z.object({
+            id: z.string(),
+            /** Its path, relative to the configuration file. */
+            module: z.string(),
+            sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+          }),
+        )
+        .optional(),
       /** yokla's own model calls over the run, apart from the target's (ADR-0028). */
       own: z
         .object({

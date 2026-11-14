@@ -97,6 +97,16 @@ export const YoklaConfig = z.strictObject({
       }),
     })
     .default({}),
+  checks: z
+    .array(z.string().min(1))
+    .default([])
+    .refine((paths) => new Set(paths).size === paths.length, {
+      message: 'a module is listed twice',
+    })
+    .meta({
+      description:
+        'Check modules to load, relative to this file: JavaScript, or TypeScript Node.js runs as it is. Each default-exports a check by contract version 1 (ADR-0030).',
+    }),
   plan: z
     .strictObject({
       upperBoundFactor: z

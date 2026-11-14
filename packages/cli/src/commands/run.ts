@@ -8,6 +8,7 @@ import { parseArgs } from 'node:util';
 import { CORE_CHECKS, type Results } from '@yokla/core';
 import { htmlReport, junitXml, terminalSummary } from '@yokla/report';
 import { ConfigError, runSuite } from '@yokla/runtime';
+import { loadCheckModules } from '../checks.ts';
 import { LoadError, loadCases, loadConfig, loadProfile } from '../load.ts';
 import { DOMAIN_PACKS, LANGUAGE_PACKS } from '../packs.ts';
 
@@ -27,7 +28,7 @@ Options:
   --target-url <url>    use this url instead of the profile's request url
   --junit <file>        also write a JUnit XML report
   --html <file>         also write an HTML report; it holds the target's answers
-  --config <file>       prices and thresholds (default: yokla.config.yaml, when present)
+  --config <file>       prices, models and check modules (default: yokla.config.yaml, when present)
   --proxy-url <url>     the model proxy, instead of 127.0.0.1 on modelProxy.port
   --max-cost <usd>      stop starting samples once the model cost, the target's and yokla's own,
                         reaches this
@@ -107,6 +108,13 @@ export async function runCommand(
     const configPath =
       values.config ?? (existsSync('yokla.config.yaml') ? 'yokla.config.yaml' : undefined);
     const config = configPath === undefined ? undefined : loadConfig(configPath);
+    // The user's own checks (ADR-0030); a case naming one needs it loaded.
+    const own = await loadCheckModules(
+      config?.checks ?? [],
+      configPath ?? 'yokla.config.yaml',
+      cases,
+      DOMAIN_PACKS,
+    );
     const results = await runSuite({
       profile: loaded.profile,
       profileSha256: loaded.sha256,
@@ -114,7 +122,9 @@ export async function runCommand(
       cases,
       env: process.env,
       yoklaVersion: version,
-      checks: CORE_CHECKS,
+      checks: [...CORE_CHECKS, ...own.checks],
+      policies: own.policies,
+      checkModules: own.modules,
       packs: DOMAIN_PACKS,
       languages: LANGUAGE_PACKS,
       ...(samples === undefined ? {} : { samples }),

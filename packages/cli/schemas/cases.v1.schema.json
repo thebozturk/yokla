@@ -381,6 +381,17 @@
                       "additionalProperties": false,
                       "description": "How close the answer's wording must stay to reference answers, or how far from them, from 0 to 1: the cosine similarity of character trigrams, after the language pack's folding. Judged by answer-similarity (ADR-0030)."
                     },
+                    "custom": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "additionalProperties": {
+                        "$ref": "#/$defs/__schema1"
+                      },
+                      "description": "Values for the checks the configuration loads, by check id, each validated by the check's own expect schema (ADR-0030)."
+                    },
                     "schema": {
                       "minItems": 1,
                       "type": "array",
@@ -404,7 +415,7 @@
                                   "type": "string"
                                 },
                                 "additionalProperties": {
-                                  "$ref": "#/$defs/__schema1"
+                                  "$ref": "#/$defs/__schema2"
                                 }
                               }
                             ],
@@ -503,7 +514,7 @@
                               "minLength": 1
                             },
                             "additionalProperties": {
-                              "$ref": "#/$defs/__schema2"
+                              "$ref": "#/$defs/__schema3"
                             }
                           }
                         },
@@ -944,6 +955,17 @@
                     "additionalProperties": false,
                     "description": "How close the answer's wording must stay to reference answers, or how far from them, from 0 to 1: the cosine similarity of character trigrams, after the language pack's folding. Judged by answer-similarity (ADR-0030)."
                   },
+                  "custom": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "additionalProperties": {
+                      "$ref": "#/$defs/__schema1"
+                    },
+                    "description": "Values for the checks the configuration loads, by check id, each validated by the check's own expect schema (ADR-0030)."
+                  },
                   "schema": {
                     "minItems": 1,
                     "type": "array",
@@ -967,7 +989,7 @@
                                 "type": "string"
                               },
                               "additionalProperties": {
-                                "$ref": "#/$defs/__schema1"
+                                "$ref": "#/$defs/__schema2"
                               }
                             }
                           ],
@@ -1066,7 +1088,7 @@
                             "minLength": 1
                           },
                           "additionalProperties": {
-                            "$ref": "#/$defs/__schema2"
+                            "$ref": "#/$defs/__schema3"
                           }
                         }
                       },
@@ -1405,6 +1427,37 @@
           },
           "additionalProperties": {
             "$ref": "#/$defs/__schema2"
+          }
+        }
+      ]
+    },
+    "__schema3": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema3"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema3"
           }
         }
       ]

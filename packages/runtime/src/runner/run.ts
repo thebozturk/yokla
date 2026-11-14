@@ -103,6 +103,13 @@ export interface RunOptions {
   readonly languages?: readonly LanguagePack[];
   /** Checks that run for every case, whatever the domain. */
   readonly checks?: readonly Check[];
+  /**
+   * Policies for dimensions only the user's checks report (ADR-0030); a
+   * domain pack's own policies come first.
+   */
+  readonly policies?: Readonly<Record<string, AggregationPolicy>>;
+  /** The check modules the configuration loaded, for the results (ADR-0030). */
+  readonly checkModules?: readonly { id: string; module: string; sha256: string }[];
   /** Prices of the model calls the proxy records (yokla.config.yaml). */
   readonly prices?: YoklaConfig['prices'];
   /** A hard cap on the model cost of the run, in USD; needs a model proxy (ADR-0014). */
@@ -169,7 +176,7 @@ function prepare(options: RunOptions): Prepared {
   if (duplicate !== undefined) throw new ConfigError(`check "${duplicate}" is defined twice`);
   return {
     checks,
-    policies: pack?.dimensions ?? {},
+    policies: { ...options.policies, ...pack?.dimensions },
     languages: new Map((options.languages ?? []).map((lang) => [lang.language, lang])),
   };
 }
@@ -1488,6 +1495,9 @@ export async function runSuite(input: RunOptions): Promise<Results> {
             ? recording.correlation
             : 'traceparent',
       partial: cap?.stopped() === true,
+      ...(options.checkModules === undefined || options.checkModules.length === 0
+        ? {}
+        : { checkModules: options.checkModules.map((loaded) => ({ ...loaded })) }),
       ...(observation.summary === undefined ? {} : { observation: observation.summary }),
       ...(calls === undefined ? {} : { proxy: { ...calls.summary, prompts: calls.prompts.store } }),
       ...(spanned === undefined ? {} : { spans: spanned.summary }),

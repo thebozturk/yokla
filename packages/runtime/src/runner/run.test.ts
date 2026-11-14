@@ -20,6 +20,8 @@ import {
   type PromptStorage,
   type ProxyRecord,
   type SpanCall,
+  userCheck,
+  UserCheckDefinition,
 } from '@yokla/core';
 import { stubLanguagePack } from '@yokla/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -1013,6 +1015,93 @@ const schemaFindings = (results: Results) =>
         ?.findings.map((f) => `${f.verdict}: ${f.message}`),
     ),
   );
+
+/** A check the user writes (ADR-0030): no internal id such as TNT-001 in the answer. */
+const NO_INTERNAL_IDS = UserCheckDefinition.parse({
+  api: 1,
+  id: 'no-internal-ids',
+  description: 'The answer shows no internal product id.',
+  dimension: 'internal-ids',
+  policy: 'advisory',
+  run: (turn: { answer: { text: string } }) => ({
+    findings: [
+      /\b[A-Z]{3}-\d{3}\b/u.test(turn.answer.text)
+        ? { verdict: 'fail', message: 'shows an internal id' }
+        : { verdict: 'pass', message: 'no internal id' },
+    ],
+  }),
+});
+
+describe("runSuite with the user's checks (ADR-0030)", () => {
+  it('runs them, aggregates their dimension by its policy, and names their modules', async () => {
+    const t = await target((_r, _i, response) => {
+      json(response, answer({ answer: 'Kubbe Çadır (TNT-001) stokta.' }));
+    });
+    const modules = [
+      { id: 'no-internal-ids', module: 'checks/no-ids.mjs', sha256: 'a'.repeat(64) },
+    ];
+    const run = (policies: Record<string, 'advisory' | 'worst-of-n'>) =>
+      runSuite(
+        options(profile(t.url), cases({ turns: [{ user: 'a' }] }), {
+          checks: [...CORE_CHECKS, userCheck(NO_INTERNAL_IDS)],
+          policies,
+          checkModules: modules,
+        }),
+      );
+    const advisory = await run({ 'internal-ids': 'advisory' });
+    expect(Results.safeParse(advisory).success).toBe(true);
+    expect(advisory.run.checkModules).toEqual(modules);
+    const turn = advisory.cases[0]?.samples[0]?.turns[0];
+    expect(turn?.checks.find((c) => c.check === 'no-internal-ids')?.findings).toEqual([
+      {
+        dimension: 'internal-ids',
+        verdict: 'fail',
+        severity: 'medium',
+        message: 'shows an internal id',
+      },
+    ]);
+    // Advisory: reported, never deciding the case, which nothing else decided either.
+    expect(advisory.cases[0]?.dimensions).toEqual([
+      expect.objectContaining({ dimension: 'internal-ids', policy: 'advisory', verdict: 'fail' }),
+    ]);
+    expect(advisory.cases[0]?.status).toBe('unmeasured');
+    const deciding = await run({});
+    expect(deciding.cases[0]?.status).toBe('fail');
+  });
+
+  it("keeps a domain pack's own policy over one a user check sets", async () => {
+    const t = await target((_r, _i, response) => {
+      json(response, answer());
+    });
+    const pack: DomainPack = {
+      id: 'shop',
+      dimensions: { fabrication: 'worst-of-n' },
+      prepare: () => ({
+        checks: [
+          {
+            id: 'always-fabricated',
+            description: 'x',
+            run: () => ({
+              applicable: true,
+              findings: [
+                { dimension: 'fabrication', verdict: 'fail', severity: 'high', message: 'x' },
+              ],
+            }),
+          },
+        ],
+      }),
+    };
+    const results = await runSuite(
+      options(profile(t.url), cases({ turns: [{ user: 'a' }] }), {
+        packs: [pack],
+        policies: { fabrication: 'advisory' },
+      }),
+    );
+    expect(results.cases[0]?.dimensions).toEqual([
+      expect.objectContaining({ dimension: 'fabrication', policy: 'worst-of-n', verdict: 'fail' }),
+    ]);
+  });
+});
 
 describe('runSuite with JSON Schemas (ADR-0030)', () => {
   it('holds every JSON answer to the contract, and a turn to its own schema', async () => {

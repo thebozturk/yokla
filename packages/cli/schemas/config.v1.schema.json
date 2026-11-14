@@ -226,6 +226,15 @@
       },
       "additionalProperties": false
     },
+    "checks": {
+      "default": [],
+      "description": "Check modules to load, relative to this file: JavaScript, or TypeScript Node.js runs as it is. Each default-exports a check by contract version 1 (ADR-0030).",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
     "plan": {
       "default": {
         "upperBoundFactor": 2

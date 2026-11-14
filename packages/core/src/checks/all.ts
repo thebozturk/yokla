@@ -36,3 +36,27 @@ export const CORE_CHECKS: readonly Check[] = [
   toolCallValid,
   goalReachedCheck,
 ];
+
+/**
+ * Every dimension the core checks report. A check the user writes may set a
+ * policy only for a dimension of its own (ADR-0030).
+ */
+export const CORE_DIMENSIONS: ReadonlySet<string> = new Set([
+  'answer-content',
+  'check-error',
+  'contract',
+  'cost',
+  'deadline',
+  'evidence',
+  'language',
+  'leakage',
+  'privacy',
+  'prompt-size',
+  'resilience',
+  'robustness',
+  'routing',
+  'similarity',
+  'task-success',
+  'tool-use',
+  'untrusted-content',
+]);
