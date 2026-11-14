@@ -262,6 +262,7 @@ describe('YoklaConfig', () => {
       version: 1,
       gate: {},
       prices: {},
+      models: {},
       plan: { upperBoundFactor: 2 },
     });
     expect(YoklaConfig.safeParse({ version: 1, gate: { maxFailure: 1 } }).success).toBe(false);

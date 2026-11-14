@@ -110,11 +110,37 @@ export const TurnResult = z.object({
   checks: z.array(CheckResult),
 });
 
+/** One call yokla made to its own model (ADR-0028). */
+export const OwnCall = z.object({
+  model: z.string(),
+  durationMs: z.number().nonnegative(),
+  usage: z.object({
+    input: z.int().nonnegative().nullable(),
+    output: z.int().nonnegative().nullable(),
+  }),
+  /** null without a price or a token count. */
+  costUsd: z.number().nonnegative().nullable(),
+  /** true when the reply came from the customer cache, at no cost. */
+  cached: z.boolean(),
+});
+
 export const Sample = z.object({
   index: z.int().nonnegative(),
   /** cold samples bypassed the target's cache; warm samples did not (design §11). */
   cache: z.enum(['cold', 'warm']),
   turns: z.array(TurnResult),
+  /** A simulated customer's conversation (ADR-0028). */
+  customer: z
+    .object({
+      seed: z.string(),
+      ended: z.enum(['reached', 'maxTurns', 'error']),
+      /** The turn, from 0, after whose answer the goal was reached. */
+      reachedAt: z.int().nonnegative().optional(),
+      calls: z.array(OwnCall),
+      /** The sum of the calls' cost; null when any call has none. */
+      costUsd: z.number().nonnegative().nullable(),
+    })
+    .optional(),
 });
 
 export const DimensionResult = z.object({
@@ -202,6 +228,14 @@ export const Results = z
           missing: z.record(z.string(), z.int().positive()),
           /** What of each call's prompt these results keep (ADR-0015). */
           prompts: PromptStore.optional(),
+        })
+        .optional(),
+      /** yokla's own model calls over the run, apart from the target's (ADR-0028). */
+      own: z
+        .object({
+          calls: z.int().nonnegative(),
+          cached: z.int().nonnegative(),
+          costUsd: z.number().nonnegative().nullable(),
         })
         .optional(),
       /** Problems that affect the whole run, e.g. logs that couldn't be read. */

@@ -216,6 +216,38 @@
           ],
           "additionalProperties": false
         },
+        "own": {
+          "type": "object",
+          "properties": {
+            "calls": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "cached": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "costUsd": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "calls",
+            "cached",
+            "costUsd"
+          ],
+          "additionalProperties": false
+        },
         "issues": {
           "type": "array",
           "items": {
@@ -875,6 +907,116 @@
                     ],
                     "additionalProperties": false
                   }
+                },
+                "customer": {
+                  "type": "object",
+                  "properties": {
+                    "seed": {
+                      "type": "string"
+                    },
+                    "ended": {
+                      "type": "string",
+                      "enum": [
+                        "reached",
+                        "maxTurns",
+                        "error"
+                      ]
+                    },
+                    "reachedAt": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "calls": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "model": {
+                            "type": "string"
+                          },
+                          "durationMs": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "usage": {
+                            "type": "object",
+                            "properties": {
+                              "input": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "output": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "input",
+                              "output"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "costUsd": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cached": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "model",
+                          "durationMs",
+                          "usage",
+                          "costUsd",
+                          "cached"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "costUsd": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "seed",
+                    "ended",
+                    "calls",
+                    "costUsd"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "required": [

@@ -53,6 +53,7 @@ export {
   KnownGap,
   type Case,
   type CaseFile,
+  type CaseCustomer,
   type CaseTurn,
 } from './schema/cases.ts';
 export {
@@ -97,7 +98,7 @@ export {
   type PromptStorage,
 } from './proxy/prompts.ts';
 export { plan, type Plan, type PlannedCase } from './plan/plan.ts';
-export { GateConfig, YoklaConfig, type Price } from './schema/config.ts';
+export { GateConfig, YoklaConfig, type OwnModel, type Price } from './schema/config.ts';
 export { evaluateGate, type GateBreach, type GateOutcome } from './gate/gate.ts';
 export { Baseline, BASELINE_SCHEMA_ID } from './schema/baseline.ts';
 export { baselineChanges, baselineOf } from './baseline/baseline.ts';
@@ -169,7 +170,6 @@ export {
   answerText,
   answeredStatus,
   answeredWithinDeadline,
-  CORE_CHECKS,
   costBudget,
   UNANSWERED_JUDGES,
   gracefulUnderFault,
@@ -180,3 +180,14 @@ export {
 } from './checks/generic.ts';
 export { piiInPrompt, promptBudget, promptLeak, untrustedInSystem } from './checks/inspection.ts';
 export { toolCalls, toolCallValid } from './checks/tools.ts';
+export { CORE_CHECKS } from './checks/all.ts';
+export {
+  CUSTOMER_LANGUAGES,
+  CUSTOMER_PROMPT_MARK,
+  customerCacheKey,
+  customerPrompt,
+  goalReached,
+  goalReachedCheck,
+  type CustomerPrompt,
+  type Exchanged,
+} from './customer/customer.ts';

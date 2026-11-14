@@ -1,7 +1,7 @@
 // Assembles the profile and case schemas from the loaded packs (design §17).
 
 import { z } from 'zod';
-import { caseShape, coreExpectations } from './cases.ts';
+import { caseDriverProblem, caseShape, coreExpectations } from './cases.ts';
 import { profileProblems, profileShape } from './profile.ts';
 
 /** What a domain pack contributes to the config schemas. */
@@ -68,7 +68,18 @@ export function buildSchemas(options: SchemaOptions) {
   const caseFile = z
     .strictObject({
       version: z.literal(1),
-      cases: z.array(z.strictObject(caseShape(language, z.strictObject(expectations)))).min(1),
+      cases: z
+        .array(
+          z
+            .strictObject(caseShape(language, z.strictObject(expectations)))
+            .superRefine((value, context) => {
+              const problem = caseDriverProblem(value);
+              if (problem !== undefined) {
+                context.addIssue({ code: 'custom', path: ['turns'], message: problem });
+              }
+            }),
+        )
+        .min(1),
     })
     .meta({ title: 'yokla cases v1' });
 

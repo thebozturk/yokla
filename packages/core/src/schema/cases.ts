@@ -130,6 +130,58 @@ const TurnRequest = z
   })
   .meta({ description: 'Extra request content for this turn only.' });
 
+/** What ends a simulated conversation: expectations judged from the answer alone (ADR-0028). */
+const Reached = z
+  .strictObject({
+    route: coreExpectations.route.optional(),
+    answer: coreExpectations.answer.optional(),
+    evidence: coreExpectations.evidence.optional(),
+  })
+  .refine((reached) => Object.values(reached).some((value) => value !== undefined), {
+    message: 'reached needs route, answer or evidence',
+  })
+  .meta({
+    description:
+      'The goal is reached after the first answer that meets these, judged as the turn expectations of the same names.',
+  });
+
+/** A simulated customer instead of fixed turns (ADR-0028). */
+function customerShape<E extends z.ZodType>(expect: E) {
+  return z
+    .strictObject({
+      persona: z.string().min(1).meta({ description: 'Who the customer is.' }),
+      goal: z.string().min(1).meta({ description: 'What the customer wants, in its words.' }),
+      opening: z
+        .string()
+        .min(1)
+        .optional()
+        .meta({ description: 'The first message, as written; else the customer writes it.' }),
+      maxTurns: z.int().min(1).max(20),
+      reached: Reached,
+      expect: expect
+        .optional()
+        .meta({ description: 'Expectations for every answer of the conversation.' }),
+    })
+    .meta({
+      description:
+        "A model plays the customer, with the configuration's models.customer; the conversation ends once reached holds, or at maxTurns.",
+    });
+}
+
+/** A case has fixed turns or a simulated customer, never both (ADR-0028). */
+export function caseDriverProblem(value: {
+  readonly turns: readonly unknown[];
+  readonly customer?: unknown;
+}): string | undefined {
+  if (value.customer !== undefined && value.turns.length > 0) {
+    return 'a case has turns or a customer, not both';
+  }
+  if (value.customer === undefined && value.turns.length === 0) {
+    return 'a case needs at least one turn, or a customer';
+  }
+  return undefined;
+}
+
 /** Builds the case shape; packs contribute the keys of `expect`. */
 export function caseShape<E extends z.ZodType>(language: z.ZodType<string>, expect: E) {
   return {
@@ -151,7 +203,8 @@ export function caseShape<E extends z.ZodType>(language: z.ZodType<string>, expe
             .meta({ description: 'Expectations for the response to this turn.' }),
         }),
       )
-      .min(1),
+      .default([]),
+    customer: customerShape(expect).optional(),
     samples: z.int().min(1).max(100).optional().meta({
       description: 'How many times to run the case. Default: yokla run --samples, else 1.',
     }),
@@ -166,9 +219,16 @@ export function caseShape<E extends z.ZodType>(language: z.ZodType<string>, expe
   };
 }
 
-const BaseCase = z.strictObject(caseShape(LanguageCode, z.record(z.string(), z.unknown())));
+const BaseCase = z
+  .strictObject(caseShape(LanguageCode, z.record(z.string(), z.unknown())))
+  .superRefine((value, context) => {
+    const problem = caseDriverProblem(value);
+    if (problem !== undefined)
+      context.addIssue({ code: 'custom', path: ['turns'], message: problem });
+  });
 
 /** A validated case. Packs read their own expectation keys. */
 export type Case = z.output<typeof BaseCase>;
 export type CaseTurn = Case['turns'][number];
+export type CaseCustomer = NonNullable<Case['customer']>;
 export type CaseFile = { readonly version: 1; readonly cases: readonly Case[] };

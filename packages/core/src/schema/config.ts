@@ -58,6 +58,27 @@ const Price = z
   .meta({ description: 'USD per million tokens.' });
 export type Price = z.output<typeof Price>;
 
+/** A model yokla calls itself, such as the simulated customer's (ADR-0028). */
+const OwnModel = z.strictObject({
+  kind: z.enum(['openai-compatible', 'anthropic']),
+  url: z
+    .url({ protocol: /^https?$/u })
+    .meta({ description: 'The base url, e.g. http://127.0.0.1:11434/v1 for a local model.' }),
+  model: z.string().min(1),
+  apiKeyEnv: z
+    .string()
+    .min(1)
+    .optional()
+    .meta({ description: 'The environment variable that holds the API key, if one is needed.' }),
+  temperature: z.number().min(0).max(2).default(0),
+  maxTokens: z.int().min(1).max(4_000).default(400),
+  timeoutMs: z.int().min(1).max(600_000).default(60_000),
+  price: Price.optional().meta({
+    description: 'USD per million tokens. Without it, the calls have no cost, never 0.',
+  }),
+});
+export type OwnModel = z.output<typeof OwnModel>;
+
 export const YoklaConfig = z.strictObject({
   version: z.literal(1),
   gate: GateConfig.default({}),
@@ -68,6 +89,14 @@ export const YoklaConfig = z.strictObject({
       description:
         'Per upstream id, per model as the provider reports it (ADR-0012). A model without a price has no cost.',
     }),
+  models: z
+    .strictObject({
+      customer: OwnModel.optional().meta({
+        description:
+          'The model that plays a simulated customer (ADR-0028). A hosted model receives the conversation, the target answers included.',
+      }),
+    })
+    .default({}),
   plan: z
     .strictObject({
       upperBoundFactor: z

@@ -4,8 +4,6 @@
 import { coreExpectations } from '../schema/cases.ts';
 import { findPhrases } from '../text/phrases.ts';
 import { fold } from './fold.ts';
-import { piiInPrompt, promptBudget, promptLeak, untrustedInSystem } from './inspection.ts';
-import { toolCalls, toolCallValid } from './tools.ts';
 import type { Check, CheckFinding } from './types.ts';
 
 export const routeExpected: Check = {
@@ -365,20 +363,3 @@ export const UNANSWERED_JUDGES: ReadonlySet<string> = new Set([
   answeredWithinDeadline.id,
   statusAllowed.id,
 ]);
-
-export const CORE_CHECKS: readonly Check[] = [
-  routeExpected,
-  answerText,
-  evidenceCount,
-  gracefulUnderFault,
-  answeredWithinDeadline,
-  statusAllowed,
-  languageMatch,
-  costBudget,
-  promptBudget,
-  promptLeak,
-  untrustedInSystem,
-  piiInPrompt,
-  toolCalls,
-  toolCallValid,
-];

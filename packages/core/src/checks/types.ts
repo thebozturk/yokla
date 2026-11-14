@@ -53,6 +53,15 @@ export interface TurnView {
    * from the returned evidence: {} without the model proxy or a mapping.
    */
   readonly seen: Readonly<Record<string, readonly SeenItem[]>>;
+  /**
+   * On the last turn of a simulated conversation (ADR-0028): whether its goal
+   * was reached, after how many answers, and the most allowed.
+   */
+  readonly customer?: {
+    readonly reached: boolean;
+    readonly turns: number;
+    readonly maxTurns: number;
+  };
   /** Fields read from the target's logs (ADR-0009). */
   readonly observed: Readonly<Record<string, JsonValue>> | undefined;
   /** The target answered with a clarifying question (see response.clarification). */
