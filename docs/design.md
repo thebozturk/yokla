@@ -864,6 +864,33 @@ Each version is usable on its own. A version ships when its exit criteria hold.
 | **0.5 — red team** | local attack generation (templates plus attacker model), native TR and EN; e-commerce attacks: price and discount manipulation, order fraud, card data, age and region restrictions, unauthorised commitments, competitor steering, hijacking, excessive agency, another customer's data, injection through product content, unsafe advice; canary-based deterministic detection; multi-turn and encoding strategies; findings mapped to OWASP LLM Top 10, OWASP Agentic, GDPR and KVKK, and the EU AI Act; calibrated judge | demo-shop injection, leakage and BOLA defects detected deterministically; the egress test passes |
 | **0.6 — ecosystem** | import and export for other evaluation tools; CI recipes and a GitHub Action; a library API; two runs compared side by side; documentation site | |
 
+### The debugging track: from a finding to a fix
+
+A score tells a team that something is wrong. A team needs three more
+answers: where the failure arose, the smallest conversation that shows it,
+and whether a fix holds. yokla can answer them because it holds both
+deterministic oracles and the model proxy's view of what the model was
+given. This track runs alongside the versions above and doesn't renumber
+them.
+
+- **Order.** The items are built in order, because each one uses the ones
+  before it.
+- **Approval.** Each item starts with its own ADR. Being listed here doesn't
+  approve it.
+- **Exit criteria.** Each item is done when they hold on the demo-shop, at no
+  model cost unless its ADR says otherwise.
+
+| Item | Scope | Exit criteria |
+|---|---|---|
+| **D1. Where a failure arose** | a failing finding that names a value (a price, a duration, a phrase) says where the value first appears: in what the model was sent, in what the model answered, or only in the app's answer; worked out from the proxy's records at check time, never guessed; shown in every report | on the demo-shop, three seeded price defects, one from each origin, are each attributed to their own origin; without proxy data the origin is unknown, not a guess |
+| **D2. The smallest failing conversation** | `yokla shrink` cuts a failing case down to the fewest turns and the shortest messages that still fail the same check, with the samples needed to tell a real failure from chance; it writes the result as a proposed case | every demo-shop defect's failing case shrinks to a case that still fails only its own check; a flaky failure is reported as flaky, not shrunk |
+| **D3. Sampling that stops when the verdict is settled** | a case runs samples until its interval decides the verdict or its sample cap is reached; the cap and the confidence are configuration | on the demo-shop, verdicts match fixed-N runs while fewer samples run; a case that never settles is `unstable` |
+| **D4. Recorded model calls, replayed** | the proxy records the target's model calls into a cassette and can answer from it, so a run repeats with no model cost; a replay can change one recorded answer, to ask what the app does when the model says something else | a recorded demo-shop run replays with identical results and no upstream call; each resilience defect is also caught by changing one recorded answer |
+| **D5. yokla as a tool for coding agents** | a local MCP server over stdio: run a case, explain a finding (D1), shrink it (D2), verify a fix against the shrunk case and its neighbours; no egress beyond the run's own | an agent, given only the MCP tools, finds and verifies the fix of a seeded demo-shop defect |
+| **D6. Comparing models through the proxy** | the proxy can send a call to another model than the app asked for, as the profile or the command line says; the same cases run once per model, and a report compares verdicts, cost and latency | on the demo-shop, two fake models give the comparison expected of them; the cheapest model that still passes the gate is named |
+| **D7. Tool results changed by the proxy** | the proxy can change a tool result before the model sees it: a canary instruction, for indirect injection without a test copy of the target's data; and changes that must not change the verdict, such as reordered items, for metamorphic checks | the demo-shop's injection defect (v0.5) is caught through a tool result the proxy changed; a metamorphic change gives the same verdicts |
+| **D8. A search for untried paths** | a run that steers new turns towards what the proxy hasn't seen yet: routes, tool sets, argument shapes, fault states; deterministic mutations first, a model-written turn only when configured and budgeted | on the demo-shop, the search reaches every route and every tool, and finds a seeded defect that no written case reaches |
+
 **Later:** sampling production logs, more domains (banking, travel), more
 languages, SDK adapters. Checks that understand more of an answer:
 - `price-grounded` grounding the price of a product an answer names but
