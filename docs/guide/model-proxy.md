@@ -6,7 +6,8 @@ and the prompts they sent. yokla can also make the provider fail on purpose
 during a turn.
 
 The proxy speaks the OpenAI-compatible APIs (chat completions, the Responses
-API, embeddings) and the Anthropic Messages API, as JSON or event streams.
+API, embeddings), the Anthropic Messages API, and Gemini's native API on AI
+Studio and Vertex AI ([below](#gemini)), as JSON or event streams.
 The app must let you set its provider base URL. For a target whose calls the
 proxy can't see, read them from the app's OpenTelemetry spans
 ([below](#model-calls-from-opentelemetry-spans)), or read its logs
@@ -48,6 +49,44 @@ proxy can't see, read them from the app's OpenTelemetry spans
    closes it at the end, even when the run fails.
 
 Outside a recording the proxy only forwards; it records nothing.
+
+### Gemini
+
+An app on Google's SDKs calls Gemini's native API. An upstream of kind
+`gemini` reads it, on AI Studio and on Vertex AI alike (ADR-0032):
+
+```yaml
+modelProxy:
+  upstreams:
+    - id: gemini
+      kind: gemini
+      upstream: https://generativelanguage.googleapis.com   # or https://aiplatform.googleapis.com
+```
+
+- **Point the SDK at the proxy** through its base url option, at
+  `http://127.0.0.1:8787/gemini`. The app keeps its key or token: an
+  `x-goog-api-key` header, a `key` query parameter or an `Authorization`
+  bearer token pass through, and the records keep the path without its query.
+- **What the proxy reads.**
+  - `generateContent`, and `streamGenerateContent` as server-sent events
+    (`alt=sse`) or a JSON array.
+  - The model: `modelVersion`, or else the one in the url.
+  - The prompts: `systemInstruction` and `contents`, with a `functionResponse`
+    as a tool message that names its tool.
+  - The tools a call offers (`functionDeclarations`), and the `functionCall`
+    parts an answer asks for.
+- **How it counts tokens,** from `usageMetadata`:
+  - input is `promptTokenCount` plus `toolUsePromptTokenCount`;
+  - cached input is `cachedContentTokenCount`;
+  - output is `candidatesTokenCount` plus `thoughtsTokenCount`, since
+    thinking is billed as output, and reasoning shows the thinking apart;
+  - a cache write isn't reported, so it is null.
+- **Other calls,** such as `countTokens` or embeddings, are recorded with
+  their usage unmeasured.
+- **Faults** take Gemini's shapes, such as its error body with
+  `RESOURCE_EXHAUSTED`.
+- **An app on Gemini's OpenAI-compatible endpoint** needs no `gemini` upstream:
+  `openai-compatible` reads it.
 
 ## Tie calls to turns
 

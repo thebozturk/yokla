@@ -30,6 +30,7 @@ pnpm --filter yokla-demo-shop start --list-defects
 | `--model-timeout-ms` | | `3000` | How long a model call may take before the demo-shop falls back. |
 | `--model-canary` | | none | A canary to plant in every system prompt, for leak tests. |
 | `--model-summary` | | off | Summarise each answer with a model call shortly after it went out, never awaited. |
+| `--model-protocol` | | `chat-completions` | `gemini`: call Gemini's native API instead, with the url ending before `/models` (ADR-0032). |
 | `--otel-url` | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | none | An OTLP/HTTP traces endpoint: export a span for each model call. |
 | `--otel-protocol` | | `json` | `json` or `protobuf`. |
 | `--otel-delay-ms` | `OTEL_BSP_SCHEDULE_DELAY` | `5000` | How long a span waits before its batch is sent. |
@@ -51,6 +52,15 @@ By default the model runs in process. With `--model-url`, the model calls of a
 turn go to an OpenAI-compatible chat completions endpoint, so a model proxy
 can sit in between (ADR-0012). A turn makes two calls, interpret and write,
 and a third with `--model-summary`.
+
+With `--model-protocol gemini`, they go to Gemini's native API instead
+(ADR-0032): the system prompt as `systemInstruction`, the tools as
+`functionDeclarations`, and the answers read from `candidates` and
+`usageMetadata`. The fake provider answers it at
+`/v1beta/models/{model}:generateContent` and `:streamGenerateContent`, as
+events with `alt=sse` or else a JSON array, with the same answers and a
+`thoughtsTokenCount`, which its usage log counts as output. It plays the
+simulated customer there too.
 
 - **The fake provider** answers those calls the way the model in process
   would, so the answers stay the same. It counts one token per started four

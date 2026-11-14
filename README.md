@@ -22,7 +22,8 @@ cost, resilience and regression gates, in one run.
   Nothing about a particular assistant is built in: what a target needs is
   configuration.
 - **Sees your assistant's model calls.** Point the app's OpenAI-compatible or
-  Anthropic client at `yokla proxy`. Each turn then shows its model calls,
+  Anthropic client at `yokla proxy`, or on the main branch its Gemini client,
+  on AI Studio or Vertex AI (ADR-0032). Each turn then shows its model calls,
   tokens, cost and latency, including calls the app makes after answering.
   The cost reconciles with the provider's own records. On the main branch, an
   app whose client can't be pointed at the proxy can show its model calls as
@@ -108,9 +109,9 @@ target with seeded defects. Its README walks through a full run.
 - **v0.3:** a first run in five minutes (`yokla init` writes a profile from
   one message to your assistant, with starter cases that suit any assistant),
   an HTML report (done on the main branch), and publishing to npm; more ways
-  to reach a target and see its model calls (WebSocket, tokens and
-  OpenTelemetry spans, done on the main branch; Gemini), tool-call checks and
-  a simulated
+  to reach a target and see its model calls (WebSocket, tokens,
+  OpenTelemetry spans and Gemini, done on the main branch), tool-call checks
+  and a simulated
   customer that shops with a goal, and generic checks (all done on the main
   branch).
 - **v0.4:** an analyzer that reads your code, API contract, prompts, data

@@ -112,7 +112,7 @@ prices:
     gpt-x: { input: 0.10, output: 0.50 }
 models:
   customer:
-    kind: openai-compatible           # or anthropic
+    kind: openai-compatible           # or anthropic, or gemini
     url: http://127.0.0.1:11434/v1    # a local model keeps the conversation on the machine
     model: qwen2.5:7b
     apiKeyEnv: CUSTOMER_API_KEY       # optional
@@ -129,12 +129,19 @@ plan:
 - **`models.customer`:** the model that plays a simulated customer
   (ADR-0028).
   - **What it is:** OpenAI-compatible, whose url ends in the path before
-    `/chat/completions`, or Anthropic, whose url ends before `/messages`.
+    `/chat/completions`; Anthropic, whose url ends before `/messages`; or
+    Gemini's native API (ADR-0032), whose url ends before `/models`, such as
+    `https://generativelanguage.googleapis.com/v1beta`, or for Vertex AI
+    `https://aiplatform.googleapis.com/v1/projects/P/locations/global/publishers/google`.
   - **How yokla calls it:**
     - directly, never through the model proxy;
     - at `temperature` 0, with at most `maxTokens` (400);
     - with the sample's seed where the provider takes one.
-  - **Its key** is read from `apiKeyEnv`.
+  - **Its key** is read from `apiKeyEnv`. For Gemini it goes in
+    `x-goog-api-key`, or with `auth: bearer` as a bearer token, as Vertex AI
+    takes it.
+  - **Gemini's thinking** counts as output, and a thought summary isn't the
+    customer's message.
   - **Without a `price`,** its calls have no cost, never 0.
   - **Privacy:** a hosted model receives the conversation, the target's
     answers included.
