@@ -2,7 +2,7 @@
 // that the proxy answers, and open and close a recording around a run. It
 // talks only to the proxy's own local address.
 
-import { ProxyRecord, z, type FaultPlan } from '@yokla/core';
+import { ProxyRecord, SpanCall, z, type FaultPlan } from '@yokla/core';
 
 export class ProxyControlError extends Error {
   override readonly name = 'ProxyControlError';
@@ -15,7 +15,17 @@ const Health = z.object({
   recording: z.boolean(),
 });
 const Opened = z.object({ id: z.string().min(1), startedAt: z.iso.datetime() });
-const Closed = z.object({ id: z.string().min(1), records: z.array(ProxyRecord) });
+const Closed = z.object({
+  id: z.string().min(1),
+  records: z.array(ProxyRecord),
+  /** Model calls read from OpenTelemetry spans (ADR-0029); absent from an older proxy. */
+  spans: z.array(SpanCall).default([]),
+});
+const SpansSettled = z.object({
+  settled: z.boolean(),
+  waitedMs: z.number().nonnegative(),
+  spans: z.int().nonnegative(),
+});
 const Armed = z.object({ id: z.string().min(1), turn: z.string().min(1) });
 const Settled = z.object({
   settled: z.boolean(),
@@ -120,18 +130,45 @@ export class ProxyControl {
     );
   }
 
+  /**
+   * Waits until the app has exported no spans for quietMs, or maxWaitMs ran out
+   * (ADR-0029): spans come in batches, after the calls they describe.
+   */
+  settleSpans(
+    id: string,
+    wait: { readonly quietMs: number; readonly maxWaitMs: number },
+  ): Promise<z.output<typeof SpansSettled>> {
+    return this.#call(
+      'POST',
+      `/_yokla/recordings/${encodeURIComponent(id)}/spans/settle`,
+      SpansSettled,
+      wait,
+      wait.maxWaitMs + this.#timeoutMs,
+    );
+  }
+
   /** The records of an open recording so far, without closing it. */
   async records(id: string): Promise<ProxyRecord[]> {
+    return (await this.recorded(id)).records;
+  }
+
+  /** The records and span calls of an open recording so far, without closing it. */
+  async recorded(id: string): Promise<{ records: ProxyRecord[]; spans: SpanCall[] }> {
     const open = await this.#call('GET', `/_yokla/recordings/${encodeURIComponent(id)}`, Closed);
-    return open.records;
+    return { records: open.records, spans: open.spans };
   }
 
   async close(id: string): Promise<ProxyRecord[]> {
+    return (await this.closeAll(id)).records;
+  }
+
+  /** Closes the recording, with its records and the calls its spans showed. */
+  async closeAll(id: string): Promise<{ records: ProxyRecord[]; spans: SpanCall[] }> {
     const closed = await this.#call(
       'DELETE',
       `/_yokla/recordings/${encodeURIComponent(id)}`,
       Closed,
     );
-    return closed.records;
+    return { records: closed.records, spans: closed.spans };
   }
 }

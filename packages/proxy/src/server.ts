@@ -19,7 +19,17 @@ import {
 } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { brotliDecompressSync, gunzipSync, inflateSync } from 'node:zlib';
-import { FaultPlan, z, type ProxyRecord, type ProxyUsage } from '@yokla/core';
+import {
+  FaultPlan,
+  modelCallOf,
+  readOtlpJson,
+  readOtlpProtobuf,
+  z,
+  type OtlpSpan,
+  type ProxyRecord,
+  type ProxyUsage,
+  type SpanCall,
+} from '@yokla/core';
 import {
   armTurn,
   changeAnswer,
@@ -164,6 +174,10 @@ interface Recording {
   inFlight: number;
   /** When a call of this recording last ended, on the performance clock. */
   lastActivity: number;
+  /** Model calls read from the OpenTelemetry spans the app exported (ADR-0029). */
+  readonly spans: SpanCall[];
+  /** When the app last exported spans, on the performance clock. */
+  lastExport: number;
 }
 
 const Settling = z.object({
@@ -204,6 +218,8 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
         turns: new Map(),
         inFlight: 0,
         lastActivity: performance.now(),
+        spans: [],
+        lastExport: performance.now(),
       };
       sendJson(response, 201, { id: recording.id, startedAt: recording.startedAt });
       return;
@@ -239,6 +255,81 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
         faults: parsed.data.faults.length,
       });
       return;
+    }
+    // OTLP/HTTP trace exports (ADR-0029): JSON or protobuf, gzipped or not.
+    if (request.method === 'POST' && path === '/_yokla/otlp/v1/traces') {
+      const raw = await readBody(request, maxRequest);
+      if (raw === undefined) {
+        sendJson(response, 413, { error: 'export too large for the proxy' });
+        return;
+      }
+      const type = request.headers['content-type'] ?? '';
+      const protobuf = type.includes('protobuf');
+      let spans: OtlpSpan[] | undefined;
+      try {
+        const body = request.headers['content-encoding'] === 'gzip' ? gunzipSync(raw) : raw;
+        spans = protobuf
+          ? readOtlpProtobuf(new Uint8Array(body))
+          : type.includes('json')
+            ? readOtlpJson(JSON.parse(body.toString('utf8')))
+            : undefined;
+      } catch {
+        spans = undefined;
+      }
+      if (spans === undefined) {
+        sendJson(response, 400, {
+          error: 'expected an OTLP trace export, as application/json or application/x-protobuf',
+        });
+        return;
+      }
+      const open = recording;
+      if (open !== undefined) {
+        open.spans.push(...spans.flatMap((span) => modelCallOf(span) ?? []));
+        open.lastExport = performance.now();
+      }
+      // An empty ExportTraceServiceResponse: a full success.
+      if (protobuf) response.writeHead(200, { 'content-type': 'application/x-protobuf' }).end();
+      else sendJson(response, 200, {});
+      return;
+    }
+    const spansSettling = /^\/_yokla\/recordings\/([\w-]+)\/spans\/settle$/u.exec(path);
+    if (spansSettling !== null && request.method === 'POST') {
+      const open = recording;
+      if (open?.id !== spansSettling[1] || open === undefined) {
+        sendJson(response, 404, { error: 'no such recording' });
+        return;
+      }
+      const body = await readBody(request, 1024 * 1024);
+      let value: unknown;
+      try {
+        value = JSON.parse(body?.toString('utf8') ?? '');
+      } catch {
+        value = undefined;
+      }
+      const parsed = Settling.safeParse(value);
+      if (!parsed.success) {
+        sendJson(response, 400, { error: 'expected {"quietMs": n, "maxWaitMs": n}' });
+        return;
+      }
+      // Spans come in batches: wait until no export has come for quietMs.
+      const { quietMs, maxWaitMs } = parsed.data;
+      const asked = performance.now();
+      for (;;) {
+        const now = performance.now();
+        const quiet = now - Math.max(open.lastExport, asked);
+        const waited = now - asked;
+        if (quiet >= quietMs || waited >= maxWaitMs) {
+          sendJson(response, 200, {
+            id: open.id,
+            settled: quiet >= quietMs,
+            waitedMs: Math.round(waited),
+            spans: open.spans.length,
+          });
+          return;
+        }
+        const pause = Math.min(25, Math.max(1, quietMs - quiet), Math.max(1, maxWaitMs - waited));
+        await new Promise((resolve) => setTimeout(resolve, pause));
+      }
     }
     const settling = /^\/_yokla\/recordings\/([\w-]+)\/settle$/u.exec(path);
     if (settling !== null && request.method === 'POST') {
@@ -291,9 +382,9 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
         sendJson(response, 404, { error: 'no such recording' });
         return;
       }
-      const { id, startedAt, records } = open;
+      const { id, startedAt, records, spans } = open;
       if (request.method === 'DELETE') recording = undefined;
-      sendJson(response, 200, { id, startedAt, records });
+      sendJson(response, 200, { id, startedAt, records, spans });
       return;
     }
     sendJson(response, 404, { error: 'unknown control endpoint' });

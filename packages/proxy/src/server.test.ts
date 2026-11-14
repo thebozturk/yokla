@@ -681,3 +681,194 @@ describe('startProxy faults', () => {
     expect([faulted.status, other.status]).toEqual([500, 200]);
   });
 });
+
+const OTEL_TRACE = '4bf92f3577b34da6a3ce929d0e0e4736';
+
+/** A minimal protobuf export of one GenAI span, written by hand. */
+function pbLen(field: number, bytes: number[]): number[] {
+  return [(field << 3) | 2, bytes.length, ...bytes];
+}
+
+function pbStr(field: number, value: string): number[] {
+  return pbLen(field, [...Buffer.from(value, 'utf8')]);
+}
+
+function pbAttr(key: string, value: string): number[] {
+  return pbLen(9, [...pbStr(1, key), ...pbLen(2, pbStr(1, value))]);
+}
+
+function protobufExport(): Buffer {
+  const span = [
+    ...pbLen(1, [...Buffer.from(OTEL_TRACE, 'hex')]),
+    ...pbLen(2, [...Buffer.from('00f067aa0ba902b7', 'hex')]),
+    ...pbAttr('gen_ai.operation.name', 'chat'),
+    ...pbAttr('gen_ai.request.model', 'gpt-y'),
+  ];
+  return Buffer.from(pbLen(1, pbLen(2, pbLen(2, span))));
+}
+
+async function openedForSpans() {
+  const up = await upstream();
+  const { running } = await proxy(up.url);
+  const open = parse(await call(running, 'POST', '/_yokla/recordings'));
+  const id = String(Reflect.get(Object(open), 'id'));
+  const spans = async (): Promise<unknown> =>
+    Reflect.get(Object(parse(await call(running, 'GET', `/_yokla/recordings/${id}`))), 'spans');
+  return { running, id, spans };
+}
+
+/** An OTLP JSON export of these spans, all in one trace. */
+const exportOf = (spans: { attributes: Record<string, unknown>[]; spanId: string }[]) =>
+  JSON.stringify({
+    resourceSpans: [
+      {
+        scopeSpans: [
+          {
+            spans: spans.map((span) => ({
+              traceId: OTEL_TRACE,
+              spanId: span.spanId,
+              name: 'chat',
+              startTimeUnixNano: '1763000000000000000',
+              endTimeUnixNano: '1763000000500000000',
+              attributes: span.attributes,
+            })),
+          },
+        ],
+      },
+    ],
+  });
+
+describe('startProxy OpenTelemetry spans (ADR-0029)', () => {
+  const genAi = [
+    { key: 'gen_ai.operation.name', value: { stringValue: 'chat' } },
+    { key: 'gen_ai.provider.name', value: { stringValue: 'openai' } },
+    { key: 'gen_ai.response.model', value: { stringValue: 'gpt-x' } },
+    { key: 'gen_ai.usage.input_tokens', value: { intValue: '120' } },
+    { key: 'gen_ai.usage.output_tokens', value: { intValue: '9' } },
+  ];
+  const JSON_TYPE = { 'content-type': 'application/json' };
+
+  it('keeps the model calls of a JSON export during a recording, and skips other spans', async () => {
+    const { running, spans } = await openedForSpans();
+    const answer = await call(
+      running,
+      'POST',
+      '/_yokla/otlp/v1/traces',
+      exportOf([
+        { spanId: '00f067aa0ba902b7', attributes: genAi },
+        {
+          spanId: '00f067aa0ba902b8',
+          attributes: [{ key: 'http.route', value: { stringValue: '/chat' } }],
+        },
+      ]),
+      JSON_TYPE,
+    );
+    expect(answer.status).toBe(200);
+    expect(parse(answer)).toEqual({});
+    expect(await spans()).toEqual([
+      {
+        traceId: OTEL_TRACE,
+        spanId: '00f067aa0ba902b7',
+        provider: 'openai',
+        model: 'gpt-x',
+        startedAt: '2025-11-13T02:13:20.000Z',
+        durationMs: 500,
+        usage: { input: 120, output: 9, cachedInput: null, cacheWrite: null, reasoning: null },
+        error: false,
+      },
+    ]);
+  });
+
+  it('reads a gzipped protobuf export, and answers in protobuf', async () => {
+    const { running, spans } = await openedForSpans();
+    const answer = await call(
+      running,
+      'POST',
+      '/_yokla/otlp/v1/traces',
+      gzipSync(protobufExport()),
+      {
+        'content-type': 'application/x-protobuf',
+        'content-encoding': 'gzip',
+      },
+    );
+    expect(answer.status).toBe(200);
+    expect(answer.headers['content-type']).toBe('application/x-protobuf');
+    expect(answer.body).toHaveLength(0);
+    expect(await spans()).toMatchObject([{ traceId: OTEL_TRACE, model: 'gpt-y' }]);
+  });
+
+  it('refuses what is no OTLP export, and keeps nothing outside a recording', async () => {
+    const up = await upstream();
+    const { running } = await proxy(up.url);
+    const bad = await call(
+      running,
+      'POST',
+      '/_yokla/otlp/v1/traces',
+      '{"resourceLogs":[]}',
+      JSON_TYPE,
+    );
+    expect(bad.status).toBe(400);
+    expect(
+      (await call(running, 'POST', '/_yokla/otlp/v1/traces', 'x', { 'content-type': 'text/plain' }))
+        .status,
+    ).toBe(400);
+    expect(
+      (
+        await call(running, 'POST', '/_yokla/otlp/v1/traces', Buffer.from([0xff, 0xff]), {
+          'content-type': 'application/x-protobuf',
+        })
+      ).status,
+    ).toBe(400);
+    const outside = await call(
+      running,
+      'POST',
+      '/_yokla/otlp/v1/traces',
+      exportOf([{ spanId: '00f067aa0ba902b7', attributes: genAi }]),
+      JSON_TYPE,
+    );
+    expect(outside.status).toBe(200);
+    const open = parse(await call(running, 'POST', '/_yokla/recordings'));
+    const id = String(Reflect.get(Object(open), 'id'));
+    expect(
+      Reflect.get(Object(parse(await call(running, 'GET', `/_yokla/recordings/${id}`))), 'spans'),
+    ).toEqual([]);
+  });
+
+  it('settles once no export has come for quietMs, counting a late batch', async () => {
+    const { running, id } = await openedForSpans();
+    const settle = (quietMs: number, maxWaitMs: number) =>
+      call(
+        running,
+        'POST',
+        `/_yokla/recordings/${id}/spans/settle`,
+        JSON.stringify({ quietMs, maxWaitMs }),
+        JSON_TYPE,
+      ).then(parse);
+    const late = new Promise<void>((resolve) => {
+      setTimeout(() => {
+        void call(
+          running,
+          'POST',
+          '/_yokla/otlp/v1/traces',
+          exportOf([{ spanId: '00f067aa0ba902b7', attributes: genAi }]),
+          JSON_TYPE,
+        ).then(() => {
+          resolve();
+        });
+      }, 120);
+    });
+    const answer = await settle(200, 5_000);
+    await late;
+    expect(answer).toMatchObject({ settled: true, spans: 1 });
+    expect(Number(Reflect.get(Object(answer), 'waitedMs'))).toBeGreaterThanOrEqual(300);
+    // It gives up after maxWaitMs, and says so.
+    const gaveUp = setInterval(() => {
+      void call(running, 'POST', '/_yokla/otlp/v1/traces', exportOf([]), JSON_TYPE);
+    }, 20);
+    try {
+      expect(await settle(200, 150)).toMatchObject({ settled: false });
+    } finally {
+      clearInterval(gaveUp);
+    }
+  });
+});
