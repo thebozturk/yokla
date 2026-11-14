@@ -394,7 +394,7 @@ The [checks guide](guide/checks.md) gives each check's exact conditions.
 | `answered-within-deadline` | the turn sets `deadlineMs` (ADR-0013) | The full answer arrived in time. |
 | `status-allowed` | the turn sets `allowStatus` (ADR-0018, ADR-0019) | The target handled the edge case: a complete 2xx answer or an allowed status. An edge-case turn is judged on its answer, never stopped by it. |
 | `language-match` | the turn sets `language` (ADR-0018) | The answer is in that language, by the share of each language pack's most common words. Too short or too close to tell is unmeasured. |
-| `cost-budget` | the turn's budget sets `costUsd` or `modelCalls` (ADR-0014) | The turn's model calls stay within it. Unmeasured without proxy data. |
+| `cost-budget` | the turn's budget sets `costUsd` or `modelCalls` (ADR-0014) | The turn's model calls stay within it, from the proxy, or else from spans (ADR-0029). Unmeasured without either. |
 | `prompt-budget` | the turn's budget sets `inputTokens` | No model call of the turn sends more input tokens. |
 | `prompt-leak` | the profile's canary reached a system prompt (ADR-0015) | The answer doesn't contain the canary. Long n-gram runs from the system prompt, without a canary, come with the red team's extraction attacks (v0.5). |
 | `untrusted-in-system` | the profile names the evidence fields that hold retrieved content | None of their values is in a system message of the turn's model calls. |
@@ -510,7 +510,11 @@ localhost only.
    with the turn marked when it started, so attribution needs no clock.
 2. `header`: the target forwards `x-yokla-trace` to its provider calls. This
    takes a one-line change in the app, or OTel baggage.
-3. `traceparent` (later): W3C trace context, if the app already propagates it.
+3. `traceparent` (ADR-0029): W3C trace context, if the app already propagates
+   it. With `modelProxy.spans`, the runner sends each turn a `traceparent`
+   with a trace of its own, and the app's OpenTelemetry spans for its model
+   calls are tied to the turn whose trace they are in. Without upstreams, this
+   is the run's correlation, and it allows any concurrency.
 
 **Calls after the answer (ADR-0016).** Apps often call their model after
 answering, for example to update a memory. In `serial` correlation the runner
@@ -555,10 +559,19 @@ and the tool calls its answer asks for, with arguments kept as prompt text is.
 `tool-call-valid` checks that each call asked only for tools it offered, with
 valid JSON.
 
-**Limits.** When the proxy can't see a target's calls, the target's own
-structured logs are the other source of cost and path signals (ADR-0009).
-Providers that sign requests (AWS SigV4) and SDK-only transports
-can't be proxied transparently in v1. Without a log source, their cost and
+**Limits.** When the proxy can't see a target's calls, two other sources give
+cost and path signals:
+- **The app's OpenTelemetry spans (ADR-0029).** `yokla proxy` reads OTLP/HTTP
+  trace exports, as JSON or protobuf, and a span with
+  `gen_ai.operation.name` is a model call: its provider, model, token counts,
+  duration and failure, never its messages. Spans come in batches, so the run
+  waits once, at its end, until they stop. A turn without proxy calls is
+  judged on its spans' calls; prompt inspection and tool calls still need the
+  proxy.
+- **The target's own structured logs (ADR-0009).**
+
+Providers that sign requests (AWS SigV4) and SDK-only transports can't be
+proxied transparently in v1. Without spans or a log source, their cost and
 path stay `unmeasured` instead of being guessed.
 
 **Data.** Records stay local. The profile sets what of each prompt the
@@ -619,8 +632,9 @@ ADR-0014 sets how cost and latency are bounded.
 - **`yokla plan`** prints the expected cost of a run and an upper bound, and
   contacts nothing.
   - It prices each case from its own turns in a calibration run made with the
-    model proxy, while the case's definition is unchanged, and otherwise from
-    the mean calibrated turn.
+    model proxy, or with spans, while the case's definition is unchanged, and
+    otherwise from the mean calibrated turn. A turn the proxy saw no calls for
+    is priced by its spans (ADR-0029).
   - The upper bound is the estimate times `plan.upperBoundFactor`, 2 by
     default.
   - Without a usable calibration it gives no figure.
@@ -632,7 +646,9 @@ ADR-0014 sets how cost and latency are bounded.
   recorded cost, yokla's own calls included (ADR-0028). Once the total
   reaches the cap, no new sample starts and the results are marked partial.
   A call without a cost makes the cap unenforceable, so the run stops there
-  too. Without a model proxy, the cap counts yokla's own calls alone.
+  too. Without upstreams, the cap counts the costs of spans; a span that comes
+  late is counted at the next check (ADR-0029). Without a model proxy, the cap
+  counts yokla's own calls alone.
 - **Per-turn budgets** (`budget.costUsd`, `budget.modelCalls`) and per-suite
   thresholds (latency percentiles, cost per turn, total cost) judge what was
   spent (§16).
@@ -727,8 +743,9 @@ first-party packs only.
   results for reporting and gating. Its test cases will be importable as yokla
   cases with status `proposed`.
 - Each mapping lives in its own `interop-<tool>` package (ADR-0007).
-- **OpenTelemetry (later).** OTLP spans are accepted as an alternative to proxy
-  correlation.
+- **OpenTelemetry (ADR-0029).** `yokla proxy` accepts OTLP/HTTP trace exports
+  and reads GenAI spans as model calls, for targets the proxy can't see.
+  gRPC export and span files a collector writes come later.
 
 ## 19. Self-testing: how we know yokla works
 
@@ -762,6 +779,15 @@ adds the three resilience defects, caught with faults the model proxy injects,
 and the four inspection defects, caught in the prompts the proxy captures.
 v0.3 adds the two tool-call defects, caught in the tool calls the proxy reads
 (ADR-0025).
+
+**Spans.** With `--otel-url` and the model over HTTP, the demo-shop exports a
+GenAI span for each model call, in the trace of the incoming `traceparent`,
+as OTLP/HTTP JSON or protobuf (ADR-0029). Its exporter has no dependency and
+is written apart from yokla's reader, so each checks the other. The proxy
+end-to-end test runs the acceptance cases with spans on, once per protocol:
+for every turn, the calls read from spans match the proxy's records. A
+demo-shop that calls the provider directly is measured from its spans alone,
+and they reconcile with the provider's records.
 
 **Simulated customers.** The demo-shop's fake provider also plays yokla's
 customer, by simple rules, at no cost (ADR-0028).
@@ -823,7 +849,7 @@ languages, SDK adapters. Checks that understand more of an answer:
 | Wrong expectations (the oracle problem) | P1, provenance on every entry, human approval, judge calibration |
 | The analyzer is unreliable across stacks | the profile is editable; black-box fallback; precision and recall measured on demo-shop |
 | Scope too broad for a small team | exit criteria on every version; packs as the extension point; depth in one domain first |
-| The proxy can't see some providers | they are declared `unobserved`; OTel ingestion later |
+| The proxy can't see some providers | they are declared `unobserved`; the app's OpenTelemetry spans or logs show their calls (ADR-0029, ADR-0009) |
 | Cost of yokla's own model use | the planner, local model support, deterministic checks first |
 | Overfitting to the first private target | a public second target is required before 1.0 |
 | Red-team content generation | harmful-content testing uses refusal probes and does not generate harmful material; attack packs exclude content that is unlawful to produce; a responsible-use document |

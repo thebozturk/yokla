@@ -30,10 +30,14 @@ pnpm --filter yokla-demo-shop start --list-defects
 | `--model-timeout-ms` | | `3000` | How long a model call may take before the demo-shop falls back. |
 | `--model-canary` | | none | A canary to plant in every system prompt, for leak tests. |
 | `--model-summary` | | off | Summarise each answer with a model call shortly after it went out, never awaited. |
+| `--otel-url` | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | none | An OTLP/HTTP traces endpoint: export a span for each model call. |
+| `--otel-protocol` | | `json` | `json` or `protobuf`. |
+| `--otel-delay-ms` | `OTEL_BSP_SCHEDULE_DELAY` | `5000` | How long a span waits before its batch is sent. |
 | | `DEMO_SHOP_MODEL_KEY` | `demo-key` | The key sent with the model calls. |
 
 The options from `--model-stream` down take effect only with `--model-url`:
 the model in process has no system prompt, no timeout and no summary call.
+`--otel-url` without `--model-url` is refused.
 demo-shop binds to `127.0.0.1` only.
 
 ### The model over HTTP
@@ -56,6 +60,15 @@ and a third with `--model-summary`.
   demo-shop.
 - **Trace.** The demo-shop passes an incoming `x-yokla-trace` header on to
   every model call of the turn, the one-line change `header` correlation needs.
+- **Spans.** With `--otel-url`, each request to the provider becomes an
+  OpenTelemetry span by the GenAI conventions (ADR-0029): the operation
+  `chat`, the provider `openai`, the requested and answered model, and the
+  token counts the provider reported, in JSON or in the stream's last chunk.
+  A refused or failed request is a span too, with `error.type` and an `ERROR`
+  status. Each span continues the trace of the incoming `traceparent`, and
+  starts one of its own without it. Spans go out in batches, as OTLP/HTTP JSON
+  or protobuf, and the rest are sent when the demo-shop stops. The exporter
+  has no dependency, and is written apart from yokla's reader.
 - **Resilience.** The model client retries once after a `429` or `503`,
   honouring `Retry-After` up to 2 seconds. It gives up after
   `--model-timeout-ms`. It refuses empty output, an error status and an
@@ -237,7 +250,11 @@ pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml \
 
 The proxy end-to-end test (`packages/cli/src/proxy.e2e.test.ts`) tests the
 demo-shop this way too: with a session it issues, answers as events and a
-summary call after each answer (ADR-0016).
+summary call after each answer (ADR-0016). It also runs the acceptance cases
+with spans exported to the proxy, once as JSON and once as protobuf, and
+checks that every turn's span calls match the proxy's records. A third run
+sends the model calls straight to the fake provider, so only their spans show
+them (ADR-0029).
 
 ## Behaviour without defects
 

@@ -25,7 +25,7 @@ These work for any assistant.
 | `answered-within-deadline` | deadline | the turn has `deadlineMs` | The full answer arrived in time. |
 | `status-allowed` | robustness | the turn has `allowStatus` | The target handled the turn: a 2xx answer yokla reads in full, or a listed status. Another status, a stream cut before its done event, a body that isn't JSON, an answer without its text or no answer at all fails, and the finding says which (ADR-0019). A target that mishandles an edge case then fails the case instead of making the run unjudgeable. |
 | `language-match` | language | the turn has `language`, and at least two language packs are loaded | The answer is in that language. Each pack's most common words are counted in the answer; the language whose words make up at least a tenth of it, and twice the share of any other, is its language. Fewer than five words, or no clear lead, is unmeasured. |
-| `cost-budget` | cost | the turn's `budget` sets `costUsd` or `modelCalls` | The turn's model calls stay within the budget. Unmeasured without proxy data, or when a call of the turn has no cost. |
+| `cost-budget` | cost | the turn's `budget` sets `costUsd` or `modelCalls` | The turn's model calls stay within the budget. Without proxy calls, the calls the turn's spans showed are judged (ADR-0029). Unmeasured without either, or when a call of the turn has no cost. |
 
 A turn without a usable answer, under faults or with a non-2xx status it
 allows, is judged only by `graceful-under-fault`, `answered-within-deadline`

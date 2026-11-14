@@ -8,8 +8,9 @@ during a turn.
 The proxy speaks the OpenAI-compatible APIs (chat completions, the Responses
 API, embeddings) and the Anthropic Messages API, as JSON or event streams.
 The app must let you set its provider base URL. For a target whose calls the
-proxy can't see, read its logs instead (`target.observe.logs` in the
-[profile](profile.md)).
+proxy can't see, read them from the app's OpenTelemetry spans
+([below](#model-calls-from-opentelemetry-spans)), or read its logs
+(`target.observe.logs` in the [profile](profile.md)).
 
 ## Set it up
 
@@ -68,6 +69,73 @@ recording also settles before it closes, so the last turn's calls are kept.
 A target that never goes quiet within `maxWaitMs` (default 10000) leaves an
 issue on the turn, and the run goes on.
 
+## Model calls from OpenTelemetry spans
+
+Some apps can't point their model client at the proxy: an SDK with a fixed
+endpoint, a managed agent service, or a call from a process yokla doesn't
+start. If the app describes its model calls as OpenTelemetry spans, by the
+GenAI conventions, the proxy can read them instead (ADR-0029).
+
+1. **Turn spans on in the profile.** `upstreams` may be empty when spans are
+   the only view of the calls:
+
+   ```yaml
+   modelProxy:
+     port: 8787
+     upstreams: []
+     spans: { quietMs: 6000, maxWaitMs: 20000 }
+   ```
+
+2. **Point the app's exporter at the proxy,** over OTLP/HTTP, as JSON or
+   protobuf, gzipped or not:
+
+   ```sh
+   OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://127.0.0.1:8787/_yokla/otlp/v1/traces
+   ```
+
+   gRPC export isn't read yet.
+
+3. **Let the trace context through.** yokla sends each turn a W3C
+   `traceparent` header with a trace of its own. The app must carry it on to
+   its model calls, as OpenTelemetry's HTTP server instrumentation does. A
+   span belongs to the turn whose trace it is in. A span from any other trace
+   is counted as unattributed, never guessed by time.
+
+What yokla reads from a span:
+
+- **Only spans with `gen_ai.operation.name`** are model calls.
+- **The provider** is `gen_ai.provider.name`, else `gen_ai.system`.
+- **The model** is `gen_ai.response.model`, else `gen_ai.request.model`.
+- **Token counts** come from `gen_ai.usage.*`, under both the current and the
+  older names. A count the span doesn't give is null, never 0.
+- **The duration** is the span's start to end. A span with an `ERROR` status
+  or an `error.type` failed.
+- **Message contents are never read,** in attributes or in events.
+
+**Waiting for spans.** Exporters send spans in batches, every five seconds by
+default. At its end, the run waits until no span has come for
+`spans.quietMs` (6000 ms by default), or until `spans.maxWaitMs` (20000 ms)
+runs out, and says when it ran out. An app that exports sooner, for example
+with `OTEL_BSP_SCHEDULE_DELAY=500`, lets you lower `quietMs`.
+
+**What you get.**
+
+- **Each turn keeps the calls of its spans,** as `spans` next to `proxy`, each
+  with its provider, model, duration, tokens and cost. The run keeps a summary.
+- **A turn the proxy saw no calls for is judged on its spans.** `cost-budget`
+  and the token limit of `prompt-budget` then apply.
+- **Prompt inspection and tool calls still need the proxy:** spans carry no
+  prompts or tool calls here.
+- **Without upstreams,** the run's correlation is `traceparent`, it allows any
+  concurrency, and it refuses provider faults, which only the proxy can
+  inject.
+- **With upstreams too,** the proxy keeps its own correlation for its calls,
+  and each turn shows both views. HTTP targets only: a WebSocket target sends
+  its headers once.
+
+The run says so when spans came but none carried a turn's trace: the app may
+not pass the incoming `traceparent` on.
+
 ## Prices and cost
 
 `yokla.config.yaml` gives prices per upstream id and per model, in USD per
@@ -83,6 +151,8 @@ prices:
 - **The model name is the provider's.** It is the name in the provider's
   answer, or in the request when the answer gives none. A gateway may use its
   own names, such as `anthropic/claude-haiku-5.5`.
+- **A span's call is priced by its provider name,** such as
+  `prices.openai.<model>`, since a span names no upstream.
 - **Cache prices default to the input price,** so cost is never understated.
 - **Input tokens include cache reads and writes.** For Anthropic, the
   provider counts them apart, and yokla adds them to the input.
@@ -115,7 +185,8 @@ ADR-0014 covers three ways to keep cost in bounds:
 - **Per run:** `yokla run --max-cost <usd>` starts no new sample once the
   recorded cost reaches the cap. The results are then partial, and the gate
   can't judge them. A call without a cost makes the cap unenforceable, so the
-  run stops there too.
+  run stops there too. Without upstreams, the cap counts the costs of spans;
+  a span that comes late is counted at the next check.
 
 `yokla plan` estimates a run's cost from an earlier run before you spend
 anything:
@@ -125,7 +196,8 @@ pnpm yokla plan --cases cases --calibration runs/<run id>.json --samples 3
 ```
 
 It prices each case from its own earlier turns when its definition is
-unchanged, otherwise from the mean turn. It prints an upper bound, the
+unchanged, otherwise from the mean turn. A turn the proxy saw no calls for is
+priced by its spans. It prints an upper bound, the
 estimate times `plan.upperBoundFactor` (2 by default). Without a usable
 calibration, it gives no figure and exits with `2`.
 
@@ -229,4 +301,5 @@ modelProxy:
 The proxy listens on `127.0.0.1` only. It forwards each call to the upstream
 the profile names, and nowhere else. A path under `/_yokla/` is never
 forwarded. Records never hold a credential or another header. Prompt text,
-and tool-call arguments, leave memory only as `prompts.store` allows.
+and tool-call arguments, leave memory only as `prompts.store` allows. Of a
+span, only the fields above are kept, and only while a recording is open.

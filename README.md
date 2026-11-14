@@ -22,7 +22,9 @@ cost, resilience and regression gates, in one run.
 - **Sees your assistant's model calls.** Point the app's OpenAI-compatible or
   Anthropic client at `yokla proxy`. Each turn then shows its model calls,
   tokens, cost and latency, including calls the app makes after answering.
-  The cost reconciles with the provider's own records.
+  The cost reconciles with the provider's own records. On the main branch, an
+  app whose client can't be pointed at the proxy can show its model calls as
+  OpenTelemetry spans instead (ADR-0029).
 - **Breaks the provider on purpose.** A turn can declare provider faults:
   errors, rate limits, slow or stalled calls, and malformed or empty
   answers. yokla judges how the assistant answers under them.
@@ -99,9 +101,9 @@ target with seeded defects. Its README walks through a full run.
 - **v0.3:** a first run in five minutes (`yokla init` writes a profile from
   one message to your assistant, with starter cases that suit any assistant),
   an HTML report (done on the main branch), and publishing to npm; more ways
-  to reach a target and see its model calls (WebSocket, done on the main
-  branch; Gemini, OpenTelemetry), tool-call checks and a simulated customer
-  that shops with a goal (both done on the main branch).
+  to reach a target and see its model calls (WebSocket and OpenTelemetry
+  spans, done on the main branch; Gemini), tool-call checks and a simulated
+  customer that shops with a goal (both done on the main branch).
 - **v0.4:** an analyzer that reads your code, API contract, prompts, data
   schema and docs, and writes a profile for you to review.
 - **v0.5:** red teaming with local attack generation, mapped to OWASP, GDPR

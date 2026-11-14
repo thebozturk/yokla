@@ -52,13 +52,13 @@ the profile by hand (see
 | `--cases <path>` | `cases`, next to the profile | A case file or directory; repeatable. |
 | `--out <file>` | `runs/<run id>.json` | Where to write the results. |
 | `--samples <n>` | 1 | Samples per case, when the case doesn't say. |
-| `--concurrency <n>` | 1 | Cases run in parallel. Serial correlation needs 1. |
+| `--concurrency <n>` | 1 | Cases run in parallel. Serial correlation needs 1, unless spans alone show the model calls. |
 | `--target-url <url>` | the profile's | Use this url instead of `target.request.url`. |
 | `--junit <file>` | | Also write a JUnit XML report. |
 | `--html <file>` | | Also write an HTML report. It holds the target's answers. |
 | `--config <file>` | `yokla.config.yaml`, when present | Prices and thresholds. |
 | `--proxy-url <url>` | `127.0.0.1` on `modelProxy.port` | Where the model proxy is. |
-| `--max-cost <usd>` | | Start no new sample once the model cost, the target's and yokla's own, reaches this. Without a model proxy it caps yokla's own calls alone, and says the target's cost is unknown. |
+| `--max-cost <usd>` | | Start no new sample once the model cost, the target's and yokla's own, reaches this. The target's cost comes from the model proxy, or from spans when the proxy has no upstreams. Without a model proxy it caps yokla's own calls alone, and says the target's cost is unknown. |
 | `--fresh-customer` | | Ask the customer model anew, whatever its reply cache holds (ADR-0028). |
 
 It exits with `0` when every case ran, whatever the verdicts: the gate judges
@@ -190,6 +190,8 @@ pnpm yokla proxy --profile yokla.profile.yaml [--port <n>] [--records <file>]
 - **`--port`:** overrides `modelProxy.port`; `0` picks a free port.
 - **`--records`:** appends each recorded call to a JSON Lines file, with
   prompts kept as `modelProxy.prompts.store` says.
+- **Spans:** with `modelProxy.spans`, it prints the OTLP/HTTP endpoint for the
+  app's exporter, `/_yokla/otlp/v1/traces` (ADR-0029).
 - **Exit code `2`:** for a profile without `modelProxy`, a bad port or a port
   in use.
 
@@ -202,7 +204,8 @@ pnpm yokla plan --cases cases --calibration runs/<run id>.json [--samples <n>] [
 ```
 
 - **What it estimates:** what running the cases would cost, from a
-  calibration run made with the model proxy. It contacts nothing.
+  calibration run made with the model proxy, or with spans. It contacts
+  nothing.
 - **What it prints:** the estimate, an upper bound, and how many cases had
   their own calibration.
 - **Exit code `2`:** when the calibration can't support an estimate. It then

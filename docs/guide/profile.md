@@ -313,15 +313,17 @@ Results keep only the mapped fields, labelled as reported by the target.
 
 ## `modelProxy`
 
-Present when the app's model calls go through `yokla proxy` (see the
-[model proxy guide](model-proxy.md)).
+Present when the app's model calls go through `yokla proxy`, or when its
+OpenTelemetry spans show them (see the [model proxy guide](model-proxy.md)).
+It needs an upstream, or `spans`.
 
 | Field | Meaning |
 |---|---|
 | `port` | The proxy's port on `127.0.0.1`, default 8787. |
-| `upstreams[]` | Each with `id`, `kind` (`openai-compatible` or `anthropic`), `upstream` (the real provider base URL) and optionally `appBaseUrlEnv` (the app setting to point at the proxy, for people to read). The app reaches an upstream at `http://127.0.0.1:<port>/<id>`. |
+| `upstreams[]` | Each with `id`, `kind` (`openai-compatible` or `anthropic`), `upstream` (the real provider base URL) and optionally `appBaseUrlEnv` (the app setting to point at the proxy, for people to read). The app reaches an upstream at `http://127.0.0.1:<port>/<id>`. May be empty when `spans` show the calls. |
 | `correlation` | `serial` (default): one request in flight. `header`: the app forwards `x-yokla-trace` to its provider calls. |
 | `settle` | After each answer in serial mode, and before the run ends, wait until the target's model calls stop: none in flight, and none for `quietMs` (default 250). Give up after `maxWaitMs` (default 10000). |
+| `spans` | Read the model calls from the app's OpenTelemetry spans, tied to turns by a `traceparent` header per turn (ADR-0029). At the run's end, wait until no span has come for `quietMs` (default 6000); give up after `maxWaitMs` (default 20000). HTTP targets only. See [the model proxy guide](model-proxy.md#model-calls-from-opentelemetry-spans). |
 | `prompts.store` | What the results keep of each prompt: `sizes` (default), `hashed`, `redacted` or `full`. |
 | `prompts.redact` | Regular expressions whose matches `redacted` replaces. |
 | `inspect.canary` | A string the app's system prompt contains, for `prompt-leak`. |
