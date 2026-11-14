@@ -36,6 +36,26 @@ export const coreExpectations = {
   language: LanguageCode.meta({
     description: 'The language the answer must be in, judged by language-match (ADR-0018).',
   }),
+  similar: z
+    .strictObject({
+      to: z.array(z.string().min(1)).min(1).meta({ description: 'The reference answers.' }),
+      min: z.number().min(0).max(1).optional().meta({
+        description: 'Pass when the answer scores at least this against one reference.',
+      }),
+      max: z.number().min(0).max(1).optional().meta({
+        description: 'Pass when the answer scores at most this against every reference.',
+      }),
+    })
+    .refine((similar) => similar.min !== undefined || similar.max !== undefined, {
+      message: 'similar needs min or max: a threshold chosen for the case',
+    })
+    .refine((similar) => (similar.min ?? 0) <= (similar.max ?? 1), {
+      message: 'similar.min is above similar.max, so no answer could pass',
+    })
+    .meta({
+      description:
+        "How close the answer's wording must stay to reference answers, or how far from them, from 0 to 1: the cosine similarity of character trigrams, after the language pack's folding. Judged by answer-similarity (ADR-0030).",
+    }),
   schema: z.array(SchemaRule).min(1).meta({
     description:
       'JSON Schemas the response, or parts of it, must match, judged by json-schema (ADR-0030).',

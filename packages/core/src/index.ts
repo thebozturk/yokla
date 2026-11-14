@@ -204,6 +204,8 @@ export {
 export { piiInPrompt, promptBudget, promptLeak, untrustedInSystem } from './checks/inspection.ts';
 export { toolCalls, toolCallValid } from './checks/tools.ts';
 export { jsonSchemaCheck, MAX_VIOLATIONS } from './checks/schema.ts';
+export { answerSimilarity } from './checks/similarity.ts';
+export { textSimilarity } from './text/similarity.ts';
 export { CORE_CHECKS } from './checks/all.ts';
 export { modelCallOf } from './otel/genai.ts';
 export { readOtlpJson, readOtlpProtobuf, type AttributeValue, type OtlpSpan } from './otel/otlp.ts';

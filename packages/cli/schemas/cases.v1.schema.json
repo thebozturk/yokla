@@ -350,6 +350,37 @@
                       "pattern": "^[a-z]{2}$",
                       "description": "The language the answer must be in, judged by language-match (ADR-0018)."
                     },
+                    "similar": {
+                      "type": "object",
+                      "properties": {
+                        "to": {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "description": "The reference answers."
+                        },
+                        "min": {
+                          "description": "Pass when the answer scores at least this against one reference.",
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1
+                        },
+                        "max": {
+                          "description": "Pass when the answer scores at most this against every reference.",
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1
+                        }
+                      },
+                      "required": [
+                        "to"
+                      ],
+                      "additionalProperties": false,
+                      "description": "How close the answer's wording must stay to reference answers, or how far from them, from 0 to 1: the cosine similarity of character trigrams, after the language pack's folding. Judged by answer-similarity (ADR-0030)."
+                    },
                     "schema": {
                       "minItems": 1,
                       "type": "array",
@@ -881,6 +912,37 @@
                     "type": "string",
                     "pattern": "^[a-z]{2}$",
                     "description": "The language the answer must be in, judged by language-match (ADR-0018)."
+                  },
+                  "similar": {
+                    "type": "object",
+                    "properties": {
+                      "to": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "description": "The reference answers."
+                      },
+                      "min": {
+                        "description": "Pass when the answer scores at least this against one reference.",
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "max": {
+                        "description": "Pass when the answer scores at most this against every reference.",
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      }
+                    },
+                    "required": [
+                      "to"
+                    ],
+                    "additionalProperties": false,
+                    "description": "How close the answer's wording must stay to reference answers, or how far from them, from 0 to 1: the cosine similarity of character trigrams, after the language pack's folding. Judged by answer-similarity (ADR-0030)."
                   },
                   "schema": {
                     "minItems": 1,

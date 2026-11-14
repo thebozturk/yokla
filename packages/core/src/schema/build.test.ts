@@ -578,6 +578,42 @@ describe('JSON Schema rules (ADR-0030)', () => {
   });
 });
 
+const similarTurn = (similar: unknown) =>
+  caseFile.safeParse({
+    version: 1,
+    cases: [
+      { id: 'c', suite: 'quality', language: 'tr', turns: [{ user: 'x', expect: { similar } }] },
+    ],
+  });
+
+describe('similarity (ADR-0030)', () => {
+  it('takes references with min, max or both', () => {
+    for (const similar of [
+      { to: ['a'], min: 0.6 },
+      { to: ['a', 'b'], max: 0.5 },
+      { to: ['a'], min: 0.2, max: 0.9 },
+      { to: ['a'], min: 0, max: 1 },
+      { to: ['a'], min: 0.5, max: 0.5 },
+    ]) {
+      expect(similarTurn(similar).success, JSON.stringify(similar)).toBe(true);
+    }
+  });
+
+  it.each([
+    ['no bound', { to: ['a'] }, /needs min or max/u],
+    ['min above max', { to: ['a'], min: 0.8, max: 0.2 }, /no answer could pass/u],
+    ['no reference', { to: [], min: 0.5 }, /too_small|at least 1|>=1/u],
+    ['an empty reference', { to: [''], min: 0.5 }, /too_small|at least 1|>=1/u],
+    ['a bound above 1', { to: ['a'], min: 1.5 }, /too_big|<=1/u],
+    ['a bound below 0', { to: ['a'], max: -0.1 }, /too_small|>=0/u],
+    ['another key', { to: ['a'], min: 0.5, threshold: 1 }, /unrecognized/u],
+  ])('refuses %s', (_name, similar, message) => {
+    const parsed = similarTurn(similar);
+    expect(parsed.success).toBe(false);
+    expect(JSON.stringify(parsed.error?.issues)).toMatch(message);
+  });
+});
+
 describe('modelProxy.toolResults (ADR-0026)', () => {
   it('accepts collections that response.evidence maps, and refuses others, saying where', () => {
     expect(profile.safeParse(withChange(mapping('products'))).success).toBe(true);

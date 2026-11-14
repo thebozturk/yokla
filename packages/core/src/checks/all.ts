@@ -13,6 +13,7 @@ import {
 } from './generic.ts';
 import { piiInPrompt, promptBudget, promptLeak, untrustedInSystem } from './inspection.ts';
 import { jsonSchemaCheck } from './schema.ts';
+import { answerSimilarity } from './similarity.ts';
 import { toolCalls, toolCallValid } from './tools.ts';
 import type { Check } from './types.ts';
 
@@ -20,6 +21,7 @@ export const CORE_CHECKS: readonly Check[] = [
   routeExpected,
   answerText,
   jsonSchemaCheck,
+  answerSimilarity,
   evidenceCount,
   gracefulUnderFault,
   answeredWithinDeadline,
