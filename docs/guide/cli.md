@@ -58,7 +58,8 @@ the profile by hand (see
 | `--html <file>` | | Also write an HTML report. It holds the target's answers. |
 | `--config <file>` | `yokla.config.yaml`, when present | Prices and thresholds. |
 | `--proxy-url <url>` | `127.0.0.1` on `modelProxy.port` | Where the model proxy is. |
-| `--max-cost <usd>` | | Start no new sample once the model cost reaches this. Needs a proxy. |
+| `--max-cost <usd>` | | Start no new sample once the model cost, the target's and yokla's own, reaches this. Without a model proxy it caps yokla's own calls alone, and says the target's cost is unknown. |
+| `--fresh-customer` | | Ask the customer model anew, whatever its reply cache holds (ADR-0028). |
 
 It exits with `0` when every case ran, whatever the verdicts: the gate judges
 them. It exits with `2` for a configuration problem, or when a case ended in
@@ -109,6 +110,13 @@ gate:
 prices:
   openai:
     gpt-x: { input: 0.10, output: 0.50 }
+models:
+  customer:
+    kind: openai-compatible           # or anthropic
+    url: http://127.0.0.1:11434/v1    # a local model keeps the conversation on the machine
+    model: qwen2.5:7b
+    apiKeyEnv: CUSTOMER_API_KEY       # optional
+    price: { input: 0.15, output: 0.6 }
 plan:
   upperBoundFactor: 2
 ```
@@ -116,6 +124,18 @@ plan:
 - **`gate`:** the thresholds below, for every suite or per suite.
 - **`prices`:** per upstream id and model, in USD per million tokens (see the
   [model proxy](model-proxy.md#prices-and-cost)).
+- **`models.customer`:** the model that plays a simulated customer
+  (ADR-0028).
+  - **What it is:** OpenAI-compatible, whose url ends in the path before
+    `/chat/completions`, or Anthropic, whose url ends before `/messages`.
+  - **How yokla calls it:**
+    - directly, never through the model proxy;
+    - at `temperature` 0, with at most `maxTokens` (400);
+    - with the sample's seed where the provider takes one.
+  - **Its key** is read from `apiKeyEnv`.
+  - **Without a `price`,** its calls have no cost, never 0.
+  - **Privacy:** a hosted model receives the conversation, the target's
+    answers included.
 - **`plan.upperBoundFactor`:** what `yokla plan` multiplies its estimate by.
 
 ### Gate thresholds
@@ -187,3 +207,6 @@ pnpm yokla plan --cases cases --calibration runs/<run id>.json [--samples <n>] [
   their own calibration.
 - **Exit code `2`:** when the calibration can't support an estimate. It then
   says what is missing and gives no figure.
+- **Simulated customers** (ADR-0028) have no fixed turns. A sample costs what
+  one cost in the case's own calibration, the customer's calls included.
+  Without that calibration, the plan gives no figure.

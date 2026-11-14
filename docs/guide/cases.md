@@ -53,6 +53,56 @@ Each sample opens a new session and bypasses the target's cache (see the
 | `faults` | Provider faults the model proxy injects into this turn (below). |
 | `expect` | What the answer must satisfy (below). |
 
+## Simulated customers
+
+Instead of `turns`, a case can give a `customer`: a model plays a customer
+with a goal, and the target's answers decide where the conversation goes
+(ADR-0028). It needs `models.customer` in the
+[configuration file](cli.md#the-configuration-file).
+
+```yaml
+- id: tent-in-stock-to-cart-tr
+  suite: quality
+  language: tr
+  customer:
+    persona: İki kişi ilk kez kampa gidecek.
+    goal: 3.000 TL altında, stokta olan bir çadırı sepete eklemek.
+    opening: Merhaba, çadır bakıyorum.   # optional: the first message, as written
+    maxTurns: 4
+    reached:
+      evidence: { cart: { includes: [TNT-001] } }
+    expect: { answerable: true }         # for every answer
+```
+
+| Field | Meaning |
+|---|---|
+| `persona` | Who the customer is. |
+| `goal` | What the customer wants, in its own words. |
+| `opening` | The first message, sent as written. Without it, the customer writes it. |
+| `maxTurns` | The most answers the conversation may take, 1 to 20. |
+| `reached` | When the goal is reached: `route`, `answer` and `evidence`, judged from each answer as the expectations of those names. The conversation ends at the first answer that meets them. |
+| `expect` | Expectations for every answer of the conversation. |
+
+**How it is judged.**
+- Every turn is judged by every check, as in any case.
+- `goal-reached` judges the conversation: the goal was reached within
+  `maxTurns`.
+- The goal is reached by the answer's own evidence, never because the
+  customer says so.
+
+**Rules of the case.**
+- A case gives `turns` or a `customer`, never both.
+- The customer writes in Turkish or English.
+
+**Repeats.**
+- Each sample's seed is the case id and the sample number.
+- The customer's replies are cached in `yokla-data/customer/`. A rerun
+  repeats every message, at no cost, while the target answers the same.
+- `yokla run --fresh-customer` asks the model anew.
+
+**Privacy.** A hosted customer model receives the conversation, the target's
+answers included. A local model keeps it on the machine.
+
 ## Expectations
 
 Each expectation enables the check that judges it. A turn without

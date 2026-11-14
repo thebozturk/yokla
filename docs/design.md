@@ -143,10 +143,13 @@ yokla uses models in two distinct roles, and the design keeps them apart:
 
 - **The target's model calls.** yokla observes these through the proxy. It
   never makes them itself.
-- **yokla's own model use:** analysis, generation, attacks and judging. These
-  will go through a `ModelClient` with its own budget, using providers the
-  user configures, local models included. Up to v0.2, yokla makes no model
-  call of its own.
+- **yokla's own model use:** a simulated customer today (ADR-0028); analysis,
+  generation, attacks and judging later.
+  - These go through a `ModelClient` in `runtime`, using providers the user
+    configures in `yokla.config.yaml`, local models included, and never
+    through the model proxy.
+  - Their cost is counted apart from the target's, and `--max-cost` caps
+    both.
 
 ### Layers
 
@@ -621,12 +624,15 @@ ADR-0014 sets how cost and latency are bounded.
   - The upper bound is the estimate times `plan.upperBoundFactor`, 2 by
     default.
   - Without a usable calibration it gives no figure.
+  - A simulated customer's case is priced from its own calibration, the
+    customer's calls included (ADR-0028).
   - Counting calls from the profile, adding yokla's own generator, attacker
     and judge calls, and tuning the factor from past runs come later.
 - **`--max-cost`** is a hard cap. After each sample the runner totals the
-  recorded cost. Once the total reaches the cap, no new sample starts and the
-  results are marked partial. A recorded call without a cost makes the cap
-  unenforceable, so the run stops there too.
+  recorded cost, yokla's own calls included (ADR-0028). Once the total
+  reaches the cap, no new sample starts and the results are marked partial.
+  A call without a cost makes the cap unenforceable, so the run stops there
+  too. Without a model proxy, the cap counts yokla's own calls alone.
 - **Per-turn budgets** (`budget.costUsd`, `budget.modelCalls`) and per-suite
   thresholds (latency percentiles, cost per turn, total cost) judge what was
   spent (§16).
@@ -652,7 +658,11 @@ ADR-0014 sets how cost and latency are bounded.
 - **Target data.** Generated and recorded files may contain the target's data,
   so `yokla-data/` and `runs/` stay out of version control. `yokla init`
   adds them to `.gitignore` (ADR-0018). The HTML report holds the target's
-  answers too (ADR-0023).
+  answers too (ADR-0023), and so does the simulated customer's reply cache
+  in `yokla-data/customer/` (ADR-0028).
+- **yokla's own models.** A hosted model that plays the simulated customer
+  receives the conversation, the target's answers included. Configuring one
+  is the user's choice; a local model keeps it on the machine (ADR-0028).
 - **Untrusted downloads.** Downloaded datasets and attack corpora are treated
   as data and never executed.
 
@@ -752,6 +762,13 @@ adds the three resilience defects, caught with faults the model proxy injects,
 and the four inspection defects, caught in the prompts the proxy captures.
 v0.3 adds the two tool-call defects, caught in the tool calls the proxy reads
 (ADR-0025).
+
+**Simulated customers.** The demo-shop's fake provider also plays yokla's
+customer, by simple rules, at no cost (ADR-0028).
+- `cases-customer` holds three purchase goals.
+- The end-to-end test checks that each goal is reached and that every turn
+  passes the checks.
+- A second run repeats every conversation from the reply cache.
 
 **Acceptance.** With all defects off, every suite passes. Turning each defect on
 breaks exactly the expected checks. This is a system-level mutation test, and it

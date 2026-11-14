@@ -217,6 +217,23 @@ pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml \
     open.
   - `x-cache-bypass` goes with the handshake.
   - The acceptance end-to-end test also runs over it (ADR-0024).
+- **A cart.** After products were shown, a message that asks to put one in
+  the cart, such as "ilkini sepete ekler misin?" or "add the Headlamp 200 lm
+  to my cart", adds the product it names, or else the first one shown, to
+  the session's cart.
+  - The answer lists the cart, and the JSON answer carries it as
+    `data.cart`, which the profile maps as the evidence `cart`.
+  - With the model over HTTP, the interpret call asks for it as
+    `add_to_cart` (ADR-0028).
+- **A simulated customer.** The fake provider also plays yokla's customer
+  (ADR-0028), at no cost.
+  - It recognises the prompt by its first line, `yokla: simulated customer`.
+  - It asks for the goal, then puts the first product of the answer that is
+    in stock and within the goal's price in the cart, or else asks for
+    something cheaper.
+  - `cases-customer/` holds three purchase goals.
+  - `packages/cli/src/customer.e2e.test.ts` runs them twice: the second run
+    repeats every conversation from the cache.
 
 The proxy end-to-end test (`packages/cli/src/proxy.e2e.test.ts`) tests the
 demo-shop this way too: with a session it issues, answers as events and a

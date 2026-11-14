@@ -34,6 +34,12 @@ cost, resilience and regression gates, in one run.
   reads the tool calls each model call asks for. A case can say which tools
   must and must not be called, with what arguments, in what order and how
   often (ADR-0025).
+- **Plays a customer with a goal.** On the main branch, a case can give a
+  persona and a goal instead of fixed turns. A model of your choice, local or
+  hosted, plays the customer, the deterministic checks judge every answer,
+  and the goal counts as reached only when the answer shows it, such as a
+  product in the cart. Replies are cached, so a rerun repeats the
+  conversation (ADR-0028).
 - **Budgets cost and latency.** Per turn and per suite; `yokla plan`
   estimates a run's cost before it runs, and `--max-cost` caps it.
 - **Grounds expectations in your data.** The e-commerce pack joins the returned
@@ -94,8 +100,8 @@ target with seeded defects. Its README walks through a full run.
   one message to your assistant, with starter cases that suit any assistant),
   an HTML report (done on the main branch), and publishing to npm; more ways
   to reach a target and see its model calls (WebSocket, done on the main
-  branch; Gemini, OpenTelemetry), tool-call checks, and a simulated customer
-  that shops with a goal.
+  branch; Gemini, OpenTelemetry), tool-call checks and a simulated customer
+  that shops with a goal (both done on the main branch).
 - **v0.4:** an analyzer that reads your code, API contract, prompts, data
   schema and docs, and writes a profile for you to review.
 - **v0.5:** red teaming with local attack generation, mapped to OWASP, GDPR
