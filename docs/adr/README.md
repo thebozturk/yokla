@@ -39,7 +39,7 @@ old one.
 | [0024](0024-websocket-targets.md) | WebSocket targets | Accepted |
 | [0025](0025-tool-calls.md) | Tool calls: what the proxy reads, and the checks on them | Accepted |
 | [0026](0026-evidence-from-tool-results.md) | Evidence from the tool results the model saw | Accepted |
-| [0027](0027-a-product-named-by-the-start-of-its-name.md) | A product named by the start of its name | Proposed |
+| [0027](0027-a-product-named-by-the-start-of-its-name.md) | A product named by the start of its name | Accepted |
 
 ## Template
 

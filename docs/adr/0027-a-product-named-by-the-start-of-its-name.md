@@ -1,6 +1,6 @@
 # 0027. A product named by the start of its name
 
-Status: Proposed · Date: 2026-11-14
+Status: Accepted · Date: 2026-11-14
 
 ## Context
 
