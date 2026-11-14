@@ -38,6 +38,7 @@ old one.
 | [0023](0023-static-html-report.md) | A static HTML report | Accepted |
 | [0024](0024-websocket-targets.md) | WebSocket targets | Accepted |
 | [0025](0025-tool-calls.md) | Tool calls: what the proxy reads, and the checks on them | Accepted |
+| [0026](0026-evidence-from-tool-results.md) | Evidence from the tool results the model saw | Proposed |
 
 ## Template
 
