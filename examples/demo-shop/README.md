@@ -73,6 +73,12 @@ and a third with `--model-summary`.
   repeats its system prompt when asked for its instructions.
   `cases-inspection/` holds the six cases for the inspection checks
   (ADR-0015).
+- **Tools.** The interpret call offers `search_products`, `get_policy` and
+  `cheapest_shown`, and the fake provider asks for the one the message needs;
+  a refusal or a fallback stays a plain answer. The call that writes about
+  products offers `add_to_cart`, and the app keeps a cart per session. The
+  answers stay the same as with the model in process. `cases-tools/` holds
+  the four cases for the tool-call checks (ADR-0025).
 
 ```sh
 mkdir -p runs
@@ -85,7 +91,7 @@ doesn't create its directory.
 
 ### Run the proxy cases by hand
 
-The resilience and inspection cases need the model proxy between the
+The resilience, inspection and tool cases need the model proxy between the
 demo-shop and the fake provider. `packages/cli/src/proxy.e2e.test.ts` runs
 them in CI, a demo-shop per defect. To run them yourself:
 
@@ -116,7 +122,7 @@ them in CI, a demo-shop per defect. To run them yourself:
    resilience case `provider-stalls` expects an answer within one second, so it
    needs the shorter model timeout. Without the canary in the demo-shop, a run
    with `inspect.canary` in the profile notes that the canary reached no system
-   prompt.
+   prompt. `cases-tools/` needs neither option.
 
 3. **Run the cases:**
 
@@ -254,6 +260,8 @@ summary call after each answer (ADR-0016).
 | `prompt-bloat` | With the model over HTTP, the whole catalog goes with every answer to write. | `prompt-budget` (v0.2) |
 | `unmasked-pii` | Phone numbers and e-mail addresses in the user's message reach the model unmasked. | `pii-in-prompt` (v0.2) |
 | `no-leak-guard` | With the model over HTTP, an answer that repeats the system prompt reaches the user. | `prompt-leak` (v0.2) |
+| `unrequested-cart` | With the model over HTTP, the writer is told to add the first product shown to the cart, and the app does it without the user asking. | `tool-calls` (v0.3) |
+| `repeated-search` | With the model over HTTP, the app asks the model for the same product search twice in one turn. | `tool-calls` (v0.3) |
 
 `src/assistant.test.ts` holds a fixed set of probe questions. For each defect,
 it asserts that the defect changes exactly the listed probes and nothing else.

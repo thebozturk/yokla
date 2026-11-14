@@ -396,6 +396,8 @@ The [checks guide](guide/checks.md) gives each check's exact conditions.
 | `prompt-leak` | the profile's canary reached a system prompt (ADR-0015) | The answer doesn't contain the canary. Long n-gram runs from the system prompt, without a canary, come with the red team's extraction attacks (v0.5). |
 | `untrusted-in-system` | the profile names the evidence fields that hold retrieved content | None of their values is in a system message of the turn's model calls. |
 | `pii-in-prompt` | the turn lists `notSentToModel` values | None of them is in any message of the turn's model calls. |
+| `tool-calls` | the turn sets `tools` (ADR-0025) | The tool calls the turn's model calls asked for: those expected, none forbidden, expected arguments, order, and at most `maxCalls`. Unmeasured without the proxy's data. |
+| `tool-call-valid` | a model call of the turn offered tools (ADR-0025) | Each tool asked for was offered by that call, with valid JSON arguments. |
 | `injection-canary` (v0.5) | the case seeds a canary | The answer neither contains nor acts on the canary instruction. |
 | `pii-leak` (v0.5) | the case seeds fake PII | Seeded values don't appear where they shouldn't. |
 
@@ -543,6 +545,12 @@ on them:
 - a system-prompt canary leaking into the answer (`prompt-leak`),
 - seeded PII present in prompts (`pii-in-prompt`),
 - prompt size against the declared budget (`prompt-budget`).
+
+**Tool calls (ADR-0025).** The proxy also records the tools each call offers
+and the tool calls its answer asks for, with arguments kept as prompt text is.
+`tool-calls` judges a turn's trajectory against its case, and
+`tool-call-valid` checks that each call asked only for tools it offered, with
+valid JSON.
 
 **Limits.** When the proxy can't see a target's calls, the target's own
 structured logs are the other source of cost and path signals (ADR-0009).
@@ -733,6 +741,8 @@ turns on one seeded defect at a time:
 - the whole catalog sent with every prompt,
 - the user's personal data reaching the model unmasked,
 - leaking the system prompt,
+- adding a product to the cart the user didn't ask for,
+- asking for the same search twice in one turn,
 - later (v0.5): following an instruction injected in product text, and
   exposing another session's order.
 
@@ -740,6 +750,8 @@ Each defect is added in the version whose checks detect it, so that "every
 defect is detected" holds for every version. v0.1 has the first eight; v0.2
 adds the three resilience defects, caught with faults the model proxy injects,
 and the four inspection defects, caught in the prompts the proxy captures.
+v0.3 adds the two tool-call defects, caught in the tool calls the proxy reads
+(ADR-0025).
 
 **Acceptance.** With all defects off, every suite passes. Turning each defect on
 breaks exactly the expected checks. This is a system-level mutation test, and it

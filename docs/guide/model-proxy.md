@@ -162,9 +162,31 @@ The inspection checks read the captured text in memory, whatever is stored:
 
 See [checks](checks.md#prompt-inspection-adr-0015).
 
+## Tool calls
+
+For every call, the proxy also records:
+- the names of the tools the request offered;
+- the tool calls the model's answer asked for, in order (ADR-0025).
+
+**Where they're read.**
+- Chat completions, the Responses API and Anthropic Messages.
+- JSON answers and event streams; a streamed call's pieces are joined.
+
+**What is kept.**
+- **Names** are always kept.
+- **Arguments** are kept as `prompts.store` keeps text: `sizes` keeps their
+  length, `hashed` adds a hash, and `redacted` and `full` keep the text.
+- **The checks** read the full arguments in memory.
+
+**Unreadable answers.** An answer the proxy can't read gives no list, so
+`tool-calls` and `tool-call-valid` say they couldn't measure. A call that got
+no answer asked for nothing.
+
+Cases state what they expect with `tools` (see [cases](cases.md)).
+
 ## Privacy
 
 The proxy listens on `127.0.0.1` only. It forwards each call to the upstream
 the profile names, and nowhere else. A path under `/_yokla/` is never
-forwarded. Records never hold a credential or another header. Prompt text
-leaves memory only as `prompts.store` allows.
+forwarded. Records never hold a credential or another header. Prompt text,
+and tool-call arguments, leave memory only as `prompts.store` allows.

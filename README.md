@@ -30,6 +30,10 @@ cost, resilience and regression gates, in one run.
   prompt, retrieved content in the system message, personal data that should
   never reach the model, and prompts over budget. Results keep only message
   sizes unless the profile asks for more.
+- **Checks the tools your assistant calls.** On the main branch, the proxy
+  reads the tool calls each model call asks for. A case can say which tools
+  must and must not be called, with what arguments, in what order and how
+  often (ADR-0025).
 - **Budgets cost and latency.** Per turn and per suite; `yokla plan`
   estimates a run's cost before it runs, and `--max-cost` caps it.
 - **Grounds expectations in your data.** The e-commerce pack joins the returned

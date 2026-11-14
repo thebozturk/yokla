@@ -46,6 +46,22 @@ Without proxy data, or when a prompt couldn't be read, an inspection is
 unmeasured; a failure found in the readable prompts still fails. Findings name
 the call, the role and the value, never the prompt text.
 
+### Tool calls (ADR-0025)
+
+These read the tool calls the proxy saw the turn's model calls ask for, in the
+order the calls started.
+
+| Check | Dimension | Applies when | Judges |
+|---|---|---|---|
+| `tool-calls` | tool-use | the turn sets `tools` | Each tool in `called` was asked for, none in `notCalled` was, some call of each tool in `args` has those argument values, the tools in `order` came in that order, and there were at most `maxCalls` tool calls. |
+| `tool-call-valid` | tool-use | a model call of the turn offered tools | Every tool a call asked for was offered by that same call, and its arguments are valid JSON. Empty arguments count as none. |
+
+- **Unmeasured, not passed.** A trajectory yokla didn't see is unmeasured:
+  - no proxy data for the turn;
+  - an answer whose tool calls the proxy couldn't read.
+- **What a finding says.** It names the tool and the case's expected values,
+  never the arguments the target sent.
+
 ## E-commerce checks
 
 These read the `products` evidence collection and the profile's `ecommerce`

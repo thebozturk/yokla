@@ -72,6 +72,7 @@ check does and when it doesn't apply.
 | `budget.costUsd`, `budget.modelCalls` | The most the turn's model calls may cost, and how many there may be. Needs the model proxy. | `cost-budget` |
 | `budget.inputTokens` | The most input tokens any one model call of the turn may send. | `prompt-budget` |
 | `notSentToModel` | Seeded values, such as fake personal data, that must appear in no message of the turn's model calls. | `pii-in-prompt` |
+| `tools` | What the turn's model calls must and must not ask of tools: `called`, `notCalled`, `args` (per tool, a dotted path into its arguments and the value it must have), `order` and `maxCalls`. Needs the model proxy (ADR-0025). | `tool-calls` |
 | `filters` | The filters the user asked for: `maxPrice`, `minPrice`, and `attributes` (evidence field → value). | `filter-honoured-or-disclosed` |
 | `productType` | The product type or types asked for, as catalog types. A type under one of them, by `typeSeparator`, matches. | `type-matched-or-disclosed` |
 | `absentType` | The type asked for is not in the catalog. | `absence-correct` |
