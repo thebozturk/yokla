@@ -1366,3 +1366,109 @@ describe('the products the model saw in tool results (ADR-0026)', () => {
     });
   });
 });
+
+/** Each finding as its verdict and the product it is about. */
+function about(outcome: CheckOutcome): string[] {
+  return outcome.applicable
+    ? outcome.findings.map(
+        (f) => `${f.verdict} ${String(Reflect.get(Object(f.evidence), 'product'))}`,
+      )
+    : [];
+}
+
+describe('a product named by the start of its name (ADR-0027)', () => {
+  const check = stockClaim(data());
+  const espresso = {
+    id: 'AR-1002',
+    name: 'ACME Signature 15-Bar Espresso Machine with Steam Wand',
+    inStock: false,
+  };
+  const drip = {
+    id: 'AR-1001',
+    name: 'ACME Everyday 12-Cup Programmable Drip Coffee Maker',
+    inStock: true,
+  };
+  const run = (text: string, products: EvidenceItem[], seen: EvidenceItem[] = []) =>
+    check.run(checkContext(seenTurn(text, products, seen), { lang: fakeEnglish }));
+  const SHORT =
+    'The closest espresso machine is the ACME Signature 15-Bar at $329, which is currently out of stock. The ACME Everyday 12-Cup drip maker is in stock at $79.';
+
+  it('ties each claim to the product its shortened name starts', () => {
+    expect(about(run(SHORT, [drip, espresso]))).toEqual(['pass AR-1002', 'pass AR-1001']);
+    // Swapped claims fail, on the right products.
+    const swapped = SHORT.replace('currently out of stock', 'in stock').replace(
+      'is in stock at',
+      'is out of stock at',
+    );
+    expect(about(run(swapped, [drip, espresso]))).toEqual(['fail AR-1002', 'fail AR-1001']);
+  });
+
+  it('needs more words where products share a start, and two words at least', () => {
+    const makers = [
+      { id: 'M1', name: 'ACME Makers Coding Robot Kit', inStock: true },
+      { id: 'M2', name: 'ACME Makers Kids Scooter', inStock: false },
+    ];
+    expect(about(run('The ACME Makers Coding robot is in stock.', makers))).toEqual(['pass M1']);
+    // "ACME Makers" is shared: it names neither, so the claim is about every returned product.
+    expect(about(run('ACME Makers toys are in stock.', makers))).toEqual(['pass M1', 'fail M2']);
+    // One word never names a product by its start.
+    expect(about(run('The ACME is sold out.', [espresso, makers[0] ?? espresso]))).toEqual([
+      'pass AR-1002',
+      'fail M1',
+    ]);
+  });
+
+  it('names a name of one or two words only in full', () => {
+    const products = [
+      { id: 'A', name: 'Lantern', inStock: true },
+      { id: 'B', name: 'Camp Stove', inStock: false },
+    ];
+    // "The Camp" names neither: the claim is about every returned product, in their order.
+    expect(about(run('The Camp is sold out. The Lantern is in stock.', products))).toEqual([
+      'fail A',
+      'pass B',
+      'pass A',
+    ]);
+  });
+
+  it('lets a full name win over the start of another, and over its own start', () => {
+    const products = [
+      { id: 'S', name: 'Kubbe Çadır', inStock: true },
+      { id: 'L', name: 'Kubbe Çadır 2 Kişilik Ultra', inStock: false },
+    ];
+    expect(about(run('The Kubbe Çadır 2 Kişilik Ultra is sold out.', products))).toEqual([
+      'pass L',
+    ]);
+    expect(about(run('The Kubbe Çadır 2 Kişilik is sold out.', products))).toEqual(['pass L']);
+    expect(about(run('The Kubbe Çadır is in stock.', products))).toEqual(['pass S']);
+  });
+
+  it('takes a start only as whole words, and a repeated product as one name', () => {
+    const products = [
+      { id: 'S', name: 'Camp Stove Pro', inStock: false },
+      { id: 'L', name: 'Lantern Bright', inStock: true },
+    ];
+    // "Camp stoves" doesn't start "Camp Stove Pro": the claim names no product.
+    expect(about(run('Camp stoves are sold out.', products))).toEqual(['pass S', 'fail L']);
+    expect(about(run('The Camp Stove is sold out.', products))).toEqual(['pass S']);
+    // A product listed twice doesn't share its start with itself.
+    expect(
+      about(run('The ACME Signature 15-Bar is sold out.', [espresso, espresso, drip])),
+    ).toEqual(['pass AR-1002']);
+  });
+
+  it('counts the products the model saw when telling starts apart', () => {
+    const twin = { id: 'AR-1003', name: 'ACME Signature 9-Bar Espresso Machine', inStock: true };
+    // Seen, the twin shares "ACME Signature": the third word tells them apart.
+    expect(about(run('The ACME Signature 15-Bar is sold out.', [espresso], [twin]))).toEqual([
+      'pass AR-1002',
+    ]);
+    expect(about(run('The ACME Signature line is sold out.', [espresso], [twin]))).toEqual([
+      'pass AR-1002',
+    ]);
+    expect(about(run('The ACME Signature line is sold out.', [espresso, drip], [twin]))).toEqual([
+      'pass AR-1002',
+      'fail AR-1001',
+    ]);
+  });
+});

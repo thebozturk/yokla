@@ -74,24 +74,43 @@ export function withoutStockWording(folded: string, language: string): string {
   return result;
 }
 
+/** The shortest start of a name, two words or more, that no other name shares (ADR-0027). */
+function uniqueStart(
+  own: readonly string[],
+  others: readonly (readonly string[])[],
+): string | undefined {
+  for (let length = 2; length < own.length; length += 1) {
+    const start = own.slice(0, length).join(' ');
+    if (!others.some((other) => other.slice(0, length).join(' ') === start)) return start;
+  }
+  return undefined;
+}
+
 /**
- * Where product names occur in folded text, as whole words. Where names
- * overlap ("Kubbe Çadır" inside "Kubbe Çadır 2 Kişilik"), the longest wins.
+ * Where products are named in folded text, as whole words: by their full name,
+ * or by the shortest start of it, two words or more, that no other of these
+ * products shares (ADR-0027). Where mentions overlap ("Kubbe Çadır" inside
+ * "Kubbe Çadır 2 Kişilik"), the longest wins.
  */
 export function namedProducts<T extends { readonly name: string | undefined }>(
   folded: string,
   products: readonly T[],
   fold: (text: string) => string,
 ): { product: T; start: number; end: number }[] {
-  const matches = products.flatMap((product) =>
-    product.name === undefined
-      ? []
-      : findPhrases(folded, [`${fold(product.name)}$`]).map((m) => ({
-          product,
-          start: m.start,
-          end: m.end,
-        })),
+  const names = products.map((product) =>
+    product.name === undefined ? undefined : fold(product.name),
   );
+  const words = names.map((name) => name?.split(/\s+/u).filter((word) => word !== '') ?? []);
+  const matches = products.flatMap((product, index) => {
+    const name = names[index];
+    if (name === undefined) return [];
+    // Another product with the same name doesn't make its start shared.
+    const others = words.filter((_other, at) => names[at] !== undefined && names[at] !== name);
+    const start = uniqueStart(words[index] ?? [], others);
+    return findPhrases(folded, [`${name}$`, ...(start === undefined ? [] : [`${start}$`])]).map(
+      (m) => ({ product, start: m.start, end: m.end }),
+    );
+  });
   return matches.filter(
     (match) =>
       !matches.some(
