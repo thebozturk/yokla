@@ -8,7 +8,15 @@
 // neverFabricate topic left out, can back no claim. A profile that lists none
 // gives the check nothing to judge a claim against.
 
-import { findPhrases, type Check, type CheckFinding, type LanguagePack } from '@yokla/core';
+import {
+  findPhrases,
+  type Check,
+  type CheckFinding,
+  type DurationMention,
+  type FindingSubject,
+  type LanguagePack,
+  type MoneyMention,
+} from '@yokla/core';
 import type { EcommerceData } from '../data.ts';
 import { POLICY_TOPIC_PHRASES } from '../lexicon.ts';
 import { FACT_KINDS } from '../schema.ts';
@@ -19,6 +27,11 @@ interface Claims {
   readonly free: boolean;
   readonly amounts: number[];
   readonly raw: string[];
+  readonly mentions: {
+    readonly durations: readonly DurationMention[];
+    readonly money: readonly MoneyMention[];
+    readonly free: readonly string[];
+  };
 }
 
 function claimsIn(text: string, lang: LanguagePack): Claims {
@@ -30,7 +43,33 @@ function claimsIn(text: string, lang: LanguagePack): Claims {
     free: free.length > 0,
     amounts: money.map((m) => m.amount),
     raw: [...durations.map((d) => d.raw), ...money.map((m) => m.raw), ...free.map((f) => f.phrase)],
+    mentions: { durations, money, free: free.map((f) => f.phrase) },
   };
+}
+
+/**
+ * The first unsupported claim, as the value a failing finding is about
+ * (ADR-0033): a duration, else an amount, else the "free" wording.
+ */
+function subjectOf(claims: Claims, unsupported: readonly string[]): FindingSubject | undefined {
+  const duration = claims.mentions.durations.find((d) =>
+    unsupported.includes(`${String(d.amount)} ${d.unit}`),
+  );
+  if (duration !== undefined) {
+    return { kind: 'duration', amount: duration.amount, unit: duration.unit };
+  }
+  const money = claims.mentions.money.find((m) => unsupported.includes(String(m.amount)));
+  if (money !== undefined) {
+    return {
+      kind: 'money',
+      amount: money.amount,
+      ...(money.currency === undefined ? {} : { currency: money.currency }),
+    };
+  }
+  const free = claims.mentions.free[0];
+  return free !== undefined && unsupported.includes('free')
+    ? { kind: 'text', text: free }
+    : undefined;
 }
 
 function isFactKind(topic: string): boolean {
@@ -104,6 +143,15 @@ export function policyClaim(data: EcommerceData): Check {
           continue;
         }
         const sourced = verdicts.find((v) => v.sourced);
+        // Without a source, every claim is unsupported: the first one is the subject.
+        const subject = subjectOf(
+          claims,
+          sourced?.unsupported ?? [
+            ...claims.durations,
+            ...claims.amounts.map(String),
+            ...(claims.free ? ['free'] : []),
+          ],
+        );
         findings.push({
           dimension: 'fabrication',
           verdict: 'fail',
@@ -116,6 +164,7 @@ export function policyClaim(data: EcommerceData): Check {
             topic: (sourced ?? verdicts[0])?.topic ?? null,
             unsupported: sourced?.unsupported ?? claims.raw,
           },
+          ...(subject === undefined ? {} : { subject }),
         });
       }
 

@@ -9,7 +9,7 @@
 // - A model call's prompt is shown by role and size only (ADR-0015).
 
 import { CASE_STATUSES, type Results } from '@yokla/core';
-import { counted, observedTotals, round } from './format.ts';
+import { counted, observedTotals, round, withOrigin } from './format.ts';
 import { xmlText } from './junit.ts';
 import { caseProblems, caseReason, dimensionSummary, type CaseResult } from './problems.ts';
 
@@ -284,7 +284,7 @@ function checkRows(check: CheckResult): Html[] {
   const name = h`<code>${check.check}</code>`;
   const rows = check.findings.map(
     (finding) =>
-      h`<tr><td>${name}</td><td>${badge(finding.verdict, VERDICT_TONE[finding.verdict] ?? 'muted')}</td><td>${finding.dimension}</td><td>${finding.severity}</td><td>${finding.message}${
+      h`<tr><td>${name}</td><td>${badge(finding.verdict, VERDICT_TONE[finding.verdict] ?? 'muted')}</td><td>${finding.dimension}</td><td>${finding.severity}</td><td>${withOrigin(finding)}${
         finding.evidence === undefined
           ? undefined
           : h`<details><summary>evidence</summary>${json(finding.evidence)}</details>`

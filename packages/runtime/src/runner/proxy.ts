@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 import {
   callCost,
   type SpanCall,
+  storeOutput,
   storePrompt,
   storeToolCalls,
   type PromptStorage,
@@ -80,6 +81,7 @@ export function attributeCalls<K>(
       ...(record.prompt === undefined ? {} : { prompt: record.prompt }),
       ...(record.tools === undefined ? {} : { tools: record.tools }),
       ...(record.toolCalls === undefined ? {} : { toolCalls: record.toolCalls }),
+      ...(record.output === undefined ? {} : { output: record.output }),
     });
   }
 
@@ -139,6 +141,8 @@ export function storeTurnProxy(proxy: TurnProxy, storage: PromptStorage): TurnPr
       ...(call.toolCalls === undefined
         ? {}
         : { toolCalls: storeToolCalls(call.toolCalls, storage, sha256) }),
+      // The model's answer text is kept as prompt text is (ADR-0033).
+      ...(call.output === undefined ? {} : { output: storeOutput(call.output, storage, sha256) }),
     })),
   };
 }

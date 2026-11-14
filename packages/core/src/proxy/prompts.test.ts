@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { PromptMessage, ToolCall } from '../schema/proxy.ts';
-import { redact, REDACTED, storePrompt, storeToolCalls, type PromptStorage } from './prompts.ts';
+import {
+  redact,
+  REDACTED,
+  storeOutput,
+  storePrompt,
+  storeToolCalls,
+  type PromptStorage,
+} from './prompts.ts';
 
 const prompt: PromptMessage[] = [
   { role: 'system', chars: 9, text: 'Be brief.' },
@@ -107,5 +114,34 @@ describe('storePrompt keeps the tool a result answers (ADR-0026)', () => {
         'search_products',
       );
     }
+  });
+});
+
+describe('storeOutput (ADR-0033)', () => {
+  const output = { chars: 21, text: 'Ara: 0532 111 22 33 x' };
+
+  it('keeps the length only with sizes, the hash with hashed, and the text too with full', () => {
+    expect(storeOutput(output, { store: 'sizes' }, hash)).toEqual({ chars: 21 });
+    expect(storeOutput(output, { store: 'hashed' }, hash)).toEqual({
+      chars: 21,
+      sha256: `#${output.text}`,
+    });
+    expect(storeOutput(output, { store: 'full' }, hash)).toEqual({
+      chars: 21,
+      sha256: `#${output.text}`,
+      text: output.text,
+    });
+  });
+
+  it('keeps redacted text and no hash with redacted', () => {
+    expect(storeOutput(output, { store: 'redacted', redact: ['[0-9 ]{10,}'] }, hash)).toEqual({
+      chars: 21,
+      text: `Ara:${REDACTED}x`,
+    });
+  });
+
+  it('keeps an unknown answer unknown, and an answer without text at its size', () => {
+    expect(storeOutput(null, { store: 'full' }, hash)).toBeNull();
+    expect(storeOutput({ chars: 4 }, { store: 'full' }, hash)).toEqual({ chars: 4 });
   });
 });

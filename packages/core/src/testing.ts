@@ -46,7 +46,7 @@ export function turnView(
 
 /** A model call as checks see it, for check tests: 100 input tokens, an empty prompt. */
 export function proxyCall(change: Partial<ProxyCallView> = {}): ProxyCallView {
-  return { inputTokens: 100, prompt: [], offered: [], toolCalls: [], ...change };
+  return { inputTokens: 100, prompt: [], offered: [], toolCalls: [], output: '', ...change };
 }
 
 /** `count` model calls as checks see them, for check tests. */

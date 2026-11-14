@@ -68,6 +68,23 @@ export const ToolCall = z.object({
 });
 export type ToolCall = z.output<typeof ToolCall>;
 
+/**
+ * The text a model answered (ADR-0033). The proxy hands the runner the text;
+ * what is written to files depends on the profile's `prompts.store`.
+ */
+export const ModelOutput = z.object({
+  /** The length of the text, in UTF-16 code units. */
+  chars: z.int().nonnegative(),
+  /** The SHA-256 of the text, in hex: kept with `hashed` and `full`. */
+  sha256: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/u)
+    .optional(),
+  /** The text, or with `redacted` the text with matches of the profile's patterns replaced. */
+  text: z.string().optional(),
+});
+export type ModelOutput = z.output<typeof ModelOutput>;
+
 /** A model call read from an OpenTelemetry span (ADR-0029). */
 export const SpanCall = z.object({
   /** The W3C trace id, in hex: it ties the call to a turn. */
@@ -112,5 +129,7 @@ export const ProxyRecord = z.object({
   tools: z.array(z.string()).nullable().optional(),
   /** The tool calls the model asked for, in order (ADR-0025); null when the answer couldn't be read. */
   toolCalls: z.array(ToolCall).nullable().optional(),
+  /** The text the model answered (ADR-0033); null when the answer couldn't be read. */
+  output: ModelOutput.nullable().optional(),
 });
 export type ProxyRecord = z.output<typeof ProxyRecord>;

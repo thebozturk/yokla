@@ -52,14 +52,25 @@ type RuleSource = 'turn' | 'profile';
 
 const FROM_PROFILE = ', which no answer may (everyAnswer)';
 
-/** A finding of answer-text. */
-function finding(pass: boolean, message: string, evidence?: JsonValue): CheckFinding {
+/**
+ * A finding of answer-text. A failure over forbidden text names that text as
+ * its subject, so core can tell where it came from (ADR-0033).
+ */
+function finding(
+  pass: boolean,
+  message: string,
+  evidence?: JsonValue,
+  forbidden?: string,
+): CheckFinding {
   return {
     dimension: 'answer-content',
     verdict: pass ? 'pass' : 'fail',
     severity: 'medium',
     message,
     ...(evidence === undefined ? {} : { evidence }),
+    ...(pass || forbidden === undefined || forbidden.trim() === ''
+      ? {}
+      : { subject: { kind: 'text', text: forbidden } }),
   };
 }
 
@@ -92,6 +103,7 @@ export const answerText: Check = {
           !found,
           found ? `contains "${phrase}"${which}` : `doesn't contain "${phrase}"`,
           from === 'profile' ? { rule: 'notContains', phrase, from } : undefined,
+          phrase,
         ),
       );
     }
@@ -127,6 +139,7 @@ export const answerText: Check = {
             from,
             ...(match === null ? {} : { match: quoted(match[0]) }),
           },
+          match?.[0],
         ),
       );
     }

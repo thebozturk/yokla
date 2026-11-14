@@ -110,6 +110,16 @@ export function geminiToolCalls(
   });
 }
 
+/** The text the answers give: their text parts, thought summaries left out (ADR-0033). */
+export function geminiText(answers: readonly unknown[]): string {
+  return answerParts(answers)
+    .flatMap((part) => {
+      const text = str(at(part, 'text'));
+      return text === undefined || at(part, 'thought') === true ? [] : [text];
+    })
+    .join('');
+}
+
 /** The names of the tools a request offers: function declarations, and built-in tools by key. */
 export function geminiOffered(tools: unknown): string[] {
   return list(tools).flatMap((tool) => {

@@ -746,3 +746,73 @@ describe('htmlReport (ADR-0023)', () => {
     await expect(htmlReport(rich)).toMatchFileSnapshot('./__snapshots__/report.html');
   });
 });
+
+type Origin = NonNullable<TurnResult['checks'][number]['findings'][number]['origin']>;
+
+function traced(origin: Origin): Results {
+  return results([
+    kase('tent-price', 'fail', {
+      dimensions: [dimension('fabrication')],
+      samples: [
+        {
+          index: 0,
+          cache: 'cold',
+          turns: [
+            turn({
+              checks: [
+                {
+                  check: 'price-grounded',
+                  applicable: true,
+                  findings: [
+                    {
+                      dimension: 'fabrication',
+                      verdict: 'fail',
+                      severity: 'high',
+                      message: '"1.169,10 TL" is not the price of any returned product',
+                      subject: { kind: 'money', amount: 1169.1, currency: 'TRY' },
+                      origin,
+                    },
+                  ],
+                },
+              ],
+            }),
+          ],
+        },
+      ],
+    }),
+  ]);
+}
+
+function line(origin: Origin): string {
+  return terminalSummary(traced(origin)).out[1] ?? '';
+}
+
+describe('the origin of a finding (ADR-0033)', () => {
+  it('says each stage in words, counting calls from 1', () => {
+    expect(
+      line({ stage: 'input', call: 1, role: 'tool', tool: 'search_products', match: 'money' }),
+    ).toContain('; origin: what the model was sent (call 2, tool search_products)');
+    expect(line({ stage: 'input', call: 0, role: 'system', match: 'number' })).toContain(
+      '; origin: what the model was sent (call 1, system message, as a bare number)',
+    );
+    expect(line({ stage: 'model', call: 0, match: 'money' })).toContain(
+      '; origin: the model (call 1)',
+    );
+    expect(line({ stage: 'app' })).toContain('; origin: the app');
+    expect(line({ stage: 'app', reason: 'the turn made no model call' })).toContain(
+      '; origin: the app (the turn made no model call)',
+    );
+    expect(line({ stage: 'unknown', reason: 'no model proxy data for this turn' })).toContain(
+      '; origin: unknown (no model proxy data for this turn)',
+    );
+  });
+
+  it('shows it in JUnit and in the HTML report, and nothing for a finding without one', () => {
+    const run = traced({ stage: 'model', call: 0, match: 'money' });
+    expect(junitXml(run)).toContain(
+      'price-grounded (fabrication): "1.169,10 TL" is not the price of any returned product; origin: the model (call 1)',
+    );
+    expect(htmlReport(run)).toContain('origin: the model (call 1)');
+    expect(junitXml(mixed)).not.toContain('origin:');
+  });
+});

@@ -115,6 +115,7 @@ export {
   isSafeCredentialUrl,
 } from './schema/profile.ts';
 export {
+  ModelOutput,
   PromptMessage,
   PromptRole,
   PromptStore,
@@ -128,6 +129,7 @@ export { callCost } from './proxy/cost.ts';
 export {
   redact,
   REDACTED,
+  storeOutput,
   storePrompt,
   storeToolCalls,
   type PromptStorage,
@@ -171,6 +173,9 @@ export {
   CheckSummary,
   DimensionResult,
   Finding,
+  FindingOrigin,
+  FindingSubject,
+  ORIGIN_STAGES,
   Results,
   RESULTS_SCHEMA_ID,
   Sample,
@@ -180,6 +185,7 @@ export {
 
 export { aggregateCase, summariseChecks, wilson, type CaseAggregate } from './checks/aggregate.ts';
 export { runChecks } from './checks/run.ts';
+export { findOrigin } from './checks/origin.ts';
 export type {
   UnmeasuredDimension,
   AggregationPolicy,

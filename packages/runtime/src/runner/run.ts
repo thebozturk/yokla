@@ -1133,6 +1133,8 @@ function judgeCase(
         prompt: promptView(call.prompt),
         offered: call.tools ?? null,
         toolCalls: toolCallsView(call.toolCalls),
+        // The text the model answered, when the proxy read it (ADR-0033).
+        output: call.output?.text ?? null,
       }));
       // A turn without proxy calls is judged on the calls its spans showed, which carry no
       // prompts or tool calls (ADR-0029).
@@ -1143,6 +1145,7 @@ function judgeCase(
             prompt: null,
             offered: null,
             toolCalls: null,
+            output: null,
           }))
         : proxyCalls;
       // What the model saw in the results of the tools the profile maps (ADR-0026).

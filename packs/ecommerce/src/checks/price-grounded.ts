@@ -208,6 +208,12 @@ export function priceGrounded(data: EcommerceData): Check {
             currency: mention.currency ?? null,
             raw: mention.raw,
           },
+          // Where the amount came from: what the model was sent, the model, or the app (ADR-0033).
+          subject: {
+            kind: 'money',
+            amount: mention.amount,
+            ...(mention.currency === undefined ? {} : { currency: mention.currency }),
+          },
         });
       }
       if (findings.length === 0) {

@@ -2,6 +2,7 @@
 // finding: the run goes on, and the case reports the error.
 
 import type { Results } from '../schema/results.ts';
+import { findOrigin } from './origin.ts';
 import type { Check, CheckContext } from './types.ts';
 
 type CheckResult = Results['cases'][number]['samples'][number]['turns'][number]['checks'][number];
@@ -24,6 +25,10 @@ export function runChecks(checks: readonly Check[], context: CheckContext): Chec
             severity: finding.severity,
             message: finding.message,
             ...(finding.evidence === undefined ? {} : { evidence: finding.evidence }),
+            // Where the value a failure is about first appears (ADR-0033).
+            ...(finding.subject === undefined || finding.verdict !== 'fail'
+              ? {}
+              : { subject: finding.subject, origin: findOrigin(context, finding.subject) }),
           })),
           ...(outcome.unmeasured === undefined || outcome.unmeasured.length === 0
             ? {}

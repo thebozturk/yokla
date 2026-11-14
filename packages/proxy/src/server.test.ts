@@ -584,8 +584,9 @@ describe('startProxy faults', () => {
     ).body.toString('utf8');
     expect(emptied).not.toContain('Mer');
     expect(emptied).toContain('[DONE]');
+    // The usage is the provider's; the answer text is what the app got (ADR-0033).
     expect(empty.records).toMatchObject([
-      { usage: { input: 3, output: 2 }, fault: { applied: true } },
+      { usage: { input: 3, output: 2 }, fault: { applied: true }, output: { chars: 0, text: '' } },
     ]);
     const cut = await armed(up, 'c', {
       inFlight: true,
@@ -981,6 +982,7 @@ describe('startProxy with a gemini upstream (ADR-0032)', () => {
         ],
         tools: ['search_products'],
         toolCalls: [],
+        output: { chars: 7, text: 'Merhaba' },
       })),
     );
     expect(JSON.stringify(records)).not.toContain('AIza-secret');

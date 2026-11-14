@@ -3,7 +3,14 @@
 
 import { z } from 'zod';
 import { Id, LanguageCode, Suite } from './common.ts';
-import { PromptMessage, PromptStore, ProxyUsage, ToolCall } from './proxy.ts';
+import {
+  ModelOutput,
+  PromptMessage,
+  PromptRole,
+  PromptStore,
+  ProxyUsage,
+  ToolCall,
+} from './proxy.ts';
 
 export const RESULTS_SCHEMA_ID = 'yokla.results/v1';
 
@@ -20,12 +27,52 @@ export const CASE_STATUSES = [
 ] as const;
 export const CaseStatus = z.enum(CASE_STATUSES);
 
+/** The value a failing finding is about, taken from the answer (ADR-0033). */
+export const FindingSubject = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('money'),
+    amount: z.number(),
+    currency: z.string().optional(),
+  }),
+  z.object({
+    kind: z.literal('duration'),
+    amount: z.number(),
+    unit: z.enum(['day', 'week', 'month', 'year']),
+  }),
+  z.object({ kind: z.literal('text'), text: z.string().min(1) }),
+]);
+export type FindingSubject = z.output<typeof FindingSubject>;
+
+export const ORIGIN_STAGES = ['input', 'model', 'app', 'unknown'] as const;
+
+/**
+ * Where a finding's subject first appears (ADR-0033): in what the model was
+ * sent, in what it answered, only in the app's answer, or unknown. Names and
+ * positions only: it never quotes prompt or answer text.
+ */
+export const FindingOrigin = z.object({
+  stage: z.enum(ORIGIN_STAGES),
+  /** The call's position among the turn's model calls, from 0. */
+  call: z.int().nonnegative().optional(),
+  /** For `input`, the role of the message that holds the value. */
+  role: PromptRole.optional(),
+  /** For `input` in a tool result, the tool it answers (ADR-0026). */
+  tool: z.string().optional(),
+  /** How the value was found: `number` is a bare number in JSON, weaker than `money`. */
+  match: z.enum(['money', 'number', 'duration', 'text']).optional(),
+  /** For `unknown`, why; for `app`, set when the turn made no model call. */
+  reason: z.string().optional(),
+});
+export type FindingOrigin = z.output<typeof FindingOrigin>;
+
 export const Finding = z.object({
   dimension: Id,
   verdict: z.enum(['pass', 'fail', 'error']),
   severity: Severity,
   message: z.string(),
   evidence: z.json().optional(),
+  subject: FindingSubject.optional(),
+  origin: FindingOrigin.optional(),
 });
 
 export const CheckResult = z.object({
@@ -92,6 +139,8 @@ export const TurnResult = z.object({
           tools: z.array(z.string()).nullable().optional(),
           /** The tool calls the model asked for, kept as `prompts` keeps text (ADR-0025). */
           toolCalls: z.array(ToolCall).nullable().optional(),
+          /** The text the model answered, kept as `prompts` keeps text (ADR-0033). */
+          output: ModelOutput.nullable().optional(),
         }),
       ),
       /** The sum of the calls' cost; null when any call has none. */

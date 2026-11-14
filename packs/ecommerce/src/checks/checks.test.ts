@@ -1472,3 +1472,44 @@ describe('a product named by the start of its name (ADR-0027)', () => {
     ]);
   });
 });
+
+function subjects(outcome: CheckOutcome) {
+  return outcome.applicable ? outcome.findings.map((f) => f.subject ?? null) : [];
+}
+
+function priceSubjects(text: string) {
+  return subjects(
+    priceGrounded(data()).run(checkContext(answer(text, tents, 'çadır'), { lang: fakeTurkish })),
+  );
+}
+
+function policySubjects(text: string) {
+  return subjects(policyClaim(withPolicies).run(checkContext(answer(text), { lang: fakeTurkish })));
+}
+
+describe('the subject of a failing finding (ADR-0033)', () => {
+  it('price-grounded names each ungrounded amount, and no grounded one', () => {
+    expect(priceSubjects(honest)).toEqual([null]);
+    expect(priceSubjects(mutate(honest, (t) => t.replace('899,50 TL', '809,55 TL')))).toEqual([
+      { kind: 'money', amount: 809.55, currency: 'TRY' },
+    ]);
+  });
+
+  it('policy-claim names the first unsupported claim: a duration, an amount, or "free"', () => {
+    const run = policySubjects;
+    expect(run(RETURNS_TR)).toEqual([null]);
+    expect(run(mutate(RETURNS_TR, (t) => t.replace('14 gün', '30 gün')))).toEqual([
+      { kind: 'duration', amount: 30, unit: 'day' },
+    ]);
+    expect(run('Ürünleri 14 gün içinde ücretsiz iade edebilirsiniz.')).toEqual([
+      { kind: 'text', text: 'ucretsiz' },
+    ]);
+    expect(run('İade ve garanti için 59,90 TL ödenir.')).toEqual([
+      { kind: 'money', amount: 59.9, currency: 'TRY' },
+    ]);
+    // A topic without a source supports nothing: its first claim is the subject.
+    expect(run('Kargo 3 gün içinde ücretsiz.')).toEqual([
+      { kind: 'duration', amount: 3, unit: 'day' },
+    ]);
+  });
+});

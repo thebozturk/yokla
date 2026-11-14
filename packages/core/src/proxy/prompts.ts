@@ -9,7 +9,7 @@
 // Core is pure, so the caller supplies the hash function.
 
 import type { ModelProxyConfig } from '../schema/profile.ts';
-import type { PromptMessage, ToolCall } from '../schema/proxy.ts';
+import type { ModelOutput, PromptMessage, ToolCall } from '../schema/proxy.ts';
 
 export type PromptStorage = ModelProxyConfig['prompts'];
 
@@ -67,4 +67,26 @@ export function storeToolCalls(
         return { ...sized, sha256: sha256(text), arguments: text };
     }
   });
+}
+
+/** A model's answer text as `storage` keeps it, as it keeps prompt text (ADR-0033). */
+export function storeOutput(
+  output: ModelOutput | null,
+  storage: PromptStorage,
+  sha256: (text: string) => string,
+): ModelOutput | null {
+  if (output === null) return null;
+  const { chars, text } = output;
+  const sized = { chars };
+  if (text === undefined) return sized;
+  switch (storage.store) {
+    case 'sizes':
+      return sized;
+    case 'hashed':
+      return { ...sized, sha256: sha256(text) };
+    case 'redacted':
+      return { ...sized, text: redact(text, storage.redact ?? []) };
+    case 'full':
+      return { ...sized, sha256: sha256(text), text };
+  }
 }

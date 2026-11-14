@@ -8,6 +8,7 @@ import type { DomainPackSchemas } from '../schema/build.ts';
 import type { Case } from '../schema/cases.ts';
 import type { Profile } from '../schema/profile.ts';
 import type { PromptRole } from '../schema/proxy.ts';
+import type { FindingSubject } from '../schema/results.ts';
 
 export type FindingSeverity = 'info' | 'low' | 'medium' | 'high' | 'critical';
 
@@ -17,6 +18,11 @@ export interface CheckFinding {
   readonly severity: FindingSeverity;
   readonly message: string;
   readonly evidence?: JsonValue;
+  /**
+   * The value a failing finding is about, taken from the answer. Core works
+   * out where it first appears (ADR-0033).
+   */
+  readonly subject?: FindingSubject;
 }
 
 /** A threshold the check couldn't measure on this turn (ADR-0014). */
@@ -107,6 +113,8 @@ export interface ProxyCallView {
   readonly offered: readonly string[] | null;
   /** The tool calls the model asked for, with their arguments' text; null when unknown. */
   readonly toolCalls: readonly { readonly name: string; readonly arguments: string }[] | null;
+  /** The text the model answered; null when unknown (ADR-0033). */
+  readonly output: string | null;
 }
 
 /** A money amount mentioned in text, e.g. "1.299,90 TL". */

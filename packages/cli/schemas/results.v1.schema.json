@@ -852,6 +852,34 @@
                                       "type": "null"
                                     }
                                   ]
+                                },
+                                "output": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "chars": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 9007199254740991
+                                        },
+                                        "sha256": {
+                                          "type": "string",
+                                          "pattern": "^[0-9a-f]{64}$"
+                                        },
+                                        "text": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "chars"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
                                 }
                               },
                               "required": [
@@ -1109,6 +1137,123 @@
                                   },
                                   "evidence": {
                                     "$ref": "#/$defs/__schema3"
+                                  },
+                                  "subject": {
+                                    "oneOf": [
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "kind": {
+                                            "type": "string",
+                                            "const": "money"
+                                          },
+                                          "amount": {
+                                            "type": "number"
+                                          },
+                                          "currency": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "kind",
+                                          "amount"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "kind": {
+                                            "type": "string",
+                                            "const": "duration"
+                                          },
+                                          "amount": {
+                                            "type": "number"
+                                          },
+                                          "unit": {
+                                            "type": "string",
+                                            "enum": [
+                                              "day",
+                                              "week",
+                                              "month",
+                                              "year"
+                                            ]
+                                          }
+                                        },
+                                        "required": [
+                                          "kind",
+                                          "amount",
+                                          "unit"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "kind": {
+                                            "type": "string",
+                                            "const": "text"
+                                          },
+                                          "text": {
+                                            "type": "string",
+                                            "minLength": 1
+                                          }
+                                        },
+                                        "required": [
+                                          "kind",
+                                          "text"
+                                        ],
+                                        "additionalProperties": false
+                                      }
+                                    ]
+                                  },
+                                  "origin": {
+                                    "type": "object",
+                                    "properties": {
+                                      "stage": {
+                                        "type": "string",
+                                        "enum": [
+                                          "input",
+                                          "model",
+                                          "app",
+                                          "unknown"
+                                        ]
+                                      },
+                                      "call": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 9007199254740991
+                                      },
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "system",
+                                          "user",
+                                          "assistant",
+                                          "tool",
+                                          "input"
+                                        ]
+                                      },
+                                      "tool": {
+                                        "type": "string"
+                                      },
+                                      "match": {
+                                        "type": "string",
+                                        "enum": [
+                                          "money",
+                                          "number",
+                                          "duration",
+                                          "text"
+                                        ]
+                                      },
+                                      "reason": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "stage"
+                                    ],
+                                    "additionalProperties": false
                                   }
                                 },
                                 "required": [

@@ -42,6 +42,7 @@ import {
 } from './faults.ts';
 import { geminiFacts } from './gemini.ts';
 import { readPrompt } from './prompts.ts';
+import { readOutputText } from './output.ts';
 import { readOffered, readToolCalls } from './tools.ts';
 import { readUsage, UNMEASURED, type UpstreamKind } from './usage.ts';
 
@@ -431,7 +432,7 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
       encoding: string | undefined,
       stream: boolean,
       error?: string,
-      extra: { usage?: ProxyUsage; forwarded?: false; applied?: boolean } = {},
+      extra: { usage?: ProxyUsage; forwarded?: false; applied?: boolean; answered?: string } = {},
     ) => {
       if (open === undefined || recording !== open) return;
       const raw = overflow ? undefined : decoded(Buffer.concat(captured), encoding);
@@ -444,6 +445,8 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
       const path = rest.split('?')[0] ?? '';
       const sent = decoded(body, request.headers['content-encoding']);
       const asked = readToolCalls(upstream.kind, raw, stream, status);
+      // What the app got: the changed answer, when a fault changed it (ADR-0033).
+      const output = readOutputText(upstream.kind, extra.answered ?? raw, stream, status);
       const record: ProxyRecord = {
         id: randomUUID(),
         upstream: upstream.id,
@@ -475,6 +478,8 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
                 chars: call.arguments.length,
                 arguments: call.arguments,
               })),
+        // The text the model answered, read as its prompt is (ADR-0033).
+        output: output === null ? null : { chars: output.length, text: output },
       };
       open.records.push(record);
       options.onRecord?.(record);
@@ -550,7 +555,10 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
               'content-length': out.length,
             });
             response.end(out);
-            finish(status, encoding, stream, undefined, { applied: changed.applied });
+            finish(status, encoding, stream, undefined, {
+              applied: changed.applied,
+              ...(changed.body === undefined ? {} : { answered: changed.body }),
+            });
           });
           upstreamResponse.on('error', (error) => {
             response.destroy(error);

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Profile } from '../schema/profile.ts';
 import { checkContext, mutate, proxyCalls, stubLanguagePack, turnView } from '../testing.ts';
 import {
   answeredWithinDeadline,
@@ -209,6 +210,17 @@ describe('answer-text patterns (ADR-0030)', () => {
   });
 });
 
+/** The subjects of answer-text's findings on `text`, with one forbidden phrase in the turn (ADR-0033). */
+function forbiddenSubjects(text: string, profile: Profile) {
+  const outcome = answerText.run(
+    checkContext(
+      turnView({ response: { text }, expect: { answer: { notContains: ['iç sunucu'] } } }),
+      { profile },
+    ),
+  );
+  return outcome.applicable ? outcome.findings.map((f) => f.subject ?? null) : [];
+}
+
 describe("answer-text with the profile's everyAnswer (ADR-0030)", () => {
   const profile = {
     ...checkContext(turnView()).profile,
@@ -238,7 +250,18 @@ describe("answer-text with the profile's everyAnswer (ADR-0030)", () => {
           from: 'profile',
           match: 'undefined',
         },
+        subject: { kind: 'text', text: 'undefined' },
       },
+    ]);
+  });
+
+  it('names the forbidden text as the subject of a failure, never of a pass (ADR-0033)', () => {
+    expect(forbiddenSubjects('Merhaba', profile)).toEqual([null, null, null]);
+    const mutated = mutate('Merhaba', (t) => `${t}, iç sunucu: undefined, stack trace`);
+    expect(forbiddenSubjects(mutated, profile)).toEqual([
+      { kind: 'text', text: 'iç sunucu' },
+      { kind: 'text', text: 'stack trace' },
+      { kind: 'text', text: 'undefined' },
     ]);
   });
 

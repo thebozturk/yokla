@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { appendFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { storePrompt, storeToolCalls, type ProxyRecord } from '@yokla/core';
+import { storeOutput, storePrompt, storeToolCalls, type ProxyRecord } from '@yokla/core';
 import { startProxy } from '@yokla/proxy';
 import { LoadError, loadProfile } from '../load.ts';
 import type { Output } from './run.ts';
@@ -93,8 +93,9 @@ export async function proxyCommand(
         ? {}
         : {
             onRecord: (record: ProxyRecord) => {
-              // The file keeps of each prompt, and of each tool call's arguments, what the
-              // profile's prompts.store keeps (ADR-0015, ADR-0025).
+              // The file keeps of each prompt, of each tool call's arguments and of the
+              // model's answer what the profile's prompts.store keeps (ADR-0015, ADR-0025,
+              // ADR-0033).
               const stored = {
                 ...record,
                 ...(record.prompt === undefined
@@ -103,6 +104,9 @@ export async function proxyCommand(
                 ...(record.toolCalls === undefined
                   ? {}
                   : { toolCalls: storeToolCalls(record.toolCalls, config.prompts, sha256) }),
+                ...(record.output === undefined
+                  ? {}
+                  : { output: storeOutput(record.output, config.prompts, sha256) }),
               };
               appendFileSync(records, `${JSON.stringify(stored)}\n`);
             },

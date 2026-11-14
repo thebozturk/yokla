@@ -3,6 +3,7 @@
 // advisory ones, and the errors of its turns and checks.
 
 import type { Results } from '@yokla/core';
+import { withOrigin } from './format.ts';
 
 export type CaseResult = Results['cases'][number];
 
@@ -57,7 +58,8 @@ export function caseProblems(c: CaseResult): CaseProblems {
             turn,
             check: check.check,
             dimension: finding.dimension,
-            message: finding.message,
+            // Where the value it is about came from, when known (ADR-0033).
+            message: withOrigin(finding),
           };
           if (deciding.has(finding.dimension)) found.deciding.push(problem);
           else if (advisory.has(finding.dimension)) found.advisory.push(problem);
