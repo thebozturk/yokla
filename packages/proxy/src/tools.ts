@@ -6,6 +6,7 @@
 // can't read gives null, never an empty list, so a check that needs it says it
 // couldn't measure. A call that got no answer asked for nothing.
 
+import { geminiAnswers, geminiOffered, geminiToolCalls } from './gemini.ts';
 import { sseEvents, type UpstreamKind } from './usage.ts';
 
 export interface AskedTool {
@@ -43,12 +44,13 @@ function toolName(tool: unknown): string | undefined {
  * The names of the tools a request offers; [] when it offers none, null when
  * the body can't be read.
  */
-export function readOffered(body: string | undefined): string[] | null {
+export function readOffered(kind: UpstreamKind, body: string | undefined): string[] | null {
   if (body === undefined) return null;
   if (body.trim() === '') return [];
   try {
     const value: unknown = JSON.parse(body);
     if (!isObject(value)) return null;
+    if (kind === 'gemini') return geminiOffered(value['tools']);
     const tools = [...list(value['tools']), ...list(value['functions'])];
     return tools.map(toolName).filter((name): name is string => name !== undefined);
   } catch {
@@ -182,6 +184,10 @@ export function readToolCalls(
 ): AskedTool[] | null {
   if (status === null || status < 200 || status > 299) return [];
   if (body === undefined) return null;
+  if (kind === 'gemini') {
+    const answers = geminiAnswers(body, stream, sseEvents);
+    return answers === undefined ? null : geminiToolCalls(answers);
+  }
   if (stream) {
     const events = sseEvents(body);
     if (events.length === 0) return null;

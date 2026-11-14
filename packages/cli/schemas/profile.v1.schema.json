@@ -1957,8 +1957,10 @@
                 "type": "string",
                 "enum": [
                   "openai-compatible",
-                  "anthropic"
-                ]
+                  "anthropic",
+                  "gemini"
+                ],
+                "description": "The provider's API: OpenAI-compatible, Anthropic's Messages, or Gemini's native API on AI Studio or Vertex AI (ADR-0032)."
               },
               "upstream": {
                 "type": "string",

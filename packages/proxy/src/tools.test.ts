@@ -9,6 +9,7 @@ describe('readOffered (ADR-0025)', () => {
   it('names the tools of chat completions, the Responses API and Anthropic', () => {
     expect(
       readOffered(
+        'openai-compatible',
         json({
           tools: [
             { type: 'function', function: { name: 'search_products', parameters: {} } },
@@ -20,20 +21,24 @@ describe('readOffered (ADR-0025)', () => {
     ).toEqual(['search_products', 'add_to_cart', 'legacy_lookup']);
     expect(
       readOffered(
+        'openai-compatible',
         json({ tools: [{ type: 'function', name: 'get_policy' }, { type: 'web_search' }] }),
       ),
     ).toEqual(['get_policy', 'web_search']);
-    expect(readOffered(json({ tools: [{ name: 'lookup_order', input_schema: {} }] }))).toEqual([
-      'lookup_order',
-    ]);
+    expect(
+      readOffered(
+        'openai-compatible',
+        json({ tools: [{ name: 'lookup_order', input_schema: {} }] }),
+      ),
+    ).toEqual(['lookup_order']);
   });
 
   it('gives [] for a request without tools, and null for one it cannot read', () => {
-    expect(readOffered(json({ messages: [] }))).toEqual([]);
-    expect(readOffered('')).toEqual([]);
-    expect(readOffered('{')).toBeNull();
-    expect(readOffered('[1]')).toBeNull();
-    expect(readOffered(undefined)).toBeNull();
+    expect(readOffered('openai-compatible', json({ messages: [] }))).toEqual([]);
+    expect(readOffered('openai-compatible', '')).toEqual([]);
+    expect(readOffered('openai-compatible', '{')).toBeNull();
+    expect(readOffered('openai-compatible', '[1]')).toBeNull();
+    expect(readOffered('openai-compatible', undefined)).toBeNull();
   });
 });
 

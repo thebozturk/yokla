@@ -875,3 +875,114 @@ describe('startProxy OpenTelemetry spans (ADR-0029)', () => {
     }
   });
 });
+
+describe('startProxy with a gemini upstream (ADR-0032)', () => {
+  it('records the model from the path, a stream, and no key from the query', async () => {
+    const seen: Received[] = [];
+    const server: Server = createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on('data', (chunk: Buffer) => chunks.push(chunk));
+      req.on('end', () => {
+        seen.push({
+          method: req.method,
+          url: req.url,
+          headers: req.headers,
+          body: Buffer.concat(chunks).toString('utf8'),
+        });
+        const usageMetadata = {
+          promptTokenCount: 7,
+          candidatesTokenCount: 3,
+          thoughtsTokenCount: 2,
+        };
+        if ((req.url ?? '').includes(':streamGenerateContent')) {
+          res.writeHead(200, { 'content-type': 'text/event-stream' });
+          res.end(
+            `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: 'Mer' }] } }] })}\r\n\r\n` +
+              `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: 'haba' }] } }], usageMetadata })}\r\n\r\n`,
+          );
+          return;
+        }
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            candidates: [{ content: { parts: [{ text: 'Merhaba' }] } }],
+            usageMetadata,
+          }),
+        );
+      });
+    });
+    await new Promise<void>((resolve) => {
+      server.listen(0, '127.0.0.1', resolve);
+    });
+    closers.push(
+      () =>
+        new Promise<void>((resolve) => {
+          server.closeAllConnections();
+          server.close(() => {
+            resolve();
+          });
+        }),
+    );
+    const address = server.address();
+    const port = typeof address === 'object' && address !== null ? address.port : 0;
+    const records: ProxyRecord[] = [];
+    const running = await startProxy({
+      port: 0,
+      upstreams: [{ id: 'gemini', kind: 'gemini', upstream: `http://127.0.0.1:${String(port)}` }],
+      onRecord: (record) => records.push(record),
+    });
+    closers.push(() => running.close());
+    await call(running, 'POST', '/_yokla/recordings');
+    const body = JSON.stringify({
+      systemInstruction: { parts: [{ text: 'Kısa yaz' }] },
+      contents: [{ role: 'user', parts: [{ text: 'Merhaba' }] }],
+      tools: [{ functionDeclarations: [{ name: 'search_products' }] }],
+    });
+    const json = await call(
+      running,
+      'POST',
+      '/gemini/v1beta/models/gemini-2.5-flash:generateContent?key=AIza-secret',
+      body,
+      { 'content-type': 'application/json' },
+    );
+    expect(json.status).toBe(200);
+    const streamed = await call(
+      running,
+      'POST',
+      '/gemini/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse',
+      body,
+      { 'content-type': 'application/json', 'x-goog-api-key': 'AIza-secret' },
+    );
+    expect(streamed.body.toString('utf8')).toContain('haba');
+    // The key reached the provider, in the query and the header, as the app sent it.
+    expect(seen.map((received) => received.url)).toEqual([
+      '/v1beta/models/gemini-2.5-flash:generateContent?key=AIza-secret',
+      '/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse',
+    ]);
+    expect(seen[1]?.headers['x-goog-api-key']).toBe('AIza-secret');
+    expect(records.map((record) => ({ ...record, id: '', startedAt: '', durationMs: 0 }))).toEqual(
+      [false, true].map((stream) => ({
+        id: '',
+        upstream: 'gemini',
+        kind: 'gemini',
+        method: 'POST',
+        path: `/v1beta/models/gemini-2.5-flash:${stream ? 'streamGenerateContent' : 'generateContent'}`,
+        model: 'gemini-2.5-flash',
+        startedAt: '',
+        durationMs: 0,
+        status: 200,
+        stream,
+        usage: { input: 7, output: 5, cachedInput: null, cacheWrite: null, reasoning: 2 },
+        trace: null,
+        mark: null,
+        prompt: [
+          { role: 'system', chars: 8, text: 'Kısa yaz' },
+          { role: 'user', chars: 7, text: 'Merhaba' },
+        ],
+        tools: ['search_products'],
+        toolCalls: [],
+      })),
+    );
+    expect(JSON.stringify(records)).not.toContain('AIza-secret');
+  });
+});

@@ -60,6 +60,7 @@ async function provider(
 
 const model = (url: string, change: Partial<OwnModel> = {}): OwnModel => ({
   kind: 'openai-compatible',
+  auth: 'api-key',
   url,
   model: 'customer-1',
   temperature: 0,

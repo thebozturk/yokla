@@ -3,6 +3,7 @@
 // the changes to a real answer that empty it, break it or cut it short.
 
 import type { Fault, FaultPlan } from '@yokla/core';
+import { geminiBreakToolCalls, geminiEmptyText, geminiError } from './gemini.ts';
 import type { UpstreamKind } from './usage.ts';
 
 export type ChangingFault = Extract<
@@ -80,6 +81,7 @@ export function jitter(seed: string, max: number): number {
 /** An error body in the shape the provider uses, so the app parses it as it would a real one. */
 export function errorBody(kind: UpstreamKind, status: 429 | 500 | 503): string {
   const message = `the model proxy injected a ${String(status)} (a yokla fault)`;
+  if (kind === 'gemini') return geminiError(status, message);
   if (kind === 'anthropic') {
     const type =
       status === 429 ? 'rate_limit_error' : status === 503 ? 'overloaded_error' : 'api_error';
@@ -109,6 +111,7 @@ function emptyText(kind: UpstreamKind, value: unknown): boolean {
     }
   };
   if (!isObject(value)) return false;
+  if (kind === 'gemini') return geminiEmptyText(value);
   if (kind === 'anthropic') {
     for (const part of list(value['content']))
       if (isObject(part) && part['type'] === 'text') clear(part, 'text');
@@ -131,6 +134,7 @@ function emptyText(kind: UpstreamKind, value: unknown): boolean {
 function breakToolCalls(kind: UpstreamKind, value: unknown): boolean {
   let changed = false;
   if (!isObject(value)) return false;
+  if (kind === 'gemini') return geminiBreakToolCalls(value, BROKEN_ARGUMENTS);
   if (kind === 'anthropic') {
     for (const part of list(value['content'])) {
       if (isObject(part) && part['type'] === 'tool_use') {
@@ -209,6 +213,18 @@ export function changeAnswer(
       };
     }
     case 'empty-content': {
+      // A Gemini stream may be a JSON array of answers rather than events.
+      if (stream && kind === 'gemini' && body.trim().startsWith('[')) {
+        try {
+          const answers: unknown = JSON.parse(body);
+          const changed = Array.isArray(answers)
+            ? answers.map((answer: unknown) => geminiEmptyText(answer)).some(Boolean)
+            : false;
+          return changed ? { body: JSON.stringify(answers), applied: true } : unchanged;
+        } catch {
+          return unchanged;
+        }
+      }
       if (stream) {
         const rewritten = rewriteEvents(body, (value) => emptyText(kind, value));
         return { body: rewritten.body, applied: rewritten.changed };

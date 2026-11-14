@@ -2939,6 +2939,7 @@ const shopper = (change: Record<string, unknown> = {}) => ({
 const customerConfig = (url: string) => ({
   customer: {
     kind: 'openai-compatible' as const,
+    auth: 'api-key' as const,
     url,
     model: 'customer-1',
     temperature: 0,

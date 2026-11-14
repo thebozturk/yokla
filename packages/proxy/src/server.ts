@@ -40,6 +40,7 @@ import {
   nextFault,
   type ArmedTurn,
 } from './faults.ts';
+import { geminiFacts } from './gemini.ts';
 import { readPrompt } from './prompts.ts';
 import { readOffered, readToolCalls } from './tools.ts';
 import { readUsage, UNMEASURED, type UpstreamKind } from './usage.ts';
@@ -413,7 +414,8 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
     const base = new URL(upstream.upstream);
     const startedAt = new Date();
     const started = performance.now();
-    const facts = requestFacts(body);
+    // Gemini names the model and the streaming method in the path (ADR-0032).
+    const facts = upstream.kind === 'gemini' ? geminiFacts(rest) : requestFacts(body);
     const trace = request.headers['x-yokla-trace'];
     const captured: Buffer[] = [];
     let capturedBytes = 0;
@@ -464,7 +466,7 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
         // What the call sent to the model, read only for an open recording (ADR-0015).
         prompt: readPrompt(upstream.kind, path, sent),
         // The tools it offered, and the calls the model asked for (ADR-0025).
-        tools: readOffered(sent),
+        tools: readOffered(upstream.kind, sent),
         toolCalls:
           asked === null
             ? null

@@ -151,7 +151,17 @@
               "type": "string",
               "enum": [
                 "openai-compatible",
-                "anthropic"
+                "anthropic",
+                "gemini"
+              ]
+            },
+            "auth": {
+              "default": "api-key",
+              "description": "For gemini: the key in x-goog-api-key, or as an Authorization bearer token, as Vertex AI takes it (ADR-0032). The other kinds send it in their own header.",
+              "type": "string",
+              "enum": [
+                "api-key",
+                "bearer"
               ]
             },
             "url": {

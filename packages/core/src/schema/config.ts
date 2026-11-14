@@ -60,7 +60,11 @@ export type Price = z.output<typeof Price>;
 
 /** A model yokla calls itself, such as the simulated customer's (ADR-0028). */
 const OwnModel = z.strictObject({
-  kind: z.enum(['openai-compatible', 'anthropic']),
+  kind: z.enum(['openai-compatible', 'anthropic', 'gemini']),
+  auth: z.enum(['api-key', 'bearer']).default('api-key').meta({
+    description:
+      'For gemini: the key in x-goog-api-key, or as an Authorization bearer token, as Vertex AI takes it (ADR-0032). The other kinds send it in their own header.',
+  }),
   url: z
     .url({ protocol: /^https?$/u })
     .meta({ description: 'The base url, e.g. http://127.0.0.1:11434/v1 for a local model.' }),

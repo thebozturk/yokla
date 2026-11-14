@@ -86,7 +86,7 @@ export type SpanCall = z.output<typeof SpanCall>;
 export const ProxyRecord = z.object({
   id: z.string().min(1),
   upstream: Id,
-  kind: z.enum(['openai-compatible', 'anthropic']),
+  kind: z.enum(['openai-compatible', 'anthropic', 'gemini']),
   method: z.string().min(1),
   /** The path below the upstream base URL, without the query. */
   path: z.string(),

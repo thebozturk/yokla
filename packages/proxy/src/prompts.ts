@@ -7,6 +7,7 @@
 // (ADR-0026).
 
 import type { PromptMessage, PromptRole } from '@yokla/core';
+import { geminiPrompt } from './gemini.ts';
 import type { UpstreamKind } from './usage.ts';
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -173,6 +174,7 @@ export function readPrompt(
   try {
     const value: unknown = JSON.parse(body);
     if (!isObject(value)) return null;
+    if (kind === 'gemini') return geminiPrompt(value);
     const messages = value['messages'];
     if (kind === 'anthropic') return Array.isArray(messages) ? anthropic(value, messages) : null;
     if (Array.isArray(messages)) return chat(messages);
