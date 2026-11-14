@@ -112,9 +112,11 @@ export function goalReached(
   context: Omit<CheckContext, 'turn'> & { readonly turn: TurnView },
 ): boolean {
   const turn = { ...context.turn, expect: { ...reached } };
+  // The goal is what `reached` says: the profile's rules for every answer are judged apart.
+  const { everyAnswer: _every, ...profile } = context.profile;
   let applied = 0;
   for (const check of REACHED_CHECKS) {
-    const outcome = check.run({ ...context, turn });
+    const outcome = check.run({ ...context, profile, turn });
     // These checks judge the answer alone, so none leaves a dimension unmeasured.
     if (!outcome.applicable) continue;
     if (outcome.findings.some((finding) => finding.verdict !== 'pass')) return false;

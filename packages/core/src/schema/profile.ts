@@ -2,7 +2,7 @@
 // Everything specific to a target is configuration here, never code (P9).
 
 import { z } from 'zod';
-import { FieldName, FieldPath, Id, JsonPath, LanguageCode, Provenance } from './common.ts';
+import { FieldName, FieldPath, Id, JsonPath, LanguageCode, Pattern, Provenance } from './common.ts';
 import { PromptStore } from './proxy.ts';
 
 /** A command run locally as an argument list, never through a shell. */
@@ -394,6 +394,24 @@ const Capability = z.strictObject({
 });
 
 /** Profile fields that don't depend on packs. */
+/** Rules no answer may break, in any case (ADR-0030). */
+const EveryAnswer = z
+  .strictObject({
+    notContains: z.array(z.string().min(1)).min(1).optional().meta({
+      description: "Phrases no answer may contain, after the language pack's folding.",
+    }),
+    notMatches: z.array(Pattern).min(1).optional().meta({
+      description: 'Regular expressions no answer may match, as it came.',
+    }),
+  })
+  .refine((rules) => rules.notContains !== undefined || rules.notMatches !== undefined, {
+    message: 'everyAnswer needs notContains or notMatches',
+  })
+  .meta({
+    description:
+      'Rules every turn with a usable answer is held to, in every case, judged by answer-text (ADR-0030).',
+  });
+
 export const profileShape = {
   version: z.literal(1),
   target: Target,
@@ -401,6 +419,7 @@ export const profileShape = {
   domain: Id,
   capabilities: z.array(Capability).default([]),
   modelProxy: ModelProxy.optional(),
+  everyAnswer: EveryAnswer.optional(),
   refusal: z
     .strictObject({
       canonical: z.partialRecord(LanguageCode, z.array(z.string().min(1)).min(1)).optional(),

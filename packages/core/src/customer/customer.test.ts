@@ -111,6 +111,17 @@ describe('goalReached (ADR-0028)', () => {
     expect(reached(answered('cart', ['T1']), { answer: { contains: ['sepetinizde'] } })).toBe(true);
   });
 
+  it("judges only what reached says, not the profile's rules for every answer (ADR-0030)", () => {
+    const turn = answered('cart', ['T1']);
+    const context = checkContext(turn, { lang: stubLanguagePack('tr') });
+    const profile = { ...context.profile, everyAnswer: { notContains: ['sepetinizde'] } };
+    // The answer breaks the profile's rule, which answer-text judges on the turn itself.
+    expect(goalReached({ route: 'cart' }, { ...context, profile, turn })).toBe(true);
+    // Nor does the profile's rule make answer-text apply when reached expects nothing of the text.
+    const noRoute = turnView({ response: { route: undefined, text: 'x', evidence: {} } });
+    expect(goalReached({ route: 'cart' }, { ...context, profile, turn: noRoute })).toBe(false);
+  });
+
   it('fails when any expectation is not met, or none could be judged', () => {
     expect(
       reached(answered('search', ['T1']), { route: 'cart', evidence: { cart: { min: 1 } } }),

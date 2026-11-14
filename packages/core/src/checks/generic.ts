@@ -1,9 +1,11 @@
 // Domain-neutral checks for the core expectations every case may use:
 // route, answer and evidence (design §10). They run for every target.
 
+import { compilePattern, showPattern, type PatternSpec } from '../schema/common.ts';
 import { coreExpectations } from '../schema/cases.ts';
 import { findPhrases } from '../text/phrases.ts';
 import { fold } from './fold.ts';
+import type { JsonValue } from '../extract/response.ts';
 import type { Check, CheckFinding } from './types.ts';
 
 export const routeExpected: Check = {
@@ -38,42 +40,100 @@ export const routeExpected: Check = {
   },
 };
 
+/** At most this much of a forbidden match is quoted in a finding. */
+const QUOTE = 60;
+
+function quoted(text: string): string {
+  return text.length > QUOTE ? `${text.slice(0, QUOTE)}…` : text;
+}
+
+/** Where a rule of answer-text came from: the turn, or the profile's everyAnswer (ADR-0030). */
+type RuleSource = 'turn' | 'profile';
+
+const FROM_PROFILE = ', which no answer may (everyAnswer)';
+
+/** A finding of answer-text. */
+function finding(pass: boolean, message: string, evidence?: JsonValue): CheckFinding {
+  return {
+    dimension: 'answer-content',
+    verdict: pass ? 'pass' : 'fail',
+    severity: 'medium',
+    message,
+    ...(evidence === undefined ? {} : { evidence }),
+  };
+}
+
 export const answerText: Check = {
   id: 'answer-text',
-  description: "The answer contains, or doesn't contain, the expected phrases.",
+  description:
+    "The answer contains, or doesn't contain, the expected phrases, matches the expected patterns, and isn't empty.",
   run(context) {
     const parsed = coreExpectations.answer.safeParse(context.turn.expect['answer']);
-    if (!parsed.success)
+    const rules = parsed.success ? parsed.data : undefined;
+    const every = context.profile.everyAnswer;
+    if (rules === undefined && every === undefined)
       return { applicable: false, reason: 'the turn expects nothing of the text' };
-    const text = fold(context, context.turn.response.text);
+    const raw = context.turn.response.text;
+    const text = fold(context, raw);
     const findings: CheckFinding[] = [];
-    for (const phrase of parsed.data.contains ?? []) {
+    for (const phrase of rules?.contains ?? []) {
       const found = findPhrases(text, [fold(context, phrase)]).length > 0;
-      findings.push({
-        dimension: 'answer-content',
-        verdict: found ? 'pass' : 'fail',
-        severity: 'medium',
-        message: found ? `contains "${phrase}"` : `doesn't contain "${phrase}"`,
-      });
+      findings.push(finding(found, found ? `contains "${phrase}"` : `doesn't contain "${phrase}"`));
     }
-    for (const phrase of parsed.data.notContains ?? []) {
+    const forbidden: [string, RuleSource][] = [
+      ...(rules?.notContains ?? []).map((phrase): [string, RuleSource] => [phrase, 'turn']),
+      ...(every?.notContains ?? []).map((phrase): [string, RuleSource] => [phrase, 'profile']),
+    ];
+    for (const [phrase, from] of forbidden) {
       const found = findPhrases(text, [fold(context, phrase)]).length > 0;
-      findings.push({
-        dimension: 'answer-content',
-        verdict: found ? 'fail' : 'pass',
-        severity: 'medium',
-        message: found ? `contains "${phrase}", which it must not` : `doesn't contain "${phrase}"`,
-      });
+      const which = from === 'profile' ? FROM_PROFILE : ', which it must not';
+      findings.push(
+        finding(
+          !found,
+          found ? `contains "${phrase}"${which}` : `doesn't contain "${phrase}"`,
+          from === 'profile' ? { rule: 'notContains', phrase, from } : undefined,
+        ),
+      );
     }
-    if (parsed.data.notEmpty === true) {
+    // Patterns see the answer as it came: folding would change what they were written for.
+    for (const spec of rules?.matches ?? []) {
+      const pattern = showPattern(spec);
+      const found = compilePattern(spec).test(raw);
+      findings.push(
+        finding(found, found ? `matches ${pattern}` : `doesn't match ${pattern}`, {
+          rule: 'matches',
+          pattern,
+          from: 'turn',
+        }),
+      );
+    }
+    const notMatching: [PatternSpec, RuleSource][] = [
+      ...(rules?.notMatches ?? []).map((spec): [PatternSpec, RuleSource] => [spec, 'turn']),
+      ...(every?.notMatches ?? []).map((spec): [PatternSpec, RuleSource] => [spec, 'profile']),
+    ];
+    for (const [spec, from] of notMatching) {
+      const pattern = showPattern(spec);
+      const match = compilePattern(spec).exec(raw);
+      const which = from === 'profile' ? FROM_PROFILE : ', which it must not';
+      findings.push(
+        finding(
+          match === null,
+          match === null
+            ? `doesn't match ${pattern}`
+            : `matches ${pattern} with "${quoted(match[0])}"${which}`,
+          {
+            rule: 'notMatches',
+            pattern,
+            from,
+            ...(match === null ? {} : { match: quoted(match[0]) }),
+          },
+        ),
+      );
+    }
+    if (rules?.notEmpty === true) {
       // A letter or a digit in any script: punctuation and spaces alone say nothing.
-      const said = /[\p{L}\p{N}]/u.test(context.turn.response.text);
-      findings.push({
-        dimension: 'answer-content',
-        verdict: said ? 'pass' : 'fail',
-        severity: 'medium',
-        message: said ? 'the answer is not empty' : 'the answer is empty',
-      });
+      const said = /[\p{L}\p{N}]/u.test(raw);
+      findings.push(finding(said, said ? 'the answer is not empty' : 'the answer is empty'));
     }
     if (findings.length === 0) return { applicable: false, reason: 'no phrases to look for' };
     return { applicable: true, findings };

@@ -133,6 +133,144 @@ describe('answer-text', () => {
   });
 });
 
+const runText = (text: string, answer: unknown, change: Parameters<typeof checkContext>[1] = {}) =>
+  answerText.run(checkContext(answerTurn(text, answer), change));
+
+describe('answer-text patterns (ADR-0030)', () => {
+  it('checks patterns the answer must and must not match, one finding each', () => {
+    const outcome = runText('İade süresi 14 gündür.', {
+      matches: ['\\d+ gün', 'ücretsiz'],
+      notMatches: ['\\{\\{\\w+\\}\\}'],
+    });
+    expect(verdicts(outcome)).toEqual(['pass', 'fail', 'pass']);
+    expect(outcome.applicable && outcome.findings.map((f) => f.message)).toEqual([
+      'matches /\\d+ gün/',
+      "doesn't match /ücretsiz/",
+      "doesn't match /\\{\\{\\w+\\}\\}/",
+    ]);
+  });
+
+  it('matches the answer as it came, not folded, and adds only the flags asked for', () => {
+    const lang = { lang: turkishLike };
+    // Folding would turn "İade" into "iade"; a pattern sees the capital.
+    expect(verdicts(runText('İade 14 gün', { matches: ['iade'] }, lang))).toEqual(['fail']);
+    expect(verdicts(runText('İade 14 gün', { matches: ['İade'] }, lang))).toEqual(['pass']);
+    expect(verdicts(runText('Kargo Ücretsiz', { matches: ['ücretsiz'] }))).toEqual(['fail']);
+    expect(
+      verdicts(runText('Kargo Ücretsiz', { matches: [{ pattern: 'ücretsiz', flags: 'i' }] })),
+    ).toEqual(['pass']);
+    expect(verdicts(runText('İADE', { notMatches: ['iade'] }, lang))).toEqual(['pass']);
+    const flagged = runText('Kargo Ücretsiz', { matches: [{ pattern: 'ücretsiz', flags: 'i' }] });
+    expect(flagged.applicable && flagged.findings[0]?.message).toBe('matches /ücretsiz/i');
+    expect(verdicts(runText('1.299 ₺', { matches: [{ pattern: '\\p{Sc}', flags: 'i' }] }))).toEqual(
+      ['pass'],
+    );
+    // Always with the u flag: \p{} classes work, and a character is a code point.
+    expect(verdicts(runText('Fiyat: 1.299 ₺', { matches: ['\\p{Sc}'] }))).toEqual(['pass']);
+    expect(verdicts(runText('a\nb', { matches: ['^b$'] }))).toEqual(['fail']);
+    expect(verdicts(runText('a\nb', { matches: [{ pattern: '^b$', flags: 'm' }] }))).toEqual([
+      'pass',
+    ]);
+    expect(verdicts(runText('a\nb', { matches: [{ pattern: 'a.b', flags: 's' }] }))).toEqual([
+      'pass',
+    ]);
+  });
+
+  it('quotes what a forbidden pattern matched, cut short when long', () => {
+    const long = `Merhaba {{customer_name_${'x'.repeat(80)}}}`;
+    const outcome = runText(long, { notMatches: ['\\{\\{\\w+\\}\\}'] });
+    const [found] = outcome.applicable ? outcome.findings : [];
+    expect(found?.verdict).toBe('fail');
+    expect(found?.message).toBe(
+      `matches /\\{\\{\\w+\\}\\}/ with "{{customer_name_${'x'.repeat(44)}…", which it must not`,
+    );
+    expect(found?.evidence).toEqual({
+      rule: 'notMatches',
+      pattern: '/\\{\\{\\w+\\}\\}/',
+      from: 'turn',
+      match: `{{customer_name_${'x'.repeat(44)}…`,
+    });
+    const short = runText('Merhaba {{ad}}', { notMatches: ['\\{\\{\\w+\\}\\}'] });
+    expect(short.applicable && short.findings[0]?.message).toBe(
+      'matches /\\{\\{\\w+\\}\\}/ with "{{ad}}", which it must not',
+    );
+  });
+
+  it('catches a placeholder left in the answer', () => {
+    const base = answerTurn('Merhaba Ayşe, size nasıl yardımcı olabilirim?', {
+      notMatches: ['\\{\\{\\s*\\w+\\s*\\}\\}'],
+    });
+    const mutated = mutate(base, (view) => ({
+      ...view,
+      response: { ...view.response, text: 'Merhaba {{ name }}, size nasıl yardımcı olabilirim?' },
+    }));
+    expect(verdicts(answerText.run(checkContext(base)))).toEqual(['pass']);
+    expect(verdicts(answerText.run(checkContext(mutated)))).toEqual(['fail']);
+  });
+});
+
+describe("answer-text with the profile's everyAnswer (ADR-0030)", () => {
+  const profile = {
+    ...checkContext(turnView()).profile,
+    everyAnswer: { notContains: ['stack trace'], notMatches: ['\\bundefined\\b'] },
+  };
+
+  it("holds every answer to the profile's rules, saying where each came from", () => {
+    const outcome = answerText.run(
+      checkContext(turnView({ response: { text: 'Fiyat: undefined TL' } }), { profile }),
+    );
+    expect(outcome.applicable && outcome.findings).toEqual([
+      {
+        dimension: 'answer-content',
+        verdict: 'pass',
+        severity: 'medium',
+        message: `doesn't contain "stack trace"`,
+        evidence: { rule: 'notContains', phrase: 'stack trace', from: 'profile' },
+      },
+      {
+        dimension: 'answer-content',
+        verdict: 'fail',
+        severity: 'medium',
+        message: 'matches /\\bundefined\\b/ with "undefined", which no answer may (everyAnswer)',
+        evidence: {
+          rule: 'notMatches',
+          pattern: '/\\bundefined\\b/',
+          from: 'profile',
+          match: 'undefined',
+        },
+      },
+    ]);
+  });
+
+  it("folds the profile's phrases, and judges them next to the turn's own rules", () => {
+    const outcome = answerText.run(
+      checkContext(
+        answerTurn('STACK TRACE: ...', { contains: ['merhaba'], notContains: ['hata'] }),
+        {
+          profile,
+          lang: turkishLike,
+        },
+      ),
+    );
+    expect(outcome.applicable && outcome.findings.map((f) => [f.verdict, f.message])).toEqual([
+      ['fail', `doesn't contain "merhaba"`],
+      ['pass', `doesn't contain "hata"`],
+      ['fail', 'contains "stack trace", which no answer may (everyAnswer)'],
+      ['pass', "doesn't match /\\bundefined\\b/"],
+    ]);
+  });
+
+  it('catches a forbidden phrase in an answer whose turn expects nothing of its text', () => {
+    const base = turnView({ response: { text: 'Sipariş durumunuz: hazırlanıyor.' } });
+    const mutated = mutate(base, (view) => ({
+      ...view,
+      response: { ...view.response, text: 'Sipariş durumunuz: undefined.' },
+    }));
+    expect(verdicts(answerText.run(checkContext(base, { profile })))).toEqual(['pass', 'pass']);
+    expect(verdicts(answerText.run(checkContext(mutated, { profile })))).toEqual(['pass', 'fail']);
+  });
+});
+
 const packOf = (language: string, commonWords: string[]): LanguagePack => ({
   ...stubLanguagePack(language),
   commonWords,

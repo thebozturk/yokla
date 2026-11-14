@@ -1815,6 +1815,53 @@
       ],
       "additionalProperties": false
     },
+    "everyAnswer": {
+      "type": "object",
+      "properties": {
+        "notContains": {
+          "description": "Phrases no answer may contain, after the language pack's folding.",
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "notMatches": {
+          "description": "Regular expressions no answer may match, as it came.",
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "pattern": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "flags": {
+                    "type": "string",
+                    "pattern": "^(?!.*(.).*\\1)[ims]+$"
+                  }
+                },
+                "required": [
+                  "pattern"
+                ],
+                "additionalProperties": false
+              }
+            ],
+            "description": "A JavaScript regular expression, always with the u flag; the object form adds i, m or s (ADR-0030). It sees the answer as it came, not folded."
+          }
+        }
+      },
+      "additionalProperties": false,
+      "description": "Rules every turn with a usable answer is held to, in every case, judged by answer-text (ADR-0030)."
+    },
     "refusal": {
       "type": "object",
       "properties": {

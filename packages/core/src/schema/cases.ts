@@ -1,7 +1,7 @@
 // Case files (design §9): cases/*.yaml. One file holds one or more cases.
 
 import { z } from 'zod';
-import { Id, LanguageCode, Provenance, Suite } from './common.ts';
+import { Id, LanguageCode, Pattern, Provenance, Suite } from './common.ts';
 import { squeeze } from '../text/match.ts';
 import { FaultPlan } from './fault.ts';
 
@@ -19,13 +19,19 @@ export const coreExpectations = {
     .strictObject({
       contains: z.array(z.string().min(1)).min(1).optional(),
       notContains: z.array(z.string().min(1)).min(1).optional(),
+      matches: z.array(Pattern).min(1).optional().meta({
+        description: 'Regular expressions the answer must match (ADR-0030).',
+      }),
+      notMatches: z.array(Pattern).min(1).optional().meta({
+        description: 'Regular expressions the answer must not match (ADR-0030).',
+      }),
       notEmpty: z.literal(true).optional().meta({
         description: 'The answer text has at least one letter or digit (ADR-0018).',
       }),
     })
     .meta({
       description:
-        "Text the answer must or must not contain, after the language pack's folding, and whether it may be empty.",
+        "Text the answer must or must not contain, after the language pack's folding; patterns it must or must not match, as it came; and whether it may be empty.",
     }),
   language: LanguageCode.meta({
     description: 'The language the answer must be in, judged by language-match (ADR-0018).',

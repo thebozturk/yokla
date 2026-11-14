@@ -474,6 +474,54 @@ const mapping = (collection: string) => ({
   },
 });
 
+const turnWith = (answer: unknown) =>
+  caseFile.safeParse({
+    version: 1,
+    cases: [
+      { id: 'c', suite: 'quality', language: 'tr', turns: [{ user: 'x', expect: { answer } }] },
+    ],
+  });
+
+describe('patterns (ADR-0030)', () => {
+  it('accepts a pattern as a string, or with the flags i, m and s', () => {
+    expect(
+      turnWith({ matches: ['\\d+ gün'], notMatches: [{ pattern: 'x', flags: 'ims' }] }).success,
+    ).toBe(true);
+    expect(turnWith({ matches: [{ pattern: 'x' }] }).success).toBe(true);
+  });
+
+  it.each([
+    ['an invalid expression', { matches: ['(unclosed'] }, /not a valid regular expression/u],
+    [
+      'an expression invalid with the u flag',
+      { matches: ['\\q'] },
+      /not a valid regular expression/u,
+    ],
+    ['another flag', { matches: [{ pattern: 'x', flags: 'g' }] }, /i, m and s, each once/u],
+    ['a flag twice', { notMatches: [{ pattern: 'x', flags: 'ii' }] }, /i, m and s, each once/u],
+    ['an empty list', { matches: [] }, /too_small|at least 1|>=1/u],
+  ])('refuses %s', (_name, answer, message) => {
+    const parsed = turnWith(answer);
+    expect(parsed.success).toBe(false);
+    expect(JSON.stringify(parsed.error?.issues)).toMatch(message);
+  });
+
+  it("accepts the profile's everyAnswer rules, and refuses an empty or broken one", () => {
+    expect(
+      profile.safeParse(withChange({ everyAnswer: { notMatches: ['\\bundefined\\b'] } })).success,
+    ).toBe(true);
+    expect(profile.safeParse(withChange({ everyAnswer: { notContains: ['hata'] } })).success).toBe(
+      true,
+    );
+    const empty = profile.safeParse(withChange({ everyAnswer: {} }));
+    expect(JSON.stringify(empty.error?.issues)).toMatch(/needs notContains or notMatches/u);
+    expect(profile.safeParse(withChange({ everyAnswer: { notMatches: ['[a'] } })).success).toBe(
+      false,
+    );
+    expect(profile.safeParse(withChange({ everyAnswer: { contains: ['x'] } })).success).toBe(false);
+  });
+});
+
 describe('modelProxy.toolResults (ADR-0026)', () => {
   it('accepts collections that response.evidence maps, and refuses others, saying where', () => {
     expect(profile.safeParse(withChange(mapping('products'))).success).toBe(true);

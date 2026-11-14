@@ -25,6 +25,51 @@ export const FieldPath = z
   .string()
   .regex(FIELD_PATH_PATTERN, 'use a dotted field path such as price.amount');
 
+/**
+ * A regular expression (ADR-0030): its source, always with the `u` flag, or
+ * with `i`, `m` or `s` added in the object form.
+ */
+export type PatternSpec =
+  string | { readonly pattern: string; readonly flags?: string | undefined };
+
+/** The pattern compiled; throws when it isn't a valid regular expression. */
+export function compilePattern(spec: PatternSpec): RegExp {
+  return typeof spec === 'string'
+    ? new RegExp(spec, 'u')
+    : new RegExp(spec.pattern, `u${spec.flags ?? ''}`);
+}
+
+/** How a pattern is shown in a message: /source/flags. */
+export function showPattern(spec: PatternSpec): string {
+  return typeof spec === 'string' ? `/${spec}/` : `/${spec.pattern}/${spec.flags ?? ''}`;
+}
+
+export const Pattern = z
+  .union([
+    z.string().min(1),
+    z.strictObject({
+      pattern: z.string().min(1),
+      flags: z
+        .string()
+        .regex(/^(?!.*(.).*\1)[ims]+$/u, 'use any of i, m and s, each once')
+        .optional(),
+    }),
+  ])
+  .superRefine((spec, context) => {
+    try {
+      compilePattern(spec);
+    } catch (error) {
+      context.addIssue({
+        code: 'custom',
+        message: `not a valid regular expression: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  })
+  .meta({
+    description:
+      'A JavaScript regular expression, always with the u flag; the object form adds i, m or s (ADR-0030). It sees the answer as it came, not folded.',
+  });
+
 /** Names of evidence fields, such as `price` or `stock`. */
 export const FieldName = z.string().regex(/^[a-z][A-Za-z0-9]*$/u, 'use a camelCase field name');
 
