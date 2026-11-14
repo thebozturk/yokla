@@ -178,6 +178,15 @@ function runSection(results: Results): Html {
     );
     if (proxy.prompts !== undefined) items.push(item('Prompts kept', proxy.prompts));
   }
+  const own = run.own;
+  if (own !== undefined) {
+    items.push(
+      item(
+        "yokla's own model",
+        `${counted(own.calls, 'call')}, ${String(own.cached)} from the cache; ${own.costUsd === null ? 'cost unknown' : usd(own.costUsd)}`,
+      ),
+    );
+  }
   if (observation !== undefined) {
     const totals = observedTotals(observation.totals, observation.missing, 'turn');
     const all = observation.matched + observation.unmatched;
@@ -392,12 +401,26 @@ function turnBlock(turn: TurnResult, sample: number, index: number): Html {
   }</div>`;
 }
 
+/** How a simulated customer's conversation went (ADR-0028). */
+function customerLine(sample: CaseResult['samples'][number]): Html | undefined {
+  const { customer } = sample;
+  if (customer === undefined) return undefined;
+  const ended =
+    customer.ended === 'reached'
+      ? `reached the goal after answer ${String((customer.reachedAt ?? 0) + 1)}`
+      : customer.ended === 'maxTurns'
+        ? "didn't reach the goal within maxTurns"
+        : 'ended in an error';
+  const cached = customer.calls.filter((call) => call.cached).length;
+  return h`<p class="label">Simulated customer, seed ${customer.seed}: ${ended}; ${counted(customer.calls.length, 'call')}, ${String(cached)} from the cache, ${usd(customer.costUsd)}</p>`;
+}
+
 function caseBlock(c: CaseResult): Html {
   const reason = reasonOf(c);
   const samples = c.samples.map(
     (sample) =>
-      h`<h3>Sample ${sample.index} · ${sample.cache}</h3>${sample.turns.map((turn, index) =>
-        turnBlock(turn, sample.index, index),
+      h`<h3>Sample ${sample.index} · ${sample.cache}</h3>${customerLine(sample)}${sample.turns.map(
+        (turn, index) => turnBlock(turn, sample.index, index),
       )}`,
   );
   return h`<details class="case" id="case-${c.id}"${c.status === 'pass' ? undefined : h` open`}><summary>${badge(c.status, STATUS_TONE[c.status])} <code>${c.id}</code>${marks(c)} <span class="muted">${c.suite} · ${c.language}</span>${

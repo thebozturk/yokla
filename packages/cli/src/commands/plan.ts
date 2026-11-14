@@ -82,6 +82,7 @@ export function planCommand(
         definitionSha256: definitionSha256(c),
         turns: c.turns.length,
         samples: c.samples ?? samples,
+        ...(c.customer === undefined ? {} : { simulated: true }),
       })),
       calibration,
       config?.plan.upperBoundFactor ?? 2,

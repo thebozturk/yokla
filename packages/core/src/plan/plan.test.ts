@@ -127,3 +127,63 @@ describe('plan', () => {
     });
   });
 });
+
+/** A calibrated simulated case: per sample, its turns' costs and its customer's. */
+function simulatedCase(definition: string, samples: [number[], number | null][]): CaseResult {
+  const base = calibrated(
+    'shop',
+    definition,
+    samples.map(([costs]) => costs),
+  );
+  return {
+    ...base,
+    samples: base.samples.map((sample, index) => ({
+      ...sample,
+      customer: {
+        seed: `shop|${String(index)}`,
+        ended: 'reached' as const,
+        calls: [],
+        costUsd: samples[index]?.[1] ?? null,
+      },
+    })),
+  };
+}
+
+describe('plan with a simulated customer (ADR-0028)', () => {
+  const planned = { id: 'shop', definitionSha256: sha('5'), turns: 0, samples: 2, simulated: true };
+
+  it("prices a sample as its own calibration cost, the customer's calls included", () => {
+    const result = plan(
+      [planned],
+      calibration([
+        simulatedCase(sha('5'), [
+          [[0.01, 0.02], 0.003],
+          [[0.01], 0.001],
+        ]),
+      ]),
+      2,
+    );
+    // Samples cost 0.033 and 0.011: a mean of 0.022, twice.
+    expect(result).toMatchObject({ ok: true, ownCalibration: 1, turns: 3 });
+    expect(result.ok && result.estimateUsd).toBeCloseTo(0.044, 12);
+    expect(result.ok && result.upperUsd).toBeCloseTo(0.088, 12);
+  });
+
+  it('refuses without a calibration of its own, or with a customer call that has no cost', () => {
+    expect(plan([planned], calibration([calibrated('other', sha('7'), [[0.01]])]), 2)).toEqual({
+      ok: false,
+      problem:
+        'case "shop" has a simulated customer, which has no fixed turns: calibrate it with a run of its own',
+    });
+    expect(
+      plan([planned], calibration([simulatedCase(sha('6'), [[[0.01], 0.001]])]), 2),
+    ).toMatchObject({
+      ok: false,
+    });
+    expect(plan([planned], calibration([simulatedCase(sha('5'), [[[0.01], null]])]), 2)).toEqual({
+      ok: false,
+      problem:
+        'case "shop" has a calibrated sample without a cost: give its models, and the customer model, a price',
+    });
+  });
+});

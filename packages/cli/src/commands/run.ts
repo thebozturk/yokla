@@ -29,7 +29,9 @@ Options:
   --html <file>         also write an HTML report; it holds the target's answers
   --config <file>       prices and thresholds (default: yokla.config.yaml, when present)
   --proxy-url <url>     the model proxy, instead of 127.0.0.1 on modelProxy.port
-  --max-cost <usd>      stop starting samples once the model cost reaches this; needs a proxy`;
+  --max-cost <usd>      stop starting samples once the model cost, the target's and yokla's own,
+                        reaches this
+  --fresh-customer      ask the customer model anew, whatever its reply cache holds`;
 
 function positiveInt(value: string | undefined, name: string): number | undefined {
   if (value === undefined) return undefined;
@@ -66,6 +68,7 @@ const RUN_OPTIONS = {
   config: { type: 'string' },
   'proxy-url': { type: 'string' },
   'max-cost': { type: 'string' },
+  'fresh-customer': { type: 'boolean' },
   help: { type: 'boolean' },
 } as const;
 
@@ -119,7 +122,8 @@ export async function runCommand(
       ...(values['target-url'] === undefined ? {} : { targetUrl: values['target-url'] }),
       ...(values['proxy-url'] === undefined ? {} : { proxyUrl: values['proxy-url'] }),
       ...(maxCost === undefined ? {} : { maxCostUsd: maxCost }),
-      ...(config === undefined ? {} : { prices: config.prices }),
+      ...(config === undefined ? {} : { prices: config.prices, models: config.models }),
+      ...(values['fresh-customer'] === true ? { freshCustomer: true } : {}),
     });
     const outPath = writeReport(
       values.out ?? `runs/${results.run.id}.json`,

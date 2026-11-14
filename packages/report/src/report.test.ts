@@ -209,6 +209,18 @@ describe('terminalSummary', () => {
     );
   });
 
+  it("totals yokla's own model calls apart from the target's (ADR-0028)", () => {
+    const priced = terminalSummary(
+      results([kase('a', 'pass')], { own: { calls: 3, cached: 1, costUsd: 0.0001234567 } }),
+    );
+    expect(priced.out).toContain("yokla's own model: 3 calls, 1 from the cache; costUsd 0.000123");
+    const unpriced = terminalSummary(
+      results([kase('a', 'pass')], { own: { calls: 1, cached: 0, costUsd: null } }),
+    );
+    expect(unpriced.out).toContain("yokla's own model: 1 call, 0 from the cache; costUsd unknown");
+    expect(terminalSummary(results([kase('a', 'pass')])).out.join('\n')).not.toContain('own model');
+  });
+
   it('says which threshold went unmeasured, and why', () => {
     const gap = {
       check: 'cost-budget',
@@ -484,6 +496,28 @@ describe('htmlReport (ADR-0023)', () => {
             index: 1,
             cache: 'warm',
             turns: [turn({ error: HOSTILE, response: undefined })],
+            customer: {
+              seed: 'hostile|1',
+              ended: 'reached',
+              reachedAt: 0,
+              calls: [
+                {
+                  model: 'm',
+                  durationMs: 5,
+                  usage: { input: 10, output: 2 },
+                  costUsd: 0.000014,
+                  cached: false,
+                },
+                {
+                  model: 'm',
+                  durationMs: 0,
+                  usage: { input: 10, output: 2 },
+                  costUsd: 0,
+                  cached: true,
+                },
+              ],
+              costUsd: 0.000014,
+            },
           },
         ],
       }),
@@ -494,6 +528,7 @@ describe('htmlReport (ADR-0023)', () => {
       partial: true,
       correlation: 'serial',
       issues: [HOSTILE],
+      own: { calls: 2, cached: 1, costUsd: 0.000014 },
       profile: { target: HOSTILE, sha256: 'a'.repeat(64) },
       proxy: {
         correlation: 'serial',
@@ -598,6 +633,12 @@ describe('htmlReport (ADR-0023)', () => {
     expect(page).not.toContain('SECRET SYSTEM PROMPT');
     expect(page).not.toContain('SECRET TOOL ARGUMENT');
     expect(page).toContain('<summary>Seen by the model in tool results: products 1</summary>');
+    expect(page).toContain(
+      'Simulated customer, seed hostile|1: reached the goal after answer 1; 2 calls, 1 from the cache, $0.000014',
+    );
+    expect(page).toContain(
+      '<dt>yokla&#39;s own model</dt><dd>2 calls, 1 from the cache; $0.000014</dd>',
+    );
     expect(page).not.toContain('b'.repeat(64));
     expect(page).toContain('$0.001235');
   });

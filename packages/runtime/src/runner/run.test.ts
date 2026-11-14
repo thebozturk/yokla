@@ -2420,3 +2420,228 @@ describe('runSuite with a WebSocket target (ADR-0024)', () => {
     expect(server.handshakes).toEqual([]);
   });
 });
+
+/**
+ * A fake customer model: its reply by how many calls came before, and by how
+ * many messages the conversation has, as a model at temperature 0 would.
+ */
+async function customerModel(
+  reply: (callIndex: number, messages: number) => string | undefined,
+): Promise<{ url: string; calls: () => number }> {
+  let count = 0;
+  const server = createServer((request, response) => {
+    const chunks: Buffer[] = [];
+    request.on('data', (chunk: Buffer) => chunks.push(chunk));
+    request.on('end', () => {
+      const body: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      const messages: unknown = Reflect.get(Object(body), 'messages');
+      const text = reply(count, Array.isArray(messages) ? messages.length : 0);
+      count += 1;
+      if (text === undefined) {
+        response.writeHead(500).end();
+        return;
+      }
+      json(response, {
+        model: 'customer-1',
+        choices: [{ message: { content: text } }],
+        usage: { prompt_tokens: 100, completion_tokens: 10 },
+      });
+    });
+  });
+  servers.push(server);
+  await new Promise<void>((resolve) => {
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  const port = typeof address === 'object' && address !== null ? address.port : 0;
+  return { url: `http://127.0.0.1:${String(port)}/v1`, calls: () => count };
+}
+
+/** A shop that puts the first product in the cart when asked to. */
+async function cartShop() {
+  return target((received, _i, response) => {
+    const message = String(received.body['message']);
+    if (message.includes('sepete')) {
+      json(response, {
+        answer: 'Sepetinizde: Plaj Çadırı.',
+        route: 'cart',
+        items: [],
+        cart: [{ id: 'P1' }],
+      });
+    } else json(response, answer());
+  });
+}
+
+const cartProfile = (url: string) =>
+  profile(url, {
+    response: {
+      text: '$.answer',
+      route: '$.route',
+      evidence: {
+        items: {
+          items: '$.items[*]',
+          fields: { id: 'id', price: { from: 'price', as: 'number' } },
+        },
+        cart: { items: '$.cart[*]', fields: { id: 'id' } },
+      },
+    },
+  });
+
+const shopper = (change: Record<string, unknown> = {}) => ({
+  id: 'c0',
+  customer: {
+    persona: 'İki kişi kamp yapacak.',
+    goal: 'Bir çadırı sepete eklemek.',
+    opening: 'Çadır var mı?',
+    maxTurns: 3,
+    reached: { evidence: { cart: { min: 1 } } },
+    ...change,
+  },
+});
+
+const customerConfig = (url: string) => ({
+  customer: {
+    kind: 'openai-compatible' as const,
+    url,
+    model: 'customer-1',
+    temperature: 0,
+    maxTokens: 300,
+    timeoutMs: 5_000,
+    price: { input: 1, output: 2 },
+  },
+});
+
+/** The user messages of a run's first sample. */
+function users(results: Results): string[] | undefined {
+  return results.cases[0]?.samples[0]?.turns.map((turn) => turn.user);
+}
+
+describe('runSuite with a simulated customer (ADR-0028)', () => {
+  it('opens as written, lets the customer go on, and ends when the answer reaches the goal', async () => {
+    const t = await cartShop();
+    const model = await customerModel(() => 'İlkini sepete ekler misin?');
+    const dataDir = mkdtempSync(join(tmpdir(), 'yokla-data-'));
+    const results = await runSuite(
+      options(cartProfile(t.url), cases(shopper()), {
+        models: customerConfig(model.url),
+        dataDir,
+        checks: CORE_CHECKS,
+      }),
+    );
+    expect(Results.safeParse(results).success).toBe(true);
+    const [sample] = results.cases[0]?.samples ?? [];
+    expect(sample?.turns.map((turn) => turn.user)).toEqual([
+      'Çadır var mı?',
+      'İlkini sepete ekler misin?',
+    ]);
+    expect(sample?.customer).toMatchObject({
+      seed: 'c0|0',
+      ended: 'reached',
+      reachedAt: 1,
+      calls: [{ model: 'customer-1', cached: false, usage: { input: 100, output: 10 } }],
+    });
+    expect(sample?.customer?.costUsd).toBeCloseTo(120 / 1e6, 12);
+    const goal = sample?.turns.map((turn) => turn.checks.find((c) => c.check === 'goal-reached'));
+    expect(goal?.map((check) => check?.applicable)).toEqual([false, true]);
+    expect(goal?.[1]?.findings[0]).toMatchObject({
+      verdict: 'pass',
+      message: 'reached the goal after answer 2 of at most 3',
+    });
+    expect(results.cases[0]?.status).toBe('pass');
+    expect(results.run.own).toMatchObject({ calls: 1, cached: 0 });
+    expect(model.calls()).toBe(1);
+  });
+
+  it("fails goal-reached when the goal isn't reached in maxTurns, and the customer opens itself", async () => {
+    const t = await cartShop();
+    const model = await customerModel((index) => `Başka çadır var mı? (${String(index)})`);
+    const { opening: _opening, ...noOpening } = shopper().customer;
+    const results = await runSuite(
+      options(cartProfile(t.url), cases({ id: 'c0', customer: { ...noOpening, maxTurns: 2 } }), {
+        models: customerConfig(model.url),
+        dataDir: mkdtempSync(join(tmpdir(), 'yokla-data-')),
+        checks: CORE_CHECKS,
+      }),
+    );
+    const [sample] = results.cases[0]?.samples ?? [];
+    expect(sample?.turns.map((turn) => turn.user)).toEqual([
+      'Başka çadır var mı? (0)',
+      'Başka çadır var mı? (1)',
+    ]);
+    expect(sample?.customer).toMatchObject({ ended: 'maxTurns', calls: [{}, {}] });
+    expect(sample?.customer?.reachedAt).toBeUndefined();
+    expect(
+      sample?.turns[1]?.checks.find((c) => c.check === 'goal-reached')?.findings[0],
+    ).toMatchObject({
+      verdict: 'fail',
+      message: "didn't reach the goal in 2 answer(s), with at most 2",
+    });
+    expect(results.cases[0]?.status).toBe('fail');
+  });
+
+  it('repeats the conversation from the cache, at no cost, while the target answers the same', async () => {
+    const t = await cartShop();
+    // The system and the start: the first message; any later: put it in the cart.
+    const model = await customerModel((_index, messages) =>
+      messages <= 2 ? 'Merhaba, kamp için bakıyorum.' : 'İlkini sepete ekle.',
+    );
+    const dataDir = mkdtempSync(join(tmpdir(), 'yokla-data-'));
+    const { opening: _opening, ...noOpening } = shopper().customer;
+    const run = (fresh = false) =>
+      runSuite(
+        options(cartProfile(t.url), cases({ id: 'c0', customer: noOpening }), {
+          models: customerConfig(model.url),
+          dataDir,
+          ...(fresh ? { freshCustomer: true } : {}),
+        }),
+      );
+    const first = await run();
+    const second = await run();
+    expect(users(second)).toEqual(users(first));
+    expect(second.cases[0]?.samples[0]?.customer?.calls.every((c) => c.cached)).toBe(true);
+    expect(second.cases[0]?.samples[0]?.customer?.costUsd).toBe(0);
+    expect(second.run.own).toEqual({ calls: 2, cached: 2, costUsd: 0 });
+    expect(model.calls()).toBe(2);
+    await run(true);
+    expect(model.calls()).toBe(4);
+  });
+
+  it('ends the case in error when the customer model fails', async () => {
+    const t = await cartShop();
+    const model = await customerModel(() => undefined);
+    const results = await runSuite(
+      options(cartProfile(t.url), cases(shopper()), {
+        models: customerConfig(model.url),
+        dataDir: mkdtempSync(join(tmpdir(), 'yokla-data-')),
+      }),
+    );
+    const [sample] = results.cases[0]?.samples ?? [];
+    expect(sample?.customer?.ended).toBe('error');
+    expect(sample?.turns.at(-1)?.error).toBe(
+      'the customer model failed: the customer model answered 500',
+    );
+    expect(results.cases[0]?.status).toBe('error');
+  });
+
+  it('needs models.customer, and caps own spend without a proxy, saying the target cost is unknown', async () => {
+    const t = await cartShop();
+    await expect(runSuite(options(cartProfile(t.url), cases(shopper())))).rejects.toThrow(
+      'case "c0" has a customer, which needs models.customer in yokla.config.yaml',
+    );
+    const model = await customerModel(() => 'İlkini sepete ekle.');
+    const results = await runSuite(
+      options(cartProfile(t.url), cases(shopper(), { ...shopper(), id: 'c1' }), {
+        models: customerConfig(model.url),
+        dataDir: mkdtempSync(join(tmpdir(), 'yokla-data-')),
+        maxCostUsd: 0.0001,
+      }),
+    );
+    // The first case spends 120 µUSD, over the cap: the second never starts.
+    expect(results.cases.map((c) => c.id)).toEqual(['c0']);
+    expect(results.run.partial).toBe(true);
+    expect(results.run.issues).toEqual([
+      "the cost cap counted yokla's own model calls only: without a model proxy, the target's cost is unknown",
+      expect.stringMatching(/^stopped at the cost cap: 0\.00012 USD spent/u) as unknown,
+    ]);
+  });
+});

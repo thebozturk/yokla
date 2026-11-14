@@ -16,8 +16,10 @@ import {
   checkTemplates,
   eventName,
   extractResponse,
+  goalReached,
   messageEvents,
   seenEvidence,
+  CUSTOMER_LANGUAGES,
   UNANSWERED_JUDGES,
   queryJsonPath,
   readEvents,
@@ -29,7 +31,10 @@ import {
   toJson,
   type AggregationPolicy,
   type Case,
+  type CaseCustomer,
+  type CaseTurn,
   type Check,
+  type Exchanged,
   type DomainPack,
   type LanguagePack,
   type TurnView,
@@ -52,6 +57,8 @@ import { cacheBypass } from '../process/cache-bypass.ts';
 import { CommandError } from '../process/command.ts';
 import { correlate, observedFields, parseLogLines, readLogText } from '../observe/logs.ts';
 import { ProxyControl, ProxyControlError } from '../proxy/control.ts';
+import { ModelClientError } from '../models/client.ts';
+import { CustomerPlayer, type OwnCall } from '../models/customer.ts';
 import {
   closeText,
   openWebSocket,
@@ -97,6 +104,12 @@ export interface RunOptions {
   readonly prices?: YoklaConfig['prices'];
   /** A hard cap on the model cost of the run, in USD; needs a model proxy (ADR-0014). */
   readonly maxCostUsd?: number;
+  /** yokla's own models, such as the simulated customer's (ADR-0028). */
+  readonly models?: YoklaConfig['models'];
+  /** Ask the customer model anew, whatever its reply cache holds (ADR-0028). */
+  readonly freshCustomer?: boolean;
+  /** Where yokla keeps generated and cached data. Default: yokla-data next to the profile. */
+  readonly dataDir?: string;
   /** The model proxy's address. Default: 127.0.0.1 on the profile's modelProxy.port. */
   readonly proxyUrl?: string;
   /** Wait before reading the target's logs, so the last lines are written. Default 1000 ms. */
@@ -235,8 +248,31 @@ export function preflight(options: RunOptions): void {
   if (options.profile.modelProxy?.correlation === 'serial' && (options.concurrency ?? 1) > 1) {
     problems.push('modelProxy correlates serially, which needs a concurrency of 1');
   }
-  if (options.maxCostUsd !== undefined && options.profile.modelProxy === undefined) {
+  const simulated = options.cases.filter((c) => c.customer !== undefined);
+  if (
+    options.maxCostUsd !== undefined &&
+    options.profile.modelProxy === undefined &&
+    simulated.length === 0
+  ) {
     problems.push('a cost cap needs a modelProxy in the profile: without one, spend is unknown');
+  }
+  // A simulated customer needs yokla's own model, and a prompt in the case's language (ADR-0028).
+  const customerModel = options.models?.customer;
+  for (const c of simulated) {
+    if (customerModel === undefined) {
+      problems.push(
+        `case "${c.id}" has a customer, which needs models.customer in yokla.config.yaml`,
+      );
+    }
+    if (!CUSTOMER_LANGUAGES.includes(c.language)) {
+      problems.push(
+        `case "${c.id}" is in "${c.language}", and the customer prompt is in ${CUSTOMER_LANGUAGES.join(', ')} only`,
+      );
+    }
+  }
+  const keyEnv = customerModel?.apiKeyEnv;
+  if (simulated.length > 0 && keyEnv !== undefined && options.env[keyEnv] === undefined) {
+    problems.push(`environment variable ${keyEnv} is not set`);
   }
   if (options.profile.modelProxy === undefined) {
     for (const c of options.cases) {
@@ -312,6 +348,24 @@ interface Answered {
 interface ExchangedSample {
   readonly index: number;
   readonly exchanges: Exchange[];
+  /** A simulated customer's conversation (ADR-0028). */
+  readonly customer?: NonNullable<SampleResult['customer']>;
+}
+
+/** yokla's own spend over the run (ADR-0028), for the cap and the results. */
+interface OwnSpend {
+  calls: number;
+  cached: number;
+  costUsd: number;
+  /** A call without a cost: the total is unknown from there. */
+  unknown: boolean;
+}
+
+/** What a simulated customer needs from the run (ADR-0028). */
+interface Simulation {
+  readonly player: CustomerPlayer;
+  readonly spend: OwnSpend;
+  readonly languages: ReadonlyMap<string, LanguagePack>;
 }
 
 interface ExchangedCase {
@@ -329,6 +383,7 @@ async function runSample(
   openUrl: string | undefined,
   settle: Settle | undefined,
   socket: SocketSetup | undefined,
+  simulation: Simulation | undefined,
 ): Promise<ExchangedSample> {
   const target = options.profile.target;
   const ids = options.ids ?? randomUUID;
@@ -488,8 +543,9 @@ async function runSample(
     };
   };
 
-  try {
-    for (const [turnIndex, turn] of testCase.turns.entries()) {
+  /** Sends one turn, reads and keeps its answer. */
+  const runTurn = async (turn: CaseTurn, turnIndex: number): Promise<Exchange> => {
+    {
       const requestId = sendsRequestId(target, turn.request?.body) ? ids() : undefined;
       // With a model proxy, the turn's id: marked on the proxy before the request
       // (serial), or sent for the app to pass on to its model calls (header).
@@ -665,12 +721,137 @@ async function runSample(
         turn: turnIndex,
         ...(outcome.turn.error === undefined ? {} : { error: outcome.turn.error }),
       });
-      if (outcome.turn.error !== undefined) break;
+      return outcome;
+    }
+  };
+
+  let customer: ExchangedSample['customer'];
+  try {
+    if (testCase.customer === undefined) {
+      for (const [turnIndex, turn] of testCase.turns.entries()) {
+        const outcome = await runTurn(turn, turnIndex);
+        if (outcome.turn.error !== undefined) break;
+      }
+    } else if (simulation !== undefined) {
+      customer = await converse(options, testCase, testCase.customer, sampleIndex, simulation, {
+        runTurn,
+        exchanges,
+      });
     }
   } finally {
     await connection?.close();
   }
-  return { index: sampleIndex, exchanges };
+  return { index: sampleIndex, exchanges, ...(customer === undefined ? {} : { customer }) };
+}
+
+/**
+ * A simulated customer's conversation (ADR-0028): the opening, or else the
+ * customer's first message; then after each answer, the goal is judged from
+ * the answer, and while it isn't reached the customer writes the next message,
+ * up to maxTurns. The last turn's view says whether the goal was reached, for
+ * goal-reached.
+ */
+async function converse(
+  options: RunOptions,
+  testCase: Case,
+  customer: CaseCustomer,
+  sampleIndex: number,
+  simulation: Simulation,
+  sample: {
+    readonly runTurn: (turn: CaseTurn, index: number) => Promise<Exchange>;
+    readonly exchanges: Exchange[];
+  },
+): Promise<NonNullable<ExchangedSample['customer']>> {
+  const seed = `${testCase.id}|${String(sampleIndex)}`;
+  const calls: OwnCall[] = [];
+  const said: Exchanged[] = [];
+  const history: TurnView[] = [];
+  const lang = simulation.languages.get(testCase.language);
+  let ended: 'reached' | 'maxTurns' | 'error' = 'maxTurns';
+  let reachedAt: number | undefined;
+  let message = customer.opening;
+  for (let turnIndex = 0; turnIndex < customer.maxTurns; turnIndex += 1) {
+    if (message === undefined) {
+      try {
+        const next = await simulation.player.next(customer, testCase.language, seed, said);
+        calls.push(next.call);
+        countSpend(simulation.spend, next.call);
+        message = next.text;
+      } catch (error) {
+        const why = error instanceof ModelClientError ? error.message : errorMessage(error);
+        sample.exchanges.push({
+          turn: { user: '', error: `the customer model failed: ${why}`, checks: [] },
+          view: undefined,
+        });
+        ended = 'error';
+        break;
+      }
+    }
+    const outcome = await sample.runTurn(
+      { user: message, ...(customer.expect === undefined ? {} : { expect: customer.expect }) },
+      turnIndex,
+    );
+    if (outcome.turn.error !== undefined || outcome.view === undefined) {
+      ended = 'error';
+      break;
+    }
+    const { view } = outcome;
+    const reached = goalReached(customer.reached, {
+      case: testCase,
+      turnIndex,
+      turn: view,
+      history: [...history],
+      profile: options.profile,
+      lang,
+      languages: simulation.languages,
+    });
+    history.push(view);
+    said.push({ customer: message, answer: outcome.turn.response?.text ?? '' });
+    message = undefined;
+    if (reached) {
+      ended = 'reached';
+      reachedAt = turnIndex;
+      break;
+    }
+  }
+  // The last answered turn carries the conversation's outcome, for goal-reached.
+  const last = sample.exchanges.at(-1);
+  if (ended !== 'error' && last?.view !== undefined) {
+    sample.exchanges[sample.exchanges.length - 1] = {
+      ...last,
+      view: {
+        ...last.view,
+        customer: {
+          reached: ended === 'reached',
+          turns: said.length,
+          maxTurns: customer.maxTurns,
+        },
+      },
+    };
+  }
+  return {
+    seed,
+    ended,
+    ...(reachedAt === undefined ? {} : { reachedAt }),
+    calls,
+    costUsd: sumCosts(calls),
+  };
+}
+
+function countSpend(spend: OwnSpend, call: OwnCall): void {
+  spend.calls += 1;
+  if (call.cached) spend.cached += 1;
+  if (call.costUsd === null) spend.unknown = true;
+  else spend.costUsd += call.costUsd;
+}
+
+function sumCosts(calls: readonly OwnCall[]): number | null {
+  let total = 0;
+  for (const call of calls) {
+    if (call.costUsd === null) return null;
+    total += call.costUsd;
+  }
+  return Math.round(total * 1e9) / 1e9;
 }
 
 async function exchangeCase(
@@ -683,12 +864,24 @@ async function exchangeCase(
   openUrl: string | undefined,
   settle: Settle | undefined,
   socket: SocketSetup | undefined,
+  simulation: Simulation | undefined,
 ): Promise<ExchangedCase> {
   const samples: ExchangedSample[] = [];
   const count = testCase.samples ?? options.samples ?? 1;
   for (let index = 0; index < count && cap?.stopped() !== true; index += 1) {
     samples.push(
-      await runSample(options, client, testCase, caseIndex, index, arm, openUrl, settle, socket),
+      await runSample(
+        options,
+        client,
+        testCase,
+        caseIndex,
+        index,
+        arm,
+        openUrl,
+        settle,
+        socket,
+        simulation,
+      ),
     );
     await cap?.check();
   }
@@ -889,7 +1082,12 @@ function judgeCase(
       history.push(view);
       return { ...turn, checks };
     });
-    return { index: sample.index, cache: 'cold', turns };
+    return {
+      index: sample.index,
+      cache: 'cold',
+      turns,
+      ...(sample.customer === undefined ? {} : { customer: sample.customer }),
+    };
   });
   const aggregate = aggregateCase(samples, prepared.policies, testCase.knownGap !== undefined);
   return {
@@ -932,15 +1130,24 @@ interface Cap {
   reason(): string | undefined;
 }
 
-function costCap(options: RunOptions, recording: OpenRecording): Cap | undefined {
+function costCap(
+  options: RunOptions,
+  recording: OpenRecording | undefined,
+  own: OwnSpend | undefined,
+): Cap | undefined {
   const limit = options.maxCostUsd;
   if (limit === undefined) return undefined;
   let reason: string | undefined;
   return {
     async check() {
       if (reason !== undefined) return;
-      const records = await recording.control.records(recording.id);
-      let spent = 0;
+      // yokla's own spend counts with the target's (ADR-0028).
+      if (own?.unknown === true) {
+        reason = `stopped: a call of yokla's own model has no cost, so the cost cap of ${String(limit)} USD can't be enforced`;
+        return;
+      }
+      const records = recording === undefined ? [] : await recording.control.records(recording.id);
+      let spent = own?.costUsd ?? 0;
       for (const record of records) {
         const cost = callCost(
           record.usage,
@@ -1047,7 +1254,27 @@ export async function runSuite(input: RunOptions): Promise<Results> {
   });
 
   const recording = await openRecording(options);
-  const cap = recording === undefined ? undefined : costCap(options, recording);
+  const customerModel = options.models?.customer;
+  const simulation: Simulation | undefined =
+    customerModel === undefined || !options.cases.some((c) => c.customer !== undefined)
+      ? undefined
+      : {
+          player: new CustomerPlayer({
+            model: customerModel,
+            env: options.env,
+            cacheDir: resolve(
+              options.dataDir ?? resolve(options.profileDir, 'yokla-data'),
+              'customer',
+            ),
+            ...(options.freshCustomer === true ? { fresh: true } : {}),
+          }),
+          spend: { calls: 0, cached: 0, costUsd: 0, unknown: false },
+          languages: prepared.languages,
+        };
+  const cap =
+    recording === undefined && simulation === undefined
+      ? undefined
+      : costCap(options, recording, simulation?.spend);
   const arm: Arm | undefined =
     recording === undefined
       ? undefined
@@ -1063,7 +1290,18 @@ export async function runSuite(input: RunOptions): Promise<Results> {
       options.cases,
       options.concurrency ?? 1,
       (testCase, index) =>
-        exchangeCase(options, client, testCase, index, arm, cap, openUrl, settle, socket),
+        exchangeCase(
+          options,
+          client,
+          testCase,
+          index,
+          arm,
+          cap,
+          openUrl,
+          settle,
+          socket,
+          simulation,
+        ),
       () => cap?.stopped() === true,
     );
   } finally {
@@ -1105,7 +1343,19 @@ export async function runSuite(input: RunOptions): Promise<Results> {
   const observation = await observe(options, startedAt, exchanged);
   const cases = exchanged.map((c) => judgeCase(options, prepared, c, observation, calls));
   const stop = cap?.reason();
-  const issues = [...observation.issues, ...proxyIssues, ...(stop === undefined ? [] : [stop])];
+  const capIssues =
+    options.maxCostUsd !== undefined && recording === undefined && simulation !== undefined
+      ? [
+          "the cost cap counted yokla's own model calls only: without a model proxy, the target's cost is unknown",
+        ]
+      : [];
+  const issues = [
+    ...observation.issues,
+    ...proxyIssues,
+    ...capIssues,
+    ...(stop === undefined ? [] : [stop]),
+  ];
+  const own = simulation?.spend;
   const statuses: Partial<Record<CaseResult['status'], number>> = {};
   for (const c of cases) statuses[c.status] = (statuses[c.status] ?? 0) + 1;
   const finishedAt = new Date();
@@ -1123,6 +1373,15 @@ export async function runSuite(input: RunOptions): Promise<Results> {
       partial: cap?.stopped() === true,
       ...(observation.summary === undefined ? {} : { observation: observation.summary }),
       ...(calls === undefined ? {} : { proxy: { ...calls.summary, prompts: calls.prompts.store } }),
+      ...(own === undefined
+        ? {}
+        : {
+            own: {
+              calls: own.calls,
+              cached: own.cached,
+              costUsd: own.unknown ? null : Math.round(own.costUsd * 1e9) / 1e9,
+            },
+          }),
       ...(issues.length === 0 ? {} : { issues }),
     },
     cases,
