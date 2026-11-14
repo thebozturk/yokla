@@ -794,6 +794,17 @@ function promptView(prompt: TurnProxy['calls'][number]['prompt']): ProxyCallView
   return view;
 }
 
+/** The tool calls as checks see them, with their arguments; null when any is unknown (ADR-0025). */
+function toolCallsView(calls: TurnProxy['calls'][number]['toolCalls']): ProxyCallView['toolCalls'] {
+  if (calls === undefined || calls === null) return null;
+  const view: { name: string; arguments: string }[] = [];
+  for (const { name, arguments: text } of calls) {
+    if (text === undefined) return null;
+    view.push({ name, arguments: text });
+  }
+  return view;
+}
+
 /** Whether any recorded call sent `text` in a system message: every prompt-leak pass needs it. */
 function inSystemPrompt(records: readonly ProxyRecord[], text: string): boolean {
   return records.some((record) =>
@@ -846,6 +857,8 @@ function judgeCase(
                 calls: proxy.calls.map((call) => ({
                   inputTokens: call.usage.input,
                   prompt: promptView(call.prompt),
+                  offered: call.tools ?? null,
+                  toolCalls: toolCallsView(call.toolCalls),
                 })),
                 costUsd: proxy.costUsd,
               },

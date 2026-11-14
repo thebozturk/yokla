@@ -1761,6 +1761,62 @@ describe('runSuite with the model proxy', () => {
     expect(results.run.issues).toBeUndefined();
   });
 
+  it("gives the checks each call's tool calls with their arguments, while the results keep sizes (ADR-0025)", async () => {
+    const proxy = await fakeProxy();
+    const pending: Pick<ProxyRecord, 'tools' | 'toolCalls'>[] = [
+      {
+        tools: ['search_products', 'add_to_cart'],
+        toolCalls: [
+          { name: 'search_products', chars: 31, arguments: '{"q":"tent","email":"a@b.com"}' },
+          { name: 'add_to_cart', chars: 16, arguments: '{"sku":"SKU-77"}' },
+        ],
+      },
+      // Tool calls the proxy couldn't read leave the trajectory unmeasured.
+      { tools: ['search_products'], toolCalls: null },
+    ];
+    const t = await target((_r, _i, response) => {
+      for (const tools of pending.splice(0, 1))
+        proxy.records.push({ ...call(null, proxy.mark()), ...tools });
+      json(response, answer());
+    });
+    const expectation = {
+      tools: { notCalled: ['add_to_cart'], args: { search_products: { q: 'tent' } } },
+    };
+    const results = await runSuite(
+      options(
+        proxied(t.url, 'serial'),
+        cases({
+          turns: [
+            { user: 'a', expect: expectation },
+            { user: 'b', expect: expectation },
+          ],
+        }),
+        { proxyUrl: proxy.url, checks: CORE_CHECKS },
+      ),
+    );
+    expect(Results.safeParse(results).success).toBe(true);
+    const [first, second] = results.cases[0]?.samples[0]?.turns ?? [];
+    const findings = (turn: typeof first, id: string) => turn?.checks.find((c) => c.check === id);
+    // The arguments matched, and the forbidden call was seen: the checks had the full text.
+    expect(findings(first, 'tool-calls')?.findings.map((f) => f.message)).toEqual([
+      'asked for add_to_cart, which the turn forbids (1 time)',
+    ]);
+    expect(findings(first, 'tool-call-valid')?.findings.map((f) => f.verdict)).toEqual(['pass']);
+    expect(findings(second, 'tool-calls')?.unmeasured).toEqual([
+      { dimension: 'tool-use', reason: "the tool calls of a model call couldn't be read" },
+    ]);
+    // The results keep the names and sizes, not the arguments (prompts.store is sizes).
+    expect(first?.proxy?.calls[0]).toMatchObject({
+      tools: ['search_products', 'add_to_cart'],
+      toolCalls: [
+        { name: 'search_products', chars: 31 },
+        { name: 'add_to_cart', chars: 16 },
+      ],
+    });
+    expect(second?.proxy?.calls[0]?.toolCalls).toBeNull();
+    expect(JSON.stringify(results)).not.toMatch(/a@b\.com|SKU-77/u);
+  });
+
   it('counts a call the target makes after its answer for that turn, by waiting for quiet', async () => {
     // The settle answers after 60 ms; the target's background call starts 20 ms after its answer.
     const proxy = await fakeProxy({ settle: { delayMs: 60 } });

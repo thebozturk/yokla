@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import { Id, LanguageCode, Suite } from './common.ts';
-import { PromptMessage, PromptStore, ProxyUsage } from './proxy.ts';
+import { PromptMessage, PromptStore, ProxyUsage, ToolCall } from './proxy.ts';
 
 export const RESULTS_SCHEMA_ID = 'yokla.results/v1';
 
@@ -88,6 +88,10 @@ export const TurnResult = z.object({
            * keeps (ADR-0015); null when the proxy couldn't read the request.
            */
           prompt: z.array(PromptMessage).nullable().optional(),
+          /** The names of the tools the call offered; null when unreadable (ADR-0025). */
+          tools: z.array(z.string()).nullable().optional(),
+          /** The tool calls the model asked for, kept as `prompts` keeps text (ADR-0025). */
+          toolCalls: z.array(ToolCall).nullable().optional(),
         }),
       ),
       /** The sum of the calls' cost; null when any call has none. */

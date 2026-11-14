@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 import {
   callCost,
   storePrompt,
+  storeToolCalls,
   type PromptStorage,
   type ProxyRecord,
   type Results,
@@ -74,6 +75,8 @@ export function attributeCalls<K>(
       costUsd,
       ...(record.fault === undefined ? {} : { fault: record.fault }),
       ...(record.prompt === undefined ? {} : { prompt: record.prompt }),
+      ...(record.tools === undefined ? {} : { tools: record.tools }),
+      ...(record.toolCalls === undefined ? {} : { toolCalls: record.toolCalls }),
     });
   }
 
@@ -126,10 +129,13 @@ function sha256(text: string): string {
 export function storeTurnProxy(proxy: TurnProxy, storage: PromptStorage): TurnProxy {
   return {
     ...proxy,
-    calls: proxy.calls.map((call) =>
-      call.prompt === undefined
-        ? call
-        : { ...call, prompt: storePrompt(call.prompt, storage, sha256) },
-    ),
+    calls: proxy.calls.map((call) => ({
+      ...call,
+      ...(call.prompt === undefined ? {} : { prompt: storePrompt(call.prompt, storage, sha256) }),
+      // Tool-call arguments are kept as prompt text is (ADR-0025).
+      ...(call.toolCalls === undefined
+        ? {}
+        : { toolCalls: storeToolCalls(call.toolCalls, storage, sha256) }),
+    })),
   };
 }

@@ -335,6 +335,64 @@
                       },
                       "description": "Seeded values, such as fake personal data, that must not appear in any message of the turn's model calls (ADR-0015)."
                     },
+                    "tools": {
+                      "type": "object",
+                      "properties": {
+                        "called": {
+                          "description": "Tools the model must ask for at least once in the turn.",
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "notCalled": {
+                          "description": "Tools the model must not ask for in the turn.",
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "args": {
+                          "description": "Per tool, argument values some call of it must have; a dotted path into its arguments, e.g. filters.priceMax.",
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "additionalProperties": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "additionalProperties": {
+                              "$ref": "#/$defs/__schema1"
+                            }
+                          }
+                        },
+                        "order": {
+                          "description": "Tools that must be asked for in this order; other calls may come between.",
+                          "minItems": 2,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "maxCalls": {
+                          "description": "The most tool calls the turn may ask for.",
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "additionalProperties": false,
+                      "description": "What the turn's model calls must and must not ask of tools, judged by tool-calls (ADR-0025)."
+                    },
                     "evidence": {
                       "type": "object",
                       "propertyNames": {
@@ -587,6 +645,37 @@
           },
           "additionalProperties": {
             "$ref": "#/$defs/__schema0"
+          }
+        }
+      ]
+    },
+    "__schema1": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema1"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema1"
           }
         }
       ]

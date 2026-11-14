@@ -48,6 +48,24 @@ export const PromptMessage = z.object({
 });
 export type PromptMessage = z.output<typeof PromptMessage>;
 
+/**
+ * A tool call a model asked for (ADR-0025). The proxy hands the runner its
+ * arguments; what is written to files depends on the profile's `prompts.store`.
+ */
+export const ToolCall = z.object({
+  name: z.string(),
+  /** The length of the arguments' text, in UTF-16 code units. */
+  chars: z.int().nonnegative(),
+  /** The SHA-256 of the arguments' text, in hex: kept with `hashed` and `full`. */
+  sha256: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/u)
+    .optional(),
+  /** The arguments as the model sent them, or with `redacted` their matches replaced. */
+  arguments: z.string().optional(),
+});
+export type ToolCall = z.output<typeof ToolCall>;
+
 export const ProxyRecord = z.object({
   id: z.string().min(1),
   upstream: Id,
@@ -73,5 +91,9 @@ export const ProxyRecord = z.object({
   error: z.string().optional(),
   /** The messages the call sent (ADR-0015); null when the proxy couldn't read the request. */
   prompt: z.array(PromptMessage).nullable().optional(),
+  /** The names of the tools the call offered (ADR-0025); null when the request couldn't be read. */
+  tools: z.array(z.string()).nullable().optional(),
+  /** The tool calls the model asked for, in order (ADR-0025); null when the answer couldn't be read. */
+  toolCalls: z.array(ToolCall).nullable().optional(),
 });
 export type ProxyRecord = z.output<typeof ProxyRecord>;

@@ -5,6 +5,7 @@ import { coreExpectations } from '../schema/cases.ts';
 import { findPhrases } from '../text/phrases.ts';
 import { fold } from './fold.ts';
 import { piiInPrompt, promptBudget, promptLeak, untrustedInSystem } from './inspection.ts';
+import { toolCalls, toolCallValid } from './tools.ts';
 import type { Check, CheckFinding } from './types.ts';
 
 export const routeExpected: Check = {
@@ -378,4 +379,6 @@ export const CORE_CHECKS: readonly Check[] = [
   promptLeak,
   untrustedInSystem,
   piiInPrompt,
+  toolCalls,
+  toolCallValid,
 ];

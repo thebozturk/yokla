@@ -71,6 +71,39 @@ export const coreExpectations = {
       description:
         "Seeded values, such as fake personal data, that must not appear in any message of the turn's model calls (ADR-0015).",
     }),
+  tools: z
+    .strictObject({
+      called: z.array(z.string().min(1)).min(1).optional().meta({
+        description: 'Tools the model must ask for at least once in the turn.',
+      }),
+      notCalled: z
+        .array(z.string().min(1))
+        .min(1)
+        .optional()
+        .meta({ description: 'Tools the model must not ask for in the turn.' }),
+      args: z
+        .record(z.string().min(1), z.record(z.string().min(1), z.json()))
+        .optional()
+        .meta({
+          description:
+            'Per tool, argument values some call of it must have; a dotted path into its arguments, e.g. filters.priceMax.',
+        }),
+      order: z.array(z.string().min(1)).min(2).optional().meta({
+        description: 'Tools that must be asked for in this order; other calls may come between.',
+      }),
+      maxCalls: z
+        .int()
+        .min(0)
+        .optional()
+        .meta({ description: 'The most tool calls the turn may ask for.' }),
+    })
+    .refine((tools) => Object.values(tools).some((value) => value !== undefined), {
+      message: 'tools needs called, notCalled, args, order or maxCalls',
+    })
+    .meta({
+      description:
+        "What the turn's model calls must and must not ask of tools, judged by tool-calls (ADR-0025).",
+    }),
   evidence: z
     .record(
       Id,

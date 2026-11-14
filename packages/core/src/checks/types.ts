@@ -73,6 +73,10 @@ export interface ProxyCallView {
   readonly inputTokens: number | null;
   /** The messages the call sent, with their text; null when the proxy couldn't read them. */
   readonly prompt: readonly { readonly role: PromptRole; readonly text: string }[] | null;
+  /** The names of the tools the call offered; null when unknown (ADR-0025). */
+  readonly offered: readonly string[] | null;
+  /** The tool calls the model asked for, with their arguments' text; null when unknown. */
+  readonly toolCalls: readonly { readonly name: string; readonly arguments: string }[] | null;
 }
 
 /** A money amount mentioned in text, e.g. "1.299,90 TL". */

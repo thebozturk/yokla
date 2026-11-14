@@ -31,6 +31,7 @@ import {
   type ArmedTurn,
 } from './faults.ts';
 import { readPrompt } from './prompts.ts';
+import { readOffered, readToolCalls } from './tools.ts';
 import { readUsage, UNMEASURED, type UpstreamKind } from './usage.ts';
 
 export interface ProxyUpstream {
@@ -348,6 +349,8 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
             ? { usage: UNMEASURED, model: null }
             : readUsage(upstream.kind, raw, stream);
       const path = rest.split('?')[0] ?? '';
+      const sent = decoded(body, request.headers['content-encoding']);
+      const asked = readToolCalls(upstream.kind, raw, stream, status);
       const record: ProxyRecord = {
         id: randomUUID(),
         upstream: upstream.id,
@@ -368,7 +371,17 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
         ...(extra.forwarded === false ? { forwarded: false } : {}),
         ...(error === undefined ? {} : { error }),
         // What the call sent to the model, read only for an open recording (ADR-0015).
-        prompt: readPrompt(upstream.kind, path, decoded(body, request.headers['content-encoding'])),
+        prompt: readPrompt(upstream.kind, path, sent),
+        // The tools it offered, and the calls the model asked for (ADR-0025).
+        tools: readOffered(sent),
+        toolCalls:
+          asked === null
+            ? null
+            : asked.map((call) => ({
+                name: call.name,
+                chars: call.arguments.length,
+                arguments: call.arguments,
+              })),
       };
       open.records.push(record);
       options.onRecord?.(record);

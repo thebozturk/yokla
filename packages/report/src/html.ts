@@ -287,6 +287,15 @@ function tokens(value: number | null): string {
   return value === null ? '–' : String(value);
 }
 
+/** The tools a call asked for, by name; the arguments stay in the results (ADR-0025). */
+function toolsOf(call: ModelCall): string {
+  if (call.toolCalls === undefined) return '–';
+  if (call.toolCalls === null) return 'unreadable';
+  return call.toolCalls.length === 0
+    ? 'none'
+    : call.toolCalls.map((asked) => asked.name).join(', ');
+}
+
 function promptOf(call: ModelCall): string {
   if (call.prompt === undefined) return '–';
   if (call.prompt === null) return 'unreadable';
@@ -300,7 +309,7 @@ function callsBlock(proxy: NonNullable<TurnResult['proxy']>): Html {
         call.fault === undefined
           ? ''
           : `${call.fault.kind}${call.fault.applied ? '' : ' (not applied)'}`
-      }</td><td>${promptOf(call)}</td></tr>`,
+      }</td><td>${toolsOf(call)}</td><td>${promptOf(call)}</td></tr>`,
   );
   return h`<details><summary>Model calls: ${counted(proxy.calls.length, 'call')}, ${usd(proxy.costUsd)}, ${proxy.correlation} correlation</summary>${table(
     [
@@ -316,6 +325,7 @@ function callsBlock(proxy: NonNullable<TurnResult['proxy']>): Html {
       'Reasoning',
       'Cost',
       'Fault',
+      'Tool calls',
       'Prompt, characters per message',
     ],
     rows,

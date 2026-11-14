@@ -72,10 +72,23 @@ export {
   type ProfileTarget,
   type WebSocketProfileTarget,
 } from './schema/profile.ts';
-export { PromptMessage, PromptRole, PromptStore, ProxyRecord, ProxyUsage } from './schema/proxy.ts';
+export {
+  PromptMessage,
+  PromptRole,
+  PromptStore,
+  ProxyRecord,
+  ProxyUsage,
+  ToolCall,
+} from './schema/proxy.ts';
 export { Fault, FAULT_KINDS, FaultPlan } from './schema/fault.ts';
 export { callCost } from './proxy/cost.ts';
-export { redact, REDACTED, storePrompt, type PromptStorage } from './proxy/prompts.ts';
+export {
+  redact,
+  REDACTED,
+  storePrompt,
+  storeToolCalls,
+  type PromptStorage,
+} from './proxy/prompts.ts';
 export { plan, type Plan, type PlannedCase } from './plan/plan.ts';
 export { GateConfig, YoklaConfig, type Price } from './schema/config.ts';
 export { evaluateGate, type GateBreach, type GateOutcome } from './gate/gate.ts';
@@ -158,3 +171,4 @@ export {
   statusAllowed,
 } from './checks/generic.ts';
 export { piiInPrompt, promptBudget, promptLeak, untrustedInSystem } from './checks/inspection.ts';
+export { toolCalls, toolCallValid } from './checks/tools.ts';

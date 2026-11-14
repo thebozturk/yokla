@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { PromptMessage } from '../schema/proxy.ts';
-import { redact, REDACTED, storePrompt, type PromptStorage } from './prompts.ts';
+import type { PromptMessage, ToolCall } from '../schema/proxy.ts';
+import { redact, REDACTED, storePrompt, storeToolCalls, type PromptStorage } from './prompts.ts';
 
 const prompt: PromptMessage[] = [
   { role: 'system', chars: 9, text: 'Be brief.' },
@@ -53,5 +53,46 @@ describe('redact', () => {
     // A later pattern sees the text the earlier ones left.
     expect(redact('ab', ['a', '\\[redacted\\]b'])).toBe(REDACTED);
     expect(redact('text', [])).toBe('text');
+  });
+});
+
+describe('storeToolCalls (ADR-0025)', () => {
+  const calls: ToolCall[] = [
+    { name: 'search_products', chars: 16, arguments: '{"q":"çadır"}' },
+    { name: 'add_to_cart', chars: 25, arguments: '{"email":"a@b.com","n":1}' },
+  ];
+
+  it('keeps the name and length only with sizes, the default', () => {
+    expect(storeToolCalls(calls, { store: 'sizes' }, hash)).toEqual([
+      { name: 'search_products', chars: 16 },
+      { name: 'add_to_cart', chars: 25 },
+    ]);
+  });
+
+  it('adds the hash with hashed, and the arguments too with full', () => {
+    expect(storeToolCalls(calls, { store: 'hashed' }, hash)?.[0]).toEqual({
+      name: 'search_products',
+      chars: 16,
+      sha256: '#{"q":"çadır"}',
+    });
+    expect(storeToolCalls(calls, { store: 'full' }, hash)?.[1]).toEqual({
+      name: 'add_to_cart',
+      chars: 25,
+      sha256: '#{"email":"a@b.com","n":1}',
+      arguments: '{"email":"a@b.com","n":1}',
+    });
+  });
+
+  it('keeps redacted arguments and no hash with redacted', () => {
+    expect(
+      storeToolCalls(calls, { store: 'redacted', redact: ['[a-z]+@[a-z.]+'] }, hash)?.[1],
+    ).toEqual({ name: 'add_to_cart', chars: 25, arguments: `{"email":"${REDACTED}","n":1}` });
+  });
+
+  it('keeps unknown calls unknown, and a call without arguments at its size', () => {
+    expect(storeToolCalls(null, { store: 'full' }, hash)).toBeNull();
+    expect(storeToolCalls([{ name: 'x', chars: 3 }], { store: 'full' }, hash)).toEqual([
+      { name: 'x', chars: 3 },
+    ]);
   });
 });

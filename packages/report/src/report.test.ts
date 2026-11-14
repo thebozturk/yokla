@@ -384,6 +384,8 @@ describe('htmlReport (ADR-0023)', () => {
     stream: true,
     usage: { input: 1200, output: 80, cachedInput: 1000, cacheWrite: null, reasoning: null },
     costUsd: 0.001234567,
+    tools: ['search_products', 'add_to_cart'],
+    toolCalls: [{ name: 'search_products', chars: 28, arguments: '{"q":"SECRET TOOL ARGUMENT"}' }],
     prompt: [
       { role: 'system' as const, chars: 20, sha256: 'b'.repeat(64), text: 'SECRET SYSTEM PROMPT' },
       { role: 'user' as const, chars: 8, sha256: 'c'.repeat(64), text: 'question' },
@@ -591,8 +593,9 @@ describe('htmlReport (ADR-0023)', () => {
 
   it("shows a model call's prompt by role and size only", () => {
     const page = htmlReport(rich);
-    expect(page).toContain('<td>system 20, user 8</td>');
+    expect(page).toContain('<td>search_products</td><td>system 20, user 8</td>');
     expect(page).not.toContain('SECRET SYSTEM PROMPT');
+    expect(page).not.toContain('SECRET TOOL ARGUMENT');
     expect(page).not.toContain('b'.repeat(64));
     expect(page).toContain('$0.001235');
   });
