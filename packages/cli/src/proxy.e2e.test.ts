@@ -7,8 +7,9 @@
 // for each inspection defect (ADR-0015). With spans on, the demo-shop exports
 // a span for each model call, once per protocol, and the calls read from them
 // must match the proxy's records, turn by turn; a demo-shop whose calls bypass
-// the proxy is measured from its spans alone (ADR-0029). Everything runs
-// behind the network guard.
+// the proxy is measured from its spans alone (ADR-0029). The acceptance, tool
+// and resilience cases run once more with the model in Gemini's native
+// protocol (ADR-0032). Everything runs behind the network guard.
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -57,6 +58,7 @@ function start(script: string, args: string[]): Promise<string> {
 interface UsageEntry {
   readonly promptTokens: number;
   readonly completionTokens: number;
+  readonly thoughtsTokens: number;
 }
 
 function usageEntries(): UsageEntry[] {
@@ -66,7 +68,11 @@ function usageEntries(): UsageEntry[] {
     .map((line): UsageEntry => {
       const value: unknown = JSON.parse(line);
       const read = (key: string) => Number(Reflect.get(Object(value), key));
-      return { promptTokens: read('promptTokens'), completionTokens: read('completionTokens') };
+      return {
+        promptTokens: read('promptTokens'),
+        completionTokens: read('completionTokens'),
+        thoughtsTokens: Number(Reflect.get(Object(value), 'thoughtsTokens') ?? 0),
+      };
     });
 }
 
@@ -76,11 +82,29 @@ let serialShop = '';
 let headerShop = '';
 
 /** The demo-shop profile with its data paths made absolute and a model proxy added. */
+/** How the demo-shop's model client speaks to the provider: chat completions, or Gemini's API. */
+type Protocol = 'chat' | 'gemini';
+
+/** The proxy's upstream for a protocol: the fake provider either way (ADR-0032). */
+function upstreamFor(protocol: Protocol, providerUrl: string): string {
+  return protocol === 'gemini'
+    ? `    - { id: gemini, kind: gemini, upstream: '${providerUrl.replace(/\/v1$/u, '')}' }\n`
+    : `    - { id: fake, kind: openai-compatible, upstream: '${providerUrl}' }\n`;
+}
+
+/** The demo-shop's model options for a protocol, through the proxy. */
+function shopModel(protocol: Protocol): string[] {
+  return protocol === 'gemini'
+    ? ['--model-url', `${proxyUrl}/gemini/v1beta`, '--model-protocol', 'gemini']
+    : ['--model-url', `${proxyUrl}/fake`];
+}
+
 function profileFor(
   correlation: 'serial' | 'header',
   providerUrl: string,
   name: string = correlation,
   more = '',
+  upstreams: string = upstreamFor('chat', providerUrl),
 ): string {
   const text = readFileSync(join(DEMO, 'yokla.profile.yaml'), 'utf8').replaceAll(
     './data/',
@@ -89,7 +113,7 @@ function profileFor(
   const path = join(dir, `${name}.profile.yaml`);
   writeFileSync(
     path,
-    `${text}\nmodelProxy:\n  port: 1\n  correlation: ${correlation}\n  upstreams:\n    - { id: fake, kind: openai-compatible, upstream: '${providerUrl}' }\n${more}`,
+    `${text}\nmodelProxy:\n  port: 1\n  correlation: ${correlation}\n  upstreams:\n${upstreams}${more}`,
   );
   return path;
 }
@@ -108,7 +132,7 @@ async function run(correlation: 'serial' | 'header', shop: string, providerUrl: 
   const config = join(dir, 'yokla.config.yaml');
   writeFileSync(
     config,
-    `version: 1\nprices:\n  fake:\n    demo-writer-1: { input: ${String(PRICES.input)}, output: ${String(PRICES.output)} }\n`,
+    `version: 1\nprices:\n  fake:\n    demo-writer-1: { input: ${String(PRICES.input)}, output: ${String(PRICES.output)} }\n  gemini:\n    gemini-demo-1: { input: ${String(PRICES.input)}, output: ${String(PRICES.output)} }\n`,
   );
   const before = usageEntries().length;
   const lines: string[] = [];
@@ -330,22 +354,31 @@ const TOOLS: Readonly<Record<string, Readonly<Record<string, readonly string[]>>
 };
 const toolRuns = new Map<string, Results>();
 
-async function runTools(defect: string, providerUrl: string): Promise<void> {
+async function runTools(
+  defect: string,
+  providerUrl: string,
+  protocol: Protocol = 'chat',
+): Promise<void> {
   const shop = await start('src/main.ts', [
     '--port',
     '0',
-    '--model-url',
-    `${proxyUrl}/fake`,
+    ...shopModel(protocol),
     '--defect',
     defect,
   ]);
-  const out = join(dir, `tools-${defect}.json`);
+  const out = join(dir, `tools-${protocol}-${defect}.json`);
   const quiet = { out: () => undefined, err: () => undefined };
   const code = await main(
     [
       'run',
       '--profile',
-      profileFor('serial', providerUrl, 'tools'),
+      profileFor(
+        'serial',
+        providerUrl,
+        `tools-${protocol}`,
+        '',
+        upstreamFor(protocol, providerUrl),
+      ),
       '--cases',
       join(DEMO, 'cases-tools'),
       '--target-url',
@@ -358,8 +391,38 @@ async function runTools(defect: string, providerUrl: string): Promise<void> {
     quiet,
   );
   expect(code, defect).toBe(0);
-  toolRuns.set(defect, Results.parse(JSON.parse(readFileSync(out, 'utf8'))));
+  (protocol === 'gemini' ? geminiToolRuns : toolRuns).set(
+    defect,
+    Results.parse(JSON.parse(readFileSync(out, 'utf8'))),
+  );
 }
+
+/** The tool calls the proxy read, per case: name and size. */
+const askedTools = (results: Results | undefined) =>
+  (results?.cases ?? []).flatMap((c) =>
+    c.samples.flatMap((sample) =>
+      sample.turns.flatMap((turn) =>
+        (turn.proxy?.calls ?? []).flatMap((call) =>
+          (call.toolCalls ?? []).map((tool) => [c.id, tool.name, tool.chars]),
+        ),
+      ),
+    ),
+  );
+
+/** The tools each model call offered. */
+const offeredTools = (results: Results | undefined) =>
+  (results?.cases ?? []).flatMap((c) =>
+    c.samples.flatMap((sample) =>
+      sample.turns.flatMap((turn) => (turn.proxy?.calls ?? []).map((call) => call.tools)),
+    ),
+  );
+
+/** The faults each case's first turn met, per call. */
+const faultsMet = (results: Results | undefined) =>
+  (results?.cases ?? []).map((c) => ({
+    id: c.id,
+    calls: c.samples[0]?.turns[0]?.proxy?.calls.map((call) => call.fault?.kind ?? 'none'),
+  }));
 
 /** check → the cases where it reported a failing finding. */
 function failingByCheck(results: Results | undefined): Record<string, string[]> {
@@ -377,24 +440,33 @@ function failingByCheck(results: Results | undefined): Record<string, string[]> 
   );
 }
 
-async function runResilience(defect: string, providerUrl: string): Promise<void> {
+async function runResilience(
+  defect: string,
+  providerUrl: string,
+  protocol: Protocol = 'chat',
+): Promise<void> {
   const shop = await start('src/main.ts', [
     '--port',
     '0',
-    '--model-url',
-    `${proxyUrl}/fake`,
+    ...shopModel(protocol),
     '--model-timeout-ms',
     '300',
     '--defect',
     defect,
   ]);
-  const out = join(dir, `resilience-${defect}.json`);
+  const out = join(dir, `resilience-${protocol}-${defect}.json`);
   const quiet = { out: () => undefined, err: () => undefined };
   const code = await main(
     [
       'run',
       '--profile',
-      profileFor('serial', providerUrl),
+      profileFor(
+        'serial',
+        providerUrl,
+        `resilience-${protocol}`,
+        '',
+        upstreamFor(protocol, providerUrl),
+      ),
       '--cases',
       join(DEMO, 'cases-resilience'),
       '--target-url',
@@ -407,7 +479,64 @@ async function runResilience(defect: string, providerUrl: string): Promise<void>
     quiet,
   );
   expect(code, defect).toBe(0);
-  resilience.set(defect, Results.parse(JSON.parse(readFileSync(out, 'utf8'))));
+  (protocol === 'gemini' ? geminiResilience : resilience).set(
+    defect,
+    Results.parse(JSON.parse(readFileSync(out, 'utf8'))),
+  );
+}
+
+/** The acceptance in Gemini's protocol: JSON answers correlated serially, streams by header. */
+const GEMINI_RUNS = { json: 'serial', stream: 'header' } as const;
+const geminiRuns = new Map<
+  string,
+  { code: number; output: string; results: Results; before: number; after: number }
+>();
+const geminiToolRuns = new Map<string, Results>();
+const geminiResilience = new Map<string, Results>();
+
+async function runGemini(mode: keyof typeof GEMINI_RUNS, providerUrl: string): Promise<void> {
+  const correlation = GEMINI_RUNS[mode];
+  const shop = await start('src/main.ts', [
+    '--port',
+    '0',
+    ...shopModel('gemini'),
+    ...(mode === 'stream' ? ['--model-stream'] : []),
+  ]);
+  const out = join(dir, `gemini-${mode}.results.json`);
+  const before = usageEntries().length;
+  const lines: string[] = [];
+  const io = { out: (line: string) => lines.push(line), err: (line: string) => lines.push(line) };
+  const code = await main(
+    [
+      'run',
+      '--profile',
+      profileFor(
+        correlation,
+        providerUrl,
+        `gemini-${mode}`,
+        '',
+        upstreamFor('gemini', providerUrl),
+      ),
+      '--cases',
+      join(DEMO, 'cases'),
+      '--target-url',
+      `${shop}/v1/chat`,
+      '--proxy-url',
+      proxyUrl,
+      '--config',
+      join(dir, 'yokla.config.yaml'),
+      '--out',
+      out,
+    ],
+    io,
+  );
+  geminiRuns.set(mode, {
+    code,
+    output: lines.join('\n'),
+    results: Results.parse(JSON.parse(readFileSync(out, 'utf8'))),
+    before,
+    after: usageEntries().length,
+  });
 }
 
 /** Each protocol the demo-shop exports spans in, with the correlation the proxy keeps (ADR-0029). */
@@ -490,7 +619,20 @@ beforeAll(async () => {
   const providerUrl = await start('src/provider-main.ts', ['--port', '0', '--usage-log', usageLog]);
   const proxyLines: string[] = [];
   proxyDone = proxyCommand(
-    ['--profile', profileFor('serial', providerUrl), '--port', '0', '--records', proxyLog],
+    [
+      '--profile',
+      profileFor(
+        'serial',
+        providerUrl,
+        'proxy',
+        '',
+        upstreamFor('chat', providerUrl) + upstreamFor('gemini', providerUrl),
+      ),
+      '--port',
+      '0',
+      '--records',
+      proxyLog,
+    ],
     { out: (line) => proxyLines.push(line), err: (line) => proxyLines.push(line) },
     stopProxy.signal,
   );
@@ -526,7 +668,11 @@ beforeAll(async () => {
   }
   // The model calls go straight to the provider: only their spans show them.
   await runSpans('only', ['--model-url', providerUrl], spansOnlyProfile());
-}, 300_000);
+  // Gemini's native protocol (ADR-0032).
+  for (const mode of ['json', 'stream'] as const) await runGemini(mode, providerUrl);
+  for (const defect of Object.keys(TOOLS)) await runTools(defect, providerUrl, 'gemini');
+  for (const defect of Object.keys(RESILIENCE)) await runResilience(defect, providerUrl, 'gemini');
+}, 600_000);
 
 afterAll(async () => {
   stopProxy.abort();
@@ -610,6 +756,9 @@ describe('the model proxy against the demo-shop', () => {
       ...toolRuns.values(),
       ...(streamed === undefined ? [] : [streamed.results]),
       ...[...spanRuns.values()].map((done) => done.results),
+      ...[...geminiRuns.values()].map((done) => done.results),
+      ...geminiToolRuns.values(),
+      ...geminiResilience.values(),
     ].reduce((total, results) => total + (results.run.proxy?.records ?? 0), 0);
     expect(lines).toHaveLength(recorded);
     expect(lines.join('\n')).not.toMatch(/authorization|demo-key/iu);
@@ -861,6 +1010,92 @@ describe('the model proxy against the demo-shop', () => {
       expect(turn.spans?.calls, turn.user).toHaveLength(2);
       expect(turn.spans?.costUsd, turn.user).toBeGreaterThan(0);
     }
+  });
+
+  it.each(Object.entries(GEMINI_RUNS))(
+    "gemini, %s: the acceptance passes with the model in Gemini's protocol (ADR-0032)",
+    (mode, correlation) => {
+      const done = geminiRuns.get(mode);
+      expect(done?.code, done?.output).toBe(0);
+      expect(done?.results.summary.statuses).toEqual({ pass: 18 });
+      expect(done?.results.run.correlation).toBe(correlation);
+      expect(answers(done?.results)).toEqual(answers(runs.get('serial')?.results));
+    },
+  );
+
+  it.each(Object.entries(GEMINI_RUNS))(
+    "gemini, %s: the proxy's measurement reconciles with the provider's records, thinking included",
+    (mode, correlation) => {
+      const done = geminiRuns.get(mode);
+      const provider = usageEntries().slice(done?.before ?? 0, done?.after ?? 0);
+      const sum = (key: keyof UsageEntry) =>
+        provider.reduce((total, entry) => total + entry[key], 0);
+      expect(provider.length).toBeGreaterThan(0);
+      expect(sum('thoughtsTokens')).toBeGreaterThan(0);
+      expect(done?.results.run.proxy).toEqual({
+        correlation,
+        records: provider.length,
+        attributed: provider.length,
+        unattributed: 0,
+        totals: {
+          calls: provider.length,
+          inputTokens: sum('promptTokens'),
+          outputTokens: sum('completionTokens'),
+          reasoningTokens: sum('thoughtsTokens'),
+          costUsd: expect.closeTo(
+            (sum('promptTokens') * PRICES.input + sum('completionTokens') * PRICES.output) / 1e6,
+            12,
+          ) as unknown,
+        },
+        missing: { cachedInputTokens: provider.length, cacheWriteTokens: provider.length },
+        prompts: 'sizes',
+      });
+      for (const turn of done?.results.cases.flatMap((c) => c.samples[0]?.turns ?? []) ?? []) {
+        expect(turn.proxy?.calls, turn.user).toHaveLength(2);
+        for (const call of turn.proxy?.calls ?? []) {
+          expect(call).toMatchObject({
+            upstream: 'gemini',
+            model: 'gemini-demo-1',
+            stream: mode === 'stream',
+          });
+          expect(call.prompt?.map((message) => message.role)).toEqual(['system', 'user']);
+        }
+      }
+    },
+  );
+
+  it.each(Object.entries(TOOLS))(
+    'gemini tools, %s: exactly the expected check fails, on exactly the expected cases',
+    (defect, expected) => {
+      const results = geminiToolRuns.get(defect);
+      expect(results?.cases).toHaveLength(4);
+      const wanted = Object.fromEntries(
+        Object.entries(expected).map(([check, ids]) => [check, [...ids].toSorted()]),
+      );
+      expect(failingByCheck(results)).toEqual(wanted);
+    },
+  );
+
+  it('gemini tools: the proxy reads the same tool calls as over chat completions', () => {
+    expect(askedTools(geminiToolRuns.get('none')).length).toBeGreaterThan(0);
+    expect(askedTools(geminiToolRuns.get('none'))).toEqual(askedTools(toolRuns.get('none')));
+    expect(offeredTools(geminiToolRuns.get('none'))).toEqual(offeredTools(toolRuns.get('none')));
+  });
+
+  it.each(Object.entries(RESILIENCE))(
+    'gemini resilience, %s: exactly the expected check fails, on exactly the expected cases',
+    (defect, expected) => {
+      const results = geminiResilience.get(defect);
+      expect(results?.cases).toHaveLength(6);
+      const wanted = Object.fromEntries(
+        Object.entries(expected).map(([check, ids]) => [check, [...ids].toSorted()]),
+      );
+      expect(failingByCheck(results)).toEqual(wanted);
+    },
+  );
+
+  it('gemini resilience: the faults reached the provider as they do over chat completions', () => {
+    expect(faultsMet(geminiResilience.get('none'))).toEqual(faultsMet(resilience.get('none')));
   });
 
   it('budgets: plan estimates a repeat of the serial run exactly from it', () => {

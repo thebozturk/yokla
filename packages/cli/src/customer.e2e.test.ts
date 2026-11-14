@@ -1,7 +1,8 @@
 // The simulated customer against the demo-shop (ADR-0028), as v0.3's exit
 // criteria ask: the customer reaches each purchase goal, every turn passes the
 // checks, and a run repeats from its seed. The fake provider plays the
-// customer by simple rules, so it costs nothing. Everything runs behind a
+// customer by simple rules, so it costs nothing. A third run plays the
+// customer through Gemini's native API (ADR-0032). Everything runs behind a
 // network guard that allows only the demo-shop and the fake provider.
 // yokla never imports the demo-shop (layer rules).
 
@@ -80,9 +81,29 @@ beforeAll(async () => {
       '',
     ].join('\n'),
   );
+  // The same customer through Gemini's native API (ADR-0032): its own cache key, so asked anew.
+  const geminiConfig = join(dir, 'gemini.config.yaml');
+  writeFileSync(
+    geminiConfig,
+    [
+      'version: 1',
+      'models:',
+      '  customer:',
+      '    kind: gemini',
+      `    url: ${provider.replace(/\/v1$/u, '')}/v1beta`,
+      '    model: gemini-demo-1',
+      `    apiKeyEnv: ${KEY_ENV}`,
+      '    price: { input: 0.1, output: 0.5 }',
+      '',
+    ].join('\n'),
+  );
   process.env[KEY_ENV] = 'demo-key';
   try {
-    for (const name of ['first', 'second']) {
+    for (const [name, configPath] of [
+      ['first', config],
+      ['second', config],
+      ['gemini', geminiConfig],
+    ] as const) {
       const out = join(dir, `${name}.json`);
       const lines: string[] = [];
       const io = {
@@ -95,7 +116,7 @@ beforeAll(async () => {
           '--profile',
           profile,
           '--config',
-          config,
+          configPath,
           '--cases',
           join(DEMO, 'cases-customer'),
           '--target-url',
@@ -121,6 +142,15 @@ afterAll(() => {
   // Stop exactly the processes these tests started, by their handles.
   for (const child of children) child.kill();
 });
+
+/** The calls the fake provider recorded for one model. */
+function providerCalls(model: string): unknown[] {
+  return readFileSync(usageLog, 'utf8')
+    .split('\n')
+    .filter((line) => line !== '')
+    .map((line): unknown => JSON.parse(line))
+    .filter((call) => Reflect.get(Object(call), 'model') === model);
+}
 
 /** Each case's conversation: the customer's messages, in order. */
 const conversations = (results: Results | undefined) =>
@@ -171,10 +201,7 @@ describe('the simulated customer against the demo-shop (ADR-0028)', () => {
     // The headlamp case opens as written: five customer calls in all.
     expect(results?.run.own).toMatchObject({ calls: 5, cached: 0 });
     expect(results?.run.own?.costUsd).toBeGreaterThan(0);
-    const calls = readFileSync(usageLog, 'utf8')
-      .split('\n')
-      .filter((line) => line !== '');
-    expect(calls).toHaveLength(5);
+    expect(providerCalls('demo-customer-1')).toHaveLength(5);
   });
 
   it('repeats every conversation from the cache, at no cost', () => {
@@ -185,12 +212,22 @@ describe('the simulated customer against the demo-shop (ADR-0028)', () => {
     for (const c of second?.results.cases ?? []) {
       expect(c.samples[0]?.customer?.seed).toBe(`${c.id}|0`);
     }
-    // The provider was asked nothing more.
-    expect(
-      readFileSync(usageLog, 'utf8')
-        .split('\n')
-        .filter((line) => line !== ''),
-    ).toHaveLength(5);
+    // The provider was asked nothing more over chat completions.
+    expect(providerCalls('demo-customer-1')).toHaveLength(5);
+  });
+
+  it("plays the same customer through Gemini's native API, thinking counted (ADR-0032)", () => {
+    const [first, , gemini] = runs;
+    expect(gemini?.code, gemini?.output).toBe(0);
+    expect(gemini?.results.summary.statuses).toEqual({ pass: 3 });
+    expect(conversations(gemini?.results)).toEqual(conversations(first?.results));
+    expect(gemini?.results.run.own).toMatchObject({ calls: 5, cached: 0 });
+    expect(gemini?.results.run.own?.costUsd).toBeGreaterThan(first?.results.run.own?.costUsd ?? 0);
+    const viaGemini = providerCalls('gemini-demo-1');
+    expect(viaGemini).toHaveLength(5);
+    for (const call of viaGemini) {
+      expect(Reflect.get(Object(call), 'thoughtsTokens')).toBeGreaterThan(0);
+    }
   });
 
   it('contacts no host but the demo-shop and the fake provider (ADR-0003)', () => {
