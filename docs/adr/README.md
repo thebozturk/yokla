@@ -42,6 +42,7 @@ old one.
 | [0027](0027-a-product-named-by-the-start-of-its-name.md) | A product named by the start of its name | Accepted |
 | [0028](0028-the-simulated-customer.md) | The simulated customer, and yokla's own model calls | Accepted |
 | [0029](0029-model-calls-from-opentelemetry-spans.md) | Model calls read from OpenTelemetry spans | Accepted |
+| [0030](0030-generic-checks.md) | Generic checks: patterns, JSON Schema, similarity, and checks the user writes | Proposed |
 
 ## Template
 
