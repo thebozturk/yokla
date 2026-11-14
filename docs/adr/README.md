@@ -46,7 +46,7 @@ old one.
 | [0031](0031-tokens-yokla-obtains.md) | Authentication: tokens yokla obtains and refreshes | Accepted |
 | [0032](0032-gemini.md) | Gemini: the model proxy and yokla's own calls | Accepted |
 | [0033](0033-where-a-failure-arose.md) | Where a failure arose: the origin of the value a finding names | Accepted |
-| [0034](0034-publishing-to-npm.md) | Publishing to npm | Proposed |
+| [0034](0034-publishing-to-npm.md) | Publishing to npm | Accepted |
 
 ## Template
 

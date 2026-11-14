@@ -1,6 +1,6 @@
 # 0034. Publishing to npm
 
-Status: Proposed · Date: 2026-11-15
+Status: Accepted · Date: 2026-11-15
 
 ## Context
 
