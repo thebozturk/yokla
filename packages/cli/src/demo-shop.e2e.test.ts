@@ -4,7 +4,9 @@
 // check fails on exactly the expected cases, and nothing else fails. Over a
 // WebSocket (ADR-0024), the defect-free run gives the same answers, and a
 // seeded defect is caught the same way. The runs load the demo-shop's own
-// check through its yokla.config.yaml, as a user would (ADR-0030).
+// check through its yokla.config.yaml, as a user would (ADR-0030). Behind
+// bearer tokens (ADR-0031), the acceptance still passes, with tokens yokla
+// fetches, refreshes and replaces, and no token or secret in what it writes.
 // yokla never imports the demo-shop (layer rules).
 //
 // The egress test (ADR-0003, design §15): every run, gate and baseline here
@@ -116,12 +118,17 @@ const runs = new Map<
   { code: number; output: string; results: Results; junit: string; html: string; out: string }
 >();
 
-async function startShop(defect: string): Promise<string> {
+async function startShop(
+  defect: string,
+  extra: readonly string[] = [],
+  env: Readonly<Record<string, string>> = {},
+): Promise<string> {
   const child = spawn(
     process.execPath,
-    [join(DEMO, 'src/main.ts'), '--port', '0', '--defect', defect],
+    [join(DEMO, 'src/main.ts'), '--port', '0', '--defect', defect, ...extra],
     {
       stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, ...env },
     },
   );
   children.push(child);
@@ -227,6 +234,116 @@ function websocketProfile(dir: string): string {
 
 const socketRuns = new Map<string, { code: number; output: string; results: Results }>();
 
+/** The demo-shop's credentials for these runs, never written by yokla (ADR-0031). */
+const SECRETS = {
+  DEMO_SHOP_CLIENT_SECRET: 'e2e-client-s3cret',
+  DEMO_SHOP_PASSWORD: 'e2e-passw0rd',
+};
+
+/** How each run gets its token, and how the shop limits one. */
+const AUTH_RUNS = {
+  // A short lifetime: yokla replaces tokens before they expire.
+  oauth: {
+    shop: ['--token-ttl-ms', '1500'],
+    auth: {
+      kind: 'oauth2-client-credentials',
+      tokenUrl: '<shop>/v1/oauth/token',
+      clientId: 'demo-shop-client',
+      clientSecret: '{{env.DEMO_SHOP_CLIENT_SECRET}}',
+      scope: 'chat',
+    },
+  },
+  // Four uses a token: the shop refuses it, and yokla gets a new one.
+  login: {
+    shop: ['--token-uses', '4'],
+    auth: {
+      kind: 'request',
+      request: {
+        url: '<shop>/v1/login',
+        body: { username: 'tester', password: '{{env.DEMO_SHOP_PASSWORD}}' },
+      },
+      token: '$.data.jwt',
+      expiresIn: '$.data.ttlSeconds',
+    },
+  },
+} as const;
+
+const authRuns = new Map<
+  string,
+  { code: number; output: string; results: Results; written: string }
+>();
+
+/** The demo-shop profile behind bearer tokens: each request carries the token. */
+function authProfile(dir: string, base: string, auth: unknown): string {
+  const text = readFileSync(join(DEMO, 'yokla.profile.yaml'), 'utf8').replaceAll(
+    './data/',
+    join(DEMO, 'data/'),
+  );
+  const parsed = parseConfig(text, 'yokla.profile.yaml', z.record(z.string(), z.unknown()));
+  if (!parsed.ok) throw new Error('the demo-shop profile does not parse');
+  const target = parsed.value['target'];
+  if (!isRecord(target) || !isRecord(target['request'])) {
+    throw new Error('the demo-shop profile has no target');
+  }
+  const profile = {
+    ...parsed.value,
+    target: {
+      ...target,
+      request: {
+        ...target['request'],
+        headers: { 'content-type': 'application/json', authorization: 'Bearer {{auth.token}}' },
+      },
+      auth: JSON.parse(JSON.stringify(auth).replaceAll('<shop>', base)) as unknown,
+    },
+  };
+  const path = join(dir, 'auth.profile.yaml');
+  writeFileSync(path, JSON.stringify(profile, null, 2));
+  return path;
+}
+
+async function runWithAuth(kind: keyof typeof AUTH_RUNS): Promise<void> {
+  const setup = AUTH_RUNS[kind];
+  const base = await startShop('none', ['--auth', ...setup.shop], SECRETS);
+  const dir = mkdtempSync(join(tmpdir(), `yokla-e2e-auth-${kind}-`));
+  const out = join(dir, 'results.json');
+  const junit = join(dir, 'junit.xml');
+  const html = join(dir, 'report.html');
+  const lines: string[] = [];
+  const io = { out: (line: string) => lines.push(line), err: (line: string) => lines.push(line) };
+  const code = await main(
+    [
+      'run',
+      '--profile',
+      authProfile(dir, base, setup.auth),
+      '--config',
+      join(DEMO, 'yokla.config.yaml'),
+      '--cases',
+      join(DEMO, 'cases'),
+      '--target-url',
+      `${base}/v1/chat`,
+      '--out',
+      out,
+      '--junit',
+      junit,
+      '--html',
+      html,
+    ],
+    io,
+  );
+  const output = lines.join('\n');
+  authRuns.set(kind, {
+    code,
+    output,
+    results: Results.parse(JSON.parse(readFileSync(out, 'utf8'))),
+    written: [
+      readFileSync(out, 'utf8'),
+      readFileSync(junit, 'utf8'),
+      readFileSync(html, 'utf8'),
+      output,
+    ].join('\n'),
+  });
+}
+
 async function runOverSocket(defect: string): Promise<void> {
   const base = await startShop(defect);
   const dir = mkdtempSync(join(tmpdir(), `yokla-e2e-ws-${defect}-`));
@@ -286,14 +403,19 @@ beforeAll(async () => {
   guard = installNetworkGuard(
     (host, port) => host === '127.0.0.1' && port !== undefined && shopPorts.has(port),
   );
+  // yokla reads the auth section's secrets from its own environment, as a user's run would.
+  Object.assign(process.env, SECRETS);
   // Each defect gets its own demo-shop process and port, so the runs go in parallel.
   await Promise.all([
+    runWithAuth('oauth'),
+    runWithAuth('login'),
     ...['none', ...Object.keys(EXPECTED)].map((defect) => runAgainst(defect)),
     ...['none', 'fabricated-price'].map((defect) => runOverSocket(defect)),
   ]);
 }, 120_000);
 
 afterAll(() => {
+  for (const name of Object.keys(SECRETS)) Reflect.deleteProperty(process.env, name);
   guard?.uninstall();
   // Stop exactly the processes these tests started, by their handles.
   for (const child of children) child.kill();
@@ -414,7 +536,44 @@ describe('the demo-shop acceptance', () => {
     );
     // Not vacuous: the guard saw every demo-shop the runs talked to.
     expect(new Set(attempts.map((attempt) => attempt.port))).toEqual(shopPorts);
-    expect(shopPorts.size).toBe(Object.keys(EXPECTED).length + 1 + socketRuns.size);
+    expect(shopPorts.size).toBe(Object.keys(EXPECTED).length + 1 + socketRuns.size + authRuns.size);
+  });
+});
+
+describe('the demo-shop acceptance behind bearer tokens (ADR-0031)', () => {
+  it.each(Object.keys(AUTH_RUNS))('%s: every case passes, with the tokens yokla gets', (kind) => {
+    const run = authRuns.get(kind);
+    expect(run?.code, run?.output).toBe(0);
+    expect(run?.results.summary.statuses).toEqual({ pass: 18 });
+    // The answers are those of the run without tokens.
+    expect(answers(run?.results)).toEqual(answers(runs.get('none')?.results));
+  });
+
+  it('oauth: replaces tokens before they expire', () => {
+    const auth = authRuns.get('oauth')?.results.run.auth;
+    expect(auth?.kind).toBe('oauth2-client-credentials');
+    // Tokens fetched without a refusal were replaced ahead of time. A request can still
+    // carry a token that expires while it waits, for the rate limit or a 429's
+    // Retry-After; the shop then refuses it, and the 401 path gets a new one.
+    const ahead = (auth?.tokens ?? 0) - 1 - (auth?.retried ?? 0);
+    expect(ahead).toBeGreaterThanOrEqual(2);
+  });
+
+  it('login: gets a new token each time the shop refuses one, and sends the request again', () => {
+    const auth = authRuns.get('login')?.results.run.auth;
+    expect(auth?.kind).toBe('request');
+    // Four uses a token, about twenty requests: four refusals at least.
+    expect(auth?.retried).toBeGreaterThanOrEqual(4);
+    expect(auth?.tokens).toBe((auth?.retried ?? 0) + 1);
+  });
+
+  it('writes no token and no secret: not in the results, the reports or the output', () => {
+    for (const [kind, run] of authRuns) {
+      expect(run.written.length, kind).toBeGreaterThan(1000);
+      // Every token the shop issues starts with dst_.
+      expect(run.written, kind).not.toContain('dst_');
+      for (const secret of Object.values(SECRETS)) expect(run.written, kind).not.toContain(secret);
+    }
   });
 });
 
