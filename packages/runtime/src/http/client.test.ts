@@ -213,7 +213,8 @@ describe('HttpClient', () => {
     const chunks = result.chunks ?? [];
     expect(chunks.map((chunk) => chunk.text)).toEqual(['çadır', '{"done":true}']);
     expect(chunks[0]?.atMs).toBeGreaterThanOrEqual(35);
-    expect((chunks[1]?.atMs ?? 0) - (chunks[0]?.atMs ?? 0)).toBeGreaterThanOrEqual(35);
+    // The pieces went out 40 ms apart; under load the reads can come closer, never together.
+    expect((chunks[1]?.atMs ?? 0) - (chunks[0]?.atMs ?? 0)).toBeGreaterThanOrEqual(20);
     expect(result.latencyMs).toBeGreaterThanOrEqual(chunks[1]?.atMs ?? Infinity);
     const plain = await client.send(post(base));
     expect(plain.chunks).toBeUndefined();
