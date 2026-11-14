@@ -862,13 +862,16 @@ describe('startProxy OpenTelemetry spans (ADR-0029)', () => {
     expect(answer).toMatchObject({ settled: true, spans: 1 });
     expect(Number(Reflect.get(Object(answer), 'waitedMs'))).toBeGreaterThanOrEqual(300);
     // It gives up after maxWaitMs, and says so.
+    const exports: Promise<Raw>[] = [];
     const gaveUp = setInterval(() => {
-      void call(running, 'POST', '/_yokla/otlp/v1/traces', exportOf([]), JSON_TYPE);
+      exports.push(call(running, 'POST', '/_yokla/otlp/v1/traces', exportOf([]), JSON_TYPE));
     }, 20);
     try {
       expect(await settle(200, 150)).toMatchObject({ settled: false });
     } finally {
       clearInterval(gaveUp);
+      // Every export ends before the proxy closes, so none is cut off.
+      await Promise.all(exports);
     }
   });
 });

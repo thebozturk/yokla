@@ -68,6 +68,15 @@ export function terminalSummary(results: Results): TerminalSummary {
         (totals === '' ? '' : `; ${totals}`),
     );
   }
+  const spans = results.run.spans;
+  if (spans !== undefined) {
+    const { calls: _calls, ...sums } = spans.totals;
+    const totals = observedTotals(sums, spans.missing, 'call');
+    out.push(
+      `spans (traceparent): ${counted(spans.received, 'call')}, ${String(spans.unattributed)} unattributed${spans.settled ? '' : ', still coming when the wait ran out'}` +
+        (totals === '' ? '' : `; ${totals}`),
+    );
+  }
   const own = results.run.own;
   if (own !== undefined) {
     out.push(

@@ -209,6 +209,32 @@ describe('terminalSummary', () => {
     );
   });
 
+  it('states what the spans showed, and when they kept coming (ADR-0029)', () => {
+    const spans = {
+      received: 4,
+      attributed: 3,
+      unattributed: 1,
+      totals: { calls: 4, inputTokens: 400, outputTokens: 40, costUsd: 0.0005 },
+      missing: { cachedInputTokens: 4 },
+      settled: true,
+    };
+    const settled = terminalSummary(
+      results([kase('a', 'pass')], { correlation: 'traceparent', spans }),
+    ).out;
+    expect(settled).toContain(
+      'spans (traceparent): 4 calls, 1 unattributed; inputTokens 400, outputTokens 40, costUsd 0.0005, cachedInputTokens no value on 4 calls',
+    );
+    const late = terminalSummary(
+      results([kase('a', 'pass')], {
+        correlation: 'traceparent',
+        spans: { ...spans, settled: false },
+      }),
+    ).out;
+    expect(late.join('\n')).toContain(
+      'spans (traceparent): 4 calls, 1 unattributed, still coming when the wait ran out;',
+    );
+  });
+
   it("totals yokla's own model calls apart from the target's (ADR-0028)", () => {
     const priced = terminalSummary(
       results([kase('a', 'pass')], { own: { calls: 3, cached: 1, costUsd: 0.0001234567 } }),
@@ -461,6 +487,41 @@ describe('htmlReport (ADR-0023)', () => {
                 issues: [HOSTILE],
                 seen: { products: [{ tool: 'search_products', item: { id: 'p9', price: 329 } }] },
                 proxy: { correlation: 'serial', calls: [call], costUsd: 0.001234567 },
+                spans: {
+                  calls: [
+                    {
+                      spanId: 'a1b2c3d4e5f60718',
+                      provider: 'openai',
+                      model: 'demo-writer-1',
+                      durationMs: 7.39,
+                      usage: {
+                        input: 38,
+                        output: 17,
+                        cachedInput: null,
+                        cacheWrite: null,
+                        reasoning: null,
+                      },
+                      costUsd: 0.000072,
+                      error: false,
+                    },
+                    {
+                      spanId: '0f1e2d3c4b5a6978',
+                      provider: null,
+                      model: null,
+                      durationMs: 1.5,
+                      usage: {
+                        input: null,
+                        output: null,
+                        cachedInput: null,
+                        cacheWrite: null,
+                        reasoning: null,
+                      },
+                      costUsd: null,
+                      error: true,
+                    },
+                  ],
+                  costUsd: null,
+                },
                 observed: {
                   source: 'target-logs',
                   correlation: 'order',
@@ -538,6 +599,14 @@ describe('htmlReport (ADR-0023)', () => {
         totals: { calls: 2, costUsd: 0.001234567, inputTokens: 1200 },
         missing: { reasoningTokens: 2 },
         prompts: 'full',
+      },
+      spans: {
+        received: 3,
+        attributed: 2,
+        unattributed: 1,
+        totals: { calls: 3, inputTokens: 38, outputTokens: 17, costUsd: 0.000072 },
+        missing: { inputTokens: 1, outputTokens: 1, costUsd: 1 },
+        settled: false,
       },
       observation: {
         source: 'target-logs',
@@ -625,6 +694,21 @@ describe('htmlReport (ADR-0023)', () => {
       ...htmlReport(rich).matchAll(/<details class="case" id="case-([^"]+)"( open)?>/gu),
     ].map((match) => `${match[1] ?? ''}${match[2] ?? ''}`);
     expect(details).toEqual(['hostile open', 'greeting open', 'known open', 'stroller']);
+  });
+
+  it("shows the run's spans and the calls of each turn's spans (ADR-0029)", () => {
+    const page = htmlReport(rich);
+    expect(page).toContain(
+      '<dt>Spans</dt><dd>traceparent: 3 calls, 2 attributed, 1 unattributed, still coming when the wait ran out;',
+    );
+    expect(page).toContain(
+      '<summary>Model calls from spans: 2 calls, no cost, traceparent</summary>',
+    );
+    expect(page).toContain(
+      '<td><code>a1b2c3d4e5f60718</code></td><td>openai</td><td>demo-writer-1</td>',
+    );
+    expect(page).toContain('<td><code>0f1e2d3c4b5a6978</code></td><td>–</td><td>–</td>');
+    expect(page).toMatch(/<td class="num">[^<]*<\/td><td>failed<\/td><\/tr>/u);
   });
 
   it("shows a model call's prompt by role and size only", () => {

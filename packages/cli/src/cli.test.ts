@@ -507,6 +507,19 @@ describe('yokla proxy', () => {
     expect(proxy.out.at(-1)).toBe('proxy: stopped');
   });
 
+  it("says where the app's exporter sends its spans, when the profile reads them", async () => {
+    const dir = workspace({
+      'yokla.profile.yaml': `${PROFILE}modelProxy:\n  upstreams: []\n  spans: { quietMs: 100 }\n`,
+    });
+    const proxy = await startedProxy(['--profile', join(dir, 'yokla.profile.yaml'), '--port', '0']);
+    expect(proxy.out).toEqual([
+      `proxy: ${proxy.url} (127.0.0.1 only)`,
+      `  spans: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=${proxy.url}/_yokla/otlp/v1/traces`,
+    ]);
+    proxy.stop.abort();
+    expect(await proxy.done).toBe(0);
+  });
+
   it('refuses a profile without modelProxy, a bad port, and a port in use', async () => {
     const dir = workspace({ 'plain.yaml': PROFILE, 'yokla.profile.yaml': PROXY_PROFILE });
     const profile = join(dir, 'yokla.profile.yaml');

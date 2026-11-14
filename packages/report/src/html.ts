@@ -178,6 +178,17 @@ function runSection(results: Results): Html {
     );
     if (proxy.prompts !== undefined) items.push(item('Prompts kept', proxy.prompts));
   }
+  const { spans } = run;
+  if (spans !== undefined) {
+    const { calls: _calls, ...sums } = spans.totals;
+    const totals = observedTotals(sums, spans.missing, 'call');
+    items.push(
+      item(
+        'Spans',
+        `traceparent: ${counted(spans.received, 'call')}, ${String(spans.attributed)} attributed, ${String(spans.unattributed)} unattributed${spans.settled ? '' : ', still coming when the wait ran out'}${totals === '' ? '' : `; ${totals}`}`,
+      ),
+    );
+  }
   const own = run.own;
   if (own !== undefined) {
     items.push(
@@ -342,6 +353,31 @@ function callsBlock(proxy: NonNullable<TurnResult['proxy']>): Html {
   )}</details>`;
 }
 
+/** The model calls a turn's OpenTelemetry spans showed (ADR-0029). */
+function spansBlock(spans: NonNullable<TurnResult['spans']>): Html {
+  const rows = spans.calls.map(
+    (call) =>
+      h`<tr><td><code>${call.spanId}</code></td><td>${call.provider ?? '–'}</td><td>${call.model ?? '–'}</td><td class="num">${ms(call.durationMs)}</td><td class="num">${tokens(call.usage.input)}</td><td class="num">${tokens(call.usage.cachedInput)}</td><td class="num">${tokens(call.usage.cacheWrite)}</td><td class="num">${tokens(call.usage.output)}</td><td class="num">${tokens(call.usage.reasoning)}</td><td class="num">${usd(call.costUsd)}</td><td>${call.error ? 'failed' : ''}</td></tr>`,
+  );
+  return h`<details><summary>Model calls from spans: ${counted(spans.calls.length, 'call')}, ${usd(spans.costUsd)}, traceparent</summary>${table(
+    [
+      'Span',
+      'Provider',
+      'Model',
+      'Duration',
+      'Input',
+      'Cached',
+      'Cache write',
+      'Output',
+      'Reasoning',
+      'Cost',
+      'Error',
+    ],
+    rows,
+    [3, 4, 5, 6, 7, 8, 9],
+  )}</details>`;
+}
+
 function answerBlock(turn: TurnResult): Html {
   const { response } = turn;
   if (response === undefined) return h`<p class="bad">No answer.</p>`;
@@ -395,6 +431,8 @@ function turnBlock(turn: TurnResult, sample: number, index: number): Html {
   }${
     skipped.length === 0 ? undefined : h`<p class="muted">Not applicable: ${skipped.join(', ')}</p>`
   }${turn.proxy === undefined ? undefined : callsBlock(turn.proxy)}${
+    turn.spans === undefined ? undefined : spansBlock(turn.spans)
+  }${
     turn.observed === undefined
       ? undefined
       : h`<details><summary>Observed in the target's logs, by ${turn.observed.correlation}</summary>${json(turn.observed.fields)}</details>`

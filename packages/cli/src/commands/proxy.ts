@@ -20,7 +20,8 @@ Options:
                         with prompts kept as modelProxy.prompts.store says
 
 The proxy listens on 127.0.0.1 only and records calls only while a run has a
-recording open. Stop it with Ctrl-C.`;
+recording open. With modelProxy.spans, it also reads the app's OpenTelemetry
+spans at /_yokla/otlp/v1/traces. Stop it with Ctrl-C.`;
 
 const PROXY_OPTIONS = {
   profile: { type: 'string', default: 'yokla.profile.yaml' },
@@ -121,6 +122,10 @@ export async function proxyCommand(
         ? ''
         : ` (${upstream.appBaseUrlEnv}=${running.url}/${upstream.id})`;
     io.out(`  ${running.url}/${upstream.id} → ${upstream.upstream}${setting}`);
+  }
+  // Where the app's exporter sends its spans, when the profile reads them (ADR-0029).
+  if (config.spans !== undefined) {
+    io.out(`  spans: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=${running.url}/_yokla/otlp/v1/traces`);
   }
   if (records !== undefined) io.out(`  records: ${records}`);
 
