@@ -22,7 +22,10 @@
   },
   "files": [
     "dist",
-    "!dist/**/*.test.*"
+    "!dist/**/*.test.*",
+    "src",
+    "!src/**/*.test.*",
+    "!src/**/__snapshots__"
   ],
   "sideEffects": false,
   "dependencies": {

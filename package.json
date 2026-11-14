@@ -16,6 +16,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "check": "pnpm format:check && pnpm typecheck && pnpm lint && pnpm test",
+    "pack-check": "pnpm build && node scripts/pack-check.ts",
     "yokla": "node --conditions=@yokla/source packages/cli/src/bin.ts"
   },
   "devDependencies": {

@@ -36,3 +36,5 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
+      # What a published package would hold, installed and run (ADR-0034).
+      - run: pnpm pack-check
