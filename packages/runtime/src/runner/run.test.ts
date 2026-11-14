@@ -3082,3 +3082,247 @@ describe('runSuite with a simulated customer (ADR-0028)', () => {
     ]);
   });
 });
+
+/** A token endpoint for runner tests: `tkn-1`, `tkn-2`... each for `expires` seconds. */
+async function tokenEndpoint(
+  issue: (index: number) => { status?: number; body: unknown } = (index) => ({
+    body: { access_token: `tkn-${String(index + 1)}`, token_type: 'Bearer' },
+  }),
+): Promise<{ url: string; requests: number }> {
+  const state = { url: '', requests: 0 };
+  const server = createServer((request, response) => {
+    request.resume();
+    request.on('end', () => {
+      state.requests += 1;
+      const { status = 200, body } = issue(state.requests - 1);
+      json(response, body, status);
+    });
+  });
+  servers.push(server);
+  await new Promise<void>((resolve) => {
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  if (typeof address !== 'object' || address === null) throw new Error('no address');
+  state.url = `http://127.0.0.1:${String(address.port)}/token`;
+  return state;
+}
+
+const AUTH_ENV = { CLIENT_SECRET: 'client-s3cret' };
+
+/** A profile whose requests carry the token yokla gets from `tokenUrl` (ADR-0031). */
+function authProfile(url: string, tokenUrl: string, change: Record<string, unknown> = {}): Profile {
+  return profile(url, {
+    request: {
+      url,
+      headers: { authorization: 'Bearer {{auth.token}}' },
+      body: { message: '{{message}}' },
+    },
+    auth: {
+      kind: 'oauth2-client-credentials',
+      tokenUrl,
+      clientId: 'chat',
+      clientSecret: '{{env.CLIENT_SECRET}}',
+    },
+    ...change,
+  });
+}
+
+/** The token a request carried. */
+const bearerOf = (received: Received) => received.headers.authorization?.replace(/^Bearer /u, '');
+
+describe('runSuite with target.auth (ADR-0031)', () => {
+  it('fetches one token for the run, and sends it where the profile says', async () => {
+    const tokens = await tokenEndpoint();
+    const t = await target((_r, _i, response) => {
+      json(response, answer());
+    });
+    const results = await runSuite(
+      options(
+        authProfile(t.url, tokens.url),
+        cases({ turns: [{ user: 'a' }, { user: 'b' }] }, { turns: [{ user: 'c' }] }),
+        { env: AUTH_ENV, concurrency: 2 },
+      ),
+    );
+    expect(Results.safeParse(results).success).toBe(true);
+    expect(t.received.map(bearerOf)).toEqual(['tkn-1', 'tkn-1', 'tkn-1']);
+    expect(tokens.requests).toBe(1);
+    expect(results.run.auth).toEqual({ kind: 'oauth2-client-credentials', tokens: 1, retried: 0 });
+  });
+
+  it('gets a new token when the target refuses one, and sends the request once more', async () => {
+    const tokens = await tokenEndpoint();
+    // The target takes each token for two requests.
+    const uses = new Map<string, number>();
+    const t = await target((received, _i, response) => {
+      const token = bearerOf(received) ?? '';
+      uses.set(token, (uses.get(token) ?? 0) + 1);
+      if ((uses.get(token) ?? 0) > 2) json(response, { error: 'expired' }, 401);
+      else json(response, answer());
+    });
+    const results = await runSuite(
+      options(
+        authProfile(t.url, tokens.url),
+        cases({ turns: [{ user: 'a' }, { user: 'b' }, { user: 'c' }] }),
+        { env: AUTH_ENV },
+      ),
+    );
+    expect(t.received.map(bearerOf)).toEqual(['tkn-1', 'tkn-1', 'tkn-1', 'tkn-2']);
+    expect(results.cases[0]?.samples[0]?.turns.map((turn) => turn.response?.status)).toEqual([
+      200, 200, 200,
+    ]);
+    expect(results.run.auth).toEqual({ kind: 'oauth2-client-credentials', tokens: 2, retried: 1 });
+  });
+
+  it('makes a second refusal the turn’s error', async () => {
+    const tokens = await tokenEndpoint();
+    const t = await target((_r, _i, response) => {
+      json(response, { error: 'no' }, 401);
+    });
+    const results = await runSuite(
+      options(authProfile(t.url, tokens.url), cases({ turns: [{ user: 'a' }] }), { env: AUTH_ENV }),
+    );
+    expect(t.received.map(bearerOf)).toEqual(['tkn-1', 'tkn-2']);
+    expect(results.cases[0]?.samples[0]?.turns[0]?.error).toBe('HTTP 401');
+    expect(results.run.auth).toMatchObject({ tokens: 2, retried: 1 });
+  });
+
+  it('replaces a token before it expires, on the run’s clock', async () => {
+    const tokens = await tokenEndpoint((index) => ({
+      body: { access_token: `tkn-${String(index + 1)}`, expires_in: 60 },
+    }));
+    const time = { at: 0 };
+    const t = await target((_r, _i, response) => {
+      // Each turn takes 40 s on this clock: a 60 s token is due after the first.
+      time.at += 40_000;
+      json(response, answer());
+    });
+    await runSuite(
+      options(authProfile(t.url, tokens.url), cases({ turns: [{ user: 'a' }, { user: 'b' }] }), {
+        env: AUTH_ENV,
+        clock: { now: () => time.at, sleep: () => Promise.resolve() },
+      }),
+    );
+    expect(t.received.map(bearerOf)).toEqual(['tkn-1', 'tkn-2']);
+  });
+
+  it('stops before any case when the first token can’t be had, with the secret masked', async () => {
+    const tokens = await tokenEndpoint(() => ({
+      status: 401,
+      body: { error: 'invalid_client', error_description: 'secret client-s3cret is wrong' },
+    }));
+    const t = await target((_r, _i, response) => {
+      json(response, answer());
+    });
+    await expect(
+      runSuite(
+        options(authProfile(t.url, tokens.url), cases({ turns: [{ user: 'a' }] }), {
+          env: AUTH_ENV,
+        }),
+      ),
+    ).rejects.toThrow(
+      new ConfigError(
+        'target.auth: the token request answered 401: invalid_client (secret *** is wrong)',
+      ),
+    );
+    expect(t.received).toHaveLength(0);
+  });
+
+  it('writes no secret of the run, even one the target echoes', async () => {
+    const tokens = await tokenEndpoint();
+    const t = await target((received, _i, response) => {
+      json(
+        response,
+        answer({ answer: `Your token is ${bearerOf(received) ?? ''}, secret client-s3cret` }),
+      );
+    });
+    const results = await runSuite(
+      options(authProfile(t.url, tokens.url), cases({ turns: [{ user: 'a' }] }), { env: AUTH_ENV }),
+    );
+    expect(results.cases[0]?.samples[0]?.turns[0]?.response?.text).toBe(
+      'Your token is ***, secret ***',
+    );
+    const written = JSON.stringify(results);
+    expect(written).not.toContain('tkn-1');
+    expect(written).not.toContain('client-s3cret');
+  });
+
+  it('carries the token in session.open, and gets a new one when it is refused there', async () => {
+    const tokens = await tokenEndpoint();
+    const t = await target((received, _i, response) => {
+      if (received.body['open'] === true) {
+        if (bearerOf(received) === 'tkn-1') json(response, { error: 'expired' }, 401);
+        else json(response, { id: 'conv-1' });
+        return;
+      }
+      json(response, answer());
+    });
+    const base = authProfile(t.url, tokens.url, {
+      request: {
+        url: t.url,
+        headers: { authorization: 'Bearer {{auth.token}}' },
+        body: { message: '{{message}}', conversation: '{{carry.conversation}}' },
+      },
+      session: {
+        mode: 'none',
+        open: {
+          request: {
+            url: t.url,
+            headers: { authorization: 'Bearer {{auth.token}}' },
+            body: { open: true },
+          },
+          carry: [{ name: 'conversation', from: '$.id' }],
+        },
+      },
+    });
+    const results = await runSuite(
+      options(base, cases({ turns: [{ user: 'a' }] }), { env: AUTH_ENV }),
+    );
+    expect(t.received.map(bearerOf)).toEqual(['tkn-1', 'tkn-2', 'tkn-2']);
+    expect(t.received[2]?.body).toEqual({ message: 'a', conversation: 'conv-1' });
+    expect(results.run.auth).toMatchObject({ tokens: 2, retried: 1 });
+  });
+
+  it('opens a WebSocket with the token, and tries a refused handshake once more', async () => {
+    const tokens = await tokenEndpoint();
+    const count = { n: 0 };
+    const server = await socketTarget({
+      refuse: (handshake) => (handshake.headers.authorization === 'Bearer tkn-1' ? 401 : undefined),
+      onMessage: (text, socket) => {
+        shop(text, socket, count);
+      },
+    });
+    const results = await runSuite(
+      options(
+        socketProfile(server.url, {
+          request: {
+            url: `${server.url}/chat`,
+            headers: { authorization: 'Bearer {{auth.token}}' },
+            body: { text: '{{message}}', token: '{{auth.token}}' },
+            timeoutMs: 2_000,
+          },
+          session: { mode: 'none', carry: [] },
+          auth: {
+            kind: 'oauth2-client-credentials',
+            tokenUrl: tokens.url,
+            clientId: 'chat',
+            clientSecret: '{{env.CLIENT_SECRET}}',
+          },
+        }),
+        cases({ turns: [{ user: 'a' }] }),
+        { env: AUTH_ENV },
+      ),
+    );
+    // Node.js's client sends a handshake refused with 401 once more by itself, with the same
+    // token; yokla then tries once with a new one.
+    expect(server.handshakes.map((handshake) => handshake.headers.authorization)).toEqual([
+      'Bearer tkn-1',
+      'Bearer tkn-1',
+      'Bearer tkn-2',
+    ]);
+    // The message carries the token too, and the results don't.
+    expect(sent(server.received[0] ?? '{}')).toEqual({ text: 'a', token: 'tkn-2' });
+    expect(results.cases[0]?.samples[0]?.turns[0]?.response?.text).toBe('Tamam');
+    expect(results.run.auth).toMatchObject({ tokens: 2, retried: 1 });
+  });
+});

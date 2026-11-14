@@ -17,6 +17,8 @@ import {
   eventName,
   extractResponse,
   goalReached,
+  maskDeep,
+  Results as ResultsSchema,
   messageEvents,
   seenEvidence,
   CUSTOMER_LANGUAGES,
@@ -51,6 +53,7 @@ import {
   type SpanCall,
   type YoklaConfig,
 } from '@yokla/core';
+import { authorized, TokenSource } from '../auth/tokens.ts';
 import { HttpClient, HttpError } from '../http/client.ts';
 import { RateLimiter, systemClock, type Clock } from '../http/rate-limit.ts';
 import { testNetAddress } from '../http/test-net.ts';
@@ -406,6 +409,7 @@ async function runSample(
   settle: Settle | undefined,
   socket: SocketSetup | undefined,
   simulation: Simulation | undefined,
+  tokens: TokenSource | undefined,
 ): Promise<ExchangedSample> {
   const target = options.profile.target;
   const ids = options.ids ?? randomUUID;
@@ -450,13 +454,19 @@ async function runSample(
       if (serial) {
         await arm?.(`session-open-${ids()}`, { inFlight: true });
       }
-      const built = buildRequest(
-        { ...open.request, url: openUrl },
-        undefined,
-        { message: '', session, requestId: undefined, carry: {}, env: options.env },
-        { ...bypass.headers, ...identityHeaders },
+      const result = await authorized(
+        tokens,
+        (auth) =>
+          client.send(
+            buildRequest(
+              { ...open.request, url: openUrl },
+              undefined,
+              { message: '', session, requestId: undefined, carry: {}, env: options.env, ...auth },
+              { ...bypass.headers, ...identityHeaders },
+            ),
+          ),
+        (answered) => answered.status === 401,
       );
-      const result = await client.send(built);
       if (result.status < 200 || result.status > 299) {
         throw new Error(`HTTP ${String(result.status)}`);
       }
@@ -486,20 +496,34 @@ async function runSample(
   // A WebSocket target's connection: one per sample, after session.open (ADR-0024).
   let connection: WebSocketConnection | undefined;
   if (target.adapter === 'websocket') {
-    try {
+    const connect = (auth: { readonly auth?: string }) => {
       const built = buildRequest(
         { url: targetUrl, headers: target.request.headers },
         undefined,
-        { message: '', session, requestId: undefined, carry, env: options.env },
+        { message: '', session, requestId: undefined, carry, env: options.env, ...auth },
         { ...bypass.headers, ...identityHeaders },
       );
-      connection = await openWebSocket(built.url, {
+      return openWebSocket(built.url, {
         allowedOrigins: socket?.origins ?? [],
         timeoutMs: target.request.timeoutMs,
         headers: built.headers,
         protocols: target.request.protocols,
         ...(socket?.pace === undefined ? {} : { pace: socket.pace }),
       });
+    };
+    try {
+      if (tokens === undefined) connection = await connect({});
+      else {
+        const token = await tokens.token();
+        try {
+          connection = await connect({ auth: token });
+        } catch (error) {
+          // Node.js's client doesn't say the handshake's status: a refused handshake is
+          // taken as a refused token, and tried once more with a new one (ADR-0031).
+          if (!(error instanceof WebSocketError && error.kind === 'connect')) throw error;
+          connection = await connect({ auth: await tokens.renew(token) });
+        }
+      }
     } catch (error) {
       exchanges.push({
         turn: {
@@ -520,9 +544,21 @@ async function runSample(
     headers: Readonly<Record<string, string>>,
   ): Promise<Answered> => {
     if (target.adapter === 'http') {
-      const built = buildRequest({ ...target.request, url: targetUrl }, turn, values, headers);
       const stream = target.response.stream;
-      const result = await client.send(built, { stream: stream !== undefined });
+      const result = await authorized(
+        tokens,
+        (auth) =>
+          client.send(
+            buildRequest(
+              { ...target.request, url: targetUrl },
+              turn,
+              { ...values, ...auth },
+              headers,
+            ),
+            { stream: stream !== undefined },
+          ),
+        (answered) => answered.status === 401,
+      );
       // A streamed answer becomes one document that the profile's paths read (ADR-0016).
       const read = stream === undefined ? undefined : readStream(result.chunks ?? [], stream);
       return {
@@ -536,8 +572,10 @@ async function runSample(
     }
     if (connection === undefined) throw new Error('the WebSocket connection is not open');
     const spec = target.response.stream;
+    // A message may carry the token too; only the handshake can refuse it.
+    const auth = tokens === undefined ? {} : { auth: await tokens.token() };
     const answer = await connection.exchange(
-      buildMessage(target.request.body, turn, values),
+      buildMessage(target.request.body, turn, { ...values, ...auth }),
       (text) => endsAnswer(text, spec),
     );
     // Each message is one event of the answer's stream (ADR-0024).
@@ -904,6 +942,7 @@ async function exchangeCase(
   settle: Settle | undefined,
   socket: SocketSetup | undefined,
   simulation: Simulation | undefined,
+  tokens: TokenSource | undefined,
 ): Promise<ExchangedCase> {
   const samples: ExchangedSample[] = [];
   const count = testCase.samples ?? options.samples ?? 1;
@@ -920,6 +959,7 @@ async function exchangeCase(
         settle,
         socket,
         simulation,
+        tokens,
       ),
     );
     await cap?.check();
@@ -1330,6 +1370,18 @@ export async function runSuite(input: RunOptions): Promise<Results> {
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
 
+  // The run's token, fetched before the first request (ADR-0031).
+  let tokens: TokenSource | undefined;
+  if (target.auth !== undefined) {
+    const clock = options.clock ?? systemClock;
+    try {
+      tokens = new TokenSource(target.auth, options.env, () => clock.now());
+      await tokens.token();
+    } catch (error) {
+      throw new ConfigError(`target.auth: ${errorMessage(error)}`);
+    }
+  }
+
   const recording = await openRecording(options);
   const customerModel = options.models?.customer;
   const simulation: Simulation | undefined =
@@ -1380,6 +1432,7 @@ export async function runSuite(input: RunOptions): Promise<Results> {
           settle,
           socket,
           simulation,
+          tokens,
         ),
       () => cap?.stopped() === true,
     );
@@ -1477,7 +1530,7 @@ export async function runSuite(input: RunOptions): Promise<Results> {
   const statuses: Partial<Record<CaseResult['status'], number>> = {};
   for (const c of cases) statuses[c.status] = (statuses[c.status] ?? 0) + 1;
   const finishedAt = new Date();
-  return {
+  const results: Results = {
     schema: RESULTS_SCHEMA_ID,
     yokla: { version: options.yoklaVersion },
     run: {
@@ -1495,6 +1548,7 @@ export async function runSuite(input: RunOptions): Promise<Results> {
             ? recording.correlation
             : 'traceparent',
       partial: cap?.stopped() === true,
+      ...(tokens === undefined ? {} : { auth: tokens.summary() }),
       ...(options.checkModules === undefined || options.checkModules.length === 0
         ? {}
         : { checkModules: options.checkModules.map((loaded) => ({ ...loaded })) }),
@@ -1516,4 +1570,12 @@ export async function runSuite(input: RunOptions): Promise<Results> {
     checks: summariseChecks(cases),
     summary: { cases: cases.length, statuses },
   };
+  // No secret of the run leaves it: not in the results, nor what is made of them (ADR-0031).
+  return tokens === undefined ? results : masked(results, tokens.secrets());
+}
+
+/** The results with every secret of the run shown as *** (ADR-0031). */
+function masked(results: Results, secrets: readonly string[]): Results {
+  const json: unknown = JSON.parse(JSON.stringify(results));
+  return ResultsSchema.parse(maskDeep(toJson(json), secrets));
 }
