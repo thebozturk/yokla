@@ -1,6 +1,6 @@
 # 0036. yokla shrink keeps whole messages by default
 
-Status: Accepted · Date: 2026-11-15
+Status: Proposed · Date: 2026-11-15
 
 Amends [ADR-0035](0035-the-smallest-failing-conversation.md).
 
