@@ -1,6 +1,6 @@
 # 0031. Authentication: tokens yokla obtains and refreshes
 
-Status: Proposed · Date: 2026-11-15
+Status: Accepted · Date: 2026-11-15
 
 ## Context
 
