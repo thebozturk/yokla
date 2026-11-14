@@ -132,6 +132,8 @@ export const MACHINE_SOURCES = [
   'import',
   // Written from yokla's own templates, such as yokla init's starter cases (ADR-0018).
   'template',
+  // Cut down from a failing case by yokla shrink (ADR-0035).
+  'shrink',
 ] as const;
 
 /**

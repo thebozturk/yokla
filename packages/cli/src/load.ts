@@ -17,7 +17,7 @@ import {
   type Case,
   type Profile,
   SchemaRule,
-  type z,
+  z,
 } from '@yokla/core';
 import { schemas } from './schemas.ts';
 
@@ -152,6 +152,23 @@ export function loadCases(paths: readonly string[]): Case[] {
   }
   if (problems.length > 0) throw new LoadError(problems.join('\n'));
   return cases;
+}
+
+const RawCaseFile = z.looseObject({ cases: z.array(z.record(z.string(), z.unknown())) });
+
+/**
+ * The file that holds case `id`, and the case as written there, before
+ * defaults are applied: what yokla shrink cuts and writes back (ADR-0035).
+ */
+export function findCaseSource(
+  paths: readonly string[],
+  id: string,
+): { readonly file: string; readonly raw: Record<string, unknown> } {
+  for (const file of paths.flatMap(caseFiles)) {
+    const raw = parseFile(file, RawCaseFile).value.cases.find((c) => c['id'] === id);
+    if (raw !== undefined) return { file, raw };
+  }
+  throw new LoadError(`no case "${id}" in ${paths.join(', ')}`);
 }
 
 /** Loads yokla.config.yaml (ADR-0010). */

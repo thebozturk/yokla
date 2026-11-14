@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { RESULTS_SCHEMA_ID, type Results } from '@yokla/core';
+import { Results, RESULTS_SCHEMA_ID } from '@yokla/core';
 import { ProxyControl } from '@yokla/runtime';
 import { describe, expect, it } from 'vitest';
 import { LoadError, loadCases, loadProfile } from './load.ts';
@@ -711,5 +711,92 @@ describe('yokla plan', () => {
     expect(
       run('--cases', join(dir, 'cases'), '--calibration', join(dir, 'missing.json')).code,
     ).toBe(2);
+  });
+});
+
+describe('yokla shrink (ADR-0035)', () => {
+  /** Results where case `id` failed price-grounded on its first turn. */
+  function failing(id: string, extra: Record<string, unknown> = {}): string {
+    const results = Results.parse(JSON.parse(resultsJson({ [id]: 'fail' })));
+    Object.assign(results.cases[0] ?? {}, {
+      ...extra,
+      dimensions: [
+        { dimension: 'fabrication', policy: 'worst-of-n', verdict: 'fail', samples: 1, failed: 1 },
+      ],
+      samples: [
+        {
+          index: 0,
+          cache: 'cold',
+          turns: [
+            {
+              user: 'merhaba',
+              checks: [
+                {
+                  check: 'price-grounded',
+                  applicable: true,
+                  findings: [
+                    { dimension: 'fabrication', verdict: 'fail', severity: 'high', message: 'm' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    return JSON.stringify(results);
+  }
+  const CUSTOMER = `${CASES}  - id: b
+    suite: quality
+    language: tr
+    customer: { persona: p, goal: g, maxTurns: 3, reached: { route: done } }
+`;
+  const dir = workspace({
+    'yokla.profile.yaml': PROFILE,
+    'cases/a.yaml': CUSTOMER,
+    'a.json': failing('a'),
+    'b.json': failing('b'),
+    'pass.json': resultsJson({ a: 'pass' }),
+    'old.json': failing('a', { definitionSha256: 'b'.repeat(64) }),
+    'cases/a.min.yaml.taken': '',
+  });
+  const shrink = async (...args: string[]) => {
+    const { io, err } = capture();
+    const code = await main(['shrink', '--profile', join(dir, 'yokla.profile.yaml'), ...args], io);
+    return { code, err: err.join('\n') };
+  };
+
+  it('needs a results file and a case', async () => {
+    const { code, err } = await shrink('--case', 'a');
+    expect(code).toBe(2);
+    expect(err).toContain('--results and --case are required');
+  });
+
+  it('refuses before any request: an unknown or passing case, a simulated one, a changed one', async () => {
+    expect((await shrink('--results', join(dir, 'a.json'), '--case', 'z')).err).toContain(
+      'no case "z" in',
+    );
+    expect((await shrink('--results', join(dir, 'pass.json'), '--case', 'a')).err).toBe(
+      'case "a" is pass, not fail',
+    );
+    expect((await shrink('--results', join(dir, 'b.json'), '--case', 'b')).err).toContain(
+      "has a simulated customer, whose turns a model writes: it can't be shrunk yet",
+    );
+    expect((await shrink('--results', join(dir, 'old.json'), '--case', 'a')).err).toContain(
+      'changed since',
+    );
+    expect(
+      (await shrink('--results', join(dir, 'a.json'), '--case', 'a', '--check', 'stock-claim')).err,
+    ).toBe(`check "stock-claim" didn't fail in case "a"`);
+  });
+
+  it('never overwrites a file, and rejects bad counts', async () => {
+    const taken = join(dir, 'cases/a.min.yaml.taken');
+    expect(
+      (await shrink('--results', join(dir, 'a.json'), '--case', 'a', '--out', taken)).err,
+    ).toBe(`${taken} exists: shrink never overwrites a file`);
+    expect(
+      (await shrink('--results', join(dir, 'a.json'), '--case', 'a', '--samples', '0')).err,
+    ).toBe('--samples must be a positive integer');
   });
 });

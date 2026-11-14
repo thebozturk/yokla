@@ -8,6 +8,7 @@ import { PLAN_HELP, planCommand } from './commands/plan.ts';
 import { PROXY_HELP, proxyCommand } from './commands/proxy.ts';
 import { REPORT_HELP, reportCommand } from './commands/report.ts';
 import { RUN_HELP, runCommand, type Output } from './commands/run.ts';
+import { SHRINK_HELP, shrinkCommand } from './commands/shrink.ts';
 import { jsonSchemas } from './schemas.ts';
 
 const HELP = `yokla — test conversational AI assistants end to end
@@ -20,6 +21,7 @@ Usage:
   yokla baseline [options]   accept a run as the baseline
   yokla proxy [options]      run the model proxy until stopped
   yokla plan [options]       estimate the cost of a run from a calibration
+  yokla shrink [options]     cut a failing case down to the smallest that still fails
   yokla schema <name>        print a JSON Schema: profile, cases, config, results, baseline
   yokla --version
 
@@ -35,7 +37,9 @@ ${BASELINE_HELP}
 
 ${PROXY_HELP}
 
-${PLAN_HELP}`;
+${PLAN_HELP}
+
+${SHRINK_HELP}`;
 
 export function version(): string {
   const manifest: unknown = JSON.parse(
@@ -74,6 +78,8 @@ export async function main(argv: readonly string[], io: Output): Promise<number>
       return proxyCommand(rest, io);
     case 'plan':
       return planCommand(rest, io);
+    case 'shrink':
+      return shrinkCommand(rest, io, version());
     case 'schema': {
       const file = SCHEMA_FILES[rest[0] ?? ''];
       if (file === undefined) {

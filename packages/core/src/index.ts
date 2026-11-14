@@ -186,6 +186,21 @@ export {
 export { aggregateCase, summariseChecks, wilson, type CaseAggregate } from './checks/aggregate.ts';
 export { runChecks } from './checks/run.ts';
 export { findOrigin } from './checks/origin.ts';
+export {
+  applyCandidate,
+  pickTarget,
+  reproduction,
+  sampleFails,
+  shrink,
+  shrunkCaseYaml,
+  stillFails,
+  wordsOf,
+  type Reproduction,
+  type ShrinkCandidate,
+  type Shrunk,
+  type ShrinkTarget,
+  type Trial,
+} from './shrink/shrink.ts';
 export type {
   UnmeasuredDimension,
   AggregationPolicy,

@@ -1902,7 +1902,8 @@
                       "code",
                       "probe",
                       "import",
-                      "template"
+                      "template",
+                      "shrink"
                     ]
                   },
                   "evidence": {
@@ -2474,7 +2475,8 @@
                           "code",
                           "probe",
                           "import",
-                          "template"
+                          "template",
+                          "shrink"
                         ]
                       },
                       "evidence": {
