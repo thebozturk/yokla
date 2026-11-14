@@ -1,6 +1,6 @@
 # 0028. The simulated customer, and yokla's own model calls
 
-Status: Proposed · Date: 2026-11-14
+Status: Accepted · Date: 2026-11-14
 
 ## Context
 
