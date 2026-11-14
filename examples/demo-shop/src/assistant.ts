@@ -33,7 +33,8 @@ export interface ChatReply {
   readonly products: readonly ProductView[];
   /** The session's cart, after a product was put in it. */
   readonly cart?: readonly { readonly id: string; readonly name: string }[];
-  readonly metadata: { readonly route: Route; readonly language: Language };
+  /** The language is left out only by the missing-contract-field defect. */
+  readonly metadata: { readonly route: Route; readonly language?: Language };
 }
 
 export type CacheStatus = 'hit' | 'miss' | 'bypass';
@@ -186,6 +187,18 @@ export class Assistant {
     }
     const shown =
       draft.kind === 'cheapest' ? [draft.product] : 'products' in draft ? draft.products : [];
+    const { language } = interpretation;
+    // The unfilled-template defect: the greeting's template keeps its placeholder.
+    if (this.#defect === 'unfilled-template' && draft.kind === 'fallback') {
+      answer = `${language === 'tr' ? 'Merhaba' : 'Hello'} {{customer_name}}! ${answer}`;
+    }
+    // The internal-ids defect: each product shown is named with its catalog id.
+    if (this.#defect === 'internal-ids') {
+      for (const product of shown) {
+        const name = product.name[language];
+        answer = answer.replace(name, `${name} (${product.id})`);
+      }
+    }
     const reply: ChatReply = {
       answer,
       products: shown.map((product) => view(product, interpretation.language)),
@@ -197,7 +210,11 @@ export class Assistant {
             })),
           }
         : {}),
-      metadata: { route: interpretation.route, language: interpretation.language },
+      // The missing-contract-field defect: the language goes missing from the response.
+      metadata:
+        this.#defect === 'missing-contract-field'
+          ? { route: interpretation.route }
+          : { route: interpretation.route, language },
     };
 
     remember(this.#sessions, sessionId, next, MAX_SESSIONS);

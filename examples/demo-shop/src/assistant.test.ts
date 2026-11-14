@@ -45,6 +45,9 @@ const PROBES = {
 } as const;
 type Probe = keyof typeof PROBES;
 
+/** Every probe, in the order written. */
+const PROBE_LIST: Probe[] = Object.keys(PROBES).filter((name): name is Probe => name in PROBES);
+
 const WITH_PRODUCTS: Probe[] = [
   'tents-tr',
   'tents-under-1000-tr',
@@ -97,9 +100,11 @@ const EXPECTED_CHANGES: Record<Defect, Probe[]> = {
   'repeated-search': [],
   // No probe carries personal data, and masking changes nothing else.
   'unmasked-pii': [],
+  // The generic checks' defects (ADR-0030).
+  'unfilled-template': ['greeting-tr'],
+  'missing-contract-field': PROBE_LIST,
+  'internal-ids': WITH_PRODUCTS,
 };
-
-const PROBE_NAMES: Probe[] = Object.keys(PROBES).filter((name): name is Probe => name in PROBES);
 
 type Replies = ReadonlyMap<Probe, ChatReply>;
 
@@ -107,7 +112,7 @@ async function runProbes(defect: Defect | null): Promise<Replies> {
   const shop = assistant(defect);
   return new Map(
     await Promise.all(
-      PROBE_NAMES.map(async (name) => [name, await ask(shop, PROBES[name], name)] as const),
+      PROBE_LIST.map(async (name) => [name, await ask(shop, PROBES[name], name)] as const),
     ),
   );
 }
@@ -136,7 +141,7 @@ describe('correct behaviour (no defect)', () => {
       const reply = get(replies, name);
       for (const view of reply.products) {
         expect(reply.answer, name).toContain(
-          formatMoney(product(view.id).price, reply.metadata.language),
+          formatMoney(product(view.id).price, reply.metadata.language ?? 'tr'),
         );
         expect(view.price.amount).toBe(product(view.id).price);
       }
@@ -216,7 +221,7 @@ describe('defect switchboard', () => {
   it.each(DEFECTS)('%s changes exactly the expected probes', async (defect) => {
     const baseline = await runProbes(null);
     const broken = await runProbes(defect);
-    const changed = PROBE_NAMES.filter(
+    const changed = PROBE_LIST.filter(
       (name) => JSON.stringify(get(broken, name)) !== JSON.stringify(get(baseline, name)),
     );
     expect(changed.toSorted()).toEqual(EXPECTED_CHANGES[defect].toSorted());

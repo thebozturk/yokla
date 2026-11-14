@@ -38,6 +38,34 @@ target:
         fields:
           id: id
           name: name
+    # The contract of every answer (ADR-0030): what the shop's clients read.
+    schema:
+      at: $.data
+      schema:
+        type: object
+        required: [answer, products, metadata]
+        properties:
+          answer: { type: string }
+          products:
+            type: array
+            items:
+              type: object
+              required: [id, name, price]
+              properties:
+                id: { type: string }
+                name: { type: string }
+                price:
+                  type: object
+                  required: [amount, currency]
+                  properties:
+                    amount: { type: number, minimum: 0 }
+                    currency: { type: string, pattern: '^[A-Z]{3}$' }
+          metadata:
+            type: object
+            required: [route, language]
+            properties:
+              route: { type: string }
+              language: { enum: [tr, en] }
   session:
     mode: client
   limits:
@@ -50,6 +78,11 @@ target:
 
 languages: [tr, en]
 domain: ecommerce
+
+# What no answer may show, in any case (ADR-0030): a template placeholder left
+# unfilled, or a value the code never set.
+everyAnswer:
+  notMatches: ['\{\{\s*\w+\s*\}\}', '\b(?:undefined|NaN|null)\b']
 
 capabilities:
   - id: product-search

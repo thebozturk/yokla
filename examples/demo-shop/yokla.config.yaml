@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=../../packages/cli/schemas/config.v1.schema.json
+#
+# The demo-shop's yokla configuration: its own check (ADR-0030), relative to
+# this file. yokla run --config examples/demo-shop/yokla.config.yaml loads it.
+
+version: 1
+checks: [./checks/no-internal-ids.ts]

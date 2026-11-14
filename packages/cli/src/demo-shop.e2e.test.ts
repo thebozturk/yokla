@@ -3,13 +3,15 @@
 // Without defects every case passes. With each defect, exactly the expected
 // check fails on exactly the expected cases, and nothing else fails. Over a
 // WebSocket (ADR-0024), the defect-free run gives the same answers, and a
-// seeded defect is caught the same way.
+// seeded defect is caught the same way. The runs load the demo-shop's own
+// check through its yokla.config.yaml, as a user would (ADR-0030).
 // yokla never imports the demo-shop (layer rules).
 //
 // The egress test (ADR-0003, design §15): every run, gate and baseline here
 // runs behind a network guard that allows only the demo-shops' own ports.
 
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -35,7 +37,7 @@ const ALL_PRODUCT_CASES = [
   'cheaper-follow-up-en',
 ];
 
-/** Defect → the one check that must catch it → the cases it must fail. */
+/** Defect → the checks that must catch it → the cases each must fail. */
 const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
   'fabricated-price': { 'price-grounded': ALL_PRODUCT_CASES },
   // Cases that list a product whose stock is unknown.
@@ -51,7 +53,11 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
       'cheaper-follow-up-en',
     ],
   },
-  'invented-return-policy': { 'policy-claim': ['returns-tr', 'returns-en'] },
+  'invented-return-policy': {
+    'policy-claim': ['returns-tr', 'returns-en'],
+    // The invented policy strays from the FAQ's wording too (ADR-0030).
+    'answer-similarity': ['returns-tr'],
+  },
   'filter-ignored': {
     'filter-honoured-or-disclosed': [
       'tents-under-1000-tr',
@@ -85,6 +91,21 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
   // matrix of proxy.e2e.test.ts (ADR-0025).
   'unrequested-cart': {},
   'repeated-search': {},
+  // The generic checks (ADR-0030): the profile's everyAnswer patterns, its
+  // response contract, and the check the demo-shop's team wrote.
+  'unfilled-template': { 'answer-text': ['greeting-tr'] },
+  'missing-contract-field': {
+    'json-schema': [
+      ...ALL_PRODUCT_CASES,
+      'returns-tr',
+      'returns-en',
+      'shipping-tr',
+      'warranty-en',
+      'invest-en',
+      'greeting-tr',
+    ].toSorted(),
+  },
+  'internal-ids': { 'no-internal-ids': ALL_PRODUCT_CASES },
 };
 
 const children: ChildProcess[] = [];
@@ -132,6 +153,8 @@ async function runAgainst(defect: string): Promise<void> {
     'run',
     '--profile',
     join(DEMO, 'yokla.profile.yaml'),
+    '--config',
+    join(DEMO, 'yokla.config.yaml'),
     '--cases',
     join(DEMO, 'cases'),
   ];
@@ -290,6 +313,16 @@ describe('the demo-shop acceptance', () => {
   it('passes every case without defects', () => {
     const run = runs.get('none');
     expect(run?.code, run?.output).toBe(0);
+    // The demo-shop's own check, named in the results with its file's hash (ADR-0030).
+    expect(run?.results.run.checkModules).toEqual([
+      {
+        id: 'no-internal-ids',
+        module: 'checks/no-internal-ids.ts',
+        sha256: createHash('sha256')
+          .update(readFileSync(join(DEMO, 'checks/no-internal-ids.ts')))
+          .digest('hex'),
+      },
+    ]);
     expect(run?.results.cases).toHaveLength(18);
     expect(run?.results.summary.statuses).toEqual({ pass: 18 });
     expect(run?.junit).toMatch(

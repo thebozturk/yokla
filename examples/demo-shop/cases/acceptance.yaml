@@ -10,7 +10,14 @@ cases:
     language: tr
     turns:
       - user: Çadır önerir misin?
-        expect: { answerable: true, productType: outdoor/camping/tent }
+        expect:
+          answerable: true
+          productType: outdoor/camping/tent
+          # A product answer is never the fallback text (ADR-0030).
+          similar:
+            to:
+              - Şu anda yanıt hazırlayamıyorum. Lütfen biraz sonra tekrar deneyin.
+            max: 0.5
 
   - id: tents-under-1000-tr
     suite: factual
@@ -106,7 +113,14 @@ cases:
     language: tr
     turns:
       - user: İade koşulları neler?
-        expect: { answerable: true, policyTopic: returns }
+        expect:
+          answerable: true
+          policyTopic: returns
+          # The answer stays close to the FAQ's wording (ADR-0030).
+          similar:
+            to:
+              - Ürünleri teslimattan itibaren 14 gün içinde, kullanılmamış ve orijinal ambalajında iade edebilirsiniz.
+            min: 0.8
 
   - id: returns-en
     suite: factual
