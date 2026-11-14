@@ -1,6 +1,6 @@
 # 0032. Gemini: the model proxy and yokla's own calls
 
-Status: Proposed · Date: 2026-11-15
+Status: Accepted · Date: 2026-11-15
 
 ## Context
 

@@ -44,7 +44,7 @@ old one.
 | [0029](0029-model-calls-from-opentelemetry-spans.md) | Model calls read from OpenTelemetry spans | Accepted |
 | [0030](0030-generic-checks.md) | Generic checks: patterns, JSON Schema, similarity, and checks the user writes | Accepted |
 | [0031](0031-tokens-yokla-obtains.md) | Authentication: tokens yokla obtains and refreshes | Accepted |
-| [0032](0032-gemini.md) | Gemini: the model proxy and yokla's own calls | Proposed |
+| [0032](0032-gemini.md) | Gemini: the model proxy and yokla's own calls | Accepted |
 
 ## Template
 
