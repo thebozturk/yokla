@@ -22,6 +22,13 @@ export {
   type StreamEvent,
 } from './extract/stream.ts';
 export {
+  readToolResult,
+  seenEvidence,
+  type Seen,
+  type ToolResultsMapping,
+} from './extract/seen.ts';
+export {
+  extractEvidence,
   extractField,
   extractResponse,
   toJson,
@@ -153,6 +160,7 @@ export type {
   PhraseKind,
   PreparedPack,
   ProxyCallView,
+  SeenItem,
   TurnView,
 } from './checks/types.ts';
 export { findPhrases, hasPhrase, type PhraseMatch } from './text/phrases.ts';

@@ -12,6 +12,20 @@ export function productsOf(turn: TurnView, data: EcommerceData): Product[] | und
   return turn.response.evidence[PRODUCTS]?.map((item) => productOf(item, data.catalog));
 }
 
+/**
+ * The products the model saw in the results of a mapped tool, completed from
+ * the catalog, with that tool (ADR-0026). Kept apart from the returned ones.
+ */
+export function seenProductsOf(
+  turn: TurnView,
+  data: EcommerceData,
+): { readonly product: Product; readonly tool: string }[] {
+  return (turn.seen[PRODUCTS] ?? []).map(({ tool, item }) => ({
+    product: productOf(item, data.catalog),
+    tool,
+  }));
+}
+
 /** Splits an answer into lines and sentences; decimal points inside numbers stay. */
 export function segments(text: string): string[] {
   return text

@@ -96,3 +96,16 @@ describe('storeToolCalls (ADR-0025)', () => {
     ]);
   });
 });
+
+describe('storePrompt keeps the tool a result answers (ADR-0026)', () => {
+  it('as a name, whatever the store mode', () => {
+    const result: PromptMessage[] = [
+      { role: 'tool', chars: 2, text: '{}', tool: 'search_products' },
+    ];
+    for (const store of ['sizes', 'hashed', 'redacted', 'full'] as const) {
+      expect(storePrompt(result, { store, redact: ['x'] }, hash)?.[0]?.tool).toBe(
+        'search_products',
+      );
+    }
+  });
+});

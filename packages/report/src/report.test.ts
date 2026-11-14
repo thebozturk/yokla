@@ -447,6 +447,7 @@ describe('htmlReport (ADR-0023)', () => {
                   evidence: { products: [{ id: 'p1', name: HOSTILE, price: 5 }] },
                 },
                 issues: [HOSTILE],
+                seen: { products: [{ tool: 'search_products', item: { id: 'p9', price: 329 } }] },
                 proxy: { correlation: 'serial', calls: [call], costUsd: 0.001234567 },
                 observed: {
                   source: 'target-logs',
@@ -596,6 +597,7 @@ describe('htmlReport (ADR-0023)', () => {
     expect(page).toContain('<td>search_products</td><td>system 20, user 8</td>');
     expect(page).not.toContain('SECRET SYSTEM PROMPT');
     expect(page).not.toContain('SECRET TOOL ARGUMENT');
+    expect(page).toContain('<summary>Seen by the model in tool results: products 1</summary>');
     expect(page).not.toContain('b'.repeat(64));
     expect(page).toContain('$0.001235');
   });

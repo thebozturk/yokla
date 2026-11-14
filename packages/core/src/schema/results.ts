@@ -100,6 +100,11 @@ export const TurnResult = z.object({
     .optional(),
   /** Set when the request failed or the answer couldn't be read; later turns don't run. */
   error: z.string().optional(),
+  /**
+   * Items the model saw in the results of the tools the profile maps, per
+   * evidence collection, with their tool (ADR-0026). Kept apart from `response.evidence`.
+   */
+  seen: z.record(z.string(), z.array(z.object({ tool: z.string(), item: z.json() }))).optional(),
   /** Non-fatal mapping problems, e.g. a route the profile maps but the response lacks. */
   issues: z.array(z.string()).optional(),
   checks: z.array(CheckResult),

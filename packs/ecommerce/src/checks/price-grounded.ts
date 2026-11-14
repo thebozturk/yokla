@@ -4,7 +4,8 @@
 // times a quantity stated in the same sentence (ADR-0021), a total of two or
 // more of the answer's own grounded amounts (ADR-0022), or an amount the user
 // wrote. Products from earlier turns of the conversation count, because an
-// answer may refer back to them. The check applies only when the
+// answer may refer back to them, and so do the products the model saw in the
+// results of a mapped tool (ADR-0026). The check applies only when the
 // evidence has an authoritative price: with no priced product in the
 // conversation, as when the profile maps no evidence, yokla can't tell a real
 // price from an invented one.
@@ -16,8 +17,8 @@ import {
   type LanguagePack,
   type MoneyMention,
 } from '@yokla/core';
-import type { EcommerceData } from '../data.ts';
-import { notApplicable, productsOf, segments, userNumbers } from './common.ts';
+import type { EcommerceData, Product } from '../data.ts';
+import { notApplicable, productsOf, seenProductsOf, segments, userNumbers } from './common.ts';
 
 interface Grounding {
   readonly amount: number;
@@ -65,6 +66,17 @@ function sumOf(parts: readonly MoneyMention[], total: MoneyMention): MoneyMentio
   return undefined;
 }
 
+/** A product's price as a grounding, with where it came from; none without a price. */
+function priced(product: Product, source: string): Grounding[] {
+  return product.price === undefined
+    ? []
+    : [{ amount: product.price, currency: product.currency, source }];
+}
+
+function label(product: Product): string {
+  return `product ${product.id ?? product.name ?? '?'}`;
+}
+
 export function priceGrounded(data: EcommerceData): Check {
   return {
     id: 'price-grounded',
@@ -78,19 +90,17 @@ export function priceGrounded(data: EcommerceData): Check {
       if (mentions.length === 0) return notApplicable('the answer mentions no money');
 
       const views = [...context.history, context.turn];
-      const groundings: Grounding[] = views.flatMap((view) =>
-        (productsOf(view, data) ?? []).flatMap((product) =>
-          product.price === undefined
-            ? []
-            : [
-                {
-                  amount: product.price,
-                  currency: product.currency,
-                  source: `product ${product.id ?? product.name ?? '?'}`,
-                },
-              ],
+      const groundings: Grounding[] = [
+        ...views.flatMap((view) =>
+          (productsOf(view, data) ?? []).flatMap((product) => priced(product, label(product))),
         ),
-      );
+        // What the model was told is a product's price too (ADR-0026).
+        ...views.flatMap((view) =>
+          seenProductsOf(view, data).flatMap(({ product, tool }) =>
+            priced(product, `${label(product)}, seen in ${tool}`),
+          ),
+        ),
+      ];
       if (groundings.length === 0) {
         return notApplicable('no product in the conversation has a price');
       }
@@ -151,6 +161,10 @@ export function priceGrounded(data: EcommerceData): Check {
             (g) => Math.abs(g.amount - mention.amount) < CENT && sameCurrency(g),
           );
           if (match !== undefined) {
+            // A price only the model was told is worth naming (ADR-0026).
+            if (match.source.includes(', seen in ')) {
+              explained.push(`"${mention.raw}" = ${match.source}`);
+            }
             stated.push({ mention, part: match.source !== USER, grounded: true });
             continue;
           }

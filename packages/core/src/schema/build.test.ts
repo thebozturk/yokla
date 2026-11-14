@@ -461,3 +461,31 @@ describe('core expectations and turn requests', () => {
     );
   });
 });
+
+/** A model proxy that maps search_products results into this collection. */
+const mapping = (collection: string) => ({
+  modelProxy: {
+    upstreams: [{ id: 'openai', kind: 'openai-compatible', upstream: 'http://127.0.0.1:9' }],
+    toolResults: {
+      search_products: {
+        [collection]: { items: '$.results[*]', fields: { id: 'product_id', price: 'price' } },
+      },
+    },
+  },
+});
+
+describe('modelProxy.toolResults (ADR-0026)', () => {
+  it('accepts collections that response.evidence maps, and refuses others, saying where', () => {
+    expect(profile.safeParse(withChange(mapping('products'))).success).toBe(true);
+    expect(
+      profile
+        .safeParse(withChange(mapping('stores')))
+        .error?.issues.map((issue) => [issue.path.join('.'), issue.message]),
+    ).toEqual([
+      [
+        'modelProxy.toolResults.search_products.stores',
+        'the profile maps no evidence collection "stores" in response.evidence',
+      ],
+    ]);
+  });
+});

@@ -26,6 +26,7 @@ export function turnView(
     user: 'message',
     expect: {},
     observed: undefined,
+    seen: {},
     clarifying: false,
     faults: undefined,
     unusable: undefined,

@@ -1697,6 +1697,98 @@
             }
           },
           "additionalProperties": false
+        },
+        "toolResults": {
+          "description": "ADR-0026: per tool, evidence collections in its results, as the model saw them in the target's prompts. A collection must be one response.evidence maps. A result is read as JSON: its whole text, or else from its first { to its last }.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                    },
+                    {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                      }
+                    }
+                  ],
+                  "description": "Where the items are in the response, e.g. $.data.products[*]; or several paths, read in order, an item with an id an earlier path returned left out (ADR-0020)."
+                },
+                "fields": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "pattern": "^[a-z][A-Za-z0-9]*$"
+                  },
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "from": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                              },
+                              {
+                                "minItems": 1,
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                                }
+                              }
+                            ]
+                          },
+                          "as": {
+                            "description": "Convert the value, e.g. a decimal string to a number.",
+                            "type": "string",
+                            "enum": [
+                              "string",
+                              "number",
+                              "boolean"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "from"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "description": "Evidence field → where it is in each item, e.g. price: price.amount, or price: { from: [price.salePrice, price.listPrice], as: number }."
+                }
+              },
+              "required": [
+                "items",
+                "fields"
+              ],
+              "additionalProperties": false
+            }
+          }
         }
       },
       "required": [

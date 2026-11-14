@@ -45,6 +45,8 @@ export const PromptMessage = z.object({
     .optional(),
   /** The text, or with `redacted` the text with matches of the profile's patterns replaced. */
   text: z.string().optional(),
+  /** For a tool result, the tool it answers, by its call's id in the same request (ADR-0026). */
+  tool: z.string().optional(),
 });
 export type PromptMessage = z.output<typeof PromptMessage>;
 

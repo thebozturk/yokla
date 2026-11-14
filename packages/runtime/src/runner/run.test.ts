@@ -1817,6 +1817,75 @@ describe('runSuite with the model proxy', () => {
     expect(JSON.stringify(results)).not.toMatch(/a@b\.com|SKU-77/u);
   });
 
+  it('keeps what the model saw in mapped tool results, and shows it to the checks (ADR-0026)', async () => {
+    const proxy = await fakeProxy();
+    const prompts: ProxyRecord['prompt'][] = [
+      [
+        { role: 'user', chars: 1, text: 'a' },
+        {
+          role: 'tool',
+          chars: 10,
+          text: search({ product_id: 'S9', price: 329, secret: 'not mapped' }),
+          tool: 'search_products',
+        },
+        { role: 'tool', chars: 10, text: search({ product_id: 'C1' }), tool: 'get_cart' },
+      ],
+      [{ role: 'tool', chars: 10, text: 'The search failed.', tool: 'search_products' }],
+    ];
+    const t = await target((_r, _i, response) => {
+      for (const prompt of prompts.splice(0, 1))
+        proxy.records.push({ ...call(null, proxy.mark()), prompt });
+      json(response, answer());
+    });
+    const base = proxied(t.url, 'serial');
+    const mapped: Profile =
+      base.modelProxy === undefined
+        ? base
+        : {
+            ...base,
+            modelProxy: {
+              ...base.modelProxy,
+              toolResults: {
+                search_products: {
+                  items: { items: '$.results[*]', fields: { id: 'product_id', price: 'price' } },
+                },
+              },
+            },
+          };
+    const saw: unknown[] = [];
+    const watcher: Check = {
+      id: 'watcher',
+      description: 'records what the model saw',
+      run: (context) => {
+        saw.push(context.turn.seen);
+        return { applicable: false, reason: 'records only' };
+      },
+    };
+    const results = await runSuite(
+      options(mapped, cases({ turns: [{ user: 'a' }, { user: 'b' }] }), {
+        proxyUrl: proxy.url,
+        checks: [watcher],
+      }),
+    );
+    expect(Results.safeParse(results).success).toBe(true);
+    const [first, second] = results.cases[0]?.samples[0]?.turns ?? [];
+    const item = { tool: 'search_products', item: { id: 'S9', price: 329 } };
+    expect(first?.seen).toEqual({ items: [item] });
+    expect(first?.issues).toBeUndefined();
+    expect(second?.seen).toBeUndefined();
+    expect(second?.issues).toEqual([
+      "a result of search_products isn't JSON, so nothing was read from it",
+    ]);
+    expect(saw).toEqual([{ items: [item] }, {}]);
+    // The prompts are kept as sizes; only the mapped fields of what was seen are in the results.
+    expect(JSON.stringify(results)).not.toMatch(/not mapped|C1|The search failed/u);
+    expect(first?.proxy?.calls[0]?.prompt?.[1]).toEqual({
+      role: 'tool',
+      chars: 10,
+      tool: 'search_products',
+    });
+  });
+
   it('counts a call the target makes after its answer for that turn, by waiting for quiet', async () => {
     // The settle answers after 60 ms; the target's background call starts 20 ms after its answer.
     const proxy = await fakeProxy({ settle: { delayMs: 60 } });
@@ -2012,6 +2081,11 @@ describe('runSuite with the model proxy', () => {
     );
   });
 });
+
+/** A search tool's result as a fenced payload behind a header line (ADR-0026). */
+function search(...results: unknown[]): string {
+  return `Found:\n<data>\n${JSON.stringify({ results })}\n</data>`;
+}
 
 const sockets: TestServer[] = [];
 

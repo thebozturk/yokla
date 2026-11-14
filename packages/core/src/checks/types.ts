@@ -47,6 +47,12 @@ export interface TurnView {
     readonly id: string | undefined;
     readonly evidence: Readonly<Record<string, readonly EvidenceItem[]>>;
   };
+  /**
+   * Items the model saw in the results of the tools the profile maps, per
+   * evidence collection, with the tool they came from (ADR-0026). Kept apart
+   * from the returned evidence: {} without the model proxy or a mapping.
+   */
+  readonly seen: Readonly<Record<string, readonly SeenItem[]>>;
   /** Fields read from the target's logs (ADR-0009). */
   readonly observed: Readonly<Record<string, JsonValue>> | undefined;
   /** The target answered with a clarifying question (see response.clarification). */
@@ -67,12 +73,22 @@ export interface TurnView {
     { readonly calls: readonly ProxyCallView[]; readonly costUsd: number | null } | undefined;
 }
 
+/** An item the model saw in a tool's result (ADR-0026). */
+export interface SeenItem {
+  readonly tool: string;
+  readonly item: EvidenceItem;
+}
+
 /** One model call the proxy tied to a turn, as checks see it (ADR-0012, ADR-0015). */
 export interface ProxyCallView {
   /** Input tokens as the provider reported them, cached ones included; null when unreported. */
   readonly inputTokens: number | null;
-  /** The messages the call sent, with their text; null when the proxy couldn't read them. */
-  readonly prompt: readonly { readonly role: PromptRole; readonly text: string }[] | null;
+  /**
+   * The messages the call sent, with their text; null when the proxy couldn't
+   * read them. A tool result names the tool it answers (ADR-0026).
+   */
+  readonly prompt:
+    readonly { readonly role: PromptRole; readonly text: string; readonly tool?: string }[] | null;
   /** The names of the tools the call offered; null when unknown (ADR-0025). */
   readonly offered: readonly string[] | null;
   /** The tool calls the model asked for, with their arguments' text; null when unknown. */

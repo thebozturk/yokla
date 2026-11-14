@@ -112,8 +112,22 @@ export function extractResponse(
   if (mapping.id !== undefined && id === undefined)
     issues.push(`target id not found at ${mapping.id}`);
 
+  const evidence = extractEvidence(body, mapping.evidence ?? {}, issues);
+
+  return { text, route, id, evidence, issues };
+}
+
+/**
+ * The items of each evidence collection in a document, as the profile maps
+ * them (response.evidence, or a tool's results, ADR-0026). Problems go to `issues`.
+ */
+export function extractEvidence(
+  body: unknown,
+  collections: NonNullable<ProfileTarget['response']['evidence']>,
+  issues: string[],
+): Record<string, EvidenceItem[]> {
   const evidence: Record<string, EvidenceItem[]> = {};
-  for (const [name, collection] of Object.entries(mapping.evidence ?? {})) {
+  for (const [name, collection] of Object.entries(collections)) {
     const paths = typeof collection.items === 'string' ? [collection.items] : collection.items;
     const items: EvidenceItem[] = [];
     // Several paths (ADR-0020): an id an earlier path returned is the same item, shown
@@ -149,6 +163,5 @@ export function extractResponse(
     }
     evidence[name] = items;
   }
-
-  return { text, route, id, evidence, issues };
+  return evidence;
 }

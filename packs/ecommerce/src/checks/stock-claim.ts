@@ -1,6 +1,7 @@
 // stock-claim (design §10): no availability claim when stock is unknown, and
 // claims must match known stock. A claim is tied to the product named in the
-// same line or sentence; a claim in a sentence that names no product applies to
+// same line or sentence, returned or seen by the model in a mapped tool's
+// results (ADR-0026); a claim in a sentence that names no product applies to
 // every returned product.
 //
 // Stock comes from the response or, joined by id, from the catalog snapshot.
@@ -11,20 +12,21 @@
 import { findPhrases, type Check, type CheckFinding } from '@yokla/core';
 import type { EcommerceData, Product } from '../data.ts';
 import { STOCK_PHRASES } from '../lexicon.ts';
-import { namedProducts, notApplicable, productsOf, segments } from './common.ts';
+import { namedProducts, notApplicable, productsOf, seenProductsOf, segments } from './common.ts';
 
 type Claim = 'in' | 'out';
 
-function verdictFor(claim: Claim, product: Product): CheckFinding | undefined {
+function verdictFor(claim: Claim, product: Product, seenIn?: string): CheckFinding | undefined {
   const { stock, inStock } = product;
   if (stock === undefined && inStock === undefined) return undefined;
-  const label = product.name ?? product.id ?? 'a product';
+  const label = `${product.name ?? product.id ?? 'a product'}${seenIn === undefined ? '' : ` (seen in ${seenIn})`}`;
   const said = claim === 'in' ? 'in stock' : 'out of stock';
   const evidence = {
     product: product.id ?? null,
     claim,
     ...(stock === undefined ? {} : { stock }),
     ...(inStock === undefined ? {} : { inStock }),
+    ...(seenIn === undefined ? {} : { seenIn }),
   };
   // A quantity says more than a boolean, so it decides when both are known (ADR-0020).
   if (typeof stock === 'number') {
@@ -75,9 +77,16 @@ export function stockClaim(data: EcommerceData): Check {
       const phrases = STOCK_PHRASES[lang.language];
       if (phrases === undefined) return notApplicable(`no stock wording for "${lang.language}"`);
       const products = productsOf(context.turn, data) ?? [];
-      if (products.length === 0) return notApplicable('no products returned');
+      const returned = new Set(products.map((product) => product.id ?? product.name));
+      // Products the model saw and the answer didn't return, with their tool (ADR-0026).
+      const seen = seenProductsOf(context.turn, data).filter(
+        ({ product }) => !returned.has(product.id ?? product.name),
+      );
+      const tools = new Map(seen.map(({ product, tool }) => [product, tool]));
+      const candidates = [...products, ...seen.map(({ product }) => product)];
+      if (candidates.length === 0) return notApplicable('no products returned or seen');
       if (
-        products.every((product) => product.stock === undefined && product.inStock === undefined)
+        candidates.every((product) => product.stock === undefined && product.inStock === undefined)
       ) {
         return notApplicable('stock is neither in the response nor in the catalog');
       }
@@ -102,7 +111,7 @@ export function stockClaim(data: EcommerceData): Check {
             ),
         );
         if (found.length === 0) continue;
-        const named = namedProducts(folded, products, (text) => lang.fold(text)).map((m) => ({
+        const named = namedProducts(folded, candidates, (text) => lang.fold(text)).map((m) => ({
           product: m.product,
           at: m.start,
         }));
@@ -119,7 +128,8 @@ export function stockClaim(data: EcommerceData): Check {
                 ? [named[0]?.product]
                 : products;
           for (const product of targets) {
-            const finding = product === undefined ? undefined : verdictFor(claim, product);
+            const finding =
+              product === undefined ? undefined : verdictFor(claim, product, tools.get(product));
             if (finding !== undefined) findings.push(finding);
           }
         }

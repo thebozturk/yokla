@@ -369,6 +369,10 @@ const ModelProxy = z.strictObject({
       description:
         "ADR-0016: after each answer (serial) and before the run ends, wait until the target's model calls stop: none in flight, none for quietMs.",
     }),
+  toolResults: z.record(z.string().min(1), z.record(Id, EvidenceCollection)).optional().meta({
+    description:
+      "ADR-0026: per tool, evidence collections in its results, as the model saw them in the target's prompts. A collection must be one response.evidence maps. A result is read as JSON: its whole text, or else from its first { to its last }.",
+  }),
 });
 
 const Capability = z.strictObject({
@@ -425,6 +429,16 @@ export function profileProblems(
         problems.push({
           path: [...path, index],
           message: `evidence collection "${name}" maps no field "${field}"`,
+        });
+      }
+    }
+  }
+  for (const [tool, collections] of Object.entries(profile.modelProxy?.toolResults ?? {})) {
+    for (const name of Object.keys(collections)) {
+      if (!(name in evidence)) {
+        problems.push({
+          path: ['modelProxy', 'toolResults', tool, name],
+          message: `the profile maps no evidence collection "${name}" in response.evidence`,
         });
       }
     }

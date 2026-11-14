@@ -17,6 +17,7 @@ import {
   eventName,
   extractResponse,
   messageEvents,
+  seenEvidence,
   UNANSWERED_JUDGES,
   queryJsonPath,
   readEvents,
@@ -577,6 +578,7 @@ async function runSample(
                   evidence: extracted?.evidence ?? {},
                 },
                 observed: undefined,
+                seen: {},
                 clarifying,
                 faults: faults === undefined ? undefined : { failure },
                 // A non-2xx status is judged by the status itself; anything else, by why.
@@ -630,6 +632,7 @@ async function runSample(
                     evidence: {},
                   },
                   observed: undefined,
+                  seen: {},
                   clarifying: false,
                   faults: edgeCase ? undefined : { failure },
                   unusable: edgeCase ? failure : undefined,
@@ -786,10 +789,10 @@ async function observe(
 /** A prompt as checks see it: only when all its text is there (ADR-0015). */
 function promptView(prompt: TurnProxy['calls'][number]['prompt']): ProxyCallView['prompt'] {
   if (prompt === undefined || prompt === null) return null;
-  const view: { role: PromptRole; text: string }[] = [];
-  for (const { role, text } of prompt) {
+  const view: { role: PromptRole; text: string; tool?: string }[] = [];
+  for (const { role, text, tool } of prompt) {
     if (text === undefined) return null;
-    view.push({ role, text });
+    view.push({ role, text, ...(tool === undefined ? {} : { tool }) });
   }
   return view;
 }
@@ -847,21 +850,23 @@ function judgeCase(
         turn = { ...turn, proxy: storeTurnProxy(proxy, proxied.prompts) };
       }
       if (exchange.view === undefined) return turn;
+      const calls = (proxy?.calls ?? []).map((call) => ({
+        inputTokens: call.usage.input,
+        prompt: promptView(call.prompt),
+        offered: call.tools ?? null,
+        toolCalls: toolCallsView(call.toolCalls),
+      }));
+      // What the model saw in the results of the tools the profile maps (ADR-0026).
+      const found = seenEvidence(calls, options.profile.modelProxy?.toolResults);
+      if (Object.keys(found.seen).length > 0) turn = { ...turn, seen: found.seen };
+      if (found.issues.length > 0) {
+        turn = { ...turn, issues: [...(turn.issues ?? []), ...found.issues] };
+      }
       const view: TurnView = {
         ...exchange.view,
         observed: fields,
-        proxy:
-          proxy === undefined
-            ? undefined
-            : {
-                calls: proxy.calls.map((call) => ({
-                  inputTokens: call.usage.input,
-                  prompt: promptView(call.prompt),
-                  offered: call.tools ?? null,
-                  toolCalls: toolCallsView(call.toolCalls),
-                })),
-                costUsd: proxy.costUsd,
-              },
+        seen: found.seen,
+        proxy: proxy === undefined ? undefined : { calls, costUsd: proxy.costUsd },
       };
       // A turn without a usable answer, under faults or with a non-2xx status it allows,
       // is judged only by the checks that need no answer.

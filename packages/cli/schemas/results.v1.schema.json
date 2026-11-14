@@ -652,6 +652,9 @@
                                           },
                                           "text": {
                                             "type": "string"
+                                          },
+                                          "tool": {
+                                            "type": "string"
                                           }
                                         },
                                         "required": [
@@ -750,6 +753,31 @@
                       "error": {
                         "type": "string"
                       },
+                      "seen": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "tool": {
+                                "type": "string"
+                              },
+                              "item": {
+                                "$ref": "#/$defs/__schema2"
+                              }
+                            },
+                            "required": [
+                              "tool",
+                              "item"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
                       "issues": {
                         "type": "array",
                         "items": {
@@ -799,7 +827,7 @@
                                     "type": "string"
                                   },
                                   "evidence": {
-                                    "$ref": "#/$defs/__schema2"
+                                    "$ref": "#/$defs/__schema3"
                                   }
                                 },
                                 "required": [
@@ -1057,6 +1085,37 @@
           },
           "additionalProperties": {
             "$ref": "#/$defs/__schema2"
+          }
+        }
+      ]
+    },
+    "__schema3": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema3"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema3"
           }
         }
       ]

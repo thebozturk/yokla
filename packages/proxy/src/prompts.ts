@@ -2,7 +2,9 @@
 // role and text, for OpenAI-compatible chat completions, the Responses API and
 // embeddings, and for Anthropic Messages. Only text is kept; images and other
 // parts are left out. A body the proxy can't read gives null, never a shorter
-// prompt, so a check that needs it says it couldn't measure.
+// prompt, so a check that needs it says it couldn't measure. A tool result
+// names the tool it answers, found by its call's id in the same request
+// (ADR-0026).
 
 import type { PromptMessage, PromptRole } from '@yokla/core';
 import type { UpstreamKind } from './usage.ts';
@@ -46,9 +48,13 @@ function roleOf(role: unknown): PromptRole | undefined {
   }
 }
 
-function message(role: PromptRole | undefined, text: string): PromptMessage {
+function message(role: PromptRole | undefined, text: string, tool?: string): PromptMessage {
   if (role === undefined) throw new Error('a message with an unknown role');
-  return { role, chars: text.length, text };
+  return { role, chars: text.length, text, ...(tool === undefined ? {} : { tool }) };
+}
+
+function str(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
 }
 
 function lines(...parts: readonly string[]): string {
@@ -57,14 +63,24 @@ function lines(...parts: readonly string[]): string {
 
 /** Chat completions: `messages`, with tool-call arguments as the assistant's text. */
 function chat(messages: readonly unknown[]): PromptMessage[] {
+  // Tool call ids to tool names, from the assistant messages, for the results that follow.
+  const tools = new Map<string, string>();
   return messages.map((entry) => {
     if (!isObject(entry)) throw new Error('a message that is not an object');
     const args: string[] = [];
     for (const call of [...list(entry['tool_calls']), { function: entry['function_call'] }]) {
       const fn = isObject(call) ? call['function'] : undefined;
       if (isObject(fn) && typeof fn['arguments'] === 'string') args.push(fn['arguments']);
+      const id = isObject(call) ? str(call['id']) : undefined;
+      const name = isObject(fn) ? str(fn['name']) : undefined;
+      if (id !== undefined && name !== undefined) tools.set(id, name);
     }
-    return message(roleOf(entry['role']), lines(textOf(entry['content']), ...args));
+    const role = roleOf(entry['role']);
+    const callId = str(entry['tool_call_id']);
+    // A legacy function message names its function itself.
+    const tool =
+      role !== 'tool' ? undefined : callId === undefined ? str(entry['name']) : tools.get(callId);
+    return message(role, lines(textOf(entry['content']), ...args), tool);
   });
 }
 
@@ -76,16 +92,23 @@ function responses(body: Record<string, unknown>): PromptMessage[] {
   if (typeof input === 'string') return [...out, message('user', input)];
   if (input === undefined) return out;
   if (!Array.isArray(input)) throw new Error('an input that is neither text nor a list');
+  const tools = new Map<string, string>();
   for (const item of input) {
     if (!isObject(item)) throw new Error('an input item that is not an object');
     if (item['role'] !== undefined) {
       out.push(message(roleOf(item['role']), textOf(item['content'])));
     } else if (item['type'] === 'function_call') {
+      const id = str(item['call_id']);
+      const name = str(item['name']);
+      if (id !== undefined && name !== undefined) tools.set(id, name);
       out.push(
         message('assistant', typeof item['arguments'] === 'string' ? item['arguments'] : ''),
       );
     } else if (item['type'] === 'function_call_output') {
-      out.push(message('tool', textOf(item['output'])));
+      const id = str(item['call_id']);
+      out.push(
+        message('tool', textOf(item['output']), id === undefined ? undefined : tools.get(id)),
+      );
     }
   }
   return out;
@@ -103,6 +126,7 @@ function embeddings(input: unknown): PromptMessage[] {
 function anthropic(body: Record<string, unknown>, messages: readonly unknown[]): PromptMessage[] {
   const out: PromptMessage[] = [];
   if (body['system'] !== undefined) out.push(message('system', textOf(body['system'])));
+  const tools = new Map<string, string>();
   for (const entry of messages) {
     if (!isObject(entry)) throw new Error('a message that is not an object');
     const role =
@@ -117,9 +141,17 @@ function anthropic(body: Record<string, unknown>, messages: readonly unknown[]):
     for (const block of content) {
       if (!isObject(block)) throw new Error('a content block that is not an object');
       if (block['type'] === 'text' && typeof block['text'] === 'string') own.push(block['text']);
-      else if (block['type'] === 'tool_use') own.push(JSON.stringify(block['input'] ?? null));
-      else if (block['type'] === 'tool_result')
-        results.push(message('tool', textOf(block['content'])));
+      else if (block['type'] === 'tool_use') {
+        own.push(JSON.stringify(block['input'] ?? null));
+        const id = str(block['id']);
+        const name = str(block['name']);
+        if (id !== undefined && name !== undefined) tools.set(id, name);
+      } else if (block['type'] === 'tool_result') {
+        const id = str(block['tool_use_id']);
+        results.push(
+          message('tool', textOf(block['content']), id === undefined ? undefined : tools.get(id)),
+        );
+      }
     }
     if (own.length > 0 || results.length === 0) out.push(message(role, own.join('\n')));
     out.push(...results);

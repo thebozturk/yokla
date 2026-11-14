@@ -192,3 +192,83 @@ describe('readPrompt', () => {
     expect(readPrompt('openai-compatible', '/moderations', json({ text: 'x' }))).toBeNull();
   });
 });
+
+/** The tool results of a prompt, as the tool they answer and their text. */
+const tools = (prompt: ReturnType<typeof readPrompt>) =>
+  prompt?.filter((m) => m.role === 'tool').map((m) => [m.tool, m.text]) ?? prompt;
+
+describe('readPrompt names the tool each result answers (ADR-0026)', () => {
+  it('by tool_call_id in chat completions, and by name for a legacy function message', () => {
+    const body = json({
+      messages: [
+        { role: 'user', content: 'Çadır' },
+        {
+          role: 'assistant',
+          content: null,
+          tool_calls: [
+            { id: 'c1', type: 'function', function: { name: 'search_products', arguments: '{}' } },
+            { id: 'c2', type: 'function', function: { name: 'get_policy', arguments: '{}' } },
+          ],
+        },
+        { role: 'tool', tool_call_id: 'c2', content: '{"policy":"14 days"}' },
+        { role: 'tool', tool_call_id: 'c1', content: '{"results":[]}' },
+        { role: 'tool', tool_call_id: 'unknown', content: 'orphan' },
+        { role: 'function', name: 'legacy_lookup', content: '{}' },
+      ],
+    });
+    expect(tools(readPrompt('openai-compatible', '/v1/chat/completions', body))).toEqual([
+      ['get_policy', '{"policy":"14 days"}'],
+      ['search_products', '{"results":[]}'],
+      [undefined, 'orphan'],
+      ['legacy_lookup', '{}'],
+    ]);
+  });
+
+  it('by call_id in the Responses API', () => {
+    const body = json({
+      input: [
+        { type: 'function_call', call_id: 'r1', name: 'search_products', arguments: '{}' },
+        { type: 'function_call_output', call_id: 'r1', output: '{"results":[]}' },
+        { type: 'function_call_output', output: 'no id' },
+      ],
+    });
+    expect(tools(readPrompt('openai-compatible', '/v1/responses', body))).toEqual([
+      ['search_products', '{"results":[]}'],
+      [undefined, 'no id'],
+    ]);
+  });
+
+  it('by tool_use_id in Anthropic Messages, across messages', () => {
+    const body = json({
+      messages: [
+        { role: 'user', content: 'Espresso?' },
+        {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'toolu_1', name: 'search_products', input: {} }],
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'toolu_1',
+              content: 'Found:\n<data>\n{"results":[]}\n</data>',
+            },
+            { type: 'tool_result', tool_use_id: 'toolu_9', content: [{ type: 'text', text: 'x' }] },
+          ],
+        },
+      ],
+    });
+    expect(tools(readPrompt('anthropic', '/v1/messages', body))).toEqual([
+      ['search_products', 'Found:\n<data>\n{"results":[]}\n</data>'],
+      [undefined, 'x'],
+    ]);
+  });
+
+  it('names no tool on any other message', () => {
+    const body = json({ messages: [{ role: 'user', content: 'hi', name: 'someone' }] });
+    expect(
+      readPrompt('openai-compatible', '/v1/chat/completions', body)?.[0]?.tool,
+    ).toBeUndefined();
+  });
+});

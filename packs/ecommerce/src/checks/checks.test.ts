@@ -1245,3 +1245,124 @@ describe('clarifying turns and deflection', () => {
     );
   });
 });
+
+/** A turn that returned `products`, after the model saw `seen` in search_products. */
+function seenTurn(text: string, products: EvidenceItem[], seen: EvidenceItem[]): TurnView {
+  return mutate(answer(text, products), (view) => ({
+    ...view,
+    seen: { products: seen.map((item) => ({ tool: 'search_products', item })) },
+  }));
+}
+
+describe('the products the model saw in tool results (ADR-0026)', () => {
+  const turn = seenTurn;
+  const drip = {
+    id: 'AR-1001',
+    name: 'Drip Coffee Maker',
+    price: 79,
+    currency: 'USD',
+    inStock: true,
+  };
+  const espresso = {
+    id: 'AR-1009',
+    name: 'Signature Espresso Machine',
+    price: 329,
+    currency: 'USD',
+    inStock: false,
+  };
+  const STAND_IN =
+    "The closest match is the Signature Espresso Machine at $329, and it's currently out of stock. As a stand-in, the Drip Coffee Maker is $79.";
+
+  describe('price-grounded', () => {
+    const check = priceGrounded(data());
+    const run = (view: TurnView, history: TurnView[] = []) =>
+      check.run(checkContext(view, { lang: fakeEnglish, history }));
+
+    it('grounds the price of a product the model saw, and says where it came from', () => {
+      const outcome = run(turn(STAND_IN, [drip], [drip, espresso]));
+      expect(verdicts(outcome)).toEqual(['pass']);
+      expect(run(turn(STAND_IN, [drip], [drip]))).toMatchObject({
+        findings: [{ verdict: 'fail', message: expect.stringContaining('"$329"') as unknown }],
+      });
+    });
+
+    it('multiplies a seen price by a stated quantity, and adds seen amounts into totals', () => {
+      expect(
+        verdicts(run(turn('2 Signature Espresso Machines come to $658.', [drip], [espresso]))),
+      ).toEqual(['pass']);
+      expect(
+        verdicts(
+          run(turn('The espresso is $329 and the drip $79: $408 together.', [drip], [espresso])),
+        ),
+      ).toEqual(['pass']);
+    });
+
+    it('applies with only seen prices, and counts what was seen in earlier turns', () => {
+      expect(verdicts(run(turn('It is $329.', [], [espresso])))).toEqual(['pass']);
+      expect(verdicts(run(turn('It is $329.', [], [])))).toEqual([
+        'n/a: no product in the conversation has a price',
+      ]);
+      const earlier = turn('Let me look.', [], [espresso]);
+      expect(verdicts(run(turn('It is $329.', [drip], []), [earlier]))).toEqual(['pass']);
+    });
+
+    it('names the tool for a seen price only when no returned product grounds it', () => {
+      const outcome = run(turn('The Signature Espresso Machine is $329.', [], [espresso]));
+      expect(outcome.applicable && outcome.findings[0]?.message).toContain(
+        'product AR-1009, seen in search_products',
+      );
+      const both = run(turn('The Signature Espresso Machine is $329.', [espresso], [espresso]));
+      expect(both.applicable && both.findings[0]?.message).not.toContain('seen in');
+    });
+  });
+
+  describe('stock-claim', () => {
+    const check = stockClaim(data());
+    const run = (view: TurnView) => check.run(checkContext(view, { lang: fakeEnglish }));
+
+    it('judges a claim about a seen product against its stock, not the returned products', () => {
+      const outcome = run(turn(STAND_IN, [drip], [drip, espresso]));
+      expect(verdicts(outcome)).toEqual(['pass']);
+      expect(outcome.applicable && outcome.findings[0]).toMatchObject({
+        message:
+          'Signature Espresso Machine (seen in search_products): the out-of-stock claim matches its availability',
+        evidence: { product: 'AR-1009', seenIn: 'search_products' },
+      });
+      // Without what the model saw, the claim names no returned product, and fails the drip.
+      expect(verdicts(run(turn(STAND_IN, [drip], [])))).toEqual(['fail']);
+    });
+
+    it('fails a claim that contradicts what the model saw', () => {
+      expect(
+        verdicts(run(turn('The Signature Espresso Machine is in stock.', [drip], [espresso]))),
+      ).toEqual(['fail']);
+    });
+
+    it('still applies a claim that names no product to every returned product, and only those', () => {
+      const outcome = run(turn('Everything here is out of stock.', [drip], [espresso]));
+      expect(verdicts(outcome)).toEqual(['fail']);
+      expect(outcome.applicable && outcome.findings[0]?.evidence).toMatchObject({
+        product: 'AR-1001',
+      });
+    });
+
+    it('treats a product both returned and seen as returned', () => {
+      const outcome = run(turn('The Drip Coffee Maker is in stock.', [drip], [drip]));
+      expect(outcome.applicable && outcome.findings[0]?.message).not.toContain('seen in');
+      // Its stock comes from the response and the catalog, as for any returned product.
+      const { inStock: _inStock, ...unknown } = drip;
+      expect(verdicts(run(turn('The Drip Coffee Maker is in stock.', [unknown], [drip])))).toEqual([
+        'n/a: stock is neither in the response nor in the catalog',
+      ]);
+    });
+
+    it('applies with only seen products, and not without any product', () => {
+      expect(
+        verdicts(run(turn('The Signature Espresso Machine is sold out.', [], [espresso]))),
+      ).toEqual(['pass']);
+      expect(verdicts(run(turn('It is sold out.', [], [])))).toEqual([
+        'n/a: no products returned or seen',
+      ]);
+    });
+  });
+});

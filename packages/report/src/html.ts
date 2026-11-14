@@ -354,11 +354,18 @@ function answerBlock(turn: TurnResult): Html {
       : h`<details><summary>Evidence: ${collections
           .map(([name, items]) => `${name} ${String(items.length)}`)
           .join(', ')}</summary>${json(response.evidence)}</details>`;
+  const seenCollections = Object.entries(turn.seen ?? {});
+  const seen =
+    seenCollections.length === 0
+      ? undefined
+      : h`<details><summary>Seen by the model in tool results: ${seenCollections
+          .map(([name, items]) => `${name} ${String(items.length)}`)
+          .join(', ')}</summary>${json(turn.seen)}</details>`;
   return h`<div class="label">Answer · ${facts.join(' · ')}</div>${text}${
     turn.clarifying === true
       ? h`<p class="muted">The target asked a clarifying question.</p>`
       : undefined
-  }${evidence}`;
+  }${evidence}${seen}`;
 }
 
 function turnBlock(turn: TurnResult, sample: number, index: number): Html {

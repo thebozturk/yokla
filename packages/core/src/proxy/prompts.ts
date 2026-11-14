@@ -29,8 +29,9 @@ export function storePrompt(
   sha256: (text: string) => string,
 ): PromptMessage[] | null {
   if (prompt === null) return null;
-  return prompt.map(({ role, chars, text }) => {
-    const sized = { role, chars };
+  return prompt.map(({ role, chars, text, tool }) => {
+    // The tool a result answers is a name, not content: always kept (ADR-0026).
+    const sized = { role, chars, ...(tool === undefined ? {} : { tool }) };
     if (text === undefined) return sized;
     switch (storage.store) {
       case 'sizes':
