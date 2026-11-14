@@ -1,6 +1,6 @@
 # 0037. The first publish of the npm names
 
-Status: Proposed · Date: 2026-11-15
+Status: Accepted · Date: 2026-11-15
 
 ## Context
 
