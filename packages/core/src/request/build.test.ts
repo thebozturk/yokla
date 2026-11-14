@@ -5,6 +5,7 @@ import {
   buildRequest,
   checkTemplates,
   mergeJson,
+  renderText,
   TemplateError,
   type TemplateValues,
 } from './build.ts';
@@ -302,6 +303,125 @@ describe('WebSocket messages and connections (ADR-0024)', () => {
       '{{message}} is used in the WebSocket url or headers, which are sent once, before any message',
       '{{requestId}} is used in the WebSocket url or headers, which are sent once, before any message',
       "{{carry.last}} is used in the WebSocket url or headers, which are sent once, before any answer: only session.open's values exist then",
+    ]);
+  });
+});
+
+const OAUTH = {
+  kind: 'oauth2-client-credentials',
+  tokenUrl: 'https://auth.example.com/token',
+  clientId: '{{env.CLIENT_ID}}',
+  clientSecret: '{{env.CLIENT_SECRET}}',
+  clientAuth: 'basic',
+  params: { audience: '{{env.AUDIENCE}}' },
+  timeoutMs: 10_000,
+  refreshBeforeMs: 30_000,
+} as const;
+
+const bearer = request({ headers: { authorization: 'Bearer {{auth.token}}' } });
+
+describe('{{auth.token}} (ADR-0031)', () => {
+  it('puts the token where the profile says, and never leaves it out', () => {
+    expect(buildRequest(bearer, undefined, values({ auth: 'tkn-1' })).headers).toMatchObject({
+      authorization: 'Bearer tkn-1',
+    });
+    const whole = request({ headers: { 'x-token': '{{auth.token}}' } });
+    expect(buildRequest(whole, undefined, values({ auth: 'tkn-1' })).headers['x-token']).toBe(
+      'tkn-1',
+    );
+    expect(() => buildRequest(whole, undefined, values())).toThrow('{{auth.token}} has no token');
+    expect(() => buildRequest(bearer, undefined, values())).toThrow('{{auth.token}} has no token');
+  });
+
+  it('fills a string with the environment, for the token request', () => {
+    expect(renderText('{{env.CLIENT_ID}}:x', values({ env: { CLIENT_ID: 'chat' } }))).toBe(
+      'chat:x',
+    );
+    expect(() => renderText('{{env.MISSING}}', values())).toThrow(
+      'environment variable MISSING is not set',
+    );
+  });
+
+  it('accepts a token the requests use, and collects the environment target.auth reads', () => {
+    const checked = checkTemplates(target({ request: bearer, auth: OAUTH }));
+    expect(checked.issues).toEqual([]);
+    expect(checked.env.toSorted()).toEqual(['AUDIENCE', 'CLIENT_ID', 'CLIENT_SECRET']);
+    const login = checkTemplates(
+      target({
+        request: bearer,
+        auth: {
+          kind: 'request',
+          request: {
+            url: 'https://chat.example.com/login',
+            method: 'POST',
+            timeoutMs: 30_000,
+            headers: { 'x-api-key': '{{env.KEY}}' },
+            body: { user: '{{env.USER}}', password: '{{env.PASSWORD}}' },
+          },
+          token: '$.jwt',
+          refreshBeforeMs: 30_000,
+        },
+      }),
+    );
+    expect(login.issues).toEqual([]);
+    expect(login.env.toSorted()).toEqual(['KEY', 'PASSWORD', 'USER']);
+  });
+
+  it('takes the token in session.open and in a WebSocket handshake too', () => {
+    const openWithToken = target({
+      request: request(),
+      auth: OAUTH,
+      session: {
+        mode: 'client',
+        carry: [],
+        open: {
+          request: {
+            url: '/s',
+            method: 'POST',
+            timeoutMs: 1_000,
+            headers: { a: '{{auth.token}}' },
+          },
+          carry: [{ name: 'id', from: '$.id' }],
+        },
+      },
+    });
+    expect(checkTemplates(openWithToken).issues).toEqual([]);
+    const socketTarget: WebSocketProfileTarget = {
+      name: 'ws',
+      adapter: 'websocket',
+      auth: OAUTH,
+      request: {
+        url: 'wss://chat.example.com/ws?token={{auth.token}}',
+        body: { text: '{{message}}' },
+        timeoutMs: 1_000,
+      },
+      response: {
+        text: '$.text',
+        stream: { event: '$.type', text: { event: 'delta', from: '$.text' }, done: 'end' },
+      },
+      session: { mode: 'client', carry: [] },
+      cacheBypass: { kind: 'none' },
+    };
+    expect(checkTemplates(socketTarget).issues).toEqual([]);
+  });
+
+  it('refuses a token no request uses, a token without auth, and other placeholders in auth', () => {
+    expect(checkTemplates(target({ auth: OAUTH })).issues).toEqual([
+      'target.auth gets a token that no request uses: put {{auth.token}} where the target expects it',
+    ]);
+    expect(checkTemplates(target({ request: bearer })).issues).toEqual([
+      '{{auth.token}} is used but target.auth is not configured',
+    ]);
+    expect(
+      checkTemplates(
+        target({
+          request: bearer,
+          auth: { ...OAUTH, params: { audience: '{{session}}', other: '{{auth.token}}' } },
+        }),
+      ).issues,
+    ).toEqual([
+      '{{session}} is used in target.auth, which takes {{env.NAME}} only',
+      '{{auth.token}} is used in target.auth, which takes {{env.NAME}} only',
     ]);
   });
 });

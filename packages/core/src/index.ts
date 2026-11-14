@@ -11,6 +11,15 @@ export {
 } from './config/parse.ts';
 export { childPath } from './extract/member.ts';
 export {
+  MASK,
+  maskDeep,
+  maskSecrets,
+  oauthError,
+  readToken,
+  refreshMargin,
+  type Token,
+} from './auth/token.ts';
+export {
   getFieldPath,
   parseJsonPath,
   queryJsonPath,
@@ -57,6 +66,7 @@ export {
   buildRequest,
   checkTemplates,
   mergeJson,
+  renderText,
   TemplateError,
   type BuiltRequest,
   type RequestTemplate,
@@ -100,7 +110,9 @@ export {
   type MessageStream,
   type Profile,
   type ProfileTarget,
+  type TargetAuth,
   type WebSocketProfileTarget,
+  isSafeCredentialUrl,
 } from './schema/profile.ts';
 export {
   PromptMessage,

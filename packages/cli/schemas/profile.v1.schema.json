@@ -15,6 +15,156 @@
               "type": "string",
               "minLength": 1
             },
+            "auth": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "oauth2-client-credentials"
+                    },
+                    "tokenUrl": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "The token endpoint: HTTPS, except to a loopback host."
+                    },
+                    "clientId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "May be {{env.NAME}}."
+                    },
+                    "clientSecret": {
+                      "type": "string",
+                      "pattern": "^\\{\\{\\s*env\\.[A-Za-z_][A-Za-z0-9_]*\\s*\\}\\}$",
+                      "description": "A single {{env.NAME}} placeholder."
+                    },
+                    "clientAuth": {
+                      "default": "basic",
+                      "description": "How the client authenticates: HTTP Basic, or its id and secret in the form.",
+                      "type": "string",
+                      "enum": [
+                        "basic",
+                        "body"
+                      ]
+                    },
+                    "scope": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "params": {
+                      "description": "Further form fields, such as audience. Values may be {{env.NAME}}.",
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "timeoutMs": {
+                      "default": 10000,
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 600000
+                    },
+                    "refreshBeforeMs": {
+                      "default": 30000,
+                      "description": "Fetch a new token when less than this of its lifetime remains, or less than half of it.",
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "tokenUrl",
+                    "clientId",
+                    "clientSecret"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "request"
+                    },
+                    "request": {
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "May contain {{env.NAME}}."
+                        },
+                        "method": {
+                          "default": "POST",
+                          "type": "string",
+                          "enum": [
+                            "POST",
+                            "PUT",
+                            "PATCH"
+                          ]
+                        },
+                        "headers": {
+                          "description": "Values may contain {{env.NAME}}. Secrets belong in the environment.",
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        },
+                        "body": {
+                          "description": "JSON body. Strings may contain {{message}}, {{session}}, {{requestId}}, {{carry.NAME}} and {{env.NAME}}. A string that is only a placeholder with no value is left out.",
+                          "$ref": "#/$defs/__schema0"
+                        },
+                        "timeoutMs": {
+                          "default": 30000,
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 600000
+                        }
+                      },
+                      "required": [
+                        "url"
+                      ],
+                      "additionalProperties": false,
+                      "description": "An absolute url, HTTPS except to a loopback host. Takes {{env.NAME}} placeholders only."
+                    },
+                    "token": {
+                      "type": "string",
+                      "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$",
+                      "description": "Where its answer holds the token."
+                    },
+                    "expiresIn": {
+                      "description": "Where its answer holds the token's lifetime, in seconds.",
+                      "type": "string",
+                      "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                    },
+                    "refreshBeforeMs": {
+                      "default": 30000,
+                      "description": "Fetch a new token when less than this of its lifetime remains, or less than half of it.",
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "request",
+                    "token"
+                  ],
+                  "additionalProperties": false
+                }
+              ],
+              "description": "How yokla gets a token for the target, once per run and again before it expires or after a 401; {{auth.token}} puts it where the target expects it (ADR-0031)."
+            },
             "session": {
               "default": {
                 "mode": "client",
@@ -783,6 +933,156 @@
             "name": {
               "type": "string",
               "minLength": 1
+            },
+            "auth": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "oauth2-client-credentials"
+                    },
+                    "tokenUrl": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "The token endpoint: HTTPS, except to a loopback host."
+                    },
+                    "clientId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "May be {{env.NAME}}."
+                    },
+                    "clientSecret": {
+                      "type": "string",
+                      "pattern": "^\\{\\{\\s*env\\.[A-Za-z_][A-Za-z0-9_]*\\s*\\}\\}$",
+                      "description": "A single {{env.NAME}} placeholder."
+                    },
+                    "clientAuth": {
+                      "default": "basic",
+                      "description": "How the client authenticates: HTTP Basic, or its id and secret in the form.",
+                      "type": "string",
+                      "enum": [
+                        "basic",
+                        "body"
+                      ]
+                    },
+                    "scope": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "params": {
+                      "description": "Further form fields, such as audience. Values may be {{env.NAME}}.",
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "timeoutMs": {
+                      "default": 10000,
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 600000
+                    },
+                    "refreshBeforeMs": {
+                      "default": 30000,
+                      "description": "Fetch a new token when less than this of its lifetime remains, or less than half of it.",
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "tokenUrl",
+                    "clientId",
+                    "clientSecret"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "request"
+                    },
+                    "request": {
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "May contain {{env.NAME}}."
+                        },
+                        "method": {
+                          "default": "POST",
+                          "type": "string",
+                          "enum": [
+                            "POST",
+                            "PUT",
+                            "PATCH"
+                          ]
+                        },
+                        "headers": {
+                          "description": "Values may contain {{env.NAME}}. Secrets belong in the environment.",
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        },
+                        "body": {
+                          "description": "JSON body. Strings may contain {{message}}, {{session}}, {{requestId}}, {{carry.NAME}} and {{env.NAME}}. A string that is only a placeholder with no value is left out.",
+                          "$ref": "#/$defs/__schema0"
+                        },
+                        "timeoutMs": {
+                          "default": 30000,
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 600000
+                        }
+                      },
+                      "required": [
+                        "url"
+                      ],
+                      "additionalProperties": false,
+                      "description": "An absolute url, HTTPS except to a loopback host. Takes {{env.NAME}} placeholders only."
+                    },
+                    "token": {
+                      "type": "string",
+                      "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$",
+                      "description": "Where its answer holds the token."
+                    },
+                    "expiresIn": {
+                      "description": "Where its answer holds the token's lifetime, in seconds.",
+                      "type": "string",
+                      "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                    },
+                    "refreshBeforeMs": {
+                      "default": 30000,
+                      "description": "Fetch a new token when less than this of its lifetime remains, or less than half of it.",
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "request",
+                    "token"
+                  ],
+                  "additionalProperties": false
+                }
+              ],
+              "description": "How yokla gets a token for the target, once per run and again before it expires or after a 401; {{auth.token}} puts it where the target expects it (ADR-0031)."
             },
             "session": {
               "default": {

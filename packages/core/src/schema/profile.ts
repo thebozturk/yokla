@@ -274,8 +274,61 @@ const LogSource = z
   })
   .meta({ description: 'ADR-0009. Lines are JSON; text before the first "{" is ignored.' });
 
+/** A single {{env.NAME}} placeholder: a secret stays in the environment (ADR-0031). */
+const ENV_ONLY = /^\{\{\s*env\.[A-Za-z_][A-Za-z0-9_]*\s*\}\}$/u;
+
+const authTiming = {
+  refreshBeforeMs: z.int().min(0).default(30_000).meta({
+    description:
+      'Fetch a new token when less than this of its lifetime remains, or less than half of it.',
+  }),
+};
+
+/** ADR-0031: a token by OAuth 2.0 client credentials (RFC 6749 §4.4). */
+const OAuthClientCredentials = z.strictObject({
+  kind: z.literal('oauth2-client-credentials'),
+  tokenUrl: z.string().min(1).meta({
+    description: 'The token endpoint: HTTPS, except to a loopback host.',
+  }),
+  clientId: z.string().min(1).meta({ description: 'May be {{env.NAME}}.' }),
+  clientSecret: z
+    .string()
+    .regex(ENV_ONLY, 'use a single {{env.NAME}} placeholder: the secret stays in the environment')
+    .meta({ description: 'A single {{env.NAME}} placeholder.' }),
+  clientAuth: z.enum(['basic', 'body']).default('basic').meta({
+    description: 'How the client authenticates: HTTP Basic, or its id and secret in the form.',
+  }),
+  scope: z.string().min(1).optional(),
+  params: z
+    .record(z.string().min(1), z.string())
+    .optional()
+    .meta({ description: 'Further form fields, such as audience. Values may be {{env.NAME}}.' }),
+  timeoutMs: z.int().min(1).max(600_000).default(10_000),
+  ...authTiming,
+});
+
+/** ADR-0031: a token from a request the profile describes, such as a login. */
+const AuthRequest = z.strictObject({
+  kind: z.literal('request'),
+  request: HttpRequest.omit({ requestId: true }).meta({
+    description:
+      'An absolute url, HTTPS except to a loopback host. Takes {{env.NAME}} placeholders only.',
+  }),
+  token: JsonPath.meta({ description: 'Where its answer holds the token.' }),
+  expiresIn: JsonPath.optional().meta({
+    description: "Where its answer holds the token's lifetime, in seconds.",
+  }),
+  ...authTiming,
+});
+
+const Auth = z.discriminatedUnion('kind', [OAuthClientCredentials, AuthRequest]).meta({
+  description:
+    'How yokla gets a token for the target, once per run and again before it expires or after a 401; {{auth.token}} puts it where the target expects it (ADR-0031).',
+});
+
 const targetShape = {
   name: z.string().min(1),
+  auth: Auth.optional(),
   session: Session.default({ mode: 'client', carry: [] }),
   limits: Limits.optional(),
   cacheBypass: CacheBypass.default({ kind: 'none' }),
@@ -451,6 +504,19 @@ export type ModelProxyConfig = z.output<typeof ModelProxy>;
 export type FieldSpec = z.output<typeof FieldSpec>;
 export type ResponseStream = z.output<typeof ResponseStream>;
 export type MessageStream = z.output<typeof MessageStream>;
+export type TargetAuth = z.output<typeof Auth>;
+
+/**
+ * Whether a url keeps credentials off the network in clear text: HTTPS, or
+ * HTTP to a loopback host (ADR-0031).
+ */
+export function isSafeCredentialUrl(url: string): boolean {
+  if (/^https:\/\//iu.test(url)) return true;
+  const host = /^http:\/\/([^/?#]*)/iu.exec(url)?.[1]?.toLowerCase();
+  if (host === undefined) return false;
+  const name = host.startsWith('[') ? host.slice(0, host.indexOf(']') + 1) : host.split(':')[0];
+  return name === '127.0.0.1' || name === 'localhost' || name === '[::1]';
+}
 
 /**
  * Problems between profile sections: untrusted fields must be evidence fields
@@ -501,6 +567,17 @@ export function profileProblems(
       message:
         'spans are tied to turns by a traceparent header per turn, which a WebSocket target sends once, when the connection opens',
     });
+  }
+  const { auth } = profile.target;
+  if (auth !== undefined) {
+    const url = auth.kind === 'request' ? auth.request.url : auth.tokenUrl;
+    if (!isSafeCredentialUrl(url)) {
+      problems.push({
+        path: ['target', 'auth', ...(auth.kind === 'request' ? ['request', 'url'] : ['tokenUrl'])],
+        message:
+          'credentials never travel in clear text over a network: use an absolute https url, or http to a loopback host',
+      });
+    }
   }
   if (profile.target.adapter === 'websocket' && profile.modelProxy?.correlation === 'header') {
     problems.push({

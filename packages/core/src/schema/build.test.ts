@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { buildSchemas, type DomainPackSchemas } from './build.ts';
 import { reviewStatus } from './common.ts';
-import type { HttpProfileTarget, ProfileTarget } from './profile.ts';
+import { isSafeCredentialUrl, type HttpProfileTarget, type ProfileTarget } from './profile.ts';
 
 const shop: DomainPackSchemas = {
   id: 'shop',
@@ -611,6 +611,118 @@ describe('similarity (ADR-0030)', () => {
     const parsed = similarTurn(similar);
     expect(parsed.success).toBe(false);
     expect(JSON.stringify(parsed.error?.issues)).toMatch(message);
+  });
+});
+
+const withAuth = (auth: unknown) =>
+  profile.safeParse(
+    withChange({
+      target: {
+        ...validProfile.target,
+        request: {
+          ...validProfile.target.request,
+          headers: { authorization: 'Bearer {{auth.token}}' },
+        },
+        auth,
+      },
+    }),
+  );
+
+const OAUTH_AUTH = {
+  kind: 'oauth2-client-credentials',
+  tokenUrl: 'https://auth.example.com/token',
+  clientId: 'chat',
+  clientSecret: '{{env.CLIENT_SECRET}}',
+};
+
+describe('target.auth (ADR-0031)', () => {
+  it('takes OAuth client credentials, with defaults', () => {
+    const parsed = withAuth(OAUTH_AUTH);
+    expect(parsed.success && parsed.data.target.auth).toEqual({
+      ...OAUTH_AUTH,
+      clientAuth: 'basic',
+      timeoutMs: 10_000,
+      refreshBeforeMs: 30_000,
+    });
+  });
+
+  it('takes a token request the profile describes', () => {
+    const parsed = withAuth({
+      kind: 'request',
+      request: { url: 'https://chat.example.com/login', body: { password: '{{env.PASSWORD}}' } },
+      token: '$.data.jwt',
+      expiresIn: '$.data.ttl',
+      refreshBeforeMs: 0,
+    });
+    expect(parsed.success && parsed.data.target.auth).toMatchObject({
+      kind: 'request',
+      request: { method: 'POST', timeoutMs: 30_000 },
+      token: '$.data.jwt',
+    });
+  });
+
+  it.each([
+    [
+      'a client secret written in the file',
+      { ...OAUTH_AUTH, clientSecret: 's3cr3t' },
+      /single \{\{env\.NAME\}\} placeholder/u,
+    ],
+    [
+      'a client secret beside other text',
+      { ...OAUTH_AUTH, clientSecret: 'x{{env.S}}' },
+      /single \{\{env\.NAME\}\} placeholder/u,
+    ],
+    [
+      'a token endpoint over plain HTTP',
+      { ...OAUTH_AUTH, tokenUrl: 'http://auth.example.com/token' },
+      /never travel in clear text/u,
+    ],
+    [
+      'a relative token request',
+      { kind: 'request', request: { url: '/login' }, token: '$.t' },
+      /never travel in clear text/u,
+    ],
+    ['another kind', { kind: 'saml' }, /invalid/iu],
+    [
+      'a request id on the token request',
+      {
+        kind: 'request',
+        request: { url: 'https://a.example/l', requestId: { header: 'x' } },
+        token: '$.t',
+      },
+      /unrecognized/iu,
+    ],
+  ])('refuses %s', (_name, auth, message) => {
+    const parsed = withAuth(auth);
+    expect(parsed.success).toBe(false);
+    expect(JSON.stringify(parsed.error?.issues)).toMatch(message);
+  });
+});
+
+describe('isSafeCredentialUrl (ADR-0031)', () => {
+  it('accepts HTTPS anywhere, and HTTP only to a loopback host', () => {
+    for (const url of [
+      'https://auth.example.com/token',
+      'HTTPS://auth.example.com',
+      'http://127.0.0.1:8080/token',
+      'http://localhost/token',
+      'http://LOCALHOST:3000',
+      'http://[::1]:3000/token',
+    ]) {
+      expect(isSafeCredentialUrl(url), url).toBe(true);
+    }
+    for (const url of [
+      'http://auth.example.com/token',
+      'http://127.0.0.1.example.com/token',
+      'http://localhost.example.com',
+      'http://10.0.0.1/token',
+      'http://[::2]/token',
+      'ftp://localhost/token',
+      '/login',
+      '{{env.URL}}',
+    ]) {
+      expect(isSafeCredentialUrl(url), url).toBe(false);
+    }
   });
 });
 

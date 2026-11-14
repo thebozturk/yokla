@@ -264,6 +264,16 @@ export const Results = z
           settled: z.boolean(),
         })
         .optional(),
+      /** How the run was authenticated, with no secret in it (ADR-0031). */
+      auth: z
+        .object({
+          kind: z.enum(['oauth2-client-credentials', 'request']),
+          /** Tokens fetched: the first, and each one after expiry or a 401. */
+          tokens: z.int().nonnegative(),
+          /** Requests sent again with a new token after the target answered 401. */
+          retried: z.int().nonnegative(),
+        })
+        .optional(),
       /** The check modules the configuration loaded, so a changed check shows (ADR-0030). */
       checkModules: z
         .array(

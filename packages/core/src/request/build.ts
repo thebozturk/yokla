@@ -21,6 +21,8 @@ export interface TemplateValues {
   readonly requestId: string | undefined;
   readonly carry: Readonly<Record<string, JsonValue>>;
   readonly env: Readonly<Record<string, string | undefined>>;
+  /** The token target.auth got, for {{auth.token}} (ADR-0031). */
+  readonly auth?: string;
 }
 
 export interface BuiltRequest {
@@ -68,6 +70,11 @@ function lookup(name: string, values: TemplateValues): Lookup {
     const value = values.env[key];
     if (value === undefined) throw new TemplateError(`environment variable ${key} is not set`);
     return { found: true, value };
+  }
+  if (name === 'auth.token') {
+    // Never left out: a request without its token would only be refused.
+    if (values.auth === undefined) throw new TemplateError('{{auth.token}} has no token');
+    return { found: true, value: values.auth };
   }
   throw new TemplateError(`unknown placeholder {{${name}}}`);
 }
@@ -200,6 +207,15 @@ export function buildRequest(
   return { url: asText(url), method: request.method ?? 'POST', headers, body };
 }
 
+/** A string with its placeholders filled; every one must have a value. */
+export function renderText(template: string, values: TemplateValues): string {
+  return template.replaceAll(PLACEHOLDER, (_match, name: string) => {
+    const result = lookup(name, values);
+    if (!result.found) throw new TemplateError(`{{${name}}} has no value in "${template}"`);
+    return asText(result.value);
+  });
+}
+
 export interface TemplateCheck {
   /** Problems to fix in the profile or case before running. */
   readonly issues: string[];
@@ -232,6 +248,18 @@ export function checkTemplates(
       strings,
     );
   }
+  // target.auth goes out before anything else, with the environment's values only (ADR-0031).
+  const authorizing: string[] = [];
+  const { auth } = target;
+  if (auth?.kind === 'request') {
+    collectStrings([auth.request.url, auth.request.headers, auth.request.body], authorizing);
+  } else if (auth !== undefined) {
+    collectStrings(
+      [auth.tokenUrl, auth.clientId, auth.clientSecret, auth.scope, auth.params],
+      authorizing,
+    );
+  }
+  let tokenUsed = false;
   const open = target.session.open;
   const opening: string[] = [];
   if (open !== undefined) {
@@ -251,6 +279,12 @@ export function checkTemplates(
         ? 'session.open, which is sent'
         : 'the WebSocket url or headers, which are sent once,';
     for (const [, name = ''] of text.matchAll(PLACEHOLDER)) {
+      if (name === 'auth.token') {
+        tokenUsed = true;
+        if (auth === undefined)
+          issues.add('{{auth.token}} is used but target.auth is not configured');
+        continue;
+      }
       if (name === 'message') {
         if (when !== 'turn') issues.add(`{{message}} is used in ${where} before any message`);
       } else if (name === 'session') {
@@ -282,5 +316,17 @@ export function checkTemplates(
   for (const text of strings) check(text, 'turn');
   for (const text of connection) check(text, 'connects');
   for (const text of opening) check(text, 'opens');
+  for (const text of authorizing) {
+    for (const [, name = ''] of text.matchAll(PLACEHOLDER)) {
+      if (name.startsWith('env.') && name.length > 'env.'.length)
+        env.add(name.slice('env.'.length));
+      else issues.add(`{{${name}}} is used in target.auth, which takes {{env.NAME}} only`);
+    }
+  }
+  if (auth !== undefined && !tokenUsed) {
+    issues.add(
+      'target.auth gets a token that no request uses: put {{auth.token}} where the target expects it',
+    );
+  }
   return { issues: [...issues], env: [...env] };
 }
