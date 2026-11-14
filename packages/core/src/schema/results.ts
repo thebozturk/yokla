@@ -98,6 +98,25 @@ export const TurnResult = z.object({
       costUsd: z.number().nonnegative().nullable(),
     })
     .optional(),
+  /** The model calls OpenTelemetry spans showed for this turn, by its traceparent (ADR-0029). */
+  spans: z
+    .object({
+      calls: z.array(
+        z.object({
+          spanId: z.string(),
+          provider: z.string().nullable(),
+          model: z.string().nullable(),
+          durationMs: z.number().nonnegative(),
+          usage: ProxyUsage,
+          /** null without a price or with unmeasured tokens. */
+          costUsd: z.number().nonnegative().nullable(),
+          error: z.boolean(),
+        }),
+      ),
+      /** The sum of the calls' cost; null when any call has none. */
+      costUsd: z.number().nonnegative().nullable(),
+    })
+    .optional(),
   /** Set when the request failed or the answer couldn't be read; later turns don't run. */
   error: z.string().optional(),
   /**
@@ -228,6 +247,21 @@ export const Results = z
           missing: z.record(z.string(), z.int().positive()),
           /** What of each call's prompt these results keep (ADR-0015). */
           prompts: PromptStore.optional(),
+        })
+        .optional(),
+      /** The model calls OpenTelemetry spans showed during the run (ADR-0029). */
+      spans: z
+        .object({
+          /** Model-call spans received during the run, tied to a turn or not. */
+          received: z.int().nonnegative(),
+          attributed: z.int().nonnegative(),
+          unattributed: z.int().nonnegative(),
+          /** Sums over every received call. */
+          totals: z.record(z.string(), z.number()),
+          /** Per total, the calls without a value; the total leaves them out. */
+          missing: z.record(z.string(), z.int().positive()),
+          /** Whether the spans stopped coming before the run's wait ran out. */
+          settled: z.boolean(),
         })
         .optional(),
       /** yokla's own model calls over the run, apart from the target's (ADR-0028). */

@@ -345,14 +345,26 @@ const Inspect = z.strictObject({
 });
 
 /** ADR-0012: the model proxy between the app and its providers. */
+/** ADR-0029: model calls read from OpenTelemetry spans the app exports to the proxy. */
+const Spans = z
+  .strictObject({
+    quietMs: z.int().min(0).max(600_000).default(6_000),
+    maxWaitMs: z.int().min(0).max(600_000).default(20_000),
+  })
+  .meta({
+    description:
+      'When the run ends, wait until no span has come for quietMs, or maxWaitMs ran out. The app exports to http://127.0.0.1:<port>/_yokla/otlp/v1/traces; each turn gets its own traceparent.',
+  });
+
 const ModelProxy = z.strictObject({
   port: z.int().min(1).max(65_535).default(8787),
   upstreams: z
     .array(Upstream)
-    .min(1)
     .refine((list) => new Set(list.map((u) => u.id)).size === list.length, {
       message: 'upstream ids must be unique',
-    }),
+    })
+    .meta({ description: 'May be empty when spans show the model calls (ADR-0029).' }),
+  spans: Spans.optional(),
   correlation: z.enum(['serial', 'header']).default('serial').meta({
     description:
       'serial: one request in flight; header: the app forwards x-yokla-trace to its provider calls.',
@@ -442,6 +454,21 @@ export function profileProblems(
         });
       }
     }
+  }
+  if (profile.modelProxy !== undefined && profile.modelProxy.upstreams.length === 0) {
+    if (profile.modelProxy.spans === undefined) {
+      problems.push({
+        path: ['modelProxy', 'upstreams'],
+        message: 'the model proxy needs an upstream, or spans to read model calls from',
+      });
+    }
+  }
+  if (profile.target.adapter === 'websocket' && profile.modelProxy?.spans !== undefined) {
+    problems.push({
+      path: ['modelProxy', 'spans'],
+      message:
+        'spans are tied to turns by a traceparent header per turn, which a WebSocket target sends once, when the connection opens',
+    });
   }
   if (profile.target.adapter === 'websocket' && profile.modelProxy?.correlation === 'header') {
     problems.push({

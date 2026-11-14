@@ -1574,7 +1574,6 @@
           "maximum": 65535
         },
         "upstreams": {
-          "minItems": 1,
           "type": "array",
           "items": {
             "type": "object",
@@ -1608,7 +1607,27 @@
               "upstream"
             ],
             "additionalProperties": false
-          }
+          },
+          "description": "May be empty when spans show the model calls (ADR-0029)."
+        },
+        "spans": {
+          "type": "object",
+          "properties": {
+            "quietMs": {
+              "default": 6000,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 600000
+            },
+            "maxWaitMs": {
+              "default": 20000,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 600000
+            }
+          },
+          "additionalProperties": false,
+          "description": "When the run ends, wait until no span has come for quietMs, or maxWaitMs ran out. The app exports to http://127.0.0.1:<port>/_yokla/otlp/v1/traces; each turn gets its own traceparent."
         },
         "correlation": {
           "default": "serial",

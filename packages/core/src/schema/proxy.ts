@@ -68,6 +68,21 @@ export const ToolCall = z.object({
 });
 export type ToolCall = z.output<typeof ToolCall>;
 
+/** A model call read from an OpenTelemetry span (ADR-0029). */
+export const SpanCall = z.object({
+  /** The W3C trace id, in hex: it ties the call to a turn. */
+  traceId: z.string(),
+  spanId: z.string(),
+  /** gen_ai.provider.name, or gen_ai.system. */
+  provider: z.string().nullable(),
+  model: z.string().nullable(),
+  startedAt: z.iso.datetime(),
+  durationMs: z.number().nonnegative(),
+  usage: ProxyUsage,
+  error: z.boolean(),
+});
+export type SpanCall = z.output<typeof SpanCall>;
+
 export const ProxyRecord = z.object({
   id: z.string().min(1),
   upstream: Id,
