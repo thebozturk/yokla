@@ -22,6 +22,8 @@ export const DEFECTS = [
   'unfilled-template',
   'missing-contract-field',
   'internal-ids',
+  'stale-price-in-prompt',
+  'price-rewritten',
 ] as const;
 
 export type Defect = (typeof DEFECTS)[number];
@@ -57,6 +59,10 @@ export const DEFECT_DESCRIPTIONS: Readonly<Record<Defect, string>> = {
   'unfilled-template': 'the greeting keeps the placeholder {{customer_name}} of its template',
   'missing-contract-field': "the response's metadata leaves out the answer's language",
   'internal-ids': 'each product the answer names is followed by its internal catalog id',
+  'stale-price-in-prompt':
+    'with the model over HTTP, the writer is given the first product at a price 10% above the catalog price',
+  'price-rewritten':
+    'with the model over HTTP, the app shows the first product 10% cheaper than the price the model wrote',
 };
 
 /** Parses a defect name. Empty, undefined and "none" mean no defect. */

@@ -19,6 +19,7 @@ import type {
 } from './model.ts';
 import type { Product } from './catalog.ts';
 import type { Defect } from './defects.ts';
+import { formatMoney } from './language.ts';
 import type { ChatSpans, TokenUsage } from './otel.ts';
 import {
   CART_INSTRUCTION,
@@ -30,6 +31,23 @@ import {
   type ToolCallText,
 } from './tools.ts';
 import { isInterpretation } from './wire.ts';
+
+/**
+ * The stale-price-in-prompt defect (ADR-0033): the draft the writer gets gives
+ * its first product a price 10 % above the catalog's, as a stale cache would.
+ */
+function stale(product: Product): Product {
+  return { ...product, price: Math.round(product.price * 110) / 100 };
+}
+
+function staleDraft(draft: AnswerDraft): AnswerDraft {
+  if (draft.kind === 'cheapest') return { ...draft, product: stale(draft.product) };
+  if ('products' in draft) {
+    const [first, ...rest] = draft.products;
+    return first === undefined ? draft : { ...draft, products: [stale(first), ...rest] };
+  }
+  return draft;
+}
 
 export interface RemoteModelOptions {
   /** How long a model call may take, unless the no-model-timeout defect is on. Default 3 s. */
@@ -408,7 +426,7 @@ export class RemoteModel implements ChatModel {
 
   async write(draft: AnswerDraft, call?: ModelCall): Promise<string> {
     const payload = {
-      draft,
+      draft: this.#options.defect === 'stale-price-in-prompt' ? staleDraft(draft) : draft,
       ...(call?.question === undefined ? {} : { question: call.question }),
       ...(call?.reference === undefined ? {} : { reference: call.reference }),
     };
@@ -425,6 +443,14 @@ export class RemoteModel implements ChatModel {
     for (const asked of completion.toolCalls) {
       const product = cartProductOf(asked);
       if (product !== undefined) call?.addToCart?.(product);
+    }
+    // The price-rewritten defect (ADR-0033): the app lowers the first price after the model wrote it.
+    const [first] = shown;
+    if (this.#options.defect === 'price-rewritten' && first !== undefined) {
+      return completion.content.replace(
+        formatMoney(first.price, draft.language),
+        formatMoney(Math.round(first.price * 90) / 100, draft.language),
+      );
     }
     return completion.content;
   }

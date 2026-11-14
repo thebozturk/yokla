@@ -98,6 +98,9 @@ const EXPECTED_CHANGES: Record<Defect, Probe[]> = {
   // The tool-call defects need the model over HTTP too, and leave the answers as they are.
   'unrequested-cart': [],
   'repeated-search': [],
+  // The price defects of the model over HTTP (ADR-0033) change nothing in process either.
+  'stale-price-in-prompt': [],
+  'price-rewritten': [],
   // No probe carries personal data, and masking changes nothing else.
   'unmasked-pii': [],
   // The generic checks' defects (ADR-0030).

@@ -107,6 +107,13 @@ simulated customer there too.
   products offers `add_to_cart`, and the app keeps a cart per session. The
   answers stay the same as with the model in process. `cases-tools/` holds
   the four cases for the tool-call checks (ADR-0025).
+- **Where a price went wrong.** Three defects show the same wrong price from
+  three places (ADR-0033). `fabricated-price`, given to the provider, is
+  written by the model. `stale-price-in-prompt` gives the writer the first
+  product at a price 10 % above the catalog's, and the model repeats it.
+  `price-rewritten` lets the model write the right price, and the app lowers
+  it by 10 % afterwards. The last two are the demo-shop's own, and need
+  `--model-url`.
 
 ```sh
 mkdir -p runs

@@ -78,6 +78,8 @@ function usageEntries(): UsageEntry[] {
 
 const PRICES = { input: 1, output: 2 };
 let proxyUrl = '';
+/** A second fake provider, whose model writes the fabricated-price defect (ADR-0033). */
+let fabricatingUrl = '';
 let serialShop = '';
 let headerShop = '';
 
@@ -113,7 +115,11 @@ function profileFor(
   const path = join(dir, `${name}.profile.yaml`);
   writeFileSync(
     path,
-    `${text}\nmodelProxy:\n  port: 1\n  correlation: ${correlation}\n  upstreams:\n${upstreams}${more}`,
+    `${text}\nmodelProxy:\n  port: 1\n  correlation: ${correlation}\n  upstreams:\n${upstreams}${
+      fabricatingUrl === ''
+        ? ''
+        : `    - { id: fake-fabricating, kind: openai-compatible, upstream: '${fabricatingUrl}' }\n`
+    }${more}`,
   );
   return path;
 }
@@ -424,6 +430,63 @@ const faultsMet = (results: Results | undefined) =>
     calls: c.samples[0]?.turns[0]?.proxy?.calls.map((call) => call.fault?.kind ?? 'none'),
   }));
 
+/**
+ * Price defect → where its wrong price comes from (ADR-0033). Each fails only
+ * price-grounded, on every product case; fabricated-price is the model's, so
+ * it runs against the provider that writes it.
+ */
+const ORIGINS: Readonly<Record<string, 'input' | 'model' | 'app'>> = {
+  'fabricated-price': 'model',
+  'stale-price-in-prompt': 'input',
+  'price-rewritten': 'app',
+};
+const ORIGIN_CASES = [
+  'tents-tr',
+  'tents-under-1000-tr',
+  'tents-under-500-tr',
+  'black-women-jacket-tr',
+  'women-jackets-m-en',
+  'black-backpack-en',
+  'water-bottle-en',
+  'sleeping-pad-tr',
+  'hammock-en',
+  'stoves-tr',
+  'headlamps-en',
+  'cheaper-follow-up-en',
+];
+const originRuns = new Map<string, Results>();
+
+async function runOrigin(defect: string, providerUrl: string): Promise<void> {
+  const model = defect === 'fabricated-price' ? 'fake-fabricating' : 'fake';
+  const shop = await start('src/main.ts', [
+    '--port',
+    '0',
+    '--model-url',
+    `${proxyUrl}/${model}`,
+    ...(defect === 'fabricated-price' ? [] : ['--defect', defect]),
+  ]);
+  const out = join(dir, `origin-${defect}.json`);
+  const quiet = { out: () => undefined, err: () => undefined };
+  const code = await main(
+    [
+      'run',
+      '--profile',
+      profileFor('serial', providerUrl, `origin-${defect}`),
+      '--cases',
+      join(DEMO, 'cases'),
+      '--target-url',
+      `${shop}/v1/chat`,
+      '--proxy-url',
+      proxyUrl,
+      '--out',
+      out,
+    ],
+    quiet,
+  );
+  expect(code, defect).toBe(0);
+  originRuns.set(defect, Results.parse(JSON.parse(readFileSync(out, 'utf8'))));
+}
+
 /** check → the cases where it reported a failing finding. */
 function failingByCheck(results: Results | undefined): Record<string, string[]> {
   const failing: Record<string, Set<string>> = {};
@@ -617,6 +680,12 @@ beforeAll(async () => {
   );
   writeFileSync(usageLog, '');
   const providerUrl = await start('src/provider-main.ts', ['--port', '0', '--usage-log', usageLog]);
+  fabricatingUrl = await start('src/provider-main.ts', [
+    '--port',
+    '0',
+    '--defect',
+    'fabricated-price',
+  ]);
   const proxyLines: string[] = [];
   proxyDone = proxyCommand(
     [
@@ -652,6 +721,7 @@ beforeAll(async () => {
   for (const defect of Object.keys(RESILIENCE)) await runResilience(defect, providerUrl);
   for (const defect of Object.keys(INSPECTION)) await runInspection(defect, providerUrl);
   for (const defect of Object.keys(TOOLS)) await runTools(defect, providerUrl);
+  for (const defect of Object.keys(ORIGINS)) await runOrigin(defect, providerUrl);
   await runStreaming(providerUrl);
   for (const [protocol, correlation] of Object.entries(SPAN_RUNS)) {
     await runSpans(
@@ -754,6 +824,7 @@ describe('the model proxy against the demo-shop', () => {
       ...resilience.values(),
       ...inspection.values(),
       ...toolRuns.values(),
+      ...originRuns.values(),
       ...(streamed === undefined ? [] : [streamed.results]),
       ...[...spanRuns.values()].map((done) => done.results),
       ...[...geminiRuns.values()].map((done) => done.results),
@@ -888,6 +959,28 @@ describe('the model proxy against the demo-shop', () => {
     // prompts.store is sizes: names and lengths, never the arguments.
     expect(asked.every((call) => call.arguments === undefined && call.chars > 0)).toBe(true);
   });
+
+  it.each(Object.entries(ORIGINS))(
+    'origin, %s: only price-grounded fails, and every wrong price is traced to %s',
+    (defect, stage) => {
+      const results = originRuns.get(defect);
+      expect(failingByCheck(results)).toEqual({ 'price-grounded': [...ORIGIN_CASES].toSorted() });
+      const origins = (results?.cases ?? [])
+        .flatMap((c) => c.samples.flatMap((sample) => sample.turns))
+        .flatMap((turn) => turn.checks)
+        .flatMap((check) => check.findings)
+        .filter((finding) => finding.verdict === 'fail')
+        .map((finding) => finding.origin?.stage);
+      expect(origins.length).toBeGreaterThanOrEqual(ORIGIN_CASES.length);
+      expect(new Set(origins)).toEqual(new Set([stage]));
+      // The results keep no prompt or answer text: sizes only, the default (ADR-0015).
+      for (const call of (results?.cases ?? []).flatMap((c) =>
+        c.samples.flatMap((sample) => sample.turns.flatMap((turn) => turn.proxy?.calls ?? [])),
+      )) {
+        expect(Object.keys(call.output ?? {})).toEqual(['chars']);
+      }
+    },
+  );
 
   it('streaming: the acceptance passes the same, answer for answer, with sessions the shop issues', () => {
     expect(streamed?.code, streamed?.output).toBe(0);

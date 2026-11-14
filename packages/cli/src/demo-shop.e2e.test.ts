@@ -93,6 +93,10 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
   // matrix of proxy.e2e.test.ts (ADR-0025).
   'unrequested-cart': {},
   'repeated-search': {},
+  // The price defects whose origin differs need the model over HTTP too; they
+  // are in the origin matrix of proxy.e2e.test.ts (ADR-0033).
+  'stale-price-in-prompt': {},
+  'price-rewritten': {},
   // The generic checks (ADR-0030): the profile's everyAnswer patterns, its
   // response contract, and the check the demo-shop's team wrote.
   'unfilled-template': { 'answer-text': ['greeting-tr'] },
@@ -591,6 +595,21 @@ describe('the demo-shop acceptance over a WebSocket (ADR-0024)', () => {
       price: 899.5,
       stock: 0,
     });
+  });
+
+  it('says the origin of a wrong price is unknown without the model proxy (ADR-0033)', () => {
+    const failing = (runs.get('fabricated-price')?.results.cases ?? [])
+      .flatMap((c) => c.samples.flatMap((sample) => sample.turns))
+      .flatMap((turn) => turn.checks)
+      .flatMap((check) => check.findings)
+      .filter((finding) => finding.verdict === 'fail');
+    expect(failing.length).toBeGreaterThan(0);
+    for (const finding of failing) {
+      expect(finding.origin).toEqual({
+        stage: 'unknown',
+        reason: 'no model proxy data for this turn',
+      });
+    }
   });
 
   it('catches a fabricated price with exactly the check and cases it is caught by over HTTP', () => {
