@@ -1,0 +1,69 @@
+# yaml-language-server: $schema=../../../packages/cli/schemas/cases.v1.schema.json
+#
+# Tool-call cases for the demo-shop (ADR-0025). tool-calls reads the tool calls
+# the model proxy saw, so these cases need the model over HTTP behind it; see
+# packages/cli/src/proxy.e2e.test.ts. The interpret call offers the shop's
+# lookups as tools, and the call that writes about products offers the cart.
+# - unrequested-cart fills the cart on every answer with products: the cases
+#   that forbid add_to_cart, or allow one call only, catch it.
+# - repeated-search asks for each search twice: the case that allows one call
+#   only catches it.
+# The policy question and the greeting are caught by neither.
+
+version: 1
+cases:
+  - id: tent-search-tools-tr
+    title: A search with a price limit asks for that search once, and nothing more
+    suite: quality
+    language: tr
+    turns:
+      - user: 500 TL altı çadır var mı?
+        expect:
+          route: product-search
+          tools:
+            called: [search_products]
+            args:
+              search_products: { productType: tent, filters.priceMax: 500 }
+            maxCalls: 1
+
+  - id: jacket-follow-up-tools-en
+    title: A search with filters, then the cheapest of what was shown; nothing goes to the cart unasked
+    suite: quality
+    language: en
+    turns:
+      - user: Do you have women's jackets in size M?
+        expect:
+          route: product-search
+          tools:
+            args:
+              search_products: { productType: jacket, filters.size: M, filters.gender: women }
+            notCalled: [add_to_cart]
+      - user: the cheaper one?
+        expect:
+          route: follow-up-cheapest
+          tools:
+            called: [cheapest_shown]
+            notCalled: [search_products]
+
+  - id: returns-tools-en
+    title: A policy question asks for the policy, once
+    suite: quality
+    language: en
+    turns:
+      - user: What is your return policy?
+        expect:
+          route: policy
+          tools:
+            args:
+              get_policy: { topic: returns }
+            notCalled: [add_to_cart]
+            maxCalls: 1
+
+  - id: greeting-tools-tr
+    title: A greeting needs no tool
+    suite: quality
+    language: tr
+    turns:
+      - user: Merhaba
+        expect:
+          tools: { maxCalls: 0 }

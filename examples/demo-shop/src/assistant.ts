@@ -100,6 +100,8 @@ export class Assistant {
   readonly #model: ChatModel;
   readonly #defect: Defect | null;
   readonly #sessions = new Map<string, ConversationContext>();
+  /** Per session, the products in its cart, added when the model asks (ADR-0025). */
+  readonly #carts = new Map<string, readonly string[]>();
   readonly #cache = new Map<string, { reply: ChatReply; context: ConversationContext }>();
 
   constructor(options: AssistantOptions) {
@@ -135,6 +137,14 @@ export class Assistant {
       ...(options.trace === undefined ? {} : { trace: options.trace }),
       question: sent,
       ...(this.#defect === 'prompt-bloat' ? { reference: this.#data.catalog } : {}),
+      addToCart: (productId) => {
+        remember(
+          this.#carts,
+          sessionId,
+          [...(this.#carts.get(sessionId) ?? []), productId],
+          MAX_SESSIONS,
+        );
+      },
     };
     let interpretation: Interpretation;
     let draft: AnswerDraft;
@@ -170,6 +180,11 @@ export class Assistant {
     remember(this.#sessions, sessionId, next, MAX_SESSIONS);
     if (cacheable) remember(this.#cache, message, { reply, context: next }, MAX_CACHE_ENTRIES);
     return { reply, cache: bypass ? 'bypass' : 'miss' };
+  }
+
+  /** The products in a session's cart, in the order they were added. */
+  cart(sessionId: string): readonly string[] {
+    return this.#carts.get(sessionId) ?? [];
   }
 
   /**

@@ -10,6 +10,7 @@ import { loadShopData } from './catalog.ts';
 import { createFakeProvider, tokenCount, type UsageEntry } from './fake-provider.ts';
 import { ScriptedModel, type ChatModel, type ModelCall } from './model.ts';
 import { INSTRUCTIONS, RemoteModel, ROLES, systemPrompt } from './remote-model.ts';
+import { CART_INSTRUCTION, interpretationOf, toolCallOf } from './tools.ts';
 import { createDemoShopServer } from './server.ts';
 
 const data = loadShopData();
@@ -132,7 +133,9 @@ describe('the demo-shop server', () => {
     expect((await ask({ 'x-yokla-trace': 'turn-9' })).status).toBe(200);
     expect((await ask({})).status).toBe(200);
     const question = 'Merhaba';
-    expect(calls).toEqual([
+    // Every call can add to the session's cart; the model decides whether it asks to.
+    expect(calls.map((call) => typeof call?.addToCart)).toEqual(Array(4).fill('function'));
+    expect(calls.map((call) => ({ ...call, addToCart: undefined }))).toEqual([
       { trace: 'turn-9', question },
       { trace: 'turn-9', question },
       { question },
@@ -466,5 +469,158 @@ describe('the demo-shop prompts (ADR-0015)', () => {
       message,
     );
     expect(unmasked.reply).toEqual(plain.reply);
+  });
+});
+
+/** A pass-through to the fake provider that keeps each request body and answer text. */
+async function relay(): Promise<{
+  url: string;
+  exchanges: { request: unknown; answer: string }[];
+}> {
+  const { url: upstream } = await provider();
+  const exchanges: { request: unknown; answer: string }[] = [];
+  const url = await listen(
+    createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on('data', (chunk: Buffer) => chunks.push(chunk));
+      request.on('end', () => {
+        const body = Buffer.concat(chunks).toString('utf8');
+        void fetch(`${upstream}/chat/completions`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: 'Bearer k' },
+          body,
+        }).then(async (answered) => {
+          const answer = await answered.text();
+          exchanges.push({ request: JSON.parse(body), answer });
+          response.writeHead(answered.status, {
+            'content-type': answered.headers.get('content-type') ?? 'application/json',
+          });
+          response.end(answer);
+        });
+      });
+    }),
+  );
+  return { url, exchanges };
+}
+
+/** A field of a value, or undefined. */
+function get(value: unknown, key: string | number): unknown {
+  const found: unknown = Reflect.get(Object(value), key);
+  return found;
+}
+
+/** The names of the tools a captured request offered. */
+function offered(request: unknown): unknown[] {
+  const tools = get(request, 'tools');
+  return Array.isArray(tools)
+    ? tools.map((tool: unknown) => get(get(tool, 'function'), 'name'))
+    : [];
+}
+
+/** The tool calls of a captured JSON answer, as name and parsed arguments. */
+function asked(answer: string): { name: unknown; arguments: unknown }[] {
+  const parsedAnswer: unknown = JSON.parse(answer);
+  const calls = get(get(get(get(parsedAnswer, 'choices'), 0), 'message'), 'tool_calls');
+  return Array.isArray(calls)
+    ? calls.map((call: unknown) => {
+        const fn = get(call, 'function');
+        const args: unknown = JSON.parse(String(get(fn, 'arguments')));
+        return { name: get(fn, 'name'), arguments: args };
+      })
+    : [];
+}
+
+describe('the demo-shop tools (ADR-0025)', () => {
+  it('asks for the lookup the message needs as a tool, and offers the cart only with products', async () => {
+    const { url, exchanges } = await relay();
+    const shop = new Assistant({ data, model: new RemoteModel({ url, key: 'k' }), defect: null });
+    await shop.reply('s1', 'Çadır önerir misin?', { bypassCache: true });
+    await shop.reply('s2', 'İade koşulları neler?', { bypassCache: true });
+    await shop.reply('s3', 'Merhaba', { bypassCache: true });
+    const [search, writeProducts, policy, writePolicy, greeting, writeGreeting] = exchanges;
+    expect(offered(search?.request)).toEqual(['search_products', 'get_policy', 'cheapest_shown']);
+    expect(asked(search?.answer ?? '{}')).toEqual([
+      {
+        name: 'search_products',
+        arguments: expect.objectContaining({ language: 'tr', filters: {} }) as unknown,
+      },
+    ]);
+    expect(offered(writeProducts?.request)).toEqual(['add_to_cart']);
+    expect(asked(writeProducts?.answer ?? '{}')).toEqual([]);
+    expect(asked(policy?.answer ?? '{}')).toEqual([
+      { name: 'get_policy', arguments: { topic: 'returns', language: 'tr' } },
+    ]);
+    expect(offered(writePolicy?.request)).toEqual([]);
+    // A greeting needs no lookup: a plain answer, as before.
+    expect(asked(greeting?.answer ?? '{}')).toEqual([]);
+    expect(offered(writeGreeting?.request)).toEqual([]);
+    expect(shop.cart('s1')).toEqual([]);
+  });
+
+  it('turns every interpretation into its tool call and back', async () => {
+    const model = new ScriptedModel();
+    for (const message of ['500 TL altı siyah kadın mont', 'Kargo ücretsiz mi?', 'Merhaba']) {
+      const interpretation = await model.interpret(message, undefined);
+      const call = toolCallOf(interpretation);
+      expect(call === undefined ? interpretation : interpretationOf(call)).toEqual(interpretation);
+    }
+    expect(
+      interpretationOf({ name: 'search_products', arguments: '{"productType": 1}' }),
+    ).toBeUndefined();
+    expect(interpretationOf({ name: 'search_products', arguments: '{"broken' })).toBeUndefined();
+    expect(interpretationOf({ name: 'delete_all', arguments: '{}' })).toBeUndefined();
+  });
+
+  it('with unrequested-cart, the writer is told to fill the cart, and the app adds the product', async () => {
+    const { url, exchanges } = await relay();
+    const shop = new Assistant({
+      data,
+      model: new RemoteModel({ url, key: 'k', defect: 'unrequested-cart' }),
+      defect: null,
+    });
+    const { reply } = await shop.reply('s1', 'Çadır önerir misin?', { bypassCache: true });
+    await shop.reply('s2', 'Merhaba', { bypassCache: true });
+    const [first] = reply.products;
+    expect(shop.cart('s1')).toEqual([first?.id]);
+    expect(shop.cart('s2')).toEqual([]);
+    expect(messagesOf(exchanges[1]?.request).system).toContain(CART_INSTRUCTION);
+    expect(asked(exchanges[1]?.answer ?? '{}')).toEqual([
+      { name: 'add_to_cart', arguments: { productId: first?.id } },
+    ]);
+    // Without the instruction, the model never asks.
+    expect(messagesOf(exchanges[3]?.request).system).not.toContain(CART_INSTRUCTION);
+  });
+
+  it('with repeated-search, the app asks for the same search twice, and nothing else twice', async () => {
+    const { url, exchanges } = await relay();
+    const shop = new Assistant({
+      data,
+      model: new RemoteModel({ url, key: 'k', defect: 'repeated-search' }),
+      defect: null,
+    });
+    await shop.reply('s1', 'Çadır önerir misin?', { bypassCache: true });
+    expect(exchanges.map((exchange) => asked(exchange.answer).map((call) => call.name))).toEqual([
+      ['search_products'],
+      ['search_products'],
+      [],
+    ]);
+    expect(exchanges[0]?.answer.length).toBe(exchanges[1]?.answer.length);
+    await shop.reply('s2', 'İade koşulları neler?', { bypassCache: true });
+    expect(exchanges).toHaveLength(5);
+  });
+
+  it('reads tool calls from a stream as from a JSON answer', async () => {
+    const { url } = await provider();
+    const json = new Assistant({ data, model: new RemoteModel({ url, key: 'k' }), defect: null });
+    const streamed = new Assistant({
+      data,
+      model: new RemoteModel({ url, key: 'k', stream: true, defect: 'unrequested-cart' }),
+      defect: null,
+    });
+    const message = 'Siyah kadın mont arıyorum';
+    const one = await json.reply('a', message, { bypassCache: true });
+    const two = await streamed.reply('b', message, { bypassCache: true });
+    expect(two.reply).toEqual(one.reply);
+    expect(streamed.cart('b')).toEqual([one.reply.products[0]?.id]);
   });
 });

@@ -92,6 +92,9 @@ const EXPECTED_CHANGES: Record<Defect, Probe[]> = {
   'products-in-system': [],
   'prompt-bloat': [],
   'no-leak-guard': [],
+  // The tool-call defects need the model over HTTP too, and leave the answers as they are.
+  'unrequested-cart': [],
+  'repeated-search': [],
   // No probe carries personal data, and masking changes nothing else.
   'unmasked-pii': [],
 };

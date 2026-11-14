@@ -319,6 +319,45 @@ async function runInspection(defect: string, providerUrl: string): Promise<void>
   inspection.set(defect, Results.parse(JSON.parse(readFileSync(out, 'utf8'))));
 }
 
+/** Tool-call defect → the one check that must catch it → the cases it must fail (ADR-0025). */
+const TOOLS: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
+  none: {},
+  'unrequested-cart': { 'tool-calls': ['jacket-follow-up-tools-en', 'tent-search-tools-tr'] },
+  'repeated-search': { 'tool-calls': ['tent-search-tools-tr'] },
+};
+const toolRuns = new Map<string, Results>();
+
+async function runTools(defect: string, providerUrl: string): Promise<void> {
+  const shop = await start('src/main.ts', [
+    '--port',
+    '0',
+    '--model-url',
+    `${proxyUrl}/fake`,
+    '--defect',
+    defect,
+  ]);
+  const out = join(dir, `tools-${defect}.json`);
+  const quiet = { out: () => undefined, err: () => undefined };
+  const code = await main(
+    [
+      'run',
+      '--profile',
+      profileFor('serial', providerUrl, 'tools'),
+      '--cases',
+      join(DEMO, 'cases-tools'),
+      '--target-url',
+      `${shop}/v1/chat`,
+      '--proxy-url',
+      proxyUrl,
+      '--out',
+      out,
+    ],
+    quiet,
+  );
+  expect(code, defect).toBe(0);
+  toolRuns.set(defect, Results.parse(JSON.parse(readFileSync(out, 'utf8'))));
+}
+
 /** check → the cases where it reported a failing finding. */
 function failingByCheck(results: Results | undefined): Record<string, string[]> {
   const failing: Record<string, Set<string>> = {};
@@ -395,6 +434,7 @@ beforeAll(async () => {
   await run('header', headerShop, providerUrl);
   for (const defect of Object.keys(RESILIENCE)) await runResilience(defect, providerUrl);
   for (const defect of Object.keys(INSPECTION)) await runInspection(defect, providerUrl);
+  for (const defect of Object.keys(TOOLS)) await runTools(defect, providerUrl);
   await runStreaming(providerUrl);
 }, 300_000);
 
@@ -477,6 +517,7 @@ describe('the model proxy against the demo-shop', () => {
       ...[...runs.values()].map((done) => done.results),
       ...resilience.values(),
       ...inspection.values(),
+      ...toolRuns.values(),
       ...(streamed === undefined ? [] : [streamed.results]),
     ].reduce((total, results) => total + (results.run.proxy?.records ?? 0), 0);
     expect(lines).toHaveLength(recorded);
@@ -487,6 +528,13 @@ describe('the model proxy against the demo-shop', () => {
       expect(Array.isArray(prompt) && prompt.length > 0, line).toBe(true);
     }
     expect(lines.join('\n')).not.toContain('demo-shop:');
+    // And tool calls as names and sizes, without their arguments (ADR-0025).
+    const asked = lines.filter((line) => {
+      const calls: unknown = Reflect.get(Object(JSON.parse(line)), 'toolCalls');
+      return Array.isArray(calls) && calls.length > 0;
+    });
+    expect(asked.length).toBeGreaterThan(0);
+    expect(lines.join('\n')).not.toContain('"arguments"');
   });
 
   it.each(Object.entries(RESILIENCE))(
@@ -558,6 +606,47 @@ describe('the model proxy against the demo-shop', () => {
     for (const [defect, kept] of inspection) {
       expect(JSON.stringify(kept).includes(CANARY), defect).toBe(defect === 'no-leak-guard');
     }
+  });
+
+  it.each(Object.entries(TOOLS))(
+    'tools, %s: exactly the expected check fails, on exactly the expected cases',
+    (defect, expected) => {
+      const results = toolRuns.get(defect);
+      expect(results?.cases).toHaveLength(4);
+      const wanted = Object.fromEntries(
+        Object.entries(expected).map(([check, ids]) => [check, [...ids].toSorted()]),
+      );
+      expect(failingByCheck(results)).toEqual(wanted);
+      const failed = new Set(Object.values(wanted).flat());
+      for (const c of results?.cases ?? [])
+        expect(c.status, `${defect} ${c.id}`).toBe(failed.has(c.id) ? 'fail' : 'pass');
+    },
+  );
+
+  it('tools: both checks applied on every turn, on calls the proxy read, and the results keep no arguments', () => {
+    const turns = (toolRuns.get('none')?.cases ?? []).flatMap((c) =>
+      c.samples.flatMap((sample) => sample.turns),
+    );
+    expect(turns).toHaveLength(5);
+    for (const turn of turns) {
+      for (const id of ['tool-calls', 'tool-call-valid']) {
+        const check = turn.checks.find((c) => c.check === id);
+        expect(check?.applicable, `${id} on ${turn.user}`).toBe(true);
+        expect(check?.findings.map((f) => f.verdict)).toEqual(['pass']);
+      }
+    }
+    const calls = turns.flatMap((turn) => turn.proxy?.calls ?? []);
+    expect(calls.map((call) => call.tools).filter((tools) => tools === undefined)).toEqual([]);
+    const asked = calls.flatMap((call) => call.toolCalls ?? []);
+    // Not vacuous: the searches, the policy and the cheapest were asked for as tools.
+    expect(asked.map((call) => call.name).toSorted()).toEqual([
+      'cheapest_shown',
+      'get_policy',
+      'search_products',
+      'search_products',
+    ]);
+    // prompts.store is sizes: names and lengths, never the arguments.
+    expect(asked.every((call) => call.arguments === undefined && call.chars > 0)).toBe(true);
   });
 
   it('streaming: the acceptance passes the same, answer for answer, with sessions the shop issues', () => {

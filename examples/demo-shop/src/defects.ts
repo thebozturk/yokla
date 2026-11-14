@@ -17,6 +17,8 @@ export const DEFECTS = [
   'prompt-bloat',
   'unmasked-pii',
   'no-leak-guard',
+  'unrequested-cart',
+  'repeated-search',
 ] as const;
 
 export type Defect = (typeof DEFECTS)[number];
@@ -45,6 +47,10 @@ export const DEFECT_DESCRIPTIONS: Readonly<Record<Defect, string>> = {
     "phone numbers and e-mail addresses in the user's message reach the model unmasked",
   'no-leak-guard':
     'with the model over HTTP, an answer that repeats the system prompt reaches the user',
+  'unrequested-cart':
+    'with the model over HTTP, the writer is told to add the first product shown to the cart, and the app does it without the user asking',
+  'repeated-search':
+    'with the model over HTTP, the app asks the model for the same product search twice in one turn',
 };
 
 /** Parses a defect name. Empty, undefined and "none" mean no defect. */

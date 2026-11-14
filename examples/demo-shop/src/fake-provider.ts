@@ -2,13 +2,16 @@
 // demo-shop's model over HTTP (ADR-0012). It answers with ScriptedModel, so
 // the demo-shop answers as it does in process, and it keeps its own usage
 // records: the provider's side that the model proxy is reconciled with. It
-// costs nothing and contacts nothing.
+// costs nothing and contacts nothing. Offered tools, it answers the interpret
+// call with the matching tool call, and follows a writer's instruction to add
+// the first product to the cart (ADR-0025).
 
 import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Defect } from './defects.ts';
 import { ScriptedModel } from './model.ts';
 import { ROLES } from './remote-model.ts';
+import { CART_INSTRUCTION, TOOL, toolCallOf, type ToolCallText } from './tools.ts';
 import { isContext, isDraft } from './wire.ts';
 
 export interface UsageEntry {
@@ -40,6 +43,14 @@ interface ChatRequest {
   readonly prompt: string;
   readonly stream: boolean;
   readonly includeUsage: boolean;
+  /** The names of the tools the request offers. */
+  readonly offered: readonly string[];
+}
+
+/** What the model answers: text, tool calls, or both. */
+interface Answer {
+  readonly content: string | null;
+  readonly toolCalls: readonly ToolCallText[];
 }
 
 function parse(body: string): ChatRequest | undefined {
@@ -59,7 +70,16 @@ function parse(body: string): ChatRequest | undefined {
     return typeof content === 'string' ? content : '';
   });
   const options: unknown = Reflect.get(value, 'stream_options');
+  const tools: unknown = Reflect.get(value, 'tools');
+  const offered = (Array.isArray(tools) ? tools : []).flatMap((tool: unknown) => {
+    const fn: unknown =
+      typeof tool === 'object' && tool !== null ? Reflect.get(tool, 'function') : undefined;
+    const name: unknown =
+      typeof fn === 'object' && fn !== null ? Reflect.get(fn, 'name') : undefined;
+    return typeof name === 'string' ? [name] : [];
+  });
   return {
+    offered,
     model,
     role: (contents[0] ?? '').split('\n')[0] ?? '',
     system: contents[0] ?? '',
@@ -80,7 +100,9 @@ function asksForInstructions(question: string): boolean {
   return EXTRACTION.some((phrase) => text.includes(phrase));
 }
 
-async function answer(model: ScriptedModel, request: ChatRequest): Promise<string | undefined> {
+const text = (content: string): Answer => ({ content, toolCalls: [] });
+
+async function answer(model: ScriptedModel, request: ChatRequest): Promise<Answer | undefined> {
   const payload: unknown = JSON.parse(request.payload);
   if (typeof payload !== 'object' || payload === null) return undefined;
   if (request.role === ROLES.interpret) {
@@ -88,20 +110,47 @@ async function answer(model: ScriptedModel, request: ChatRequest): Promise<strin
     const context: unknown = Reflect.get(payload, 'context');
     if (typeof message !== 'string') return undefined;
     if (context !== null && !isContext(context)) return undefined;
-    return JSON.stringify(await model.interpret(message, context ?? undefined));
+    const interpretation = await model.interpret(message, context ?? undefined);
+    // Offered the tool the message needs, the model asks for it instead of answering.
+    const call = toolCallOf(interpretation);
+    return call !== undefined && request.offered.includes(call.name)
+      ? { content: null, toolCalls: [call] }
+      : text(JSON.stringify(interpretation));
   }
   if (request.role === ROLES.summarize) {
     const written: unknown = Reflect.get(payload, 'answer');
-    return typeof written === 'string' ? model.summarize(written) : undefined;
+    return typeof written === 'string' ? text(await model.summarize(written)) : undefined;
   }
   if (request.role === ROLES.write) {
     const draft: unknown = Reflect.get(payload, 'draft');
     const question: unknown = Reflect.get(payload, 'question');
     // Like a model that gives in to an extraction request, it repeats its system prompt.
-    if (typeof question === 'string' && asksForInstructions(question)) return request.system;
-    return isDraft(draft) ? model.write(draft) : undefined;
+    if (typeof question === 'string' && asksForInstructions(question)) return text(request.system);
+    if (!isDraft(draft)) return undefined;
+    const written = await model.write(draft);
+    const shown =
+      draft.kind === 'cheapest' ? [draft.product] : 'products' in draft ? draft.products : [];
+    const [first] = shown;
+    // Told to, and offered the cart, it adds the first product it writes about.
+    const cart =
+      first !== undefined &&
+      request.offered.includes(TOOL.cart) &&
+      request.system.includes(CART_INSTRUCTION)
+        ? [{ name: TOOL.cart, arguments: JSON.stringify({ productId: first.id }) }]
+        : [];
+    return { content: written, toolCalls: cart };
   }
   return undefined;
+}
+
+/** Tool calls as chat completions writes them; `index` only in a stream's delta. */
+function wireCalls(calls: readonly ToolCallText[], id: string, indexed: boolean) {
+  return calls.map((call, index) => ({
+    ...(indexed ? { index } : {}),
+    id: `${id}-call-${String(index)}`,
+    type: 'function',
+    function: { name: call.name, arguments: call.arguments },
+  }));
 }
 
 function send(response: ServerResponse, status: number, body: unknown): void {
@@ -129,16 +178,19 @@ export function createFakeProvider(options: FakeProviderOptions): Server {
       return;
     }
     const chat = parse(await readAll(request));
-    const content =
+    const answered =
       chat === undefined ? undefined : await answer(model, chat).catch(() => undefined);
-    if (chat === undefined || content === undefined) {
+    if (chat === undefined || answered === undefined) {
       send(response, 400, { error: { message: 'invalid request' } });
       return;
     }
+    const { content, toolCalls } = answered;
     const id = `chatcmpl-${randomUUID()}`;
     const usage = {
       prompt_tokens: tokenCount(chat.prompt),
-      completion_tokens: tokenCount(content),
+      completion_tokens: tokenCount(
+        (content ?? '') + toolCalls.map((call) => call.name + call.arguments).join(''),
+      ),
     };
     options.onUsage?.({
       id,
@@ -152,21 +204,44 @@ export function createFakeProvider(options: FakeProviderOptions): Server {
         id,
         object: 'chat.completion',
         model: chat.model,
-        choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }],
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: 'assistant',
+              content,
+              ...(toolCalls.length === 0 ? {} : { tool_calls: wireCalls(toolCalls, id, false) }),
+            },
+            finish_reason: content === null ? 'tool_calls' : 'stop',
+          },
+        ],
         usage: { ...usage, total_tokens: usage.prompt_tokens + usage.completion_tokens },
       });
       return;
     }
     response.writeHead(200, { 'content-type': 'text/event-stream' });
-    const half = Math.ceil(content.length / 2);
-    for (const piece of [content.slice(0, half), content.slice(half)]) {
-      const chunk = {
-        id,
-        object: 'chat.completion.chunk',
-        model: chat.model,
-        choices: [{ index: 0, delta: { content: piece } }],
-      };
-      response.write(`data: ${JSON.stringify(chunk)}\n\n`);
+    const chunk = (delta: unknown) =>
+      response.write(
+        `data: ${JSON.stringify({ id, object: 'chat.completion.chunk', model: chat.model, choices: [{ index: 0, delta }] })}\n\n`,
+      );
+    if (content !== null) {
+      const half = Math.ceil(content.length / 2);
+      for (const piece of [content.slice(0, half), content.slice(half)]) chunk({ content: piece });
+    }
+    // Each tool call in two pieces: its name and the start of its arguments, then the rest.
+    for (const [index, call] of toolCalls.entries()) {
+      const [wire] = wireCalls([call], id, true);
+      const half = Math.ceil(call.arguments.length / 2);
+      chunk({
+        tool_calls: [
+          {
+            ...wire,
+            index,
+            function: { name: call.name, arguments: call.arguments.slice(0, half) },
+          },
+        ],
+      });
+      chunk({ tool_calls: [{ index, function: { arguments: call.arguments.slice(half) } }] });
     }
     if (chat.includeUsage) {
       const last = { id, object: 'chat.completion.chunk', model: chat.model, choices: [], usage };

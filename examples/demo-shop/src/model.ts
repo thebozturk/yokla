@@ -80,6 +80,8 @@ export interface ModelCall {
   readonly question?: string;
   /** Products the app sends along with the draft, beyond those it shows. */
   readonly reference?: readonly Product[];
+  /** Adds a product to the session's cart, when the model asks for it (ADR-0025). */
+  readonly addToCart?: (productId: string) => void;
 }
 
 export interface ChatModel {

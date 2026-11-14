@@ -81,6 +81,10 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
   'prompt-bloat': {},
   'unmasked-pii': {},
   'no-leak-guard': {},
+  // The tool-call defects need the model over HTTP too; they are in the tool
+  // matrix of proxy.e2e.test.ts (ADR-0025).
+  'unrequested-cart': {},
+  'repeated-search': {},
 };
 
 const children: ChildProcess[] = [];
