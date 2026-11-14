@@ -1,6 +1,6 @@
 # 0033. Where a failure arose: the origin of the value a finding names
 
-Status: Proposed · Date: 2026-11-15
+Status: Accepted · Date: 2026-11-15
 
 ## Context
 
