@@ -388,7 +388,9 @@ The [checks guide](guide/checks.md) gives each check's exact conditions.
 | `over-refusal` | the turn says whether the request is answerable | An answerable request isn't refused, and one marked not answerable is. Uses the language pack's lexicon and the profile's canonical refusals. |
 | `deflection` | the turn is answerable | The answer does more than send the user to customer service. Advisory: it never decides a case. |
 | `route-expected` | the turn expects a route, and the profile maps one | |
-| `answer-text` | the turn lists phrases the answer must or must not contain | |
+| `answer-text` | the turn lists phrases or patterns the answer must or must not contain, or the profile's `everyAnswer` does (ADR-0030) | Phrases are matched after folding; patterns, regular expressions, on the answer as it came. |
+| `json-schema` | the profile has a response contract, or the turn a schema (ADR-0030) | Every value a rule's path selects matches its JSON Schema, in the subset yokla checks itself; a path that selects nothing fails. |
+| `answer-similarity` | the turn has `similar` (ADR-0030) | The answer scores at least `min` against one reference answer, or at most `max` against every one: the cosine similarity of character trigrams after folding. It measures wording, not meaning. |
 | `evidence-count` | the turn expects evidence counts or ids | |
 | `graceful-under-fault` | the turn injects provider faults (ADR-0013) | The target still gives a usable answer. |
 | `answered-within-deadline` | the turn sets `deadlineMs` (ADR-0013) | The full answer arrived in time. |
@@ -734,6 +736,13 @@ ADR-0014 sets how cost and latency are bounded.
 explicitly from the config, with no auto-discovery. Today the CLI loads the
 first-party packs only.
 
+**Checks the user writes (ADR-0030).** Until packs are open to others, a
+user's own rule is a check module that `yokla.config.yaml` names. It
+default-exports a check by a small contract, versioned apart from yokla's
+internal check API: a frozen copy of the turn in, findings or not applicable
+out, synchronously. The profile and case files never name code, because
+machines write them. The results record each module's hash.
+
 ## 18. Interoperability
 
 - **Export (v0.6).** `yokla export <tool>` will write another tool's
@@ -778,7 +787,13 @@ defect is detected" holds for every version. v0.1 has the first eight; v0.2
 adds the three resilience defects, caught with faults the model proxy injects,
 and the four inspection defects, caught in the prompts the proxy captures.
 v0.3 adds the two tool-call defects, caught in the tool calls the proxy reads
-(ADR-0025).
+(ADR-0025), and three defects only the generic checks catch (ADR-0030): a
+template placeholder left in the greeting, caught by the profile's
+`everyAnswer` patterns; a field gone from the response's metadata, caught by
+its contract; and catalog ids shown in answers, caught by the demo-shop's own
+check, `checks/no-internal-ids.ts`, which its `yokla.config.yaml` names. The
+returns case also holds the answer close to the FAQ's wording, so the invented
+return policy breaks `answer-similarity` too.
 
 **Spans.** With `--otel-url` and the model over HTTP, the demo-shop exports a
 GenAI span for each model call, in the trace of the incoming `traceparent`,

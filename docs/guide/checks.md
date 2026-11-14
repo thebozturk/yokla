@@ -19,7 +19,9 @@ These work for any assistant.
 | Check | Dimension | Applies when | Judges |
 |---|---|---|---|
 | `route-expected` | routing | the turn expects a `route` | The turn was answered by an expected route. Needs `response.route` in the profile; without it, the result says to map it. |
-| `answer-text` | answer-content | the turn has `answer.contains`, `answer.notContains` or `answer.notEmpty` | The answer contains, or doesn't contain, each phrase after folding; with `notEmpty`, it has a letter or a digit. |
+| `answer-text` | answer-content | the turn has `answer` rules, or the profile has `everyAnswer` | The answer contains, or doesn't contain, each phrase after folding; matches, or doesn't match, each pattern as it came (ADR-0030); with `notEmpty`, it has a letter or a digit. The profile's `everyAnswer` rules hold for every turn, and their findings say so. |
+| `json-schema` | contract | the profile has `target.response.schema`, or the turn has `schema` | Every value each rule's `at` selects in the response matches the rule's JSON Schema (ADR-0030). A path that selects nothing fails. A finding names each broken rule by the value's path and keyword, never the value, and keeps the first ten. Not applicable to a response that isn't JSON. |
+| `answer-similarity` | similarity | the turn has `similar` | The answer scores at least `min` against one reference, and at most `max` against every one (ADR-0030). The score is the cosine similarity of character trigrams after folding, from 0 to 1, rounded to three decimals, and every finding carries it. It measures wording, not meaning. |
 | `evidence-count` | evidence | the turn expects `evidence` | Each collection has between `min` and `max` items and includes the listed ids. Not applicable when the target asked a clarifying question, or when the profile doesn't map the collection. |
 | `graceful-under-fault` | resilience | the turn injects faults | The target still gives a usable answer: a non-2xx status, an unreadable answer or no answer at all fails. |
 | `answered-within-deadline` | deadline | the turn has `deadlineMs` | The full answer arrived in time. |
@@ -68,6 +70,66 @@ order the calls started.
 - **What a finding says.** It names the tool and the case's expected values,
   never the arguments the target sent.
 
+### Checks you write (ADR-0030)
+
+A rule only your team knows can be a check of its own. `yokla.config.yaml`
+lists its module, relative to the config file:
+
+```yaml
+version: 1
+checks: [./checks/no-internal-ids.ts]
+```
+
+The module is JavaScript, or TypeScript that Node.js runs as it is. It
+imports nothing from yokla, and default-exports a check by contract
+version 1:
+
+```ts
+export default {
+  api: 1,
+  id: 'no-internal-ids',
+  description: 'The answer shows no internal catalog id.',
+  dimension: 'internal-ids',
+  run(turn) {
+    const found = /\b[A-Z]{3}-\d{3}\b/u.exec(turn.answer.text);
+    return {
+      findings: [
+        found === null
+          ? { verdict: 'pass', message: 'shows no catalog id' }
+          : { verdict: 'fail', message: `shows the catalog id ${found[0]}` },
+      ],
+    };
+  },
+};
+```
+
+- **`id`** is kebab-case, and taken by no built-in check and no other module.
+- **`dimension`** is where its findings count. A dimension of its own may set
+  `policy`: `worst-of-n` by default, `majority-of-n`, or `advisory`, to try a
+  check without letting it decide a case. A built-in dimension keeps its own
+  policy.
+- **`expect`,** optional, is a JSON Schema in the subset yokla checks. A case
+  then gives the check a value as `expect.custom.<id>`, validated by it when
+  the run starts.
+- **`run` gets a frozen copy of the turn:**
+  - `case`: its `id`, `suite` and `language`;
+  - `index`: the turn's place in its sample, from 0;
+  - `user`: the user's message;
+  - `expect`: the check's own value, when the case gives one;
+  - `answer`: `status`, `latencyMs`, `text`, `route` (null without one) and
+    `evidence`;
+  - `history`: the earlier turns of the sample, as `user` and `text`.
+- **`run` returns** `{ applicable: false, reason }`, or `{ findings }`: at
+  least one, each with `verdict` (`pass` or `fail`), `message`, and
+  optionally `severity` (`medium` by default) and `evidence`.
+- **`run` is synchronous.** A promise, an exception or a result outside the
+  contract is an error finding, and the run goes on.
+- **The results name each module,** with its path and the SHA-256 of its file,
+  so a changed check shows between runs.
+- **Trust.** A module runs in yokla's process with your permissions, as a
+  test file does. yokla loads only what the config names. A profile or a case
+  file, which `yokla init` and the analyzer write, can never name one.
+
 ## E-commerce checks
 
 These read the `products` evidence collection and the profile's `ecommerce`
@@ -96,6 +158,7 @@ A case's status comes from its dimensions, each judged across the samples:
 - **Worst of N,** the default: one failing sample fails the dimension.
 - **Majority of N:** `refusal` fails only when most samples fail.
 - **Advisory:** `deflection` is reported but never decides the case.
+- **A check you write** sets the policy of a dimension of its own.
 
 A dimension measured in one sample but not in another is unmeasured. Results
 add Wilson intervals with several samples, and mark a case `unstable` when its

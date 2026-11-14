@@ -155,10 +155,21 @@ it over HTTP and imports nothing from it.
 ```sh
 pnpm --filter yokla-demo-shop start --port 0       # prints the url
 pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml \
+  --config examples/demo-shop/yokla.config.yaml \
   --target-url http://127.0.0.1:<port>/v1/chat
 ```
 
 `packages/cli/src/demo-shop.e2e.test.ts` does the same in CI.
+
+- **The profile's own rules (ADR-0030).** `everyAnswer` holds every answer to
+  patterns it must not match, such as a template placeholder left unfilled.
+  `target.response.schema` is the contract of every answer: a JSON Schema of
+  `data`, with its answer, products and metadata.
+- **The shop's own check.** `checks/no-internal-ids.ts` is a check by yokla's
+  contract version 1: no answer shows an internal catalog id. It imports
+  nothing from yokla. `yokla.config.yaml` names it, so `--config` loads it.
+- **Similarity.** The returns case holds the answer close to the FAQ's
+  wording, and a product case keeps its answer away from the fallback text.
 
 - **JUnit XML.** `--junit <file>` also writes a JUnit XML report for CI.
 - **HTML.** `--html <file>` also writes an offline HTML report with every
@@ -281,7 +292,7 @@ them (ADR-0029).
 |---|---|---|
 | `fabricated-price` | The first listed product is shown 10% cheaper than its catalog price. | `price-grounded` |
 | `unknown-stock-claim` | Products with unknown stock are said to be in stock. | `stock-claim` |
-| `invented-return-policy` | Return questions get a 30-day free-return policy. The FAQ says 14 days. | `policy-claim` |
+| `invented-return-policy` | Return questions get a 30-day free-return policy. The FAQ says 14 days. | `policy-claim`, and `answer-similarity` on `returns-tr` (v0.3) |
 | `filter-ignored` | Filters are dropped silently. The answer still says they were applied. | `filter-honoured-or-disclosed` |
 | `over-refusal` | Answerable camping-stove questions are refused. | `over-refusal` |
 | `duplicate-products` | The first product appears twice. | `no-duplicates` |
@@ -296,6 +307,9 @@ them (ADR-0029).
 | `no-leak-guard` | With the model over HTTP, an answer that repeats the system prompt reaches the user. | `prompt-leak` (v0.2) |
 | `unrequested-cart` | With the model over HTTP, the writer is told to add the first product shown to the cart, and the app does it without the user asking. | `tool-calls` (v0.3) |
 | `repeated-search` | With the model over HTTP, the app asks the model for the same product search twice in one turn. | `tool-calls` (v0.3) |
+| `unfilled-template` | The greeting keeps the placeholder `{{customer_name}}` of its template. | `answer-text`, by the profile's `everyAnswer` (v0.3) |
+| `missing-contract-field` | The response's metadata leaves out the answer's language. | `json-schema`, by the profile's contract (v0.3) |
+| `internal-ids` | Each product the answer names is followed by its catalog id. | `no-internal-ids`, the shop's own check (v0.3) |
 
 `src/assistant.test.ts` holds a fixed set of probe questions. For each defect,
 it asserts that the defect changes exactly the listed probes and nothing else.

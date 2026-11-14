@@ -32,6 +32,11 @@ cost, resilience and regression gates, in one run.
   prompt, retrieved content in the system message, personal data that should
   never reach the model, and prompts over budget. Results keep only message
   sizes unless the profile asks for more.
+- **Holds any assistant to your own rules.** On the main branch, an answer
+  can be held to regular expressions, a response to a JSON Schema, and an
+  answer close to, or away from, reference answers. A rule only your team
+  knows can be a check of your own, a small module the configuration names
+  (ADR-0030).
 - **Checks the tools your assistant calls.** On the main branch, the proxy
   reads the tool calls each model call asks for. A case can say which tools
   must and must not be called, with what arguments, in what order and how
@@ -103,7 +108,8 @@ target with seeded defects. Its README walks through a full run.
   an HTML report (done on the main branch), and publishing to npm; more ways
   to reach a target and see its model calls (WebSocket and OpenTelemetry
   spans, done on the main branch; Gemini), tool-call checks and a simulated
-  customer that shops with a goal (both done on the main branch).
+  customer that shops with a goal, and generic checks (all done on the main
+  branch).
 - **v0.4:** an analyzer that reads your code, API contract, prompts, data
   schema and docs, and writes a profile for you to review.
 - **v0.5:** red teaming with local attack generation, mapped to OWASP, GDPR

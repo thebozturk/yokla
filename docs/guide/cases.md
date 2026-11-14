@@ -115,6 +115,10 @@ check does and when it doesn't apply.
 | `route` | The route, or one of the routes, that may answer. Needs `response.route` in the profile. | `route-expected` |
 | `answer.contains`, `answer.notContains` | Phrases the answer must or must not contain, after the language pack's folding. | `answer-text` |
 | `answer.notEmpty` | The answer text has at least one letter or digit. | `answer-text` |
+| `answer.matches`, `answer.notMatches` | Regular expressions the answer must or must not match, as it came, not folded. A pattern is a string, always with the `u` flag, or `{ pattern, flags }` to add `i`, `m` or `s`. Use phrases to match across Turkish casing and diacritics (ADR-0030). | `answer-text` |
+| `schema` | JSON Schemas the response, or parts of it, must match: each `{ at, schema }` or `{ at, schemaFile }`, with `at` a path in the response document, `$` by default. A file is read relative to the case file (ADR-0030). | `json-schema` |
+| `similar` | `to`: reference answers; `min`: the answer scores at least this against one; `max`: at most this against every one. One of `min` and `max` is required, from 0 to 1 (ADR-0030). | `answer-similarity` |
+| `custom.<check id>` | A value for a check you wrote, validated by its `expect` schema (ADR-0030). | that check |
 | `language` | The language the answer must be in, `tr` or `en`. | `language-match` |
 | `allowStatus` | Marks an edge-case turn, and lists the non-2xx statuses that count as handled, such as `[400, 413]` for a message too long. The turn is judged on whether the target handled it, never stopped by its answer: another status, an incomplete stream, an unreadable body or no answer at all is a finding (ADR-0019). | `status-allowed` |
 | `evidence.<collection>` | `min` and `max` item counts, and `includes`: item ids that must be returned. | `evidence-count` |

@@ -66,6 +66,7 @@ A case turn can add headers or body fields for that turn only (see
 | `clarification.routes` | Routes that mean the target asked a clarifying question. Product expectations then don't apply to that turn. |
 | `evidence` | The structured items the answer is based on, such as products (below). |
 | `stream` | Read the answer as an event stream (below). |
+| `schema` | The contract of every usable answer: `{ at, schema }` or `{ at, schemaFile }`, a JSON Schema that every value `at` selects must match, judged by `json-schema` (below). |
 
 ### Evidence
 
@@ -99,6 +100,45 @@ evidence:
   that give no quantity. Filter attributes may name any other field. When the
   profile has a catalog, an item's missing `price`, `currency`, `stock`,
   `inStock` and type are completed from it by `id`.
+
+### The response contract
+
+`schema` holds every usable answer to a JSON Schema (ADR-0030):
+
+```yaml
+target:
+  response:
+    schema:
+      at: $.data
+      schema:
+        type: object
+        required: [answer, metadata]
+        properties:
+          metadata:
+            type: object
+            required: [route, language]
+            properties: { language: { enum: [tr, en] } }
+```
+
+- **`at`** is a path in the response document: the JSON body, or the document
+  a stream or a WebSocket becomes. It is `$` by default. A path that selects
+  nothing fails.
+- **The schema** is inline, or a JSON or YAML file as `schemaFile`, relative
+  to the profile.
+- **yokla checks a subset of JSON Schema 2020-12** itself:
+  - `type`, `enum`, `const`, `allOf`, `anyOf`, `oneOf` and `not`;
+  - for objects, `properties`, `required`, `additionalProperties`,
+    `minProperties` and `maxProperties`;
+  - for arrays, `items`, `prefixItems`, `minItems`, `maxItems` and
+    `uniqueItems`;
+  - for strings, `minLength`, `maxLength`, `pattern`, and `format` for
+    `date-time`, `date`, `time`, `email`, `uri` and `uuid`;
+  - for numbers, `minimum`, `maximum`, `exclusiveMinimum`,
+    `exclusiveMaximum` and `multipleOf`;
+  - `$ref` inside the schema, and `$defs`;
+  - annotations such as `title` and `description`, which it ignores.
+- **Any other keyword, another format, or a `$ref` outside the schema** refuses
+  the profile, with the keyword and where it is. A `$ref` is never fetched.
 
 ### Streamed answers
 
@@ -310,6 +350,22 @@ Results keep only the mapped fields, labelled as reported by the target.
   reads them yet.
 - **`refusal.canonical`:** per language, the target's own refusal sentences.
   The refusal checks recognise them besides the language pack's wording.
+
+## `everyAnswer`
+
+Rules every turn with a usable answer is held to, in every case, judged by
+`answer-text` (ADR-0030). Only rules an answer must not break belong here:
+
+```yaml
+everyAnswer:
+  notMatches: ['\{\{\s*\w+\s*\}\}', '\b(?:undefined|NaN|null)\b']
+  notContains: [stack trace]
+```
+
+- **`notContains`:** phrases no answer may contain, after the language pack's
+  folding.
+- **`notMatches`:** regular expressions no answer may match, as it came, in
+  the form `answer.notMatches` takes.
 
 ## `modelProxy`
 

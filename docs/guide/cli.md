@@ -56,7 +56,7 @@ the profile by hand (see
 | `--target-url <url>` | the profile's | Use this url instead of `target.request.url`. |
 | `--junit <file>` | | Also write a JUnit XML report. |
 | `--html <file>` | | Also write an HTML report. It holds the target's answers. |
-| `--config <file>` | `yokla.config.yaml`, when present | Prices and thresholds. |
+| `--config <file>` | `yokla.config.yaml`, when present | Prices, models, thresholds and check modules. |
 | `--proxy-url <url>` | `127.0.0.1` on `modelProxy.port` | Where the model proxy is. |
 | `--max-cost <usd>` | | Start no new sample once the model cost, the target's and yokla's own, reaches this. The target's cost comes from the model proxy, or from spans when the proxy has no upstreams. Without a model proxy it caps yokla's own calls alone, and says the target's cost is unknown. |
 | `--fresh-customer` | | Ask the customer model anew, whatever its reply cache holds (ADR-0028). |
@@ -117,6 +117,8 @@ models:
     model: qwen2.5:7b
     apiKeyEnv: CUSTOMER_API_KEY       # optional
     price: { input: 0.15, output: 0.6 }
+checks:
+  - ./checks/no-internal-ids.ts
 plan:
   upperBoundFactor: 2
 ```
@@ -136,6 +138,9 @@ plan:
   - **Without a `price`,** its calls have no cost, never 0.
   - **Privacy:** a hosted model receives the conversation, the target's
     answers included.
+- **`checks`:** check modules you wrote, relative to this file (ADR-0030).
+  `yokla run` loads them, and refuses one outside the contract before any
+  request. See [checks you write](checks.md#checks-you-write-adr-0030).
 - **`plan.upperBoundFactor`:** what `yokla plan` multiplies its estimate by.
 
 ### Gate thresholds
