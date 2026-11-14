@@ -30,11 +30,15 @@ change a decision, propose a new ADR. Never edit an accepted one.
 
 - **`pnpm install`** installs dependencies and links the workspace packages.
   `pnpm add -w` alone doesn't link them.
-- **`pnpm check`** runs everything CI runs: format check, type check (which
-  also builds), lint with the layer check, and tests. CI runs it on Node.js 24
-  and 26.
+- **`pnpm check`** runs everything CI runs but `pnpm pack-check`: format
+  check, type check (which also builds), lint with the layer check, and tests.
+  CI runs it on Node.js 24 and 26.
 - **Single steps:** `pnpm build`, `pnpm typecheck`, `pnpm lint`, `pnpm test`,
   `pnpm format`.
+- **`pnpm pack-check`** packs the eight published packages, checks what each
+  tarball holds, installs them into an empty project and runs `yokla` from
+  there against the demo-shop (ADR-0034). It needs the npm registry for the
+  outside dependencies. CI runs it after `pnpm check`. Nothing is published.
 - **`pnpm yokla <command>`** runs the CLI from source, without a build. An
   example is `pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml
   --target-url http://127.0.0.1:<port>/v1/chat` against a running demo-shop.

@@ -108,7 +108,9 @@ target with seeded defects. Its README walks through a full run.
 
 - **v0.3:** a first run in five minutes (`yokla init` writes a profile from
   one message to your assistant, with starter cases that suit any assistant),
-  an HTML report (done on the main branch), and publishing to npm; more ways
+  an HTML report (done on the main branch), and publishing to npm (the
+  packages are tested from their tarballs on the main branch; the release
+  waits for the repository to be public); more ways
   to reach a target and see its model calls (WebSocket, tokens,
   OpenTelemetry spans and Gemini, done on the main branch), tool-call checks
   and a simulated
