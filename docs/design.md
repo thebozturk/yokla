@@ -362,6 +362,13 @@ Snapshot provenance (time, row count, hash) is written to the results.
 **Approval.** Every generated case is written as a file with `status: proposed`.
 Only `approved` cases count towards the gate.
 
+**Shrinking (ADR-0035, ADR-0036).** `yokla shrink` cuts a failing case down
+to the fewest turns that still fail the same check, in every sample, with no
+new failure on that turn. The original runs several times first; a failure
+that comes and goes is reported as flaky, not shrunk. Messages are cut to
+fewer words only on request, because a cut message can stop asking what its
+expectations describe. The result is a proposed case.
+
 ## 10. Checks (oracles)
 
 A check runs once per turn: `run(ctx) → outcome`. Its context `ctx` is
@@ -807,6 +814,7 @@ turns on one seeded defect at a time:
 - asking for the same search twice in one turn,
 - a stale price given to the model, and a right price the app lowers after
   the model wrote it,
+- a wrong price in every other answer, a failure that comes and goes,
 - later (v0.5): following an instruction injected in product text, and
   exposing another session's order.
 
@@ -826,7 +834,8 @@ two price defects whose wrong price comes from elsewhere than
 `fabricated-price`'s (ADR-0033): `stale-price-in-prompt`, from what the model
 was sent, and `price-rewritten`, from the app. With `fabricated-price`, from
 the model, each is caught by `price-grounded` alone and traced to its own
-origin.
+origin. D2 adds `flaky-price`, which yokla shrink must report as flaky rather
+than shrink (ADR-0035).
 
 **Spans.** With `--otel-url` and the model over HTTP, the demo-shop exports a
 GenAI span for each model call, in the trace of the incoming `traceparent`,
@@ -902,7 +911,7 @@ them.
 | Item | Scope | Exit criteria |
 |---|---|---|
 | **D1. Where a failure arose** (done, ADR-0033) | a failing finding that names a value (a price, a duration, a phrase) says where the value first appears: in what the model was sent, in what the model answered, or only in the app's answer; worked out from the proxy's records at check time, never guessed; shown in every report | on the demo-shop, three seeded price defects, one from each origin, are each attributed to their own origin; without proxy data the origin is unknown, not a guess |
-| **D2. The smallest failing conversation** | `yokla shrink` cuts a failing case down to the fewest turns and the shortest messages that still fail the same check, with the samples needed to tell a real failure from chance; it writes the result as a proposed case | every demo-shop defect's failing case shrinks to a case that still fails only its own check; a flaky failure is reported as flaky, not shrunk |
+| **D2. The smallest failing conversation** (done, ADR-0035, ADR-0036) | `yokla shrink` cuts a failing case down to the fewest turns and the shortest messages that still fail the same check, with the samples needed to tell a real failure from chance; it writes the result as a proposed case | every demo-shop defect's failing case shrinks to a case that still fails only its own check; a flaky failure is reported as flaky, not shrunk |
 | **D3. Sampling that stops when the verdict is settled** | a case runs samples until its interval decides the verdict or its sample cap is reached; the cap and the confidence are configuration | on the demo-shop, verdicts match fixed-N runs while fewer samples run; a case that never settles is `unstable` |
 | **D4. Recorded model calls, replayed** | the proxy records the target's model calls into a cassette and can answer from it, so a run repeats with no model cost; a replay can change one recorded answer, to ask what the app does when the model says something else | a recorded demo-shop run replays with identical results and no upstream call; each resilience defect is also caught by changing one recorded answer |
 | **D5. yokla as a tool for coding agents** | a local MCP server over stdio: run a case, explain a finding (D1), shrink it (D2), verify a fix against the shrunk case and its neighbours; no egress beyond the run's own | an agent, given only the MCP tools, finds and verifies the fix of a seeded demo-shop defect |

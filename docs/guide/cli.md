@@ -225,3 +225,59 @@ pnpm yokla plan --cases cases --calibration runs/<run id>.json [--samples <n>] [
 - **Simulated customers** (ADR-0028) have no fixed turns. A sample costs what
   one cost in the case's own calibration, the customer's calls included.
   Without that calibration, the plan gives no figure.
+
+## `yokla shrink`
+
+```sh
+pnpm yokla shrink --results runs/<run id>.json --case <id> [--check <id>] [--words] \
+  [--samples 3] [--reproduce 5] [--max-runs 64] [--max-cost <usd>] [--calibration <file>] [--out <file>]
+```
+
+It cuts a failing case down to the fewest turns that still fail the same way,
+and writes the result as a proposed case (ADR-0035). It takes the profile,
+cases, configuration and target options of `yokla run`.
+
+**The failure it keeps.** The failing finding of `--check`, or else the first
+failing finding of a deciding dimension. A candidate still fails when, in
+every one of its samples:
+- the same check fails on the same turn, in the same dimension, with the same
+  origin (ADR-0033);
+- no other check fails on that turn that didn't fail there before.
+
+**Reproducing first.** The original runs `--reproduce` times.
+- Every run fails: shrinking starts.
+- Some runs fail: the failure is **flaky**. shrink prints the failure rate and
+  its interval, writes nothing, and exits with `1`.
+- No run fails: it says the failure didn't reproduce, and exits with `1`.
+
+**How it shrinks.** Turns after the failing turn are dropped, and earlier
+turns are removed by delta debugging. Each candidate runs `--samples` times
+and must fail every time. The search is deterministic.
+
+**Whole messages by default.** Each kept turn keeps its message and its
+expectations as written (ADR-0036). `--words` also cuts messages to their
+fewest words. A cut message can stop asking what its turn's expectations
+describe: "Siyah kadın mont arıyorum" cut to "mont" still fails a filter
+check, but no longer asks for the filters. shrink says so before the search,
+and the case file names each cut turn in its header comment.
+
+**Budget.** Before it sends anything, it prints the most runs it can make,
+`reproduce + max-runs × samples`, and with `--calibration`, their estimated
+cost and upper bound. `--max-runs` caps the candidates, and `--max-cost` the
+model cost. At a cap it keeps the smallest failing case found so far, and
+says it stopped early.
+
+**What it writes.** A case file, by default `<case id>.min.yaml` next to the
+original case's file. It never overwrites a file.
+- The case's id is `<case id>-min`, and its status is `proposed`, with the
+  provenance source `shrink`. It runs, but gates only once a person approves
+  it (ADR-0004).
+- The terminal shows turns and characters before and after, each kept
+  message, the runs made and their cost.
+- A case that can't get smaller is reported as already as small as it gets,
+  and nothing is written.
+
+**What it refuses.** A case that isn't `fail` in the results, a case whose
+definition changed since that run, and a simulated customer's case
+(ADR-0028), whose turns a model writes. Each exits with `2` before any
+request.
