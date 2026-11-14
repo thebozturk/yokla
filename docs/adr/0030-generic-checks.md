@@ -1,6 +1,6 @@
 # 0030. Generic checks: patterns, JSON Schema, similarity, and checks the user writes
 
-Status: Proposed · Date: 2026-11-14
+Status: Accepted · Date: 2026-11-14
 
 ## Context
 
