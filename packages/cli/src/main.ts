@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { BASELINE_HELP, baselineCommand } from './commands/baseline.ts';
 import { GATE_HELP, gateCommand } from './commands/gate.ts';
 import { INIT_HELP, initCommand } from './commands/init.ts';
+import { MCP_HELP, mcpCommand } from './commands/mcp.ts';
 import { PLAN_HELP, planCommand } from './commands/plan.ts';
 import { PROXY_HELP, proxyCommand } from './commands/proxy.ts';
 import { REPORT_HELP, reportCommand } from './commands/report.ts';
@@ -22,6 +23,7 @@ Usage:
   yokla proxy [options]      run the model proxy until stopped
   yokla plan [options]       estimate the cost of a run from a calibration
   yokla shrink [options]     cut a failing case down to the smallest that still fails
+  yokla mcp [options]        serve yokla's tools to a coding agent over stdio (MCP)
   yokla schema <name>        print a JSON Schema: profile, cases, config, results, baseline
   yokla --version
 
@@ -39,7 +41,9 @@ ${PROXY_HELP}
 
 ${PLAN_HELP}
 
-${SHRINK_HELP}`;
+${SHRINK_HELP}
+
+${MCP_HELP}`;
 
 export function version(): string {
   const manifest: unknown = JSON.parse(
@@ -80,6 +84,8 @@ export async function main(argv: readonly string[], io: Output): Promise<number>
       return planCommand(rest, io);
     case 'shrink':
       return shrinkCommand(rest, io, version());
+    case 'mcp':
+      return mcpCommand(rest, io, version());
     case 'schema': {
       const file = SCHEMA_FILES[rest[0] ?? ''];
       if (file === undefined) {

@@ -2,16 +2,14 @@
 // Exit codes (design §16): 0 the run completed; 2 a configuration problem or
 // a case that couldn't be measured. Exit code 1 is reserved for the gate.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { createHash } from 'node:crypto';
-import { Cassette, CASSETTE_SCHEMA_ID, CORE_CHECKS, type Results } from '@yokla/core';
+import type { Cassette, Results } from '@yokla/core';
 import { htmlReport, junitXml, terminalSummary } from '@yokla/report';
 import { ConfigError, runSuite } from '@yokla/runtime';
-import { loadCheckModules } from '../checks.ts';
-import { LoadError, loadCases, loadConfig, loadProfile } from '../load.ts';
-import { DOMAIN_PACKS, LANGUAGE_PACKS } from '../packs.ts';
+import { LoadError } from '../load.ts';
+import { prepareRun, readCassette } from '../prepare.ts';
 
 export interface Output {
   out(line: string): void;
@@ -63,31 +61,6 @@ export function writeReport(path: string, content: string): string {
   return full;
 }
 
-/** Reads a cassette (ADR-0040); one from another schema version is refused. */
-function readCassette(path: string): { cassette: Cassette; sha256: string } {
-  let text: string;
-  try {
-    text = readFileSync(path, 'utf8');
-  } catch (error) {
-    throw new LoadError(`${path}: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  let value: unknown;
-  try {
-    value = JSON.parse(text);
-  } catch {
-    throw new LoadError(`${path}: not JSON`);
-  }
-  const schema: unknown = Reflect.get(Object(value), 'schema');
-  if (schema !== CASSETTE_SCHEMA_ID) {
-    throw new LoadError(
-      `${path}: not a ${CASSETTE_SCHEMA_ID} file (schema: ${JSON.stringify(schema) ?? 'missing'})`,
-    );
-  }
-  const parsed = Cassette.safeParse(value);
-  if (!parsed.success) throw new LoadError(`${path}: an invalid cassette`);
-  return { cassette: parsed.data, sha256: createHash('sha256').update(text).digest('hex') };
-}
-
 const RUN_OPTIONS = {
   profile: { type: 'string', default: 'yokla.profile.yaml' },
   cases: { type: 'string', multiple: true },
@@ -132,8 +105,16 @@ export async function runCommand(
   }
 
   try {
-    const loaded = loadProfile(values.profile);
-    const cases = loadCases(values.cases ?? [resolve(loaded.dir, 'cases')]);
+    const prepared = await prepareRun(
+      {
+        profile: values.profile,
+        cases: values.cases,
+        config: values.config,
+        targetUrl: values['target-url'],
+        proxyUrl: values['proxy-url'],
+      },
+      version,
+    );
     const samples = positiveInt(values.samples, 'samples');
     const concurrency = positiveInt(values.concurrency, 'concurrency');
     const maxCost = values['max-cost'] === undefined ? undefined : Number(values['max-cost']);
@@ -148,28 +129,9 @@ export async function runCommand(
     }
     // A cassette answers the model calls instead of the provider (ADR-0040).
     const replayed = values.replay === undefined ? undefined : readCassette(values.replay);
-    const configPath =
-      values.config ?? (existsSync('yokla.config.yaml') ? 'yokla.config.yaml' : undefined);
-    const config = configPath === undefined ? undefined : loadConfig(configPath);
-    // The user's own checks (ADR-0030); a case naming one needs it loaded.
-    const own = await loadCheckModules(
-      config?.checks ?? [],
-      configPath ?? 'yokla.config.yaml',
-      cases,
-      DOMAIN_PACKS,
-    );
     const results = await runSuite({
-      profile: loaded.profile,
-      profileSha256: loaded.sha256,
-      profileDir: loaded.dir,
-      cases,
-      env: process.env,
-      yoklaVersion: version,
-      checks: [...CORE_CHECKS, ...own.checks],
-      policies: own.policies,
-      checkModules: own.modules,
-      packs: DOMAIN_PACKS,
-      languages: LANGUAGE_PACKS,
+      ...prepared.base,
+      cases: [...prepared.cases],
       ...(samples === undefined ? {} : { samples }),
       ...(values['stop-early'] === true ? { stopEarly: true } : {}),
       ...(values.record === undefined
@@ -192,10 +154,7 @@ export async function runCommand(
             },
           }),
       ...(concurrency === undefined ? {} : { concurrency }),
-      ...(values['target-url'] === undefined ? {} : { targetUrl: values['target-url'] }),
-      ...(values['proxy-url'] === undefined ? {} : { proxyUrl: values['proxy-url'] }),
       ...(maxCost === undefined ? {} : { maxCostUsd: maxCost }),
-      ...(config === undefined ? {} : { prices: config.prices, models: config.models }),
       ...(values['fresh-customer'] === true ? { freshCustomer: true } : {}),
     });
     const outPath = writeReport(
