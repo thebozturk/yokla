@@ -52,7 +52,7 @@ old one.
 | [0037](0037-the-first-publish-of-the-npm-names.md) | The first publish of the npm names | Accepted |
 | [0038](0038-stopping-once-a-failure-is-settled.md) | Stopping a case's samples once its failure is settled | Accepted; amended by 0039 |
 | [0039](0039-a-majority-failure-in-the-demo-shop.md) | A majority-of-N failure in the demo-shop | Accepted |
-| [0040](0040-recorded-model-calls-replayed.md) | Recorded model calls, replayed | Proposed |
+| [0040](0040-recorded-model-calls-replayed.md) | Recorded model calls, replayed | Accepted |
 
 ## Template
 
