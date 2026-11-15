@@ -118,7 +118,8 @@ Never weaken a layer rule to make code compile. Move the code instead.
 - **Run every `gh` command as
   `GH_TOKEN=$(gh auth token --user thebozturk) gh ...`.** Never run
   `gh auth switch`: the machine's active `gh` account is a different one.
-- **The repository stays private.** Ask before making it public.
+- **The repository is public** (ADR-0037). Anything pushed is visible at
+  once, so check it against the separation rules above before every push.
 
 ## Working rules
 
