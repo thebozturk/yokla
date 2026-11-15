@@ -60,6 +60,9 @@ What it does that existing tools don't do together:
 - Training or fine-tuning.
 - Non-conversational ML systems.
 - Replacing the target's own unit tests.
+- Testing an MCP server on its own. An MCP server is a tool server, not a
+  conversational assistant. An assistant's MCP tools show up as tool calls
+  through the model proxy (ADR-0025), and D7 (§20) changes their results.
 
 ## 3. Principles
 
@@ -95,13 +98,24 @@ What it does that existing tools don't do together:
 
 ## 4. Prior art and positioning
 
-Other evaluation tools are described here by kind, not by name.
+Other evaluation tools are described here by kind, not by name. One tool can
+be of several kinds. The descriptions follow the tools' public documentation
+as of November 2026.
 
 | Kind of tool | Strengths | What yokla borrows (ideas, not code) | Where yokla differs |
 |---|---|---|---|
 | **Vulnerability scanners with knowledge-base test generation** | an LLM top-10 risk scan; question and reference-answer sets built from a knowledge base; a score for each pipeline component | scoring per component | yokla computes expected behaviour from structured data instead of generated reference answers; yokla is TypeScript and HTTP-first |
 | **Metric libraries that generate test cases from documents** | test cases ("goldens") generated from documents | per-dimension metrics | as with the scanners above |
-| **Red-team probe libraries** | large probe sets (mostly Python) | attack ideas, with licence care | yokla covers the whole test lifecycle, not only red teaming |
+| **Configuration-driven evaluation and red-team command-line tools** | test files in YAML; many model providers; large catalogs of red-team plugins and attack strategies, some for e-commerce (order fraud, price manipulation); CI integration; traces received from targets instrumented with OpenTelemetry | test files that live in the target's repository; attack ideas for e-commerce | yokla checks every price, stock and policy claim against the target's own data, not only attacks on them; the model proxy sees the target's model calls without instrumentation in the target (ADR-0012), and spans are the fallback (ADR-0029); nothing leaves the machine by default (ADR-0003) |
+| **Red-team probe libraries and attack orchestration frameworks** | large probe sets (mostly Python); converters that encode or rephrase an attack; multi-turn attack orchestration; scorers measured against labelled sets (precision, recall, agreement) | attack ideas, with licence care; how to measure the judge's calibration (ADR-0005) | yokla covers the whole test lifecycle, not only red teaming |
+| **Simulated-user test frameworks and agent benchmarks** | a model plays a user with a goal over many turns; a benchmark grades the final state of a database; pass^k, success in every one of k trials, as a measure of reliability | pass^k, which a case's worst-of-N over k samples already measures (§13); expanding a scenario's variables pairwise, for generators (§9) | yokla's simulated customer is judged turn by turn by deterministic checks and repeats from a seed (ADR-0028); expectations come from the target's own data, not from outcomes marked by hand |
+| **Fault-injection proxies for agents** | faults between an agent and its model or tool servers; timing patterns such as intermittent faults and bursts; poisoned tool descriptions; fault, contract and replay results folded into one weighted score for CI | fault timing patterns; faults in tool descriptions | a turn under a fault is judged by the same checks as any turn, so a fault that leads to an invented price fails `price-grounded`; the verdict comes from checks, each pass, fail or unmeasured, never from a weighted score |
+| **Observability platforms with evaluation features** | traces of production traffic; datasets built from traces; judge scores and human annotation; experiments compared side by side | two runs compared side by side (0.6); cases built from recorded traffic (Later) | yokla runs before release, locally, with no server to host (§2); its gate is deterministic first (ADR-0005) |
+
+**Where yokla sits.** §1 lists what yokla does that these kinds of tool don't
+do together. Two differences run through the whole table: what an answer
+must say is computed from the target's own data, and a verdict is a set of
+checks, each pass, fail or unmeasured, never a weighted score.
 
 ## 5. Concepts
 
@@ -893,8 +907,8 @@ Each version is usable on its own. A version ships when its exit criteria hold.
 | **0.1 — core** | core schemas (profile, case, results); HTTP adapter; runner with rate limiting and cache bypass; observation from the target's logs (ADR-0009); e-commerce checks (price, stock, policy, filter, type, duplicates, absence, over-refusal); `lang-tr`, `lang-en`; aggregation policies; JSON, terminal and JUnit reports; gate; demo-shop | every demo-shop defect detected; a real assistant tested with a hand-written profile |
 | **0.2 — proxy** | OpenAI-compatible and Anthropic proxy; `serial` and `header` correlation; cost and latency per request; fault plans; inspection checks; perf, cost and resilience suites; `yokla plan`; streaming targets, session setup, and model calls the target makes after its answer | cost on demo-shop and on one real target reconciles with the provider's usage records; resilience defects detected |
 | **0.3 — reach and conversations** | a first run in five minutes: `yokla init` sends the target one message, works out where the answer is in its JSON or event stream, writes a profile for review, and adds starter cases that suit any assistant (greeting, out of scope, a basic injection, personal data, an empty or very long message, a switch of language, a deadline), all at no model cost; a static HTML report; publishing to npm; WebSocket targets; authentication (OAuth2 and the like); richer evidence mapping, which the first real target needed: one collection read from several paths, stock given only as in or out of stock, amounts quoted from data other than the shown products (such as an order history), and the text of an answer given only as a component; a Gemini protocol adapter (AI Studio and Vertex); model calls read from OpenTelemetry GenAI spans, for targets the proxy can't see; tool-call and trajectory checks on what the proxy records; a simulated customer: a model plays a customer with a goal, and the deterministic checks judge every turn; generic checks (patterns, JSON Schema, similarity, checks the user writes) | on the demo-shop and on the open-source target, `yokla init` writes a profile that needs no edit for the starter cases, which then run and gate; the demo-shop's tool-call defects detected; the simulated customer reaches each demo-shop purchase goal, and a run repeats from its seed; on the demo-shop, calls read from OpenTelemetry spans match the proxy's records |
-| **0.4 — analyzer** | inventory, LLM extraction with evidence, probe mode, profile review and diff; e-commerce data generators; freshness and `fixture-missing` | on demo-shop the analyzer reproduces the approved entries of the hand-written profile (precision and recall reported); on the private target it rediscovers the known issue classes |
-| **0.5 — red team** | local attack generation (templates plus attacker model), native TR and EN; e-commerce attacks: price and discount manipulation, order fraud, card data, age and region restrictions, unauthorised commitments, competitor steering, hijacking, excessive agency, another customer's data, injection through product content, unsafe advice; canary-based deterministic detection; multi-turn and encoding strategies; findings mapped to OWASP LLM Top 10, OWASP Agentic, GDPR and KVKK, and the EU AI Act; calibrated judge | demo-shop injection, leakage and BOLA defects detected deterministically; the egress test passes |
+| **0.4 — analyzer** | inventory, LLM extraction with evidence, probe mode, profile review and diff; e-commerce data generators; freshness and `fixture-missing`; robustness transforms of approved cases (§9): typos, removed diacritics, casing and punctuation at no model cost, and paraphrase and Turkish–English code-switching only with a configured, budgeted model | on demo-shop the analyzer reproduces the approved entries of the hand-written profile (precision and recall reported); on the private target it rediscovers the known issue classes; on the demo-shop, a transform catches a seeded defect that shows only in a message without diacritics, and the transforms of every other approved case keep its verdict |
+| **0.5 — red team** | local attack generation (templates plus attacker model), native TR and EN; e-commerce attacks: price and discount manipulation, order fraud, card data, age and region restrictions, unauthorised commitments, competitor steering, hijacking, excessive agency, another customer's data, injection through product content and through tool descriptions, including a description that changes mid-conversation, unsafe advice; canary-based deterministic detection; multi-turn and encoding strategies; findings mapped to OWASP LLM Top 10, OWASP Agentic, GDPR and KVKK, and the EU AI Act; calibrated judge | demo-shop injection, leakage and BOLA defects detected deterministically; the egress test passes |
 | **0.6 — ecosystem** | import and export for other evaluation tools; CI recipes and a GitHub Action; a library API; two runs compared side by side; documentation site | |
 
 ### The debugging track: from a finding to a fix
@@ -925,7 +939,15 @@ them.
 | **D8. A search for untried paths** | a run that steers new turns towards what the proxy hasn't seen yet: routes, tool sets, argument shapes, fault states; deterministic mutations first, a model-written turn only when configured and budgeted | on the demo-shop, the search reaches every route and every tool, and finds a seeded defect that no written case reaches |
 
 **Later:** sampling production logs, more domains (banking, travel), more
-languages, SDK adapters. Checks that understand more of an answer:
+languages, SDK adapters.
+- Other ways to reach a target: a chat widget driven in a browser, and
+  voice. A widget usually sits on an HTTP or WebSocket API that yokla
+  already reaches, so a browser is needed only when that API can't be
+  called directly.
+- More fault plans: a fault on a seeded share of a turn's calls, rather
+  than on the calls a plan names, and a model answer too large for the app.
+
+Checks that understand more of an answer:
 - `price-grounded` grounding the price of a product an answer names but
   doesn't return, when the model didn't see it in a mapped tool result
   (ADR-0026), and differences and discounts (ADR-0022);
