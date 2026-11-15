@@ -52,6 +52,7 @@ the profile by hand (see
 | `--cases <path>` | `cases`, next to the profile | A case file or directory; repeatable. |
 | `--out <file>` | `runs/<run id>.json` | Where to write the results. |
 | `--samples <n>` | 1 | Samples per case, when the case doesn't say. |
+| `--stop-early` | | Stop a case's samples once no further sample can change its failure (ADR-0038). Not with target logs or spans. |
 | `--concurrency <n>` | 1 | Cases run in parallel. Serial correlation needs 1, unless spans alone show the model calls. |
 | `--target-url <url>` | the profile's | Use this url instead of `target.request.url`. |
 | `--junit <file>` | | Also write a JUnit XML report. |
@@ -64,6 +65,21 @@ the profile by hand (see
 It exits with `0` when every case ran, whatever the verdicts: the gate judges
 them. It exits with `2` for a configuration problem, when `target.auth` can't
 get the run's first token, or when a case ended in `error`.
+
+**`--stop-early`** judges each sample during the run, as the final judging
+would, and stops a case's samples when:
+- a deciding worst-of-N dimension failed;
+- a deciding majority-of-N dimension can't pass any more, even if every
+  remaining sample measures it and passes;
+- a sample errored.
+
+A passing case runs all its samples: a later one could still fail it. The
+verdicts are the ones every sample would give, except that a sample that
+would have errored after the failure was settled doesn't run. Latency,
+cost, intervals and `unstable` come from the samples that ran. The summary
+says how many samples ran of those planned, and a stopped case records
+`samplesPlanned`. With target logs or spans, which arrive after the run, it
+refuses to run.
 
 The results file (`results.v1`) holds every turn: the answer, the evidence,
 the checks with their findings, timings, and the model calls with their cost.

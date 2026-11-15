@@ -487,6 +487,8 @@ These are lessons from building a production harness.
 - **Deadlines:** a timeout per request (`request.timeoutMs`) and a deadline per
   turn (`deadlineMs`, ADR-0013). A deadline per run comes later.
 - **Samples:** N per case: the case's `samples`, else `--samples`, else 1.
+  With `--stop-early`, a case stops once no further sample can change its
+  failure (ADR-0038).
   Defaults per suite (1 for deterministic paths, 3–9 for paths that call a
   model) come later.
 - **Log observation (ADR-0009):** after the last case, the runner waits
@@ -815,6 +817,7 @@ turns on one seeded defect at a time:
 - a stale price given to the model, and a right price the app lowers after
   the model wrote it,
 - a wrong price in every other answer, a failure that comes and goes,
+- an out-of-scope question answered instead of refused,
 - later (v0.5): following an instruction injected in product text, and
   exposing another session's order.
 
@@ -835,7 +838,9 @@ two price defects whose wrong price comes from elsewhere than
 was sent, and `price-rewritten`, from the app. With `fabricated-price`, from
 the model, each is caught by `price-grounded` alone and traced to its own
 origin. D2 adds `flaky-price`, which yokla shrink must report as flaky rather
-than shrink (ADR-0035).
+than shrink (ADR-0035). D3 adds `out-of-scope-answered`, the one defect a
+majority-of-N dimension catches, so that `--stop-early` is shown settling a
+majority failure (ADR-0039).
 
 **Spans.** With `--otel-url` and the model over HTTP, the demo-shop exports a
 GenAI span for each model call, in the trace of the incoming `traceparent`,
@@ -912,7 +917,7 @@ them.
 |---|---|---|
 | **D1. Where a failure arose** (done, ADR-0033) | a failing finding that names a value (a price, a duration, a phrase) says where the value first appears: in what the model was sent, in what the model answered, or only in the app's answer; worked out from the proxy's records at check time, never guessed; shown in every report | on the demo-shop, three seeded price defects, one from each origin, are each attributed to their own origin; without proxy data the origin is unknown, not a guess |
 | **D2. The smallest failing conversation** (done, ADR-0035, ADR-0036) | `yokla shrink` cuts a failing case down to the fewest turns and the shortest messages that still fail the same check, with the samples needed to tell a real failure from chance; it writes the result as a proposed case | every demo-shop defect's failing case shrinks to a case that still fails only its own check; a flaky failure is reported as flaky, not shrunk |
-| **D3. Sampling that stops when the verdict is settled** | a case runs samples until its interval decides the verdict or its sample cap is reached; the cap and the confidence are configuration | on the demo-shop, verdicts match fixed-N runs while fewer samples run; a case that never settles is `unstable` |
+| **D3. Sampling that stops when the verdict is settled** (done, ADR-0038, ADR-0039) | with `--stop-early`, a case stops its samples once no further sample can change its failure: a worst-of-N failure, a majority-of-N failure the remaining samples can't outvote, or an error; a passing case runs every sample | on the demo-shop, verdicts match fixed-N runs while fewer samples run; a worst-of-N failure stops after one sample, a majority-of-N one after two of three |
 | **D4. Recorded model calls, replayed** | the proxy records the target's model calls into a cassette and can answer from it, so a run repeats with no model cost; a replay can change one recorded answer, to ask what the app does when the model says something else | a recorded demo-shop run replays with identical results and no upstream call; each resilience defect is also caught by changing one recorded answer |
 | **D5. yokla as a tool for coding agents** | a local MCP server over stdio: run a case, explain a finding (D1), shrink it (D2), verify a fix against the shrunk case and its neighbours; no egress beyond the run's own | an agent, given only the MCP tools, finds and verifies the fix of a seeded demo-shop defect |
 | **D6. Comparing models through the proxy** | the proxy can send a call to another model than the app asked for, as the profile or the command line says; the same cases run once per model, and a report compares verdicts, cost and latency | on the demo-shop, two fake models give the comparison expected of them; the cheapest model that still passes the gate is named |
