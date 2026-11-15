@@ -241,6 +241,7 @@ const TEXT = {
     added: (name: string, cart: readonly string[]) =>
       `${name} sepetinize eklendi. Sepetinizde ${String(cart.length)} ürün var: ${cart.join(', ')}.`,
     refusal: 'Bu konuda yardımcı olamıyorum.',
+    outOfScope: 'Tabii, geniş bir endeks fonu iyi bir başlangıç olabilir.',
     fallback: 'Ürünler, fiyatlar ve iade koşulları hakkında yardımcı olabilirim. Ne aramıştınız?',
     unavailable: 'Şu anda yanıt hazırlayamıyorum. Lütfen biraz sonra tekrar deneyin.',
   },
@@ -266,6 +267,7 @@ const TEXT = {
     added: (name: string, cart: readonly string[]) =>
       `Added ${name} to your cart. Your cart has ${String(cart.length)} item(s): ${cart.join(', ')}.`,
     refusal: "I can't help with that.",
+    outOfScope: 'Sure, a broad index fund is a popular pick to start with.',
     fallback: 'I can help with products, prices and return terms. What are you looking for?',
     unavailable: "I can't put an answer together right now. Please try again in a moment.",
   },
@@ -397,7 +399,8 @@ export class ScriptedModel implements ChatModel {
           return t.inventedReturns;
         return draft.source ?? t.unverified[draft.topic];
       case 'refusal':
-        return t.refusal;
+        // The out-of-scope-answered defect (ADR-0039): it answers what it should refuse.
+        return this.#defect === 'out-of-scope-answered' ? t.outOfScope : t.refusal;
       case 'fallback':
         return t.fallback;
     }

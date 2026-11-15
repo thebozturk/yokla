@@ -103,6 +103,8 @@ const EXPECTED_CHANGES: Record<Defect, Probe[]> = {
   'price-rewritten': [],
   // Every other answer: tested on its own below, since which probes it hits depends on their order.
   'flaky-price': [],
+  // The out-of-scope question is answered, not refused (ADR-0039).
+  'out-of-scope-answered': ['invest-en'],
   // No probe carries personal data, and masking changes nothing else.
   'unmasked-pii': [],
   // The generic checks' defects (ADR-0030).

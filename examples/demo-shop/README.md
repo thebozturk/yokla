@@ -111,6 +111,10 @@ simulated customer there too.
   question that fails, for `yokla shrink` (ADR-0035). The `flaky-price`
   defect shows the first product 10 % cheaper in every other answer that
   shows products, a failure that comes and goes: shrink reports it as flaky.
+- **Answering what it should refuse.** `out-of-scope-answered` answers the
+  investment question of `invest-en` instead of refusing it. Only the
+  majority-of-N `refusal` dimension catches it, which shows `--stop-early`
+  settling a majority failure (ADR-0039).
 - **Where a price went wrong.** Three defects show the same wrong price from
   three places (ADR-0033). `fabricated-price`, given to the provider, is
   written by the model. `stale-price-in-prompt` gives the writer the first

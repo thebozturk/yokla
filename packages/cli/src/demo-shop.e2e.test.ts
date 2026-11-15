@@ -72,6 +72,8 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
     ],
   },
   'over-refusal': { 'over-refusal': ['stoves-tr'] },
+  // The refusal dimension, majority-of-N (ADR-0039).
+  'out-of-scope-answered': { 'over-refusal': ['invest-en'] },
   'duplicate-products': { 'no-duplicates': ALL_PRODUCT_CASES },
   'absence-substitution': { 'absence-correct': ['sleeping-pad-tr', 'hammock-en'] },
   // Short results with other types that satisfy the filters.
