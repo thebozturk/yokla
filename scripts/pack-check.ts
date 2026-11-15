@@ -2,6 +2,10 @@
 // installs the tarballs into an empty project and runs the CLI from there
 // (ADR-0034). Nothing is published.
 // Run from the repository root after a build: pnpm pack-check
+//   --release <tag>  also check that every package is at the tag's version and
+//                    none is private (ADR-0037)
+//   --out <dir>      keep the tarballs there, with publish-order.txt listing
+//                    them in the order to publish
 
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import {
@@ -14,14 +18,17 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, posix } from 'node:path';
-import { checkPacked } from './pack/check.ts';
+import { join, posix, resolve as resolvePath } from 'node:path';
+import { parseArgs } from 'node:util';
+import { checkPacked, checkRelease, publishOrder } from './pack/check.ts';
 
 /** Workspace folders whose packages are published; the demo-shop and the scripts are not. */
 const PUBLISHED_GROUPS = ['packages', 'packs'] as const;
 /** The smoke install takes only releases at least this old, as the workspace does (ADR-0006). */
 const MINIMUM_RELEASE_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const DEMO_SHOP_START_TIMEOUT_MS = 10_000;
+/** The repository trusted publishing matches each package against (ADR-0037). */
+const REPOSITORY = 'git+https://github.com/thebozturk/yokla.git';
 
 function fail(message: string): never {
   throw new Error(message);
@@ -62,6 +69,11 @@ interface Packed {
   readonly tarball: string;
 }
 
+interface Inspected {
+  readonly manifest: Record<string, unknown>;
+  readonly problems: readonly string[];
+}
+
 function pack(dir: string, destination: string): Packed {
   const output = parseObject(
     run('pnpm', ['pack', '--pack-destination', destination, '--json'], dir),
@@ -74,8 +86,8 @@ function pack(dir: string, destination: string): Packed {
   return { name, version, tarball: filename };
 }
 
-/** Checks one tarball; returns the problems, each prefixed with the package name. */
-function inspect(packed: Packed): string[] {
+/** Checks one tarball; the problems are each prefixed with the package name. */
+function inspect(packed: Packed): Inspected {
   const files = run('tar', ['-tzf', packed.tarball], '.')
     .split('\n')
     .filter((line) => line !== '' && !line.endsWith('/'))
@@ -84,9 +96,21 @@ function inspect(packed: Packed): string[] {
     run('tar', ['-xzOf', packed.tarball, 'package/package.json'], '.'),
     `${packed.tarball}: package/package.json`,
   );
-  return checkPacked({ files, manifest }).map(
+  const problems = checkPacked({ files, manifest }, REPOSITORY).map(
     (problem) => `${packed.name}: ${problem.kind}: ${problem.message}`,
   );
+  return { manifest, problems };
+}
+
+/** Every dependency kind of a manifest, merged. */
+function dependenciesOf(manifest: Record<string, unknown>): Record<string, string> {
+  const merged: Record<string, string> = {};
+  for (const field of ['dependencies', 'peerDependencies', 'optionalDependencies']) {
+    const dependencies = manifest[field];
+    if (!isRecord(dependencies)) continue;
+    for (const [name, spec] of Object.entries(dependencies)) merged[name] = String(spec);
+  }
+  return merged;
 }
 
 /** An empty project that depends on every tarball, with outside dependencies from the registry. */
@@ -182,12 +206,25 @@ async function smoke(packages: readonly Packed[], workDir: string): Promise<void
   }
 }
 
+const { values: options } = parseArgs({
+  options: { release: { type: 'string' }, out: { type: 'string' } },
+});
+
 const workDir = mkdtempSync(join(tmpdir(), 'yokla-pack-check-'));
 try {
-  const tarballs = join(workDir, 'tarballs');
-  mkdirSync(tarballs);
+  const tarballs = options.out === undefined ? join(workDir, 'tarballs') : resolvePath(options.out);
+  mkdirSync(tarballs, { recursive: true });
   const packages = publishedDirs().map((dir) => pack(dir, tarballs));
-  const problems = packages.flatMap(inspect);
+  const inspected = packages.map(inspect);
+  const problems = inspected.flatMap((one) => one.problems);
+  if (options.release !== undefined) {
+    problems.push(
+      ...checkRelease(
+        inspected.map((one) => one.manifest),
+        options.release,
+      ).map((problem) => `${problem.subject}: ${problem.kind}: ${problem.message}`),
+    );
+  }
   if (problems.length > 0) {
     for (const problem of problems) console.error(`pack-check: ${problem}`);
     process.exitCode = 1;
@@ -197,6 +234,18 @@ try {
     );
     await smoke(packages, workDir);
     console.log('pack-check: the packed packages install and run');
+    if (options.out !== undefined) {
+      const order = publishOrder(
+        packages.map((p, index) => ({
+          name: p.name,
+          dependencies: dependenciesOf(inspected[index]?.manifest ?? {}),
+        })),
+      );
+      const byName = new Map(packages.map((p) => [p.name, p.tarball]));
+      const lines = order.map((name) => byName.get(name) ?? fail(`no tarball for ${name}`));
+      writeFileSync(join(tarballs, 'publish-order.txt'), `${lines.join('\n')}\n`);
+      console.log(`pack-check: kept in ${tarballs}, to publish in this order: ${order.join(', ')}`);
+    }
   }
 } finally {
   rmSync(workDir, { recursive: true, force: true });

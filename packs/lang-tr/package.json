@@ -4,6 +4,11 @@
   "private": true,
   "description": "Turkish language pack for yokla.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thebozturk/yokla.git",
+    "directory": "packs/lang-tr"
+  },
   "type": "module",
   "engines": {
     "node": ">=24"

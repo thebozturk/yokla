@@ -4,6 +4,11 @@
   "private": true,
   "description": "Schemas, check API, aggregation and gate. Pure: no I/O, no network.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thebozturk/yokla.git",
+    "directory": "packages/core"
+  },
   "type": "module",
   "engines": {
     "node": ">=24"

@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
   checkPacked,
+  checkRelease,
   exportTargets,
   isTestFile,
+  publishOrder,
+  repositoryUrl,
   type PackedPackage,
   type ProblemKind,
 } from './check.ts';
+
+const REPO = 'git+https://github.com/owner/repo.git';
 
 /** A package shaped like the CLI, which satisfies every rule. */
 function clean(): PackedPackage {
@@ -35,6 +40,7 @@ function clean(): PackedPackage {
       bin: { yokla: './dist/bin.js' },
       files: ['dist', '!dist/**/*.test.*', 'src', '!src/**/*.test.*', 'schemas'],
       dependencies: { '@yokla/core': '0.3.0', zod: '^4.6.7' },
+      repository: { type: 'git', url: REPO, directory: 'packages/cli' },
     },
   };
 }
@@ -55,28 +61,28 @@ function withManifest(change: (manifest: Record<string, unknown>) => void): Pack
 }
 
 function kinds(pkg: PackedPackage): ProblemKind[] {
-  return checkPacked(pkg).map((problem) => problem.kind);
+  return checkPacked(pkg, REPO).map((problem) => problem.kind);
 }
 
 function subjects(pkg: PackedPackage): string[] {
-  return checkPacked(pkg).map((problem) => problem.subject);
+  return checkPacked(pkg, REPO).map((problem) => problem.subject);
 }
 
 describe('checkPacked', () => {
   it('finds nothing in a package that holds what it should', () => {
-    expect(checkPacked(clean())).toEqual([]);
+    expect(checkPacked(clean(), REPO)).toEqual([]);
   });
 
   it.each(['package.json', 'README.md', 'LICENSE'])('requires %s', (file) => {
     const pkg = withFiles((files) => files.filter((path) => path !== file));
-    expect(checkPacked(pkg)).toContainEqual(
+    expect(checkPacked(pkg, REPO)).toContainEqual(
       expect.objectContaining({ kind: 'missing-file', subject: file }),
     );
   });
 
   it('requires a file under dist', () => {
     const pkg = withFiles((files) => files.filter((path) => !path.startsWith('dist/')));
-    expect(checkPacked(pkg)).toContainEqual(
+    expect(checkPacked(pkg, REPO)).toContainEqual(
       expect.objectContaining({ kind: 'missing-file', subject: 'dist/' }),
     );
   });
@@ -96,7 +102,7 @@ describe('checkPacked', () => {
       'src/run.test.ts',
       'src/__snapshots__/report.html',
     ]);
-    expect(checkPacked(pkg).filter((problem) => problem.kind === 'test-file')).toEqual([
+    expect(checkPacked(pkg, REPO).filter((problem) => problem.kind === 'test-file')).toEqual([
       expect.objectContaining({ subject: 'dist/run.test.js' }),
       expect.objectContaining({ subject: 'src/run.test.ts' }),
       expect.objectContaining({ subject: 'src/__snapshots__/report.html' }),
@@ -109,10 +115,10 @@ describe('checkPacked', () => {
       const pkg = withManifest((manifest) => {
         manifest[field] = { '@yokla/runtime': 'workspace:*' };
       });
-      expect(checkPacked(pkg)).toEqual([
+      expect(checkPacked(pkg, REPO)).toEqual([
         expect.objectContaining({ kind: 'workspace-dependency', subject: '@yokla/runtime' }),
       ]);
-      expect(checkPacked(pkg)[0]?.message).toContain(`${field}.@yokla/runtime`);
+      expect(checkPacked(pkg, REPO)[0]?.message).toContain(`${field}.@yokla/runtime`);
     },
   );
 
@@ -122,12 +128,12 @@ describe('checkPacked', () => {
       manifest['peerDependencies'] = ['workspace:*'];
       manifest['optionalDependencies'] = { e: ['workspace:*'] };
     });
-    expect(checkPacked(pkg)).toEqual([]);
+    expect(checkPacked(pkg, REPO)).toEqual([]);
   });
 
   it('reports an exports target the package does not hold', () => {
     const pkg = withFiles((files) => files.filter((path) => path !== 'dist/index.d.ts'));
-    expect(checkPacked(pkg)).toEqual([
+    expect(checkPacked(pkg, REPO)).toEqual([
       expect.objectContaining({ kind: 'missing-target', subject: './dist/index.d.ts' }),
     ]);
   });
@@ -139,10 +145,10 @@ describe('checkPacked', () => {
 
   it('reports a bin target the package does not hold, as a record or a string', () => {
     const missing = withFiles((files) => files.filter((path) => path !== 'dist/bin.js'));
-    expect(checkPacked(missing)).toEqual([
+    expect(checkPacked(missing, REPO)).toEqual([
       expect.objectContaining({ kind: 'missing-target', subject: './dist/bin.js' }),
     ]);
-    expect(checkPacked(missing)[0]?.message).toMatch(/^bin points to/);
+    expect(checkPacked(missing, REPO)[0]?.message).toMatch(/^bin points to/);
 
     const asString = withManifest((manifest) => {
       manifest['bin'] = './dist/cli.js';
@@ -154,28 +160,28 @@ describe('checkPacked', () => {
     const pkg = withManifest((manifest) => {
       manifest['bin'] = { yokla: './dist/bin.js', other: 7 };
     });
-    expect(checkPacked(pkg)).toEqual([]);
+    expect(checkPacked(pkg, REPO)).toEqual([]);
   });
 
   it('reads a target without a leading ./', () => {
     const pkg = withManifest((manifest) => {
       manifest['bin'] = { yokla: 'dist/bin.js' };
     });
-    expect(checkPacked(pkg)).toEqual([]);
+    expect(checkPacked(pkg, REPO)).toEqual([]);
   });
 
   it('reports a pattern target instead of passing it', () => {
     const pkg = withManifest((manifest) => {
       manifest['exports'] = { './*': './dist/*.js' };
     });
-    expect(checkPacked(pkg)).toEqual([
+    expect(checkPacked(pkg, REPO)).toEqual([
       expect.objectContaining({ kind: 'unsupported-entry', subject: './dist/*.js' }),
     ]);
   });
 
   it('reports a files entry that matches nothing', () => {
     const pkg = withFiles((files) => files.filter((path) => !path.startsWith('schemas/')));
-    expect(checkPacked(pkg)).toEqual([
+    expect(checkPacked(pkg, REPO)).toEqual([
       expect.objectContaining({ kind: 'unmatched-files-entry', subject: 'schemas' }),
     ]);
   });
@@ -184,7 +190,7 @@ describe('checkPacked', () => {
     const pkg = withManifest((manifest) => {
       manifest['files'] = ['dist', 'src', 'schemas', 'README.md'];
     });
-    expect(checkPacked(pkg)).toEqual([]);
+    expect(checkPacked(pkg, REPO)).toEqual([]);
   });
 
   it('does not take a name that starts like the entry for the entry', () => {
@@ -199,7 +205,7 @@ describe('checkPacked', () => {
     const pkg = withManifest((manifest) => {
       manifest['files'] = ['dist', 'src', 'schemas', 'dist/*.js', '!nothing', 7];
     });
-    expect(checkPacked(pkg)).toEqual([
+    expect(checkPacked(pkg, REPO)).toEqual([
       expect.objectContaining({ kind: 'unsupported-entry', subject: 'dist/*.js' }),
     ]);
   });
@@ -208,7 +214,7 @@ describe('checkPacked', () => {
     const pkg = withManifest((manifest) => {
       manifest['files'] = 'nothing';
     });
-    expect(checkPacked(pkg)).toEqual([]);
+    expect(checkPacked(pkg, REPO)).toEqual([]);
   });
 
   it('reports every problem, not only the first', () => {
@@ -221,9 +227,113 @@ describe('checkPacked', () => {
       'missing-file',
       'test-file',
       'workspace-dependency',
+      'wrong-repository',
       'missing-target',
       'unmatched-files-entry',
     ]);
+  });
+});
+
+describe('the repository', () => {
+  it('reports a package that names another repository', () => {
+    const pkg = withManifest((manifest) => {
+      manifest['repository'] = { type: 'git', url: 'git+https://github.com/other/repo.git' };
+    });
+    expect(checkPacked(pkg, REPO)).toEqual([
+      expect.objectContaining({
+        kind: 'wrong-repository',
+        subject: 'git+https://github.com/other/repo.git',
+      }),
+    ]);
+  });
+
+  it('reports a package that names none', () => {
+    const pkg = withManifest((manifest) => {
+      delete manifest['repository'];
+    });
+    expect(checkPacked(pkg, REPO)).toEqual([
+      expect.objectContaining({ kind: 'wrong-repository', subject: '(none)' }),
+    ]);
+    expect(checkPacked(pkg, REPO)[0]?.message).toBe(`repository is missing, not "${REPO}"`);
+  });
+
+  it('reads the repository as a string or as { url }', () => {
+    expect(repositoryUrl(REPO)).toBe(REPO);
+    expect(repositoryUrl({ url: REPO })).toBe(REPO);
+    expect(repositoryUrl({ url: 7 })).toBeUndefined();
+    expect(repositoryUrl(undefined)).toBeUndefined();
+    const asString = withManifest((manifest) => {
+      manifest['repository'] = REPO;
+    });
+    expect(checkPacked(asString, REPO)).toEqual([]);
+  });
+});
+
+function at(version: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return { name: `p-${version}`, version, ...extra };
+}
+
+describe('checkRelease', () => {
+  it('finds nothing when every package is at the tag and none is private', () => {
+    expect(checkRelease([at('0.3.0'), at('0.3.0')], 'v0.3.0')).toEqual([]);
+  });
+
+  it('reports a package at another version', () => {
+    expect(checkRelease([at('0.3.0'), at('0.2.0')], 'v0.3.0')).toEqual([
+      expect.objectContaining({ kind: 'wrong-version', subject: 'p-0.2.0' }),
+    ]);
+  });
+
+  it.each(['V0.3.0', '0.3.0'])('reports every package when the tag %s has no leading v', (tag) => {
+    expect(checkRelease([at('0.3.0'), at('.3.0')], tag)).toHaveLength(2);
+  });
+
+  it('says which version and which tag', () => {
+    expect(checkRelease([at('0.3.0')], '0.3.0')).toEqual([
+      expect.objectContaining({
+        kind: 'wrong-version',
+        message: 'p-0.3.0 is at 0.3.0, and the tag is 0.3.0',
+      }),
+    ]);
+  });
+
+  it.each([true, false])('reports a package that still sets private: %s', (value) => {
+    expect(checkRelease([at('0.3.0', { private: value })], 'v0.3.0')).toEqual([
+      expect.objectContaining({ kind: 'private', subject: 'p-0.3.0' }),
+    ]);
+  });
+});
+
+describe('publishOrder', () => {
+  it('puts each package after the ones it depends on, otherwise by name', () => {
+    expect(
+      publishOrder([
+        { name: 'yokla', dependencies: { '@yokla/runtime': '0.3.0', '@yokla/core': '0.3.0' } },
+        { name: '@yokla/runtime', dependencies: { '@yokla/core': '0.3.0', zod: '^4' } },
+        { name: '@yokla/pack-tr', dependencies: { '@yokla/core': '0.3.0' } },
+        { name: '@yokla/core', dependencies: { zod: '^4', yaml: '^2' } },
+      ]),
+    ).toEqual(['@yokla/core', '@yokla/pack-tr', '@yokla/runtime', 'yokla']);
+  });
+
+  it('orders by name when nothing depends on anything', () => {
+    expect(
+      publishOrder([
+        { name: 'c', dependencies: {} },
+        { name: 'a', dependencies: {} },
+        { name: 'b', dependencies: {} },
+      ]),
+    ).toEqual(['a', 'b', 'c']);
+  });
+
+  it('refuses a cycle', () => {
+    expect(() =>
+      publishOrder([
+        { name: 'a', dependencies: { b: '1' } },
+        { name: 'b', dependencies: { a: '1' } },
+        { name: 'c', dependencies: {} },
+      ]),
+    ).toThrow('the packages depend on each other: a, b');
   });
 });
 

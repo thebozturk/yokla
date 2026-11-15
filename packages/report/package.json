@@ -4,6 +4,11 @@
   "private": true,
   "description": "Terminal, JUnit XML and HTML reports.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thebozturk/yokla.git",
+    "directory": "packages/report"
+  },
   "type": "module",
   "engines": {
     "node": ">=24"

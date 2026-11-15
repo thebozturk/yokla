@@ -1,0 +1,55 @@
+name: Release
+
+# Publishes a release to npm when a v* tag is pushed (ADR-0034, ADR-0037).
+# The `npm` environment waits for the maintainer's approval. npm's trusted
+# publishing takes this workflow's identity, so no token exists, and every
+# package gets a provenance statement.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: publish to npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write # trusted publishing
+    steps:
+      # Actions are pinned to commit SHAs; the comment names the release.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      # No dependency cache in a release.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - name: npm can publish with trusted publishing (11.5.1 or later)
+        run: |
+          npm --version
+          node -e '
+            const [major, minor, patch] = process.argv[1].split(".").map(Number);
+            const ok = major > 11 || (major === 11 && (minor > 5 || (minor === 5 && patch >= 1)));
+            if (!ok) { console.error("npm " + process.argv[1] + " is too old"); process.exit(1); }
+          ' "$(npm --version)"
+      - run: pnpm check
+      - name: pack-check, keeping the tarballs it checked
+        run: pnpm pack-check --release "$GITHUB_REF_NAME" --out "$RUNNER_TEMP/release"
+      - name: publish the checked tarballs, dependencies first
+        run: |
+          while IFS= read -r tarball; do
+            npm publish "$tarball" --access public
+          done < "$RUNNER_TEMP/release/publish-order.txt"

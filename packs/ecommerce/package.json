@@ -4,6 +4,11 @@
   "private": true,
   "description": "E-commerce domain pack for yokla.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thebozturk/yokla.git",
+    "directory": "packs/ecommerce"
+  },
   "type": "module",
   "engines": {
     "node": ">=24"

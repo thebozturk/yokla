@@ -1,5 +1,6 @@
-// Pure check of what a packed package holds (ADR-0034). No I/O: the caller
-// lists the tarball and reads the package.json inside it.
+// Pure checks of what a packed package holds (ADR-0034), of a release's
+// versions, and of the order to publish in (ADR-0037). No I/O: the caller lists
+// the tarball and reads the package.json inside it.
 
 export interface PackedPackage {
   /** Paths inside the tarball, relative to its `package/` folder. */
@@ -14,7 +15,10 @@ export type ProblemKind =
   | 'workspace-dependency'
   | 'missing-target'
   | 'unmatched-files-entry'
-  | 'unsupported-entry';
+  | 'unsupported-entry'
+  | 'wrong-repository'
+  | 'wrong-version'
+  | 'private';
 
 export interface Problem {
   readonly kind: ProblemKind;
@@ -81,7 +85,15 @@ function targetProblem(files: ReadonlySet<string>, field: string, target: string
   ];
 }
 
-export function checkPacked(pkg: PackedPackage): Problem[] {
+/** The repository URL a manifest names, as a string or as `{ url }`. */
+export function repositoryUrl(repository: unknown): string | undefined {
+  if (typeof repository === 'string') return repository;
+  if (isRecord(repository) && typeof repository['url'] === 'string') return repository['url'];
+  return undefined;
+}
+
+/** Checks a packed package; `repository` is the URL trusted publishing matches it against. */
+export function checkPacked(pkg: PackedPackage, repository: string): Problem[] {
   const problems: Problem[] = [];
   const files = new Set(pkg.files);
   const { manifest } = pkg;
@@ -116,6 +128,15 @@ export function checkPacked(pkg: PackedPackage): Problem[] {
     }
   }
 
+  const url = repositoryUrl(manifest['repository']);
+  if (url !== repository) {
+    problems.push({
+      kind: 'wrong-repository',
+      subject: url ?? '(none)',
+      message: `repository is ${url === undefined ? 'missing' : `"${url}"`}, not "${repository}"`,
+    });
+  }
+
   for (const target of exportTargets(manifest['exports'])) {
     problems.push(...targetProblem(files, 'exports', target));
   }
@@ -144,4 +165,59 @@ export function checkPacked(pkg: PackedPackage): Problem[] {
   }
 
   return problems;
+}
+
+/** Checks the manifests of a release tagged `tag`: each at the tag's version, none private. */
+export function checkRelease(
+  manifests: readonly Readonly<Record<string, unknown>>[],
+  tag: string,
+): Problem[] {
+  const problems: Problem[] = [];
+  const version = tag.startsWith('v') ? tag.slice(1) : undefined;
+  for (const manifest of manifests) {
+    const name = String(manifest['name']);
+    if (manifest['version'] !== version) {
+      problems.push({
+        kind: 'wrong-version',
+        subject: name,
+        message: `${name} is at ${String(manifest['version'])}, and the tag is ${tag}`,
+      });
+    }
+    if (manifest['private'] !== undefined) {
+      problems.push({
+        kind: 'private',
+        subject: name,
+        message: `${name} still has "private": ${JSON.stringify(manifest['private'])}`,
+      });
+    }
+  }
+  return problems;
+}
+
+export interface Publishable {
+  readonly name: string;
+  /** Every dependency kind merged: name → version spec. */
+  readonly dependencies: Readonly<Record<string, string>>;
+}
+
+/**
+ * The order to publish in: each package after the packages of the release it
+ * depends on, otherwise by name. A cycle can't be published one by one.
+ */
+export function publishOrder(packages: readonly Publishable[]): string[] {
+  const remaining = new Map(packages.map((p) => [p.name, Object.keys(p.dependencies)]));
+  const order: string[] = [];
+  while (remaining.size > 0) {
+    const ready = [...remaining]
+      .filter(([, dependencies]) => dependencies.every((d) => !remaining.has(d)))
+      .map(([name]) => name)
+      .toSorted();
+    const next = ready[0];
+    if (next === undefined) {
+      throw new Error(`the packages depend on each other: ${[...remaining.keys()].join(', ')}`);
+    }
+    order.push(next);
+    remaining.delete(next);
+  }
+  return order;
 }
