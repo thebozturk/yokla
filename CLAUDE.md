@@ -39,6 +39,13 @@ change a decision, propose a new ADR. Never edit an accepted one.
   tarball holds, installs them into an empty project and runs `yokla` from
   there against the demo-shop (ADR-0034). It needs the npm registry for the
   outside dependencies. CI runs it after `pnpm check`. Nothing is published.
+  `--release <tag>` also checks the versions and that no package is private;
+  `--out <dir>` keeps the tarballs and their publish order.
+- **Releases come only from a `v*` tag** (ADR-0034, ADR-0037).
+  `.github/workflows/release.yml` runs in the `npm` environment, which waits
+  for the maintainer's approval. It publishes the tarballs pack-check checked
+  with npm's trusted publishing. There is no npm token anywhere. Never publish
+  from a laptop, and never tag without the maintainer's request.
 - **`pnpm yokla <command>`** runs the CLI from source, without a build. An
   example is `pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml
   --target-url http://127.0.0.1:<port>/v1/chat` against a running demo-shop.
