@@ -1,6 +1,6 @@
 # 0038. Stopping a case's samples once its failure is settled
 
-Status: Proposed · Date: 2026-11-15
+Status: Accepted · Date: 2026-11-15
 
 ## Context
 
