@@ -9,6 +9,20 @@
     "url": "git+https://github.com/thebozturk/yokla.git",
     "directory": "packages/core"
   },
+  "homepage": "https://github.com/thebozturk/yokla#readme",
+  "bugs": {
+    "url": "https://github.com/thebozturk/yokla/issues"
+  },
+  "keywords": [
+    "yokla",
+    "llm",
+    "ai-assistant",
+    "chatbot",
+    "testing",
+    "evaluation",
+    "end-to-end",
+    "schema"
+  ],
   "type": "module",
   "engines": {
     "node": ">=24"

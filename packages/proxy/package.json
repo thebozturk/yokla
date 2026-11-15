@@ -9,6 +9,24 @@
     "url": "git+https://github.com/thebozturk/yokla.git",
     "directory": "packages/proxy"
   },
+  "homepage": "https://github.com/thebozturk/yokla#readme",
+  "bugs": {
+    "url": "https://github.com/thebozturk/yokla/issues"
+  },
+  "keywords": [
+    "yokla",
+    "llm",
+    "ai-assistant",
+    "chatbot",
+    "testing",
+    "evaluation",
+    "end-to-end",
+    "model-proxy",
+    "openai",
+    "anthropic",
+    "gemini",
+    "cost"
+  ],
   "type": "module",
   "engines": {
     "node": ">=24"
