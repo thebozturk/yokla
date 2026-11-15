@@ -4,6 +4,85 @@ Notable changes per version. Versions follow the roadmap in
 [design §20](docs/design.md#20-roadmap); a version ships when its exit criteria
 hold.
 
+## 0.3.0 — 2026-11-15
+
+Reach and conversations: a first run in five minutes, more ways to reach a
+target and see its model calls, checks on the tools it calls, a simulated
+customer, and the first steps from a finding to its fix. yokla is on npm from
+this version.
+
+**Exit criteria.**
+- **`yokla init` writes a profile that needs no edit for the starter cases,**
+  on the demo-shop and on an open-source assistant. The starter cases then
+  run and gate.
+- **The demo-shop's tool-call defects are detected,** each by its own check.
+- **The simulated customer reaches each demo-shop purchase goal,** and a run
+  repeats from its seed.
+- **On the demo-shop, model calls read from OpenTelemetry spans match the
+  proxy's records.**
+- **Published to npm,** from CI with trusted publishing and a provenance
+  statement for every package (ADR-0034, ADR-0037).
+
+### Added
+
+- **`yokla init` and starter cases (ADR-0018, ADR-0019).** One message to
+  the target, and yokla works out where the answer is in its JSON or event
+  stream. It writes a profile for review and starter cases that suit any
+  assistant: a greeting, out of scope, a basic injection, personal data, an
+  empty or very long message, a switch of language and a deadline. It makes
+  no model call. An edge-case turn is judged on whether the target handled
+  it.
+- **Richer evidence mapping (ADR-0020, ADR-0021, ADR-0022, ADR-0027).**
+  - One collection can be read from several paths.
+  - Stock can be given only as in or out of stock.
+  - Amounts may be quoted from price sources other than the shown products,
+    such as an order history.
+  - The answer text can be read from several paths.
+  - A price times a stated quantity, and a total of the answer's own amounts,
+    count as grounded.
+  - A product can be named by the shortest start of its name that no other
+    product shares.
+- **An offline HTML report (ADR-0023).** `yokla report --html` shows each
+  answer next to its findings, in one file with nothing to fetch.
+- **WebSocket targets (ADR-0024).**
+- **Tool calls (ADR-0025, ADR-0026).** The proxy reads the tools each model
+  call offers and the calls it asks for. A case can say which tools must and
+  must not be called, with what arguments, in what order and how often.
+  Products the model saw in a tool result count as evidence.
+- **The simulated customer (ADR-0028).** A case can give a persona and a goal
+  instead of fixed turns. A model of your choice, local or hosted, plays the
+  customer, and the deterministic checks judge every answer. The goal counts
+  as reached only when the answer shows it. Replies are cached, so a rerun
+  repeats the conversation. This is yokla's first model use of its own, with
+  its cost counted apart from the target's.
+- **Model calls from OpenTelemetry spans (ADR-0029),** for an app whose
+  client can't be pointed at the proxy.
+- **Generic checks (ADR-0030).** Regular expressions, a JSON Schema for the
+  response, similarity to reference answers, and checks the user writes as a
+  small module the configuration names.
+- **Tokens yokla obtains (ADR-0031).** OAuth 2.0 client credentials or a
+  login, refreshed when they expire, and kept out of everything yokla writes.
+- **Gemini (ADR-0032).** The proxy reads Gemini's native API, on AI Studio
+  and Vertex AI, and yokla's own calls can use it.
+- **Where a failure arose (ADR-0033).** A failing finding that names a value
+  says where the value first appears: in what the model was sent, in what it
+  answered, or only in the app's answer.
+- **`yokla shrink` (ADR-0035, ADR-0036).** It cuts a failing case down to the
+  fewest turns that still fail the same check, with the samples needed to
+  tell a real failure from chance, and writes it as a proposed case. A flaky
+  failure is reported as flaky.
+- **`yokla run --stop-early` (ADR-0038, ADR-0039).** A case stops its samples
+  once no further sample can change its failure. A passing case runs every
+  sample.
+- **Fault jitter seeded by case, sample and turn (ADR-0017),** so a fault's
+  delay repeats across runs.
+- **demo-shop.** Tool-call defects, a simulated shopper's goals, spans, a
+  WebSocket endpoint, token issuing, Gemini's native protocol, a price defect
+  from each origin, a flaky price, and a majority-of-N failure.
+- **Packages (ADR-0034).** Every package ships its README, the licence and
+  its sources. `pnpm pack-check`, run in CI, installs the packed packages
+  into an empty project and runs `yokla` there against the demo-shop.
+
 ## 0.2.0 — 2026-11-12
 
 The model proxy: see the model calls an assistant makes, what they cost and
