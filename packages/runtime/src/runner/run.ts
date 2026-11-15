@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   aggregateCase,
+  settledFailure,
   answeredStatus,
   buildMessage,
   buildRequest,
@@ -94,6 +95,8 @@ export interface RunOptions {
   readonly yoklaVersion: string;
   /** Samples per case when the case doesn't say. Default 1. */
   readonly samples?: number;
+  /** Stop a case's samples once its failure is settled (ADR-0038). */
+  readonly stopEarly?: boolean;
   /** Cases run in parallel. Default 1. */
   readonly concurrency?: number;
   /** Replaces the profile's request url, e.g. for a target on a random port. */
@@ -255,6 +258,17 @@ export function preflight(options: RunOptions): void {
   if (logs?.correlate.by === 'target-id' && target.response.id === undefined) {
     problems.push('observe.logs correlates by target id, but response.id is not mapped');
   }
+  // Logs and spans arrive after the run, and can change a verdict judged during it (ADR-0038).
+  if (options.stopEarly === true && logs !== undefined) {
+    problems.push(
+      '--stop-early judges each sample during the run, but target.observe.logs are read after it',
+    );
+  }
+  if (options.stopEarly === true && options.profile.modelProxy?.spans !== undefined) {
+    problems.push(
+      '--stop-early judges each sample during the run, but modelProxy.spans arrive after it',
+    );
+  }
   if (logs?.correlate.by === 'order' && (options.concurrency ?? 1) > 1) {
     problems.push('observe.logs correlates by order, which needs a concurrency of 1');
   }
@@ -396,7 +410,18 @@ interface Simulation {
 interface ExchangedCase {
   readonly testCase: Case;
   readonly samples: ExchangedSample[];
+  /** The samples the case planned. */
+  readonly planned: number;
+  /** true when the case stopped once its failure was settled (ADR-0038). */
+  readonly stoppedEarly: boolean;
 }
+
+/** Whether the samples so far settle a case's failure (ADR-0038). */
+type Settled = (
+  testCase: Case,
+  samples: readonly ExchangedSample[],
+  planned: number,
+) => Promise<boolean>;
 
 async function runSample(
   options: RunOptions,
@@ -943,9 +968,11 @@ async function exchangeCase(
   socket: SocketSetup | undefined,
   simulation: Simulation | undefined,
   tokens: TokenSource | undefined,
+  settled?: Settled,
 ): Promise<ExchangedCase> {
   const samples: ExchangedSample[] = [];
   const count = testCase.samples ?? options.samples ?? 1;
+  let stoppedEarly = false;
   for (let index = 0; index < count && cap?.stopped() !== true; index += 1) {
     samples.push(
       await runSample(
@@ -963,8 +990,12 @@ async function exchangeCase(
       ),
     );
     await cap?.check();
+    if (settled !== undefined && index < count - 1 && (await settled(testCase, samples, count))) {
+      stoppedEarly = true;
+      break;
+    }
   }
-  return { testCase, samples };
+  return { testCase, samples, planned: count, stoppedEarly };
 }
 
 /** Runs `worker` over `items` with at most `limit` in flight, keeping the input order. */
@@ -1413,6 +1444,44 @@ export async function runSuite(input: RunOptions): Promise<Results> {
       : (turn, arming) => recording.control.turn(recording.id, turn, arming);
   const settle: Settle | undefined =
     recording === undefined ? undefined : () => settleRecording(recording);
+  // With --stop-early, each sample is judged as the final judging would (ADR-0038).
+  const settled: Settled | undefined =
+    options.stopEarly === true
+      ? async (testCase, samples, planned) => {
+          let proxied: ProxiedCalls | undefined;
+          if (recording !== undefined && proxiesCalls(options.profile)) {
+            // Calls after the last answer count: settle first.
+            if ((await settleRecording(recording)) !== undefined) return false;
+            let sofar: ProxyRecord[];
+            try {
+              sofar = await recording.control.records(recording.id);
+            } catch {
+              // Unknown is never settled: the case runs on.
+              return false;
+            }
+            const tags = samples
+              .flatMap((sample) => sample.exchanges)
+              .flatMap((exchange) =>
+                exchange.tag === undefined ? [] : [{ key: exchange, tag: exchange.tag }],
+              );
+            proxied = {
+              byTurn: attributeCalls(sofar, tags, recording.correlation, options.prices ?? {})
+                .byTurn,
+              prompts: recording.prompts,
+            };
+          }
+          const sofarCase: ExchangedCase = {
+            testCase,
+            samples: [...samples],
+            planned,
+            stoppedEarly: false,
+          };
+          return settledFailure(
+            judgeCase(options, prepared, sofarCase, NOTHING_OBSERVED, proxied, undefined),
+            planned,
+          );
+        }
+      : undefined;
   let exchanged: ExchangedCase[] = [];
   // Undefined when there is no proxy, or its records couldn't be read.
   let records: ProxyRecord[] | undefined;
@@ -1436,6 +1505,7 @@ export async function runSuite(input: RunOptions): Promise<Results> {
           socket,
           simulation,
           tokens,
+          settled,
         ),
       () => cap?.stopped() === true,
     );
@@ -1513,9 +1583,10 @@ export async function runSuite(input: RunOptions): Promise<Results> {
       "no span carried a turn's trace id: the app may not pass the incoming traceparent on to its model calls",
     );
   }
-  const cases = exchanged.map((c) =>
-    judgeCase(options, prepared, c, observation, calls, spanned?.byTurn),
-  );
+  const cases = exchanged.map((c) => ({
+    ...judgeCase(options, prepared, c, observation, calls, spanned?.byTurn),
+    ...(c.stoppedEarly ? { samplesPlanned: c.planned } : {}),
+  }));
   const stop = cap?.reason();
   const capIssues =
     options.maxCostUsd !== undefined && recording === undefined && simulation !== undefined
@@ -1551,6 +1622,7 @@ export async function runSuite(input: RunOptions): Promise<Results> {
             ? recording.correlation
             : 'traceparent',
       partial: cap?.stopped() === true,
+      ...(options.stopEarly === true ? { sampling: { stopEarly: true } } : {}),
       ...(tokens === undefined ? {} : { auth: tokens.summary() }),
       ...(options.checkModules === undefined || options.checkModules.length === 0
         ? {}

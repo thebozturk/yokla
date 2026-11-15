@@ -816,3 +816,26 @@ describe('the origin of a finding (ADR-0033)', () => {
     expect(junitXml(mixed)).not.toContain('origin:');
   });
 });
+
+describe('cases that stopped early (ADR-0038)', () => {
+  const stopped = results(
+    [
+      { ...typeFail, samplesPlanned: 3 },
+      kase('stroller', 'pass', {
+        samples: [0, 1, 2].map((index) => ({ index, cache: 'cold' as const, turns: [turn()] })),
+      }),
+    ],
+    { sampling: { stopEarly: true } },
+  );
+
+  it('says how many samples ran, and where a case stopped', () => {
+    const { out } = terminalSummary(stopped);
+    expect(out[1]).toBe('  --stop-early: 4 samples ran of 6 planned');
+    expect(out[2]).toContain('presents 7 product(s) of other types [stopped after 1 of 3 samples]');
+    expect(htmlReport(stopped)).toContain('[stopped after 1 of 3 samples]');
+  });
+
+  it('says nothing of it in a run without --stop-early', () => {
+    expect(terminalSummary(mixed).out.join('\n')).not.toContain('stop');
+  });
+});

@@ -238,6 +238,8 @@ export const CaseResult = z.object({
   review: z.literal('proposed').optional(),
   dimensions: z.array(DimensionResult),
   samples: z.array(Sample),
+  /** The samples the case planned, when it stopped early once its failure was settled (ADR-0038). */
+  samplesPlanned: z.int().positive().optional(),
 });
 
 export const CheckSummary = z.object({
@@ -266,6 +268,8 @@ export const Results = z
       correlation: z.enum(['none', 'serial', 'header', 'traceparent']),
       /** true when the run stopped early, for example at the budget cap. */
       partial: z.boolean(),
+      /** How samples were run: stopEarly when a case stopped once its failure was settled (ADR-0038). */
+      sampling: z.object({ stopEarly: z.boolean() }).optional(),
       /** Measurements read from the target's logs (ADR-0009). */
       observation: z
         .object({

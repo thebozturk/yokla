@@ -20,6 +20,12 @@ export function terminalSummary(results: Results): TerminalSummary {
     return count === undefined ? [] : [`${status} ${String(count)}`];
   });
   out.push(`${String(results.summary.cases)} cases: ${counts.join(', ')}`);
+  if (results.run.sampling?.stopEarly === true) {
+    // How many samples --stop-early saved (ADR-0038).
+    const ran = results.cases.reduce((n, c) => n + c.samples.length, 0);
+    const planned = results.cases.reduce((n, c) => n + (c.samplesPlanned ?? c.samples.length), 0);
+    out.push(`  --stop-early: ${counted(ran, 'sample')} ran of ${String(planned)} planned`);
+  }
   const proposed = results.cases.filter((c) => c.review === 'proposed').length;
   if (proposed > 0) {
     out.push(
@@ -32,7 +38,11 @@ export function terminalSummary(results: Results): TerminalSummary {
     const problems = caseProblems(c);
     const reason = caseReason(c, problems);
     if (reason !== undefined) {
-      const marks = `${c.unstable ? ' [unstable]' : ''}${c.review === 'proposed' ? ' [proposed]' : ''}`;
+      const stopped =
+        c.samplesPlanned === undefined
+          ? ''
+          : ` [stopped after ${String(c.samples.length)} of ${String(c.samplesPlanned)} samples]`;
+      const marks = `${c.unstable ? ' [unstable]' : ''}${stopped}${c.review === 'proposed' ? ' [proposed]' : ''}`;
       rows.push([c.status, c.id, `${reason}${marks}`]);
     }
     const advisory = dimensionSummary(c, problems.advisory, true);

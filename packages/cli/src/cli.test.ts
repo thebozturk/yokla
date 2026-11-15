@@ -202,6 +202,21 @@ describe('yokla', () => {
     }
   });
 
+  it('refuses --stop-early with target logs, before any request (ADR-0038)', async () => {
+    const logged = PROFILE.replace(
+      '  response: { text: $.answer }\n',
+      '  response: { text: $.answer }\n  observe:\n    logs:\n      source: { kind: file, path: app.log }\n      correlate: { by: order }\n      fields: { cost: $.cost }\n',
+    );
+    const dir = workspace({ 'yokla.profile.yaml': logged, 'cases/a.yaml': CASES });
+    const { io, err } = capture();
+    expect(
+      await main(['run', '--profile', join(dir, 'yokla.profile.yaml'), '--stop-early'], io),
+    ).toBe(2);
+    expect(err.join('\n')).toContain(
+      '--stop-early judges each sample during the run, but target.observe.logs are read after it',
+    );
+  });
+
   it('rejects a non-numeric sample count', async () => {
     const dir = workspace({ 'yokla.profile.yaml': PROFILE, 'cases/a.yaml': CASES });
     const { io, err } = capture();

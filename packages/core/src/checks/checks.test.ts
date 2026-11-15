@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Results } from '../schema/results.ts';
 import { checkContext, mutate, turnView } from '../testing.ts';
-import { aggregateCase, summariseChecks, wilson } from './aggregate.ts';
+import { aggregateCase, settledFailure, summariseChecks, wilson } from './aggregate.ts';
 import { runChecks } from './run.ts';
 import type { Check } from './types.ts';
 
@@ -362,5 +362,73 @@ describe('unmeasured dimensions (ADR-0014)', () => {
       },
       { check: 'plain', applicable: true, findings: [] },
     ]);
+  });
+});
+
+const failingSample = (dimension = 'fabrication') =>
+  sample(turn([applied(finding(dimension, 'fail'))]));
+const passingSample = (dimension = 'fabrication') =>
+  sample(turn([applied(finding(dimension, 'pass'))]));
+/** The case result over `samples`, as the runner builds it. */
+const caseOver = (
+  samples: Sample[],
+  policies: Readonly<Record<string, 'worst-of-n' | 'majority-of-n' | 'advisory'>> = {},
+): Results['cases'][number] => ({
+  id: 'c',
+  suite: 'factual',
+  language: 'tr',
+  ...aggregateCase(samples, policies, false),
+  samples,
+});
+
+describe('settledFailure (ADR-0038)', () => {
+  it('settles a worst-of-N failure at the first failing sample, never a pass', () => {
+    expect(settledFailure(caseOver([failingSample()]), 5)).toBe(true);
+    expect(settledFailure(caseOver([passingSample(), failingSample()]), 5)).toBe(true);
+    expect(settledFailure(caseOver([passingSample(), passingSample()]), 5)).toBe(false);
+    // Not even once every sample passed: the last sample decides nothing early.
+    expect(settledFailure(caseOver([passingSample()]), 1)).toBe(false);
+  });
+
+  it('settles a majority-of-N failure only when the remaining samples cannot outvote it', () => {
+    const majority = { fabrication: 'majority-of-n' } as const;
+    expect(settledFailure(caseOver([failingSample()], majority), 3)).toBe(false);
+    expect(settledFailure(caseOver([failingSample(), failingSample()], majority), 3)).toBe(true);
+    expect(settledFailure(caseOver([failingSample(), failingSample()], majority), 5)).toBe(false);
+    expect(
+      settledFailure(caseOver([failingSample(), failingSample(), failingSample()], majority), 5),
+    ).toBe(true);
+    expect(
+      settledFailure(caseOver([passingSample(), failingSample(), failingSample()], majority), 3),
+    ).toBe(true);
+    expect(settledFailure(caseOver([passingSample(), failingSample()], majority), 3)).toBe(false);
+  });
+
+  it('ignores advisory dimensions, and settles an error', () => {
+    expect(
+      settledFailure(caseOver([failingSample('deflection')], { deflection: 'advisory' }), 3),
+    ).toBe(false);
+    const errored = sample(turn([], { error: 'HTTP 500' }));
+    expect(settledFailure(caseOver([errored]), 3)).toBe(true);
+  });
+
+  it('turns with the sample that decides it (mutations)', () => {
+    const base = [passingSample(), passingSample()];
+    expect(settledFailure(caseOver(base), 3)).toBe(false);
+    expect(
+      settledFailure(caseOver(mutate(base, (s) => [s[0] ?? passingSample(), failingSample()])), 3),
+    ).toBe(true);
+    const majority = { fabrication: 'majority-of-n' } as const;
+    const two = [failingSample(), failingSample()];
+    expect(settledFailure(caseOver(two, majority), 3)).toBe(true);
+    expect(
+      settledFailure(
+        caseOver(
+          mutate(two, (s) => [s[0] ?? failingSample(), passingSample()]),
+          majority,
+        ),
+        3,
+      ),
+    ).toBe(false);
   });
 });

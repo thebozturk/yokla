@@ -3327,3 +3327,107 @@ describe('runSuite with target.auth (ADR-0031)', () => {
     expect(results.run.auth).toMatchObject({ tokens: 2, retried: 1 });
   });
 });
+
+/** A target whose n-th answer shows an internal id when `shows(n)`. */
+const answering = (shows: (index: number) => boolean) =>
+  target((_r, index, response) => {
+    json(response, answer({ answer: shows(index) ? 'Çadır (TNT-001)' : 'Çadır' }));
+  });
+const runStopping = async (
+  url: string,
+  policy: 'worst-of-n' | 'majority-of-n',
+  stopEarly: boolean,
+  samples = 3,
+) =>
+  runSuite(
+    options(profile(url), cases({ turns: [{ user: 'a' }] }), {
+      checks: [...CORE_CHECKS, userCheck(NO_INTERNAL_IDS)],
+      policies: { 'internal-ids': policy },
+      samples,
+      ...(stopEarly ? { stopEarly: true } : {}),
+    }),
+  );
+
+const refusedStopping = async (p: Profile) =>
+  runSuite(options(p, cases({ turns: [{ user: 'a' }] }), { stopEarly: true }));
+
+describe('runSuite with --stop-early (ADR-0038)', () => {
+  it('stops a worst-of-N case at its first failing sample, with the verdict N samples give', async () => {
+    const t = await answering(() => true);
+    const stopped = await runStopping(t.url, 'worst-of-n', true);
+    expect(Results.safeParse(stopped).success).toBe(true);
+    expect(t.received).toHaveLength(1);
+    expect(stopped.cases[0]).toMatchObject({ status: 'fail', samplesPlanned: 3 });
+    expect(stopped.cases[0]?.samples).toHaveLength(1);
+    expect(stopped.run.sampling).toEqual({ stopEarly: true });
+    const full = await runStopping(t.url, 'worst-of-n', false);
+    expect(full.cases[0]?.status).toBe('fail');
+    expect(full.cases[0]?.samples).toHaveLength(3);
+    expect(full.cases[0]?.samplesPlanned).toBeUndefined();
+    expect(full.run.sampling).toBeUndefined();
+  });
+
+  it('stops a majority-of-N case only once the remaining samples cannot outvote it', async () => {
+    const always = await answering(() => true);
+    const stopped = await runStopping(always.url, 'majority-of-n', true);
+    expect(stopped.cases[0]).toMatchObject({ status: 'fail', samplesPlanned: 3 });
+    expect(stopped.cases[0]?.samples).toHaveLength(2);
+    // Fail, pass, fail: undecided after two, so all three run.
+    const mixed = await answering((index) => index !== 1);
+    const all = await runStopping(mixed.url, 'majority-of-n', true);
+    expect(all.cases[0]?.status).toBe('fail');
+    expect(all.cases[0]?.samples).toHaveLength(3);
+    expect(all.cases[0]?.samplesPlanned).toBeUndefined();
+  });
+
+  it('runs every sample of a passing case', async () => {
+    const t = await answering(() => false);
+    const results = await runStopping(t.url, 'worst-of-n', true);
+    expect(results.cases[0]?.status).toBe('pass');
+    expect(t.received).toHaveLength(3);
+    expect(results.cases[0]?.samplesPlanned).toBeUndefined();
+  });
+
+  it('stops once a sample errors, and changes nothing with one sample', async () => {
+    const failing = await target((_r, _i, response) => {
+      json(response, { error: 'down' }, 500);
+    });
+    const errored = await runStopping(failing.url, 'worst-of-n', true);
+    expect(errored.cases[0]).toMatchObject({ status: 'error', samplesPlanned: 3 });
+    expect(failing.received).toHaveLength(1);
+    const once = await answering(() => true);
+    const single = await runStopping(once.url, 'worst-of-n', true, 1);
+    expect(single.cases[0]?.samplesPlanned).toBeUndefined();
+  });
+
+  it('refuses target logs and spans, before any request', async () => {
+    const t = await answering(() => true);
+    await expect(refusedStopping(logged(t.url))).rejects.toThrow(
+      '--stop-early judges each sample during the run, but target.observe.logs are read after it',
+    );
+    await expect(refusedStopping(spanOnly(t.url))).rejects.toThrow(
+      '--stop-early judges each sample during the run, but modelProxy.spans arrive after it',
+    );
+    expect(t.received).toHaveLength(0);
+  });
+
+  it('judges a sample with the model calls the proxy tied to it so far', async () => {
+    const proxy = await fakeProxy();
+    const t = await target((_r, _i, response) => {
+      proxy.records.push(call(null, proxy.mark()), call(null, proxy.mark()));
+      json(response, answer());
+    });
+    const results = await runSuite(
+      options(
+        proxied(t.url, 'serial'),
+        cases({ turns: [{ user: 'a', expect: { budget: { modelCalls: 1 } } }], samples: 3 }),
+        { proxyUrl: proxy.url, stopEarly: true, checks: CORE_CHECKS },
+      ),
+    );
+    // Two calls against a budget of one: the first sample settles the failure.
+    expect(results.cases[0]).toMatchObject({ status: 'fail', samplesPlanned: 3 });
+    expect(t.received).toHaveLength(1);
+    expect(proxy.calls).toContain('GET /_yokla/recordings/rec-1');
+    expect(results.cases[0]?.samples[0]?.turns[0]?.proxy?.calls).toHaveLength(2);
+  });
+});

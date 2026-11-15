@@ -24,6 +24,8 @@ Options:
   --cases <path>        a case file or directory; repeatable (default: cases)
   --out <file>          where to write results (default: runs/<run id>.json)
   --samples <n>         samples per case when the case doesn't say (default: 1)
+  --stop-early          stop a case's samples once its failure is settled; not with target
+                        logs or spans
   --concurrency <n>     cases run in parallel (default: 1)
   --target-url <url>    use this url instead of the profile's request url
   --junit <file>        also write a JUnit XML report
@@ -62,6 +64,7 @@ const RUN_OPTIONS = {
   cases: { type: 'string', multiple: true },
   out: { type: 'string' },
   samples: { type: 'string' },
+  'stop-early': { type: 'boolean' },
   concurrency: { type: 'string' },
   'target-url': { type: 'string' },
   junit: { type: 'string' },
@@ -128,6 +131,7 @@ export async function runCommand(
       packs: DOMAIN_PACKS,
       languages: LANGUAGE_PACKS,
       ...(samples === undefined ? {} : { samples }),
+      ...(values['stop-early'] === true ? { stopEarly: true } : {}),
       ...(concurrency === undefined ? {} : { concurrency }),
       ...(values['target-url'] === undefined ? {} : { targetUrl: values['target-url'] }),
       ...(values['proxy-url'] === undefined ? {} : { proxyUrl: values['proxy-url'] }),

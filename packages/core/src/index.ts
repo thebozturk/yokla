@@ -183,7 +183,13 @@ export {
   TurnResult,
 } from './schema/results.ts';
 
-export { aggregateCase, summariseChecks, wilson, type CaseAggregate } from './checks/aggregate.ts';
+export {
+  aggregateCase,
+  settledFailure,
+  summariseChecks,
+  wilson,
+  type CaseAggregate,
+} from './checks/aggregate.ts';
 export { runChecks } from './checks/run.ts';
 export { findOrigin } from './checks/origin.ts';
 export {

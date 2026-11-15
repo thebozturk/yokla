@@ -218,6 +218,12 @@ function marks(c: CaseResult): Html[] {
   return [
     ...(c.review === 'proposed' ? [h`<span class="mark">[proposed]</span>`] : []),
     ...(c.unstable ? [h`<span class="mark">[unstable]</span>`] : []),
+    // A case that stopped once its failure was settled (ADR-0038).
+    ...(c.samplesPlanned === undefined
+      ? []
+      : [
+          h`<span class="mark">[stopped after ${String(c.samples.length)} of ${String(c.samplesPlanned)} samples]</span>`,
+        ]),
   ];
 }
 

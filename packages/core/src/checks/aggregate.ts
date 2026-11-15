@@ -115,6 +115,24 @@ export function aggregateCase(
   return { status, unstable, dimensions };
 }
 
+/**
+ * Whether no further sample can change a case's failure (ADR-0038), given its
+ * result over the samples so far and the samples it plans: a sample errored;
+ * a deciding worst-of-N dimension failed; or a deciding majority-of-N
+ * dimension fails even if every remaining sample measures it and passes.
+ * Passing is never settled early: a later sample can fail a dimension or
+ * leave it unmeasured.
+ */
+export function settledFailure(result: CaseResult, planned: number): boolean {
+  if (result.status === 'error') return true;
+  const left = Math.max(0, planned - result.samples.length);
+  return result.dimensions.some((d) => {
+    if (d.policy === 'advisory') return false;
+    if (d.policy === 'majority-of-n') return d.failed * 2 > d.samples + left;
+    return d.failed > 0;
+  });
+}
+
 /** How often each check applied, and with what result, across the run. */
 export function summariseChecks(cases: readonly CaseResult[]): CheckSummary[] {
   const byCheck = new Map<string, CheckSummary>();
