@@ -52,6 +52,9 @@ change a decision, propose a new ADR. Never edit an accepted one.
 - **JSON Schemas are generated.** The files in `packages/cli/schemas/` come
   from the Zod schemas. After a schema change, regenerate them with
   `pnpm test -u` and review the diff. CI fails when they drift.
+- **The CLI's README is its npm page.** `packages/cli/README.md` is a copy of
+  the root `README.md`, and every link in it is absolute. A test fails when
+  they differ: edit the root README, then copy it.
 - **Markdown is hand-formatted.** Prettier skips `*.md`, so accepted ADRs are
   never rewritten.
 - **Empty entry points carry an `oxlint-disable unicorn/no-empty-file`
