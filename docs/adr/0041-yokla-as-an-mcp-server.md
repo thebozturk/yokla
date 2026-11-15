@@ -1,6 +1,6 @@
 # 0041. yokla as an MCP server for coding agents
 
-Status: Proposed · Date: 2026-11-15
+Status: Accepted · Date: 2026-11-15
 
 ## Context
 
