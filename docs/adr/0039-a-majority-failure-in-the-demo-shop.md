@@ -1,6 +1,6 @@
 # 0039. A majority-of-N failure in the demo-shop
 
-Status: Proposed · Date: 2026-11-15
+Status: Accepted · Date: 2026-11-15
 
 Amends [ADR-0038](0038-stopping-once-a-failure-is-settled.md).
 
