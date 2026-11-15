@@ -4,6 +4,15 @@ Notable changes per version. Versions follow the roadmap in
 [design §20](docs/design.md#20-roadmap); a version ships when its exit criteria
 hold.
 
+## Unreleased
+
+- **Recorded model calls, replayed (ADR-0040).** `yokla run --record` keeps
+  the target's model calls in a cassette, and `--replay` answers them from
+  it, calling no provider, so a suite repeats at no model cost. A call the
+  cassette has no match for makes its case `error`, or with `--replay-loose`
+  is answered by position. A new fault kind, `answer`, replaces the text of
+  the model's answer, on a live call or a replayed one.
+
 ## 0.3.0 — 2026-11-15
 
 Reach and conversations: a first run in five minutes, more ways to reach a

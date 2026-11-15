@@ -122,6 +122,15 @@ simulated customer there too.
   `price-rewritten` lets the model write the right price, and the app lowers
   it by 10 % afterwards. The last two are the demo-shop's own, and need
   `--model-url`.
+- **Recorded model calls, replayed.** A run with `--record` keeps the
+  shop's model calls in a cassette, and `--replay` answers them from it,
+  with no call to the provider (ADR-0040). `cases-replay/` holds a case
+  whose answer fault makes the writer say a price no product has: the shop
+  passes it on, and `price-grounded` traces it to the model. It is marked as
+  a known gap, since the shop checks no price its model writes.
+  `packages/cli/src/replay.e2e.test.ts` records and replays the acceptance
+  and resilience cases, and replays the acceptance cassette against a shop
+  with `prompt-bloat`, whose changed prompts no longer match it.
 
 ```sh
 mkdir -p runs
@@ -175,6 +184,18 @@ them in CI, a demo-shop per defect. To run them yourself:
    ```
 
 Add `--defect <name>` to the demo-shop to see a defect caught.
+
+To repeat the resilience cases without calling the provider again, record
+them once and replay the cassette, against a demo-shop with any defect:
+
+```sh
+pnpm yokla run --profile examples/demo-shop/yokla.proxy.profile.yaml \
+  --cases examples/demo-shop/cases-resilience --target-url http://127.0.0.1:<port>/v1/chat \
+  --record runs/resilience.cassette.json
+pnpm yokla run --profile examples/demo-shop/yokla.proxy.profile.yaml \
+  --cases examples/demo-shop/cases-resilience --target-url http://127.0.0.1:<port>/v1/chat \
+  --replay runs/resilience.cassette.json
+```
 
 ### Test it with yokla
 

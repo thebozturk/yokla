@@ -538,8 +538,9 @@ app. The app's provider base-URL variable points at it
 (`http://127.0.0.1:<port>/<upstream-id>`). The proxy forwards to the real
 upstream with the app's own credentials. It holds no keys and binds to
 localhost only.
-- It changes a response only to inject a turn's fault plan (ADR-0013), and
-  never outside a recording. Usage a provider didn't report stays unmeasured.
+- It changes a response only to inject a turn's fault plan (ADR-0013), or
+  answers one from a cassette (ADR-0040), and never outside a recording.
+  Usage a provider didn't report stays unmeasured.
 - `yokla run` opens a recording on the proxy's local control endpoint before
   the first case and closes it after the last, and reads its records from
   there.
@@ -581,7 +582,9 @@ with tokens the provider didn't report, costs null, never 0.
 - malformed JSON,
 - truncated stream,
 - empty content,
-- tool calls that violate their schema.
+- tool calls that violate their schema,
+- the model's answer replaced with a text the case gives (`answer`,
+  ADR-0040), to ask what the app does when the model says something else.
 
 The resilience suite asserts graceful behaviour: an answer within the deadline,
 no fabricated facts, the fallback route used.
@@ -598,6 +601,22 @@ on them:
 **The model's answer (ADR-0033).** The proxy also reads the text each call
 answered, as the app got it, and keeps it as prompt text is. With the
 messages, it tells where a finding's value first appeared (§10).
+
+**Cassettes (ADR-0040).** `yokla run --record` keeps every model call the
+proxy tied to a turn in a cassette: the turn's key (case, sample and turn),
+the call's position, its upstream and path, a hash of its request, and the
+provider's answer in full. `yokla run --replay` sends the cassette to the
+proxy, which answers each call from it and forwards nothing, so a suite
+repeats with no model cost and with the answers it got.
+- A call finds its answer within its turn, by upstream, path and request
+  hash. A call with no match diverged: the app asked something it didn't ask
+  when the cassette was recorded. It gets a `502`, and its turn is an
+  `error`; with `--replay-loose`, the recorded call at the same position
+  answers it instead.
+- A turn's faults apply to replayed answers too, so the resilience cases run
+  on a cassette, and an `answer` fault changes one recorded answer.
+- The runner writes the file; the proxy keeps the answers in memory for the
+  recording that asked for them.
 
 **Tool calls (ADR-0025).** The proxy also records the tools each call offers
 and the tool calls its answer asks for, with arguments kept as prompt text is.
@@ -694,7 +713,8 @@ ADR-0014 sets how cost and latency are bounded.
   A call without a cost makes the cap unenforceable, so the run stops there
   too. Without upstreams, the cap counts the costs of spans; a span that comes
   late is counted at the next check (ADR-0029). Without a model proxy, the cap
-  counts yokla's own calls alone.
+  counts yokla's own calls alone. A call answered from a cassette reached
+  no provider, and the cap doesn't count it (ADR-0040).
 - **Per-turn budgets** (`budget.costUsd`, `budget.modelCalls`) and per-suite
   thresholds (latency percentiles, cost per turn, total cost) judge what was
   spent (§16).
@@ -722,7 +742,9 @@ ADR-0014 sets how cost and latency are bounded.
   when the target echoes one. Token urls must use HTTPS, except to a loopback
   host.
 - **Target data.** Generated and recorded files may contain the target's data,
-  so `yokla-data/` and `runs/` stay out of version control. `yokla init`
+  so `yokla-data/` and `runs/` stay out of version control. A cassette holds
+  the provider's answers in full, though no request text, and is kept like a
+  results file (ADR-0040). `yokla init`
   adds them to `.gitignore` (ADR-0018). The HTML report holds the target's
   answers too (ADR-0023), and so does the simulated customer's reply cache
   in `yokla-data/customer/` (ADR-0028).
@@ -736,7 +758,8 @@ ADR-0014 sets how cost and latency are bounded.
 
 - **Results file.** A versioned JSON schema (`results.v1`) holding:
   - run metadata: yokla version, profile hash, environment, correlation mode,
-    and the model proxy's totals,
+    the model proxy's totals, and whether the run recorded or replayed a
+    cassette (ADR-0040),
   - findings per case, sample and turn, with the origin of a failing
     finding's value (ADR-0033),
   - each turn's model calls and cost, and the fields observed in the target's
@@ -760,7 +783,8 @@ ADR-0014 sets how cost and latency are bounded.
   - Latency percentiles and cost thresholds per suite (`latencyP95Ms`,
     `costPerTurnUsd`, ...) are judged over every answered turn, every sample
     pooled; a threshold without data breaks the gate as `unmeasured`
-    (ADR-0014).
+    (ADR-0014). So does a latency threshold of a replayed run, whose answers
+    came at once (ADR-0040).
 
 ## 17. Packs
 
@@ -854,7 +878,13 @@ the model, each is caught by `price-grounded` alone and traced to its own
 origin. D2 adds `flaky-price`, which yokla shrink must report as flaky rather
 than shrink (ADR-0035). D3 adds `out-of-scope-answered`, the one defect a
 majority-of-N dimension catches, so that `--stop-early` is shown settling a
-majority failure (ADR-0039).
+majority failure (ADR-0039). D4 adds no defect: a recorded run of the
+acceptance and resilience cases replays with the same results and no call to
+the provider, and the resilience defects are caught on the cassette. A case
+in `cases-replay` makes the writer say a price no product has, which the shop
+passes on, as a known gap, and `price-grounded` traces it to the model; a
+shop whose prompts changed (`prompt-bloat`) no longer matches the cassette
+(ADR-0040).
 
 **Spans.** With `--otel-url` and the model over HTTP, the demo-shop exports a
 GenAI span for each model call, in the trace of the incoming `traceparent`,
@@ -882,7 +912,8 @@ harness asserts each mutation was applied.
 **Egress.** The egress test described in §15. It wraps the acceptance runs,
 the gate and the baseline in `packages/cli/src/demo-shop.e2e.test.ts`, and
 the model proxy's reconciliation, resilience and inspection runs in
-`packages/cli/src/proxy.e2e.test.ts`.
+`packages/cli/src/proxy.e2e.test.ts`, and the recorded and replayed runs in
+`packages/cli/src/replay.e2e.test.ts`.
 
 **External targets:**
 - **A private production e-commerce assistant.** Results are not published.
@@ -932,7 +963,7 @@ them.
 | **D1. Where a failure arose** (done, ADR-0033) | a failing finding that names a value (a price, a duration, a phrase) says where the value first appears: in what the model was sent, in what the model answered, or only in the app's answer; worked out from the proxy's records at check time, never guessed; shown in every report | on the demo-shop, three seeded price defects, one from each origin, are each attributed to their own origin; without proxy data the origin is unknown, not a guess |
 | **D2. The smallest failing conversation** (done, ADR-0035, ADR-0036) | `yokla shrink` cuts a failing case down to the fewest turns and the shortest messages that still fail the same check, with the samples needed to tell a real failure from chance; it writes the result as a proposed case | every demo-shop defect's failing case shrinks to a case that still fails only its own check; a flaky failure is reported as flaky, not shrunk |
 | **D3. Sampling that stops when the verdict is settled** (done, ADR-0038, ADR-0039) | with `--stop-early`, a case stops its samples once no further sample can change its failure: a worst-of-N failure, a majority-of-N failure the remaining samples can't outvote, or an error; a passing case runs every sample | on the demo-shop, verdicts match fixed-N runs while fewer samples run; a worst-of-N failure stops after one sample, a majority-of-N one after two of three |
-| **D4. Recorded model calls, replayed** | the proxy records the target's model calls into a cassette and can answer from it, so a run repeats with no model cost; a replay can change one recorded answer, to ask what the app does when the model says something else | a recorded demo-shop run replays with identical results and no upstream call; each resilience defect is also caught by changing one recorded answer |
+| **D4. Recorded model calls, replayed** (done, ADR-0040) | the proxy records the target's model calls into a cassette and can answer from it, so a run repeats with no model cost; a replay can change one recorded answer, to ask what the app does when the model says something else | a recorded demo-shop run replays with identical results and no upstream call; the resilience cases catch each resilience defect on a cassette; a changed answer's price is traced to the model; a changed prompt diverges from the cassette |
 | **D5. yokla as a tool for coding agents** | a local MCP server over stdio: run a case, explain a finding (D1), shrink it (D2), verify a fix against the shrunk case and its neighbours; no egress beyond the run's own | an agent, given only the MCP tools, finds and verifies the fix of a seeded demo-shop defect |
 | **D6. Comparing models through the proxy** | the proxy can send a call to another model than the app asked for, as the profile or the command line says; the same cases run once per model, and a report compares verdicts, cost and latency | on the demo-shop, two fake models give the comparison expected of them; the cheapest model that still passes the gate is named |
 | **D7. Tool results changed by the proxy** | the proxy can change a tool result before the model sees it: a canary instruction, for indirect injection without a test copy of the target's data; and changes that must not change the verdict, such as reordered items, for metamorphic checks | the demo-shop's injection defect (v0.5) is caught through a tool result the proxy changed; a metamorphic change gives the same verdicts |

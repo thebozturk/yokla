@@ -53,6 +53,9 @@ the profile by hand (see
 | `--out <file>` | `runs/<run id>.json` | Where to write the results. |
 | `--samples <n>` | 1 | Samples per case, when the case doesn't say. |
 | `--stop-early` | | Stop a case's samples once no further sample can change its failure (ADR-0038). Not with target logs or spans. |
+| `--record <file>` | | Write the run's model calls to a cassette, their answers in full (ADR-0040). Needs a model proxy with upstreams. |
+| `--replay <file>` | | Answer the model calls from a cassette, forwarding none to a provider (ADR-0040). Not with `--record`. |
+| `--replay-loose` | | With `--replay`, answer a call the cassette has no match for with the recorded call at the same position. |
 | `--concurrency <n>` | 1 | Cases run in parallel. Serial correlation needs 1, unless spans alone show the model calls. |
 | `--target-url <url>` | the profile's | Use this url instead of `target.request.url`. |
 | `--junit <file>` | | Also write a JUnit XML report. |
@@ -64,7 +67,8 @@ the profile by hand (see
 
 It exits with `0` when every case ran, whatever the verdicts: the gate judges
 them. It exits with `2` for a configuration problem, when `target.auth` can't
-get the run's first token, or when a case ended in `error`.
+get the run's first token, when a cassette can't be read, or when a case ended
+in `error`.
 
 **`--stop-early`** judges each sample during the run, as the final judging
 would, and stops a case's samples when:
@@ -80,6 +84,27 @@ cost, intervals and `unstable` come from the samples that ran. The summary
 says how many samples ran of those planned, and a stopped case records
 `samplesPlanned`. With target logs or spans, which arrive after the run, it
 refuses to run.
+
+**`--record` and `--replay`** repeat a run without calling the model again
+(ADR-0040); the [model proxy guide](model-proxy.md#cassettes) says how.
+- `--record runs/tents.cassette.json` writes every model call the proxy tied
+  to a turn: the turn's key (case, sample and turn), the call's position, its
+  upstream and path, the SHA-256 of its request, and the provider's answer in
+  full. The results record `run.record`.
+- `--replay runs/tents.cassette.json` sends the cassette to the proxy, which
+  answers each call from it and forwards nothing. The results record
+  `run.replay`, and each replayed call `replay`. A replayed call costs what it
+  cost when it was recorded, for budgets, but the cost cap doesn't count it.
+- **A call the cassette has no match for** gets a `502` from the proxy, and
+  its turn is an `error`: the app asked something it didn't ask when the
+  cassette was recorded. With `--replay-loose`, the recorded call at the
+  same position answers it instead. Either way, the run's issues count such
+  calls.
+- A cassette recorded with another profile replays, and the issues say so.
+- The gate judges a replayed run's latency thresholds as unmeasured: a
+  replayed answer comes at once.
+- **A cassette holds the provider's answers,** which may hold the target's
+  data. Keep it out of version control, like the results file.
 
 The results file (`results.v1`) holds every turn: the answer, the evidence,
 the checks with their findings, timings, and the model calls with their cost.

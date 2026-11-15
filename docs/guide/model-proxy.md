@@ -244,7 +244,62 @@ calibration, it gives no figure and exits with `2`.
 
 A turn's `faults` make the provider fail during that turn only: an error
 status, latency, a timeout, malformed JSON, empty content, a cut stream or
-invalid tool-call arguments. See [cases](cases.md#provider-faults).
+invalid tool-call arguments. An `answer` fault makes the model say a text of
+your choosing instead (ADR-0040). See [cases](cases.md#provider-faults).
+
+## Cassettes
+
+A run can record the target's model calls into a cassette, and a later run
+can answer them from it, so the suite repeats with no model cost and with
+the answers it got (ADR-0040). A change to the app then shows as a change in
+the results, not as model noise.
+
+```sh
+pnpm yokla run --record runs/suite.cassette.json   # calls the provider, keeps its answers
+pnpm yokla run --replay runs/suite.cassette.json   # calls no provider
+```
+
+- **Both need the model proxy** with upstreams; a run without one refuses
+  before any request. The proxy keeps the bodies for the run that asked when
+  it opened its recording, and the run writes the file. The proxy's
+  `--records` file never holds them.
+- **What a cassette keeps of each call:** the turn's key (the case id, the
+  sample and the turn, as fault jitter is seeded), the call's position among
+  the turn's calls, its upstream and path, the SHA-256 of its request body,
+  and the answer the provider gave: status, content type and body, a stream
+  as its text. A fault that changed the answer doesn't change what the
+  cassette keeps. A call that belongs to no turn, or whose answer was too
+  large to keep, isn't kept, and the run's issues say so.
+- **How a call finds its answer.** Within its turn, the first unused recorded
+  call with the same upstream, path and request hash.
+  - **A call that diverged,** one with no such match, gets a `502` that says
+    so, and its turn is an `error`. The app asked the model something it
+    didn't ask when the cassette was recorded, so its answers can't be
+    judged.
+  - **`--replay-loose`** answers a diverged call with the recorded call at the
+    same position, upstream and path, and marks it `diverged` in the
+    results. It suits an app whose prompts hold a timestamp or a fresh id.
+  - A turn with no recorded calls, or more calls than were recorded, has
+    nothing to answer from: those calls diverge even with `--replay-loose`.
+  - The run's issues count the calls that diverged, and say when the
+    cassette was recorded with another profile.
+- **A replayed call** is marked `replay` in the results. Its usage and cost
+  are the recorded call's, so `cost-budget` and the cost thresholds judge it
+  as before, but `--max-cost` doesn't count it: it reached no provider.
+- **Latency isn't the model's.** A replayed answer comes at once, so the gate
+  judges a replayed run's latency thresholds as unmeasured. A `latency` fault
+  still delays a replayed answer.
+- **Faults apply on top,** so the resilience cases run on a cassette. An
+  `answer` fault replaces one replayed answer and keeps the turn's others:
+  "what if the model had said this".
+- **A cassette goes stale** when the app's prompts change. Record again to
+  refresh it.
+- **yokla's own model calls,** such as a simulated customer's, aren't in the
+  cassette: their reply cache repeats them (ADR-0028).
+- **A cassette is target data.** It holds the provider's answers in full,
+  which may hold personal data from the target's prompts or its data, but no
+  request text and no credential. Keep it out of version control, like the
+  results file.
 
 ## Prompt inspection
 
@@ -355,5 +410,6 @@ The proxy listens on `127.0.0.1` only. It forwards each call to the upstream
 the profile names, and nowhere else. A path under `/_yokla/` is never
 forwarded. Records never hold a credential or another header. Prompt text,
 tool-call arguments and the model's answer text leave memory only as
-`prompts.store` allows. Of a span, only the fields above are kept, and only
+`prompts.store` allows, or in full in a cassette that `yokla run --record`
+asked for. Of a span, only the fields above are kept, and only
 while a recording is open.

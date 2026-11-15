@@ -122,6 +122,9 @@ answer, or only in your app's code after the model call.
   fail the same check. It reports a flaky failure as flaky.
 - **`yokla run --stop-early`** stops a case's samples once its failure is
   settled.
+- **`yokla run --record` and `--replay`** keep a run's model calls in a
+  cassette and answer them from it, so a suite repeats with no model cost. A
+  fault can make the model say something else, to see what the app does.
 
 **Cost and CI**
 - Per-turn and per-suite budgets for cost and latency. `yokla plan`

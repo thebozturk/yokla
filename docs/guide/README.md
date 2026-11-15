@@ -9,7 +9,7 @@ How to test your own assistant with yokla 0.2. The
 | [The profile](profile.md) | Reaching the target, reading its answer and evidence, sessions, limits, logs, the model proxy and the e-commerce data. |
 | [Cases](cases.md) | Turns, expectations, provider faults and case statuses. |
 | [Checks](checks.md) | Every check: what it judges, and when it applies. |
-| [The model proxy](model-proxy.md) | Seeing the app's model calls, their cost and prompts, and making the provider fail. |
+| [The model proxy](model-proxy.md) | Seeing the app's model calls, their cost and prompts, making the provider fail, and replaying recorded calls. |
 | [Commands, configuration and the gate](cli.md) | Every command and option, `yokla.config.yaml`, the gate and the baseline. |
 
 ## A first run

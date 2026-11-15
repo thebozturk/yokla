@@ -157,6 +157,7 @@ turns:
 | `empty-content` | Empty the answer's content. |
 | `truncated-stream` | Cut a streamed answer short. |
 | `invalid-tool-call` | Make a tool call's arguments invalid. |
+| `answer` | Replace the text of the model's answer with `text`, in the provider's own shape, JSON or a stream. Tool calls stay as they were (ADR-0040). |
 
 - **Which calls:** `calls` lists the turn's calls by number, from 1. The default
   is every call. `upstream` limits a fault to one upstream. The first plan
@@ -164,11 +165,27 @@ turns:
 - **Costs:** `status` and `timeout` faults make no provider call and cost
   nothing. The other faults change the real answer, whose usage is still
   recorded.
+- **What if the model said something else:** an `answer` fault asks how the
+  app handles an answer of your choosing, in the turn and call you name.
+
+  ```yaml
+  faults:
+    - fault: { kind: answer, text: 'Kubbe Çadır 2 Kişilik: 1.169,10 TL.' }
+      calls: [2]                   # the call that writes the answer
+  ```
+
+  A check that fails on the text's value traces it to the model (origin
+  `model`, ADR-0033). It works on a live call, and on a replayed one, where
+  every other answer of the turn stays as it was recorded (see
+  [cassettes](model-proxy.md#cassettes)).
 - **Judging:** `graceful-under-fault` judges every turn with faults. A turn
   without a usable answer, such as an error status or no answer, is judged
   only by the fault checks, since the others need an answer.
 - **Requirement:** faults need a model proxy. A case with faults is refused
   up front without one.
+- **On a cassette:** a replayed run applies a turn's faults to the replayed
+  answers as to live ones (ADR-0040). A `status` or `timeout` fault is
+  answered by the proxy itself, before the cassette.
 
 ## Approval
 
