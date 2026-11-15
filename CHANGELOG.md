@@ -12,6 +12,11 @@ hold.
   cassette has no match for makes its case `error`, or with `--replay-loose`
   is answered by position. A new fault kind, `answer`, replaces the text of
   the model's answer, on a live call or a replayed one.
+- **yokla as an MCP server for coding agents (ADR-0041).** `yokla mcp` serves
+  `list_cases`, `run_cases`, `explain_finding`, `shrink_case` and
+  `verify_fix` over stdio. The person fixes the profile, cases and target at
+  start, and a session that can spend needs `--max-cost`, which covers every
+  run of the session.
 
 ## 0.3.0 — 2026-11-15
 

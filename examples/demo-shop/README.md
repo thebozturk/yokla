@@ -131,6 +131,11 @@ simulated customer there too.
   `packages/cli/src/replay.e2e.test.ts` records and replays the acceptance
   and resilience cases, and replays the acceptance cassette against a shop
   with `prompt-bloat`, whose changed prompts no longer match it.
+- **A coding agent's tools.** `packages/cli/src/mcp.e2e.test.ts` drives
+  `yokla mcp` over stdio, as a coding agent would (ADR-0041), against a shop
+  with `price-rewritten`. It finds the rewritten price, traced to the app,
+  shrinks `tents-after-small-talk-tr` to its last turn, and verifies the fix
+  once the shop restarts on the same port without the defect.
 
 ```sh
 mkdir -p runs

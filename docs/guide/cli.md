@@ -322,3 +322,72 @@ original case's file. It never overwrites a file.
 definition changed since that run, and a simulated customer's case
 (ADR-0028), whose turns a model writes. Each exits with `2` before any
 request.
+
+## `yokla mcp`
+
+```sh
+pnpm yokla mcp --profile yokla.profile.yaml --cases cases --max-cost 2 \
+  [--config <file>] [--target-url <url>] [--proxy-url <url>] [--out runs] \
+  [--replay <cassette> [--replay-loose]]
+```
+
+Serves yokla's tools to a coding agent over stdio, in the Model Context
+Protocol (ADR-0041). The agent starts it as a local tool server; for
+example, in an MCP client's configuration:
+
+```json
+{
+  "mcpServers": {
+    "yokla": {
+      "command": "npx",
+      "args": ["yokla", "mcp", "--profile", "yokla.profile.yaml", "--max-cost", "2"]
+    }
+  }
+}
+```
+
+**The tools.**
+
+| Tool | Does | Costs |
+|---|---|---|
+| `list_cases` | Lists the cases: id, suite, title, language, turns and review status. | nothing |
+| `run_cases` | Runs the cases named, or every case, as `yokla run` does. Returns the run id, the statuses, and each case that didn't pass with its failing findings: check, dimension, message, subject and origin. | model calls |
+| `explain_finding` | Shows one case of a run, turn by turn: the user's message, the answer, the failing findings with their origin, and the turn's model calls. | nothing |
+| `shrink_case` | Shrinks a failing case of a run, as `yokla shrink` does, and writes `<id>-min` next to it as a proposed case. | model calls |
+| `verify_fix` | Runs a failing case of a run again, with its `<id>-min` case when there is one, and the other cases of its suite. `fixed` says whether the target failure is gone; `regressions` lists each case that passed in that run and no longer passes. | model calls |
+
+**What the person fixes at start.** The profile, the case paths, the
+configuration and the target and proxy urls. No tool takes a path, a url
+or a profile, so an agent chooses which cases to run, never which target
+or which files to read.
+- Each tool call loads the files again, as a command would: a case the
+  agent edited counts at the next call, and so does a case `shrink_case`
+  wrote.
+- Calls run one at a time, since the model proxy holds one recording at a
+  time.
+- Every run writes its results under `--out`, and the tools return its run
+  id. The other tools take that id.
+- stdout carries protocol messages only; what yokla would print goes to
+  stderr.
+
+**Cost.** A session that can spend needs `--max-cost`: one whose profile
+has a model proxy with upstreams or spans, or whose configuration has a
+customer model. Without it, `yokla mcp` refuses to start.
+- The cap covers every run of the session. Each run gets what is left as
+  its own cap, and each paid tool says what it spent and what is left.
+- Once it is spent, the paid tools refuse, and `list_cases` and
+  `explain_finding` keep working. Start the server again to raise it.
+- Without a model proxy, the target's cost can't be counted; each paid
+  tool says so.
+- With `--replay`, every run answers its model calls from a cassette
+  (ADR-0040), at no model cost. `shrink_case` then refuses: a candidate's
+  turns and samples aren't the recorded ones.
+
+**What the agent sees.** Tool results hold the target's answers, cut at
+4,000 characters, and the agent may send them to a hosted model. That is
+your choice, as a hosted customer model is (ADR-0028). Prompts and the
+model's answers appear only as far as the profile's `prompts.store` keeps
+them in the results.
+
+It exits with `0` when the client closes stdin, and with `2` for a
+configuration problem, such as a missing `--max-cost`.
