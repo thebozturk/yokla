@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=../../../packages/cli/schemas/cases.v1.schema.json
+#
+# A case that asks what the demo-shop does when its model says something else
+# (ADR-0040). The answer fault replaces the text of the turn's second model
+# call, the one that writes the answer, with a price no product has. It needs
+# the model over HTTP behind the model proxy, on a live run or a cassette; see
+# packages/cli/src/replay.e2e.test.ts.
+
+version: 1
+cases:
+  - id: tents-wrong-model-price-tr
+    title: The model writes a price no product has; the shop passes it on
+    suite: factual
+    language: tr
+    knownGap:
+      reason: >-
+        The demo-shop doesn't check the prices its model writes against the
+        catalog, so a wrong price from the model reaches the user.
+    turns:
+      - user: Çadır önerir misin?
+        faults:
+          - fault: { kind: answer, text: 'Kubbe Çadır 2 Kişilik: 1.169,10 TL.' }
+            calls: [2]
+        expect:
+          answerable: true
+          productType: outdoor/camping/tent
