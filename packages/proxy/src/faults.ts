@@ -7,16 +7,19 @@ import { geminiBreakToolCalls, geminiEmptyText, geminiError } from './gemini.ts'
 import type { UpstreamKind } from './usage.ts';
 
 export type ChangingFault = Extract<
-  Fault['kind'],
-  'malformed-json' | 'empty-content' | 'truncated-stream' | 'invalid-tool-call'
+  Fault,
+  {
+    kind: 'malformed-json' | 'empty-content' | 'truncated-stream' | 'invalid-tool-call' | 'answer';
+  }
 >;
 
-export function isChanging(kind: Fault['kind']): kind is ChangingFault {
+export function isChanging(fault: Fault): fault is ChangingFault {
   return (
-    kind === 'malformed-json' ||
-    kind === 'empty-content' ||
-    kind === 'truncated-stream' ||
-    kind === 'invalid-tool-call'
+    fault.kind === 'malformed-json' ||
+    fault.kind === 'empty-content' ||
+    fault.kind === 'truncated-stream' ||
+    fault.kind === 'invalid-tool-call' ||
+    fault.kind === 'answer'
   );
 }
 
@@ -162,6 +165,86 @@ function breakToolCalls(kind: UpstreamKind, value: unknown): boolean {
   return changed;
 }
 
+/**
+ * A text slot of an answer: its holder and key, and the copy of the answer
+ * it belongs to. The pieces of a stream join into one copy; a Responses API
+ * stream also repeats the whole text in its `done` and `completed` events,
+ * each event type a copy of its own.
+ */
+type TextSlot = readonly [holder: Record<string, unknown>, key: string, copy: string];
+
+/**
+ * The text slots of one JSON answer or stream event, in order: message
+ * content, text blocks and parts, and text deltas. A Gemini thought summary
+ * isn't the answer's text.
+ */
+function textSlots(kind: UpstreamKind, value: unknown): TextSlot[] {
+  const slots: TextSlot[] = [];
+  const add = (holder: unknown, key: string, copy = 'pieces') => {
+    if (isObject(holder) && typeof holder[key] === 'string') slots.push([holder, key, copy]);
+  };
+  if (!isObject(value)) return slots;
+  if (kind === 'gemini') {
+    for (const candidate of list(value['candidates'])) {
+      const content = isObject(candidate) ? candidate['content'] : undefined;
+      for (const part of list(isObject(content) ? content['parts'] : undefined)) {
+        if (isObject(part) && part['thought'] !== true) add(part, 'text');
+      }
+    }
+    return slots;
+  }
+  if (kind === 'anthropic') {
+    for (const part of list(value['content']))
+      if (isObject(part) && part['type'] === 'text') add(part, 'text');
+    if (value['type'] === 'content_block_delta') {
+      const delta = value['delta'];
+      if (isObject(delta) && delta['type'] === 'text_delta') add(delta, 'text');
+    }
+    return slots;
+  }
+  for (const choice of list(value['choices'])) {
+    if (!isObject(choice)) continue;
+    add(choice['message'], 'content');
+    add(choice['delta'], 'content');
+  }
+  const messageParts = (output: unknown, copy: string) => {
+    for (const item of list(output)) {
+      if (isObject(item) && item['type'] === 'message') {
+        for (const part of list(item['content'])) add(part, 'text', copy);
+      }
+    }
+  };
+  messageParts(value['output'], 'pieces');
+  // A Responses API stream: the pieces, then the whole text again in each done event.
+  const type = value['type'];
+  if (type === 'response.output_text.delta') add(value, 'delta');
+  if (type === 'response.output_text.done') add(value, 'text', type);
+  if (type === 'response.content_part.done') add(value['part'], 'text', type);
+  if (type === 'response.output_item.done') messageParts([value['item']], type);
+  if (type === 'response.completed') {
+    const response = value['response'];
+    messageParts(isObject(response) ? response['output'] : undefined, type);
+  }
+  return slots;
+}
+
+/**
+ * A replacer for the answer fault (ADR-0040): in each copy of the answer, the
+ * first text slot gets the text and every later one is emptied, so a stream's
+ * pieces join to the text, and so does each full copy a stream repeats.
+ */
+function replacer(kind: UpstreamKind, text: string): (value: unknown) => boolean {
+  const placed = new Set<string>();
+  return (value) => {
+    const slots = textSlots(kind, value);
+    for (const [holder, key, copy] of slots) {
+      holder[key] = placed.has(copy) ? '' : text;
+      placed.add(copy);
+    }
+    return slots.length > 0;
+  };
+}
+
 function blocks(body: string): string[] {
   return body.split(/\r?\n\r?\n/u).filter((block) => block.trim() !== '');
 }
@@ -199,7 +282,30 @@ export function changeAnswer(
   stream: boolean,
 ): { body: string; applied: boolean } {
   const unchanged = { body, applied: false };
-  switch (fault) {
+  switch (fault.kind) {
+    case 'answer': {
+      const replace = replacer(kind, fault.text);
+      // A Gemini stream may be a JSON array of answers rather than events.
+      if (stream && kind === 'gemini' && body.trim().startsWith('[')) {
+        try {
+          const answers: unknown = JSON.parse(body);
+          const changed = Array.isArray(answers) && answers.map(replace).some(Boolean);
+          return changed ? { body: JSON.stringify(answers), applied: true } : unchanged;
+        } catch {
+          return unchanged;
+        }
+      }
+      if (stream) {
+        const rewritten = rewriteEvents(body, replace);
+        return { body: rewritten.body, applied: rewritten.changed };
+      }
+      try {
+        const value: unknown = JSON.parse(body);
+        return replace(value) ? { body: JSON.stringify(value), applied: true } : unchanged;
+      } catch {
+        return unchanged;
+      }
+    }
     case 'malformed-json':
       return stream || body.length < 2
         ? unchanged

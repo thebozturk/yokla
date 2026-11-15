@@ -28,11 +28,13 @@ import {
   readEvents,
   readStream,
   RESULTS_SCHEMA_ID,
+  CASSETTE_SCHEMA_ID,
   reviewStatus,
   runChecks,
   summariseChecks,
   toJson,
   type AggregationPolicy,
+  type Cassette,
   type Case,
   type CaseCustomer,
   type CaseTurn,
@@ -97,6 +99,12 @@ export interface RunOptions {
   readonly samples?: number;
   /** Stop a case's samples once its failure is settled (ADR-0038). */
   readonly stopEarly?: boolean;
+  /** Record the run's model calls into a cassette, or answer them from one (ADR-0040). */
+  readonly cassette?:
+    | { readonly record: true }
+    | { readonly replay: Cassette; readonly sha256: string; readonly loose?: boolean };
+  /** Receives the cassette a recording run made (ADR-0040). */
+  readonly onCassette?: (cassette: Cassette) => void;
   /** Cases run in parallel. Default 1. */
   readonly concurrency?: number;
   /** Replaces the profile's request url, e.g. for a target on a random port. */
@@ -257,6 +265,12 @@ export function preflight(options: RunOptions): void {
   }
   if (logs?.correlate.by === 'target-id' && target.response.id === undefined) {
     problems.push('observe.logs correlates by target id, but response.id is not mapped');
+  }
+  // A cassette is made and answered by the model proxy (ADR-0040).
+  if (options.cassette !== undefined && !proxiesCalls(options.profile)) {
+    problems.push(
+      'recording or replaying a cassette needs a modelProxy with upstreams in the profile',
+    );
   }
   // Logs and spans arrive after the run, and can change a verdict judged during it (ADR-0038).
   if (options.stopEarly === true && logs !== undefined) {
@@ -658,13 +672,16 @@ async function runSample(
       const faults = turn.faults;
       const started = performance.now();
       try {
-        if (tag !== undefined && proxied && (correlation === 'serial' || faults !== undefined)) {
+        // A cassette keys each call by its turn, so every turn is armed with its key (ADR-0040).
+        const keyed = faults !== undefined || options.cassette !== undefined;
+        if (tag !== undefined && proxied && (correlation === 'serial' || keyed)) {
           await arm?.(tag.id, {
             inFlight: correlation === 'serial',
             // The jitter seed: what identifies this turn in every run (ADR-0017).
-            ...(faults === undefined
-              ? {}
-              : { faults, seed: `${testCase.id}|${String(sampleIndex)}|${String(turnIndex)}` }),
+            ...(faults === undefined ? {} : { faults }),
+            ...(keyed
+              ? { seed: `${testCase.id}|${String(sampleIndex)}|${String(turnIndex)}` }
+              : {}),
           });
         }
         const result = await exchangeTurn(
@@ -1156,9 +1173,23 @@ function judgeCase(
       if (proxy !== undefined && proxied !== undefined) {
         turn = { ...turn, proxy: storeTurnProxy(proxy, proxied.prompts) };
       }
+      // A strict replay answers no call the cassette doesn't hold: the turn can't be judged (ADR-0040).
+      const replaying = options.cassette !== undefined && 'replay' in options.cassette;
+      let diverged = false;
+      if (replaying && options.cassette.loose !== true && turn.error === undefined) {
+        const index = (proxy?.calls ?? []).findIndex((call) => call.replay?.diverged === true);
+        if (index !== -1) {
+          diverged = true;
+          turn = {
+            ...turn,
+            error: `the cassette has no call that matches model call ${String(index + 1)} of this turn: the app asked something it didn't ask when the cassette was recorded`,
+          };
+        }
+      }
       const spans = spanned?.get(exchange);
       if (spans !== undefined) turn = { ...turn, spans };
-      if (exchange.view === undefined) return turn;
+      // An errored turn is not judged, as a turn whose answer couldn't be read isn't.
+      if (exchange.view === undefined || diverged) return turn;
       const proxyCalls = (proxy?.calls ?? []).map((call) => ({
         inputTokens: call.usage.input,
         prompt: promptView(call.prompt),
@@ -1300,6 +1331,8 @@ function costCap(
         }
       }
       for (const record of recorded.records) {
+        // A replayed call reached no provider: it spent nothing (ADR-0040).
+        if (record.replay !== undefined) continue;
         const cost = callCost(
           record.usage,
           options.prices?.[record.upstream]?.[record.model ?? ''],
@@ -1334,7 +1367,14 @@ async function openRecording(options: RunOptions): Promise<OpenRecording | undef
         `the model proxy doesn't route ${unrouted.join(', ')}; start it with this profile`,
       );
     }
-    const { id } = await control.open();
+    const cassette = options.cassette;
+    const { id } = await control.open(
+      cassette === undefined
+        ? {}
+        : 'record' in cassette
+          ? { capture: true }
+          : { replay: { loose: cassette.loose ?? false, calls: cassette.replay.calls } },
+    );
     return {
       control,
       id,
@@ -1483,6 +1523,7 @@ export async function runSuite(input: RunOptions): Promise<Results> {
         }
       : undefined;
   let exchanged: ExchangedCase[] = [];
+  let recordedCalls: number | undefined;
   // Undefined when there is no proxy, or its records couldn't be read.
   let records: ProxyRecord[] | undefined;
   let spanCalls: SpanCall[] | undefined;
@@ -1535,6 +1576,28 @@ export async function runSuite(input: RunOptions): Promise<Results> {
         const closed = await recording.control.closeAll(recording.id);
         records = closed.records;
         if (wait !== undefined) spanCalls = closed.spans;
+        // The calls the proxy captured become the run's cassette (ADR-0040).
+        if (options.cassette !== undefined && 'record' in options.cassette) {
+          const captured = records.flatMap((record) =>
+            record.capture === undefined ? [] : [record.capture],
+          );
+          recordedCalls = captured.length;
+          // A forwarded call the cassette lacks can't be answered when it replays.
+          const missed = records.filter(
+            (record) => record.forwarded !== false && record.capture === undefined,
+          ).length;
+          if (missed > 0) {
+            proxyIssues.push(
+              `${String(missed)} model call(s) aren't in the cassette: they belong to no turn, or their answer was too large to keep, so a replay will find no match for them`,
+            );
+          }
+          options.onCassette?.({
+            schema: CASSETTE_SCHEMA_ID,
+            profileSha256: options.profileSha256,
+            recordedAt: new Date().toISOString(),
+            calls: captured,
+          });
+        }
       } catch (error) {
         proxyIssues.push(`the model proxy's records could not be read: ${errorMessage(error)}`);
       }
@@ -1594,9 +1657,26 @@ export async function runSuite(input: RunOptions): Promise<Results> {
           "the cost cap counted yokla's own model calls only: without a model proxy, the target's cost is unknown",
         ]
       : [];
+  const replay =
+    options.cassette !== undefined && 'replay' in options.cassette ? options.cassette : undefined;
+  const diverged = (records ?? []).filter((record) => record.replay?.diverged === true).length;
+  const replayIssues =
+    replay === undefined
+      ? []
+      : [
+          ...(replay.replay.profileSha256 === options.profileSha256
+            ? []
+            : ['the cassette was recorded with another profile than this run uses']),
+          ...(diverged === 0
+            ? []
+            : [
+                `${String(diverged)} model call(s) had no match in the cassette${replay.loose === true ? ' and were answered by position' : ''}`,
+              ]),
+        ];
   const issues = [
     ...observation.issues,
     ...proxyIssues,
+    ...replayIssues,
     ...capIssues,
     ...(stop === undefined ? [] : [stop]),
   ];
@@ -1623,6 +1703,10 @@ export async function runSuite(input: RunOptions): Promise<Results> {
             : 'traceparent',
       partial: cap?.stopped() === true,
       ...(options.stopEarly === true ? { sampling: { stopEarly: true } } : {}),
+      ...(recordedCalls === undefined ? {} : { record: { calls: recordedCalls } }),
+      ...(replay === undefined
+        ? {}
+        : { replay: { cassetteSha256: replay.sha256, loose: replay.loose === true, diverged } }),
       ...(tokens === undefined ? {} : { auth: tokens.summary() }),
       ...(options.checkModules === undefined || options.checkModules.length === 0
         ? {}

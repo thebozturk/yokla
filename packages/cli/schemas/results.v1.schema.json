@@ -101,6 +101,43 @@
           ],
           "additionalProperties": false
         },
+        "record": {
+          "type": "object",
+          "properties": {
+            "calls": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "calls"
+          ],
+          "additionalProperties": false
+        },
+        "replay": {
+          "type": "object",
+          "properties": {
+            "cassetteSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "loose": {
+              "type": "boolean"
+            },
+            "diverged": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "cassetteSha256",
+            "loose",
+            "diverged"
+          ],
+          "additionalProperties": false
+        },
         "observation": {
           "type": "object",
           "properties": {
@@ -892,6 +929,18 @@
                                       "type": "null"
                                     }
                                   ]
+                                },
+                                "replay": {
+                                  "type": "object",
+                                  "properties": {
+                                    "diverged": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "diverged"
+                                  ],
+                                  "additionalProperties": false
                                 }
                               },
                               "required": [

@@ -96,8 +96,10 @@ export async function proxyCommand(
               // The file keeps of each prompt, of each tool call's arguments and of the
               // model's answer what the profile's prompts.store keeps (ADR-0015, ADR-0025,
               // ADR-0033).
+              // A captured answer goes to the cassette only, never to this file (ADR-0040).
+              const { capture: _capture, ...kept } = record;
               const stored = {
-                ...record,
+                ...kept,
                 ...(record.prompt === undefined
                   ? {}
                   : { prompt: storePrompt(record.prompt, config.prompts, sha256) }),

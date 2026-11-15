@@ -14,6 +14,8 @@ import {
   Results,
   z,
   type Case,
+  type Cassette,
+  type CassetteCall,
   type Check,
   type DomainPack,
   type Profile,
@@ -845,6 +847,8 @@ interface FakeProxy {
   readonly spans: SpanCall[];
   /** What the runner asked of each spans settle call. */
   readonly spanSettles: unknown[];
+  /** What the runner sent when it opened each recording (ADR-0040). */
+  readonly openings: unknown[];
 }
 
 /** A stand-in for the proxy's control endpoint; the fake target adds its records. */
@@ -866,6 +870,7 @@ async function fakeProxy(
   let mark: string | null = null;
   const armed: { turn: string; body: unknown }[] = [];
   const settles: unknown[] = [];
+  const openings: unknown[] = [];
   const server = createServer((request, response) => {
     const key = `${request.method ?? ''} ${(request.url ?? '').split('?')[0] ?? ''}`;
     calls.push(key);
@@ -876,11 +881,17 @@ async function fakeProxy(
     if (key === 'GET /_yokla/health') {
       reply(200, answers.health ?? { ok: true, upstreams: ['fake'], recording: false });
     } else if (key === 'POST /_yokla/recordings') {
-      const status = answers.open ?? 201;
-      reply(
-        status,
-        status === 201 ? { id: 'rec-1', startedAt: new Date().toISOString() } : { error: 'busy' },
-      );
+      const chunks: Buffer[] = [];
+      request.on('data', (chunk: Buffer) => chunks.push(chunk));
+      request.on('end', () => {
+        const text = Buffer.concat(chunks).toString('utf8');
+        openings.push(text === '' ? undefined : JSON.parse(text));
+        const status = answers.open ?? 201;
+        reply(
+          status,
+          status === 201 ? { id: 'rec-1', startedAt: new Date().toISOString() } : { error: 'busy' },
+        );
+      });
     } else if (key.startsWith('PUT /_yokla/recordings/rec-1/turns/')) {
       const turn = decodeURIComponent(key.slice('PUT /_yokla/recordings/rec-1/turns/'.length));
       const chunks: Buffer[] = [];
@@ -941,6 +952,7 @@ async function fakeProxy(
     settles,
     spans,
     spanSettles,
+    openings,
   };
 }
 
@@ -3429,5 +3441,224 @@ describe('runSuite with --stop-early (ADR-0038)', () => {
     expect(t.received).toHaveLength(1);
     expect(proxy.calls).toContain('GET /_yokla/recordings/rec-1');
     expect(results.cases[0]?.samples[0]?.turns[0]?.proxy?.calls).toHaveLength(2);
+  });
+});
+
+/** A model call as a cassette keeps it. */
+const kept = (turn: string, position = 0): CassetteCall => ({
+  turn,
+  position,
+  upstream: 'fake',
+  path: '/chat/completions',
+  requestSha256: 'b'.repeat(64),
+  status: 200,
+  contentType: 'application/json',
+  body: '{"choices":[{"message":{"content":"kaset"}}]}',
+});
+
+const cassette = (calls: CassetteCall[], profileSha256 = 'a'.repeat(64)): Cassette => ({
+  schema: 'yokla.cassette/v1',
+  profileSha256,
+  recordedAt: '2026-11-15T12:00:00.000Z',
+  calls,
+});
+
+/** The seed the runner armed the turn in flight with: the turn's key. */
+const seedOf = (proxy: FakeProxy): string =>
+  String(Reflect.get(Object(proxy.armed.at(-1)?.body), 'seed'));
+
+describe('runSuite with a cassette (ADR-0040)', () => {
+  const prices = { fake: { m: { input: 1, output: 10 } } };
+
+  const answered = { expect: { answer: { notEmpty: true } } };
+
+  it('records the calls the proxy captured, arming every turn with its key', async () => {
+    const proxy = await fakeProxy();
+    const t = await target((received, index, response) => {
+      const trace = received.headers['x-yokla-trace'];
+      const tag = typeof trace === 'string' ? trace : null;
+      proxy.records.push({ ...call(tag, null), capture: kept(seedOf(proxy)) });
+      // A call outside every turn goes into no cassette; one the proxy answered itself needn't.
+      if (index === 0)
+        proxy.records.push(call(null, null), { ...call(tag, null), forwarded: false });
+      json(response, answer());
+    });
+    const recorded: Cassette[] = [];
+    const results = await runSuite(
+      options(
+        proxied(t.url, 'header'),
+        cases({ samples: 2, turns: [{ user: 'a' }, { user: 'b' }] }),
+        {
+          proxyUrl: proxy.url,
+          cassette: { record: true },
+          onCassette: (made) => recorded.push(made),
+        },
+      ),
+    );
+    expect(Results.safeParse(results).success).toBe(true);
+    expect(proxy.openings).toEqual([{ capture: true }]);
+    // Header correlation arms no turn without faults; a cassette arms each with its key.
+    expect(proxy.armed.map((a) => a.body)).toEqual(
+      ['c0|0|0', 'c0|0|1', 'c0|1|0', 'c0|1|1'].map((seed) => ({
+        inFlight: false,
+        faults: [],
+        seed,
+      })),
+    );
+    expect(recorded).toEqual([
+      {
+        schema: 'yokla.cassette/v1',
+        profileSha256: 'a'.repeat(64),
+        recordedAt: expect.any(String) as unknown,
+        calls: ['c0|0|0', 'c0|0|1', 'c0|1|0', 'c0|1|1'].map((turn) => kept(turn)),
+      },
+    ]);
+    expect(results.run.record).toEqual({ calls: 4 });
+    expect(results.run.replay).toBeUndefined();
+    expect(results.run.issues).toEqual([
+      "1 model call(s) aren't in the cassette: they belong to no turn, or their answer was too large to keep, so a replay will find no match for them",
+    ]);
+    // The results keep no answer body: that is the cassette's alone.
+    expect(JSON.stringify(results)).not.toContain('kaset');
+  });
+
+  it('makes a case error when a call had no match, and says how many diverged', async () => {
+    const proxy = await fakeProxy();
+    const t = await target((received, _i, response) => {
+      const diverged = received.body['message'] === 'b';
+      proxy.records.push({
+        ...call(null, proxy.mark()),
+        forwarded: false,
+        replay: { diverged },
+        ...(diverged ? { status: 502 } : {}),
+      });
+      json(response, answer());
+    });
+    const calls = [kept('c0|0|0'), kept('c1|0|0')];
+    const results = await runSuite(
+      options(
+        proxied(t.url, 'serial'),
+        cases({ turns: [{ user: 'a', ...answered }] }, { turns: [{ user: 'b', ...answered }] }),
+        {
+          proxyUrl: proxy.url,
+          checks: CORE_CHECKS,
+          cassette: { replay: cassette(calls), sha256: 'c'.repeat(64) },
+        },
+      ),
+    );
+    expect(Results.safeParse(results).success).toBe(true);
+    expect(proxy.openings).toEqual([{ replay: { loose: false, calls } }]);
+    expect(results.cases.map((c) => c.status)).toEqual(['pass', 'error']);
+    const turn = results.cases[1]?.samples[0]?.turns[0];
+    expect(turn?.error).toBe(
+      "the cassette has no call that matches model call 1 of this turn: the app asked something it didn't ask when the cassette was recorded",
+    );
+    // An errored turn isn't judged.
+    expect(turn?.checks).toEqual([]);
+    expect(turn?.proxy?.calls[0]?.replay).toEqual({ diverged: true });
+    expect(results.cases[0]?.samples[0]?.turns[0]?.proxy?.calls[0]?.replay).toEqual({
+      diverged: false,
+    });
+    expect(results.run.replay).toEqual({
+      cassetteSha256: 'c'.repeat(64),
+      loose: false,
+      diverged: 1,
+    });
+    expect(results.run.record).toBeUndefined();
+    expect(results.run.issues).toEqual(['1 model call(s) had no match in the cassette']);
+  });
+
+  it('runs a diverged call with --replay-loose, and says it was answered by position', async () => {
+    const proxy = await fakeProxy();
+    const t = await target((_r, _i, response) => {
+      proxy.records.push({
+        ...call(null, proxy.mark()),
+        forwarded: false,
+        replay: { diverged: true },
+      });
+      json(response, answer());
+    });
+    const results = await runSuite(
+      options(proxied(t.url, 'serial'), cases({ turns: [{ user: 'a', ...answered }] }), {
+        proxyUrl: proxy.url,
+        checks: CORE_CHECKS,
+        cassette: { replay: cassette([kept('c0|0|0')]), sha256: 'c'.repeat(64), loose: true },
+      }),
+    );
+    expect(proxy.openings).toEqual([{ replay: { loose: true, calls: [kept('c0|0|0')] } }]);
+    expect(results.cases[0]?.status).toBe('pass');
+    expect(results.cases[0]?.samples[0]?.turns[0]?.proxy?.calls[0]?.replay).toEqual({
+      diverged: true,
+    });
+    expect(results.run.replay).toEqual({
+      cassetteSha256: 'c'.repeat(64),
+      loose: true,
+      diverged: 1,
+    });
+    expect(results.run.issues).toEqual([
+      '1 model call(s) had no match in the cassette and were answered by position',
+    ]);
+  });
+
+  it('says when the cassette came from another profile', async () => {
+    const proxy = await fakeProxy();
+    const t = await target((_r, _i, response) => {
+      json(response, answer());
+    });
+    const results = await runSuite(
+      options(proxied(t.url, 'serial'), cases({ turns: [{ user: 'a' }] }), {
+        proxyUrl: proxy.url,
+        cassette: { replay: cassette([], 'd'.repeat(64)), sha256: 'c'.repeat(64) },
+      }),
+    );
+    expect(results.run.issues).toEqual([
+      'the cassette was recorded with another profile than this run uses',
+    ]);
+    expect(results.run.replay?.diverged).toBe(0);
+  });
+
+  it("doesn't count replayed calls against the cost cap, yet keeps their recorded cost", async () => {
+    const proxy = await fakeProxy();
+    const t = await target((_r, _i, response) => {
+      proxy.records.push({
+        ...call(null, proxy.mark()),
+        forwarded: false,
+        replay: { diverged: false },
+      });
+      json(response, answer());
+    });
+    const twoCases = cases({ turns: [{ user: 'a' }] }, { turns: [{ user: 'b' }] });
+    const results = await runSuite(
+      options(proxied(t.url, 'serial'), twoCases, {
+        proxyUrl: proxy.url,
+        prices,
+        maxCostUsd: 0.001,
+        cassette: { replay: cassette([kept('c0|0|0'), kept('c1|0|0')]), sha256: 'c'.repeat(64) },
+      }),
+    );
+    expect(results.run.partial).toBe(false);
+    expect(results.run.issues).toBeUndefined();
+    expect(t.received).toHaveLength(2);
+    // Budgets judge a replayed call by what it cost when it was recorded.
+    expect(results.cases[0]?.samples[0]?.turns[0]?.proxy?.calls[0]?.costUsd).toBe(0.002);
+  });
+
+  it('refuses a cassette without a model proxy that has upstreams, before any request', async () => {
+    const t = await target((_r, _i, response) => {
+      json(response, answer());
+    });
+    const c = cases({ turns: [{ user: 'a' }] });
+    const refusal = /recording or replaying a cassette needs a modelProxy with upstreams/u;
+    const replay = { replay: cassette([]), sha256: 'c'.repeat(64) };
+    await expect(
+      runSuite(options(profile(t.url), c, { cassette: { record: true } })),
+    ).rejects.toThrow(refusal);
+    await expect(runSuite(options(profile(t.url), c, { cassette: replay }))).rejects.toThrow(
+      refusal,
+    );
+    await expect(runSuite(options(spanOnly(t.url), c, { cassette: replay }))).rejects.toThrow(
+      refusal,
+    );
+    expect(t.received).toHaveLength(0);
   });
 });

@@ -85,6 +85,27 @@ export const ModelOutput = z.object({
 });
 export type ModelOutput = z.output<typeof ModelOutput>;
 
+/**
+ * A model call as a cassette keeps it (ADR-0040): which turn and call it was,
+ * a hash of what the app sent, and the answer the provider gave, in full. It
+ * holds no request text and no credential.
+ */
+export const CassetteCall = z.object({
+  /** The turn's key, as ADR-0017 seeds jitter: case, sample and turn. */
+  turn: z.string().min(1),
+  /** The call's position among the turn's calls, from 0, in the order they arrived. */
+  position: z.int().nonnegative(),
+  upstream: Id,
+  /** The path below the upstream base URL, without the query. */
+  path: z.string(),
+  requestSha256: z.string().regex(/^[0-9a-f]{64}$/u),
+  status: z.int(),
+  contentType: z.string(),
+  /** The answer's body as the provider sent it, decoded; a stream as its text. */
+  body: z.string(),
+});
+export type CassetteCall = z.output<typeof CassetteCall>;
+
 /** A model call read from an OpenTelemetry span (ADR-0029). */
 export const SpanCall = z.object({
   /** The W3C trace id, in hex: it ties the call to a turn. */
@@ -131,5 +152,9 @@ export const ProxyRecord = z.object({
   toolCalls: z.array(ToolCall).nullable().optional(),
   /** The text the model answered (ADR-0033); null when the answer couldn't be read. */
   output: ModelOutput.nullable().optional(),
+  /** The call as a cassette keeps it, when the recording captures (ADR-0040). */
+  capture: CassetteCall.optional(),
+  /** Set when the proxy answered from a cassette, or found no call in it to answer with (ADR-0040). */
+  replay: z.object({ diverged: z.boolean() }).optional(),
 });
 export type ProxyRecord = z.output<typeof ProxyRecord>;

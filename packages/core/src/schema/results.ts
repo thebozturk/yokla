@@ -141,6 +141,8 @@ export const TurnResult = z.object({
           toolCalls: z.array(ToolCall).nullable().optional(),
           /** The text the model answered, kept as `prompts` keeps text (ADR-0033). */
           output: ModelOutput.nullable().optional(),
+          /** Set when the proxy answered from a cassette, or found no call in it (ADR-0040). */
+          replay: z.object({ diverged: z.boolean() }).optional(),
         }),
       ),
       /** The sum of the calls' cost; null when any call has none. */
@@ -270,6 +272,17 @@ export const Results = z
       partial: z.boolean(),
       /** How samples were run: stopEarly when a case stopped once its failure was settled (ADR-0038). */
       sampling: z.object({ stopEarly: z.boolean() }).optional(),
+      /** Set when the run recorded its model calls into a cassette (ADR-0040). */
+      record: z.object({ calls: z.int().nonnegative() }).optional(),
+      /** Set when the model proxy answered from a cassette (ADR-0040). */
+      replay: z
+        .object({
+          cassetteSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+          loose: z.boolean(),
+          /** Calls the cassette had no match for. */
+          diverged: z.int().nonnegative(),
+        })
+        .optional(),
       /** Measurements read from the target's logs (ADR-0009). */
       observation: z
         .object({

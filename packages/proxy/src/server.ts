@@ -8,7 +8,7 @@
 // Paths under /_yokla/ are the local control endpoint
 // and are never forwarded. The proxy contacts only its configured upstreams.
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   createServer,
   request as httpRequest,
@@ -20,6 +20,7 @@ import {
 import { request as httpsRequest } from 'node:https';
 import { brotliDecompressSync, gunzipSync, inflateSync } from 'node:zlib';
 import {
+  CassetteCall,
   FaultPlan,
   modelCallOf,
   readOtlpJson,
@@ -164,10 +165,72 @@ const NOTHING_SPENT: ProxyUsage = {
   reasoning: 0,
 };
 
+/** What a recording does with model calls besides measuring them (ADR-0040). */
+const Opening = z.object({
+  /** Keep each forwarded call as a cassette keeps it. */
+  capture: z.boolean().default(false),
+  /** Answer each call from these recorded calls, forwarding nothing. */
+  replay: z.object({ loose: z.boolean().default(false), calls: z.array(CassetteCall) }).optional(),
+});
+
+interface Replay {
+  readonly loose: boolean;
+  readonly calls: readonly CassetteCall[];
+  /** Which recorded calls have answered already. */
+  readonly used: boolean[];
+}
+
+/**
+ * The recorded call that answers a call (ADR-0040): within its turn, the first
+ * unused one with the same upstream, path and request hash; with `loose`, else
+ * the one at the same position, marked diverged. Undefined when none fits.
+ */
+function findReplay(
+  replay: Replay,
+  call: {
+    turn: string | undefined;
+    position: number | undefined;
+    upstream: string;
+    path: string;
+    requestSha256: string;
+  },
+): { call: CassetteCall; diverged: boolean } | undefined {
+  if (call.turn === undefined) return undefined;
+  const fits = (recorded: CassetteCall, index: number) =>
+    replay.used[index] !== true &&
+    recorded.turn === call.turn &&
+    recorded.upstream === call.upstream &&
+    recorded.path === call.path;
+  let index = replay.calls.findIndex(
+    (recorded, i) => fits(recorded, i) && recorded.requestSha256 === call.requestSha256,
+  );
+  let diverged = false;
+  if (index === -1 && replay.loose) {
+    index = replay.calls.findIndex(
+      (recorded, i) => fits(recorded, i) && recorded.position === call.position,
+    );
+    diverged = index !== -1;
+  }
+  const found = replay.calls[index];
+  if (found === undefined) return undefined;
+  replay.used[index] = true;
+  return { call: found, diverged };
+}
+
+function sha256(text: string): string {
+  return createHash('sha256').update(text, 'utf8').digest('hex');
+}
+
 interface Recording {
   readonly id: string;
   readonly startedAt: string;
   readonly records: ProxyRecord[];
+  /** Keep each forwarded call as a cassette keeps it (ADR-0040). */
+  readonly capture: boolean;
+  /** Answer from a cassette instead of the provider (ADR-0040). */
+  readonly replay: Replay | undefined;
+  /** Per turn key, how many calls have arrived, for each call's position (ADR-0040). */
+  readonly positions: Map<string, number>;
   /** The turn the runner says is in flight (serial correlation). */
   mark: string | null;
   /** The turns the runner armed, with their fault plans (ADR-0013). */
@@ -212,10 +275,37 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
         sendJson(response, 409, { error: `recording ${recording.id} is already open` });
         return;
       }
+      const body = await readBody(request, maxRequest);
+      // A cassette too large to read must not open a recording that forwards every call.
+      if (body === undefined) {
+        sendJson(response, 413, { error: 'the opening is too large for the proxy' });
+        return;
+      }
+      let value: unknown = {};
+      try {
+        const text = body.toString('utf8');
+        value = text.trim() === '' ? {} : JSON.parse(text);
+      } catch {
+        value = undefined;
+      }
+      const opening = Opening.safeParse(value);
+      if (!opening.success) {
+        sendJson(response, 400, {
+          error: 'expected {"capture"?: boolean, "replay"?: {"loose"?: boolean, "calls": [...]}}',
+        });
+        return;
+      }
+      const { capture, replay } = opening.data;
       recording = {
         id: randomUUID(),
         startedAt: new Date().toISOString(),
         records: [],
+        capture,
+        replay:
+          replay === undefined
+            ? undefined
+            : { loose: replay.loose, calls: replay.calls, used: replay.calls.map(() => false) },
+        positions: new Map(),
         mark: null,
         turns: new Map(),
         inFlight: 0,
@@ -426,13 +516,32 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
     const turnId = typeof trace === 'string' && open?.turns.has(trace) === true ? trace : mark;
     const armed = turnId === null ? undefined : open?.turns.get(turnId);
     const fault = armed === undefined ? undefined : nextFault(armed, upstream.id);
+    const callPath = rest.split('?')[0] ?? '';
+    // A cassette keys a call by its turn and its position there, in arrival order (ADR-0040).
+    const turnKey = armed?.seed;
+    const cassette = open !== undefined && (open.capture || open.replay !== undefined);
+    let position: number | undefined;
+    if (cassette && turnKey !== undefined && open !== undefined) {
+      position = open.positions.get(turnKey) ?? 0;
+      open.positions.set(turnKey, position + 1);
+    }
+    const requestSha256 = cassette
+      ? sha256(decoded(body, request.headers['content-encoding']) ?? '')
+      : '';
 
     const finish = (
       status: number | null,
       encoding: string | undefined,
       stream: boolean,
       error?: string,
-      extra: { usage?: ProxyUsage; forwarded?: false; applied?: boolean; answered?: string } = {},
+      extra: {
+        usage?: ProxyUsage;
+        forwarded?: false;
+        applied?: boolean;
+        answered?: string;
+        contentType?: string;
+        replay?: { diverged: boolean };
+      } = {},
     ) => {
       if (open === undefined || recording !== open) return;
       const raw = overflow ? undefined : decoded(Buffer.concat(captured), encoding);
@@ -442,7 +551,7 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
           : raw === undefined
             ? { usage: UNMEASURED, model: null }
             : readUsage(upstream.kind, raw, stream);
-      const path = rest.split('?')[0] ?? '';
+      const path = callPath;
       const sent = decoded(body, request.headers['content-encoding']);
       const asked = readToolCalls(upstream.kind, raw, stream, status);
       // What the app got: the changed answer, when a fault changed it (ADR-0033).
@@ -480,6 +589,27 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
               })),
         // The text the model answered, read as its prompt is (ADR-0033).
         output: output === null ? null : { chars: output.length, text: output },
+        ...(extra.replay === undefined ? {} : { replay: extra.replay }),
+        // A forwarded call as a cassette keeps it: the provider's own answer (ADR-0040).
+        ...(open.capture &&
+        extra.forwarded !== false &&
+        turnKey !== undefined &&
+        position !== undefined &&
+        raw !== undefined &&
+        status !== null
+          ? {
+              capture: {
+                turn: turnKey,
+                position,
+                upstream: upstream.id,
+                path,
+                requestSha256,
+                status,
+                contentType: extra.contentType ?? 'application/json',
+                body: raw,
+              },
+            }
+          : {}),
       };
       open.records.push(record);
       options.onRecord?.(record);
@@ -515,7 +645,47 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
       const seed = jitterSeed(armed, turnId, upstream.id);
       await new Promise((resolve) => setTimeout(resolve, fault.ms + jitter(seed, fault.jitterMs)));
     }
-    const changing = fault !== undefined && isChanging(fault.kind) ? fault.kind : undefined;
+    const changing = fault !== undefined && isChanging(fault) ? fault : undefined;
+
+    // Replaying: the answer comes from the cassette, and nothing goes upstream (ADR-0040).
+    if (open?.replay !== undefined) {
+      const found = findReplay(open.replay, {
+        turn: turnKey,
+        position,
+        upstream: upstream.id,
+        path: callPath,
+        requestSha256,
+      });
+      if (found === undefined) {
+        const said = `yokla replay: the cassette has no call that matches call ${String((position ?? 0) + 1)} of turn ${turnKey ?? '(none)'} to ${upstream.id}${callPath}`;
+        sendJson(response, 502, { error: said });
+        finish(502, undefined, facts.stream, said, {
+          usage: NOTHING_SPENT,
+          forwarded: false,
+          replay: { diverged: true },
+        });
+        return;
+      }
+      const recorded = found.call;
+      const stream = recorded.contentType.includes('text/event-stream') || facts.stream;
+      const changed =
+        changing === undefined
+          ? undefined
+          : changeAnswer(changing, upstream.kind, recorded.body, stream);
+      const out = changed?.body ?? recorded.body;
+      captured.push(Buffer.from(recorded.body, 'utf8'));
+      response.writeHead(recorded.status, {
+        'content-type': recorded.contentType,
+        'content-length': Buffer.byteLength(out, 'utf8'),
+      });
+      response.end(out);
+      finish(recorded.status, undefined, stream, undefined, {
+        forwarded: false,
+        replay: { diverged: found.diverged },
+        ...(changed === undefined ? {} : { applied: changed.applied, answered: changed.body }),
+      });
+      return;
+    }
 
     const send = base.protocol === 'https:' ? httpsRequest : httpRequest;
     const outgoing = send(
@@ -556,6 +726,7 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
             });
             response.end(out);
             finish(status, encoding, stream, undefined, {
+              contentType: type,
               applied: changed.applied,
               ...(changed.body === undefined ? {} : { answered: changed.body }),
             });
@@ -581,6 +752,8 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
             upstreamResponse.statusCode ?? null,
             upstreamResponse.headers['content-encoding'],
             stream,
+            undefined,
+            { contentType: type },
           );
         });
         upstreamResponse.on('error', (error) => {

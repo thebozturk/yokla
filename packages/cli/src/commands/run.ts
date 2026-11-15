@@ -2,10 +2,11 @@
 // Exit codes (design §16): 0 the run completed; 2 a configuration problem or
 // a case that couldn't be measured. Exit code 1 is reserved for the gate.
 
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { CORE_CHECKS, type Results } from '@yokla/core';
+import { createHash } from 'node:crypto';
+import { Cassette, CASSETTE_SCHEMA_ID, CORE_CHECKS, type Results } from '@yokla/core';
 import { htmlReport, junitXml, terminalSummary } from '@yokla/report';
 import { ConfigError, runSuite } from '@yokla/runtime';
 import { loadCheckModules } from '../checks.ts';
@@ -26,6 +27,9 @@ Options:
   --samples <n>         samples per case when the case doesn't say (default: 1)
   --stop-early          stop a case's samples once its failure is settled; not with target
                         logs or spans
+  --record <file>       write the run's model calls to a cassette, answers in full
+  --replay <file>       answer the model calls from a cassette, calling no provider
+  --replay-loose        with --replay, answer a call the cassette has no match for by position
   --concurrency <n>     cases run in parallel (default: 1)
   --target-url <url>    use this url instead of the profile's request url
   --junit <file>        also write a JUnit XML report
@@ -59,12 +63,40 @@ export function writeReport(path: string, content: string): string {
   return full;
 }
 
+/** Reads a cassette (ADR-0040); one from another schema version is refused. */
+function readCassette(path: string): { cassette: Cassette; sha256: string } {
+  let text: string;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch (error) {
+    throw new LoadError(`${path}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new LoadError(`${path}: not JSON`);
+  }
+  const schema: unknown = Reflect.get(Object(value), 'schema');
+  if (schema !== CASSETTE_SCHEMA_ID) {
+    throw new LoadError(
+      `${path}: not a ${CASSETTE_SCHEMA_ID} file (schema: ${JSON.stringify(schema) ?? 'missing'})`,
+    );
+  }
+  const parsed = Cassette.safeParse(value);
+  if (!parsed.success) throw new LoadError(`${path}: an invalid cassette`);
+  return { cassette: parsed.data, sha256: createHash('sha256').update(text).digest('hex') };
+}
+
 const RUN_OPTIONS = {
   profile: { type: 'string', default: 'yokla.profile.yaml' },
   cases: { type: 'string', multiple: true },
   out: { type: 'string' },
   samples: { type: 'string' },
   'stop-early': { type: 'boolean' },
+  record: { type: 'string' },
+  replay: { type: 'string' },
+  'replay-loose': { type: 'boolean' },
   concurrency: { type: 'string' },
   'target-url': { type: 'string' },
   junit: { type: 'string' },
@@ -108,6 +140,14 @@ export async function runCommand(
     if (maxCost !== undefined && !(Number.isFinite(maxCost) && maxCost > 0)) {
       throw new LoadError('--max-cost must be a positive number of USD');
     }
+    if (values.record !== undefined && values.replay !== undefined) {
+      throw new LoadError('--record and --replay go one at a time');
+    }
+    if (values['replay-loose'] === true && values.replay === undefined) {
+      throw new LoadError('--replay-loose needs --replay');
+    }
+    // A cassette answers the model calls instead of the provider (ADR-0040).
+    const replayed = values.replay === undefined ? undefined : readCassette(values.replay);
     const configPath =
       values.config ?? (existsSync('yokla.config.yaml') ? 'yokla.config.yaml' : undefined);
     const config = configPath === undefined ? undefined : loadConfig(configPath);
@@ -132,6 +172,25 @@ export async function runCommand(
       languages: LANGUAGE_PACKS,
       ...(samples === undefined ? {} : { samples }),
       ...(values['stop-early'] === true ? { stopEarly: true } : {}),
+      ...(values.record === undefined
+        ? {}
+        : {
+            cassette: { record: true as const },
+            onCassette: (cassette: Cassette) => {
+              io.out(
+                `cassette: ${writeReport(values.record ?? '', `${JSON.stringify(cassette)}\n`)} (${String(cassette.calls.length)} model calls; it holds their answers in full)`,
+              );
+            },
+          }),
+      ...(replayed === undefined
+        ? {}
+        : {
+            cassette: {
+              replay: replayed.cassette,
+              sha256: replayed.sha256,
+              ...(values['replay-loose'] === true ? { loose: true } : {}),
+            },
+          }),
       ...(concurrency === undefined ? {} : { concurrency }),
       ...(values['target-url'] === undefined ? {} : { targetUrl: values['target-url'] }),
       ...(values['proxy-url'] === undefined ? {} : { proxyUrl: values['proxy-url'] }),

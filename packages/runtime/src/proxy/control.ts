@@ -2,7 +2,7 @@
 // that the proxy answers, and open and close a recording around a run. It
 // talks only to the proxy's own local address.
 
-import { ProxyRecord, SpanCall, z, type FaultPlan } from '@yokla/core';
+import { ProxyRecord, SpanCall, z, type CassetteCall, type FaultPlan } from '@yokla/core';
 
 export class ProxyControlError extends Error {
   override readonly name = 'ProxyControlError';
@@ -83,8 +83,18 @@ export class ProxyControl {
     return this.#call('GET', '/_yokla/health', Health);
   }
 
-  open(): Promise<z.output<typeof Opened>> {
-    return this.#call('POST', '/_yokla/recordings', Opened);
+  /**
+   * Opens a recording. With `capture`, each forwarded call comes back as a
+   * cassette keeps it; with `replay`, the proxy answers from those calls
+   * (ADR-0040).
+   */
+  open(
+    opening: {
+      readonly capture?: boolean;
+      readonly replay?: { readonly loose: boolean; readonly calls: readonly CassetteCall[] };
+    } = {},
+  ): Promise<z.output<typeof Opened>> {
+    return this.#call('POST', '/_yokla/recordings', Opened, opening);
   }
 
   /**

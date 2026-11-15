@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createServer, request, type IncomingHttpHeaders, type Server } from 'node:http';
 import { gzipSync } from 'node:zlib';
 import type { ProxyRecord } from '@yokla/core';
@@ -986,5 +987,168 @@ describe('startProxy with a gemini upstream (ADR-0032)', () => {
       })),
     );
     expect(JSON.stringify(records)).not.toContain('AIza-secret');
+  });
+});
+
+const BODY = '{"model":"gpt-x","messages":[{"role":"user","content":"çadır"}]}';
+
+/** A proxy with a recording opened with `opening`, and turn `t` armed with seed `case|0|0`. */
+async function recordingWith(up: { url: string }, opening: unknown, arming: unknown = {}) {
+  const { running, records } = await proxy(up.url);
+  const res = await call(running, 'POST', '/_yokla/recordings', JSON.stringify(opening));
+  expect(res.status).toBe(201);
+  const id = String(Reflect.get(Object(parse(res)), 'id'));
+  const turn = await call(
+    running,
+    'PUT',
+    `/_yokla/recordings/${id}/turns/t`,
+    JSON.stringify({ inFlight: true, seed: 'case|0|0', ...Object(arming) }),
+  );
+  expect(turn.status).toBe(200);
+  return { running, records };
+}
+
+/** A call of turn `case|0|0` as a cassette keeps it, for what was sent and answered. */
+const kept = (position: number, sent: string, answer: string) => ({
+  turn: 'case|0|0',
+  position,
+  upstream: 'openai',
+  path: '/chat/completions',
+  requestSha256: createHash('sha256').update(sent).digest('hex'),
+  status: 200,
+  contentType: 'application/json',
+  body: answer,
+});
+
+/** Two calls captured by a recording, to replay. */
+async function captured(): Promise<NonNullable<ProxyRecord['capture']>[]> {
+  const up = await upstream();
+  const { running, records } = await recordingWith(up, { capture: true });
+  await call(running, 'POST', '/openai/chat/completions', BODY);
+  await call(running, 'POST', '/openai/stream', '{"stream":true}');
+  return records.flatMap((record) => (record.capture === undefined ? [] : [record.capture]));
+}
+
+describe('startProxy recording and replaying a cassette (ADR-0040)', () => {
+  it('captures each forwarded call: its turn, position, request hash and the answer', async () => {
+    const up = await upstream();
+    const { running, records } = await recordingWith(up, { capture: true });
+    await call(running, 'POST', '/openai/chat/completions', BODY);
+    await call(running, 'POST', '/openai/stream', '{"stream":true}');
+    expect(records.map((record) => record.capture)).toEqual([
+      {
+        turn: 'case|0|0',
+        position: 0,
+        upstream: 'openai',
+        path: '/chat/completions',
+        requestSha256: createHash('sha256').update(BODY).digest('hex'),
+        status: 200,
+        contentType: 'application/json',
+        body: CHAT,
+      },
+      expect.objectContaining({
+        position: 1,
+        path: '/stream',
+        contentType: 'text/event-stream',
+        body: expect.stringContaining('"content":"Mer"') as unknown,
+      }),
+    ]);
+  });
+
+  it('captures nothing without capture, nor a call outside an armed turn', async () => {
+    const up = await upstream();
+    const plain = await recordingWith(up, {});
+    await call(plain.running, 'POST', '/openai/chat/completions', BODY);
+    expect(plain.records[0]?.capture).toBeUndefined();
+    const { running, records } = await proxy(up.url);
+    await call(running, 'POST', '/_yokla/recordings', '{"capture":true}');
+    await call(running, 'POST', '/openai/chat/completions', BODY);
+    expect(records[0]?.capture).toBeUndefined();
+    // A call the proxy answers itself, under a status fault, never reached the provider.
+    const faulted = await recordingWith(
+      up,
+      { capture: true },
+      { faults: [{ fault: { kind: 'status', status: 503 } }] },
+    );
+    await call(faulted.running, 'POST', '/openai/chat/completions', BODY);
+    expect(faulted.records[0]).toMatchObject({ status: 503, forwarded: false });
+    expect(faulted.records[0]?.capture).toBeUndefined();
+  });
+
+  it('answers from the cassette, forwarding nothing, with the recorded usage', async () => {
+    const calls = await captured();
+    const up = await upstream();
+    const { running, records } = await recordingWith(up, { replay: { calls } });
+    const res = await call(running, 'POST', '/openai/chat/completions', BODY);
+    expect(res.body.toString('utf8')).toBe(CHAT);
+    const streamed = await call(running, 'POST', '/openai/stream', '{"stream":true}');
+    expect(streamed.headers['content-type']).toBe('text/event-stream');
+    expect(streamed.body.toString('utf8')).toContain('"content":"Mer"');
+    expect(up.received).toEqual([]);
+    expect(records.map((r) => [r.forwarded, r.replay, r.usage.input, r.output?.text])).toEqual([
+      [false, { diverged: false }, 11, 'Merhaba'],
+      [false, { diverged: false }, 3, 'Mer'],
+    ]);
+  });
+
+  it('refuses a call the cassette has no match for, unless loose, which answers by position', async () => {
+    const calls = await captured();
+    const up = await upstream();
+    const strict = await recordingWith(up, { replay: { calls } });
+    const refused = await call(strict.running, 'POST', '/openai/chat/completions', '{"other":1}');
+    expect(refused.status).toBe(502);
+    expect(refused.body.toString('utf8')).toContain('yokla replay: the cassette has no call');
+    expect(strict.records[0]).toMatchObject({ status: 502, replay: { diverged: true } });
+    const loose = await recordingWith(up, { replay: { loose: true, calls } });
+    const answered = await call(loose.running, 'POST', '/openai/chat/completions', '{"other":1}');
+    expect(answered.body.toString('utf8')).toBe(CHAT);
+    expect(loose.records[0]?.replay).toEqual({ diverged: true });
+    // Loose answers by the call's own position, never with another position's answer.
+    const two = [kept(0, '{"a":1}', '"first"'), kept(1, '{"b":1}', '"second"')];
+    const byPosition = await recordingWith(up, { replay: { loose: true, calls: two } });
+    const matched = await call(byPosition.running, 'POST', '/openai/chat/completions', '{"b":1}');
+    expect(matched.body.toString('utf8')).toBe('"second"');
+    // The second call's position, 1, was answered already: nothing is left for it.
+    const late = await call(byPosition.running, 'POST', '/openai/chat/completions', '{"c":1}');
+    expect(late.status).toBe(502);
+    // Another turn has nothing recorded: even loose can't answer it.
+    const other = await recordingWith(up, { replay: { loose: true, calls } }, { seed: 'case|0|1' });
+    expect((await call(other.running, 'POST', '/openai/chat/completions', BODY)).status).toBe(502);
+    expect(up.received).toEqual([]);
+  });
+
+  it('uses each recorded call once, and applies a turn fault to a replayed answer', async () => {
+    const calls = await captured();
+    const up = await upstream();
+    const { running, records } = await recordingWith(
+      up,
+      { replay: { calls } },
+      { faults: [{ fault: { kind: 'answer', text: 'Uydurma: 1.169,10 TL' } }] },
+    );
+    const res = await call(running, 'POST', '/openai/chat/completions', BODY);
+    expect(parse(res)).toMatchObject({
+      choices: [{ message: { content: 'Uydurma: 1.169,10 TL' } }],
+    });
+    expect(records[0]).toMatchObject({
+      fault: { kind: 'answer', applied: true },
+      output: { text: 'Uydurma: 1.169,10 TL' },
+      // The usage is the provider's, read from the recorded answer.
+      usage: { input: 11, output: 4 },
+    });
+    expect((await call(running, 'POST', '/openai/chat/completions', BODY)).status).toBe(502);
+  });
+
+  it('refuses an opening it cannot read', async () => {
+    const up = await upstream();
+    const { running } = await proxy(up.url);
+    expect((await call(running, 'POST', '/_yokla/recordings', '{"replay":{}}')).status).toBe(400);
+    expect((await call(running, 'POST', '/_yokla/recordings', '{')).status).toBe(400);
+    // A cassette too large to read opens nothing, rather than a recording that forwards.
+    const small = await proxy(up.url, { maxRequestBytes: 8 });
+    const large = await call(small.running, 'POST', '/_yokla/recordings', '{"capture":true}');
+    expect(large.status).toBe(413);
+    expect(parse(await call(small.running, 'GET', '/_yokla/health'))).toMatchObject({
+      recording: false,
+    });
   });
 });

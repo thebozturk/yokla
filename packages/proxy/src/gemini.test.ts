@@ -207,32 +207,41 @@ describe('Gemini faults (ADR-0032)', () => {
 
   it('empties the text of the candidates, in an answer, events or a JSON array', () => {
     const one = answer([{ text: 'Merhaba' }, { functionCall: { name: 't', args: {} } }]);
-    const changed = changeAnswer('empty-content', 'gemini', json(one), false);
+    const changed = changeAnswer({ kind: 'empty-content' }, 'gemini', json(one), false);
     expect(changed.applied).toBe(true);
     expect(JSON.parse(changed.body)).toEqual(
       answer([{ text: '' }, { functionCall: { name: 't', args: {} } }]),
     );
-    const events = changeAnswer('empty-content', 'gemini', sse(one, answer([{ text: 'x' }])), true);
+    const events = changeAnswer(
+      { kind: 'empty-content' },
+      'gemini',
+      sse(one, answer([{ text: 'x' }])),
+      true,
+    );
     expect(events.applied).toBe(true);
     expect(events.body).not.toContain('Merhaba');
-    const array = changeAnswer('empty-content', 'gemini', json([one]), true);
+    const array = changeAnswer({ kind: 'empty-content' }, 'gemini', json([one]), true);
     expect(array.applied).toBe(true);
     expect(JSON.parse(array.body)).toEqual([JSON.parse(changed.body)]);
     expect(
-      changeAnswer('empty-content', 'gemini', json(answer([{ text: '' }])), false).applied,
+      changeAnswer({ kind: 'empty-content' }, 'gemini', json(answer([{ text: '' }])), false)
+        .applied,
     ).toBe(false);
-    expect(changeAnswer('empty-content', 'gemini', json([answer([])]), true).applied).toBe(false);
+    expect(
+      changeAnswer({ kind: 'empty-content' }, 'gemini', json([answer([])]), true).applied,
+    ).toBe(false);
   });
 
   it('breaks the args of each function call, and reads them back as invalid', () => {
     const asked = answer([{ functionCall: { name: 'search_products', args: { query: 'x' } } }]);
-    const broken = changeAnswer('invalid-tool-call', 'gemini', json(asked), false);
+    const broken = changeAnswer({ kind: 'invalid-tool-call' }, 'gemini', json(asked), false);
     expect(broken.applied).toBe(true);
     expect(readToolCalls('gemini', broken.body, false, 200)).toEqual([
       { name: 'search_products', arguments: '{"broken": ' },
     ]);
     expect(
-      changeAnswer('invalid-tool-call', 'gemini', json(answer([{ text: 'x' }])), false).applied,
+      changeAnswer({ kind: 'invalid-tool-call' }, 'gemini', json(answer([{ text: 'x' }])), false)
+        .applied,
     ).toBe(false);
   });
 });

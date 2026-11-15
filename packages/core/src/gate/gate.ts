@@ -49,6 +49,7 @@ function budgetBreaches(
   suite: string,
   cases: readonly CaseResult[],
   own: Thresholds,
+  replayed = false,
 ): GateBreach[] {
   const turns = cases.flatMap((c) =>
     c.samples.flatMap((sample) => sample.turns.filter((turn) => turn.response !== undefined)),
@@ -74,6 +75,11 @@ function budgetBreaches(
     if (limit === undefined) continue;
     if (latencies.length === 0) {
       unmeasured(name, 'no answered turn');
+      continue;
+    }
+    // A replayed answer comes at once: the run measured no model latency (ADR-0040).
+    if (replayed) {
+      unmeasured(name, 'the run replayed a cassette, so its model answers took no time');
       continue;
     }
     const value = percentile(latencies, q);
@@ -169,7 +175,14 @@ export function evaluateGate(
     }
     // Suite-level keys first, then the gate-wide ones (ADR-0010, ADR-0014).
     const { suites: _suites, ...wide } = config;
-    breaches.push(...budgetBreaches(suite, cases, { ...wide, ...own, allowUnmeasured }));
+    breaches.push(
+      ...budgetBreaches(
+        suite,
+        cases,
+        { ...wide, ...own, allowUnmeasured },
+        results.run.replay !== undefined,
+      ),
+    );
   }
   for (const c of judged) {
     if (c.status === 'gap-closed')

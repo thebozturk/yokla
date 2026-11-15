@@ -161,6 +161,10 @@ describe('loading', () => {
   });
 });
 
+/** A cassette file of this schema, with no calls (ADR-0040). */
+const cassette = (schema: string) =>
+  `{"schema":"${schema}","profileSha256":"${'a'.repeat(64)}","recordedAt":"2026-11-15T12:00:00.000Z","calls":[]}`;
+
 describe('yokla', () => {
   it('prints its version and help', async () => {
     const version = capture();
@@ -215,6 +219,46 @@ describe('yokla', () => {
     expect(err.join('\n')).toContain(
       '--stop-early judges each sample during the run, but target.observe.logs are read after it',
     );
+  });
+
+  it('refuses a cassette it cannot use, before any request (ADR-0040)', async () => {
+    const dir = workspace({
+      'yokla.profile.yaml': PROFILE,
+      'cases/a.yaml': CASES,
+      'broken.json': '{',
+      'later.json': cassette('yokla.cassette/v2'),
+      'invalid.json': cassette('yokla.cassette/v1').replace('"calls":[]', '"calls":[{"turn":""}]'),
+      'fine.json': cassette('yokla.cassette/v1'),
+    });
+    const refused = async (...args: string[]) => {
+      const { io, err } = capture();
+      expect(await main(['run', '--profile', join(dir, 'yokla.profile.yaml'), ...args], io)).toBe(
+        2,
+      );
+      return err.join('\n');
+    };
+    const at = (name: string) => join(dir, name);
+    expect(await refused('--record', at('new.json'), '--replay', at('fine.json'))).toBe(
+      '--record and --replay go one at a time',
+    );
+    expect(await refused('--replay-loose')).toBe('--replay-loose needs --replay');
+    expect(await refused('--replay', at('missing.json'))).toMatch(/missing\.json: ENOENT/u);
+    expect(await refused('--replay', at('broken.json'))).toBe(`${at('broken.json')}: not JSON`);
+    expect(await refused('--replay', at('later.json'))).toBe(
+      `${at('later.json')}: not a yokla.cassette/v1 file (schema: "yokla.cassette/v2")`,
+    );
+    expect(await refused('--replay', at('invalid.json'))).toBe(
+      `${at('invalid.json')}: an invalid cassette`,
+    );
+    // A cassette is the model proxy's to make and to answer from.
+    for (const args of [
+      ['--replay', at('fine.json')],
+      ['--record', at('new.json')],
+    ]) {
+      expect(await refused(...args)).toContain(
+        'recording or replaying a cassette needs a modelProxy with upstreams in the profile',
+      );
+    }
   });
 
   it('rejects a non-numeric sample count', async () => {

@@ -209,6 +209,24 @@
                               "kind"
                             ],
                             "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "answer"
+                              },
+                              "text": {
+                                "type": "string",
+                                "description": "Replaces the text of the model's answer, in the provider's own shape; tool calls stay (ADR-0040)."
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "text"
+                            ],
+                            "additionalProperties": false
                           }
                         ]
                       },

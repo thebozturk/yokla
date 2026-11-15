@@ -114,7 +114,9 @@ export {
   type WebSocketProfileTarget,
   isSafeCredentialUrl,
 } from './schema/profile.ts';
+export { Cassette, CASSETTE_SCHEMA_ID } from './schema/cassette.ts';
 export {
+  CassetteCall,
   ModelOutput,
   PromptMessage,
   PromptRole,

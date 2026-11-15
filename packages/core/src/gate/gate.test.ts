@@ -403,6 +403,26 @@ describe('evaluateGate latency and cost thresholds (ADR-0014)', () => {
     ]);
   });
 
+  it("judges a replayed run's latency as unmeasured, and its cost as recorded (ADR-0040)", () => {
+    const replay = { cassetteSha256: 'c'.repeat(64), loose: false, diverged: 0 };
+    const replayed = run([timed('a', 'perf', [{ latencyMs: 1, costUsd: 0.001 }])], { replay });
+    expect(gate(replayed, { latencyP50Ms: 100, latencyP95Ms: 100 }).breaches).toEqual(
+      ['latencyP50Ms', 'latencyP95Ms'].map((name) => ({
+        rule: 'unmeasured',
+        suite: 'perf',
+        cases: ['a'],
+        message: `perf: ${name} is set but can't be measured: the run replayed a cassette, so its model answers took no time`,
+      })),
+    );
+    expect(gate(replayed, { latencyP95Ms: 100, allowUnmeasured: true }).verdict).toBe('pass');
+    expect(gate(replayed, { costUsd: 0.0009 }).breaches.map((b) => b.message)).toEqual([
+      'perf: cost 0.001 USD, 0.0009 allowed',
+    ]);
+    // A run that recorded a cassette is measured as any other.
+    const recorded = run([timed('a', 'perf', [{ latencyMs: 1 }])], { record: { calls: 1 } });
+    expect(gate(recorded, { latencyP95Ms: 100 }).verdict).toBe('pass');
+  });
+
   it('lets a suite override the gate-wide thresholds', () => {
     const results = run([
       timed('a', 'perf', [{ latencyMs: 500 }]),

@@ -28,6 +28,13 @@ export const Fault = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('empty-content') }),
   z.strictObject({ kind: z.literal('truncated-stream') }),
   z.strictObject({ kind: z.literal('invalid-tool-call') }),
+  z.strictObject({
+    kind: z.literal('answer'),
+    text: z.string().meta({
+      description:
+        "Replaces the text of the model's answer, in the provider's own shape; tool calls stay (ADR-0040).",
+    }),
+  }),
 ]);
 export type Fault = z.output<typeof Fault>;
 export const FAULT_KINDS = Fault.options.map((option) => option.shape.kind.value);
