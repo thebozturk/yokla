@@ -1,6 +1,6 @@
 # 0049. The analyzer reads code and docs: values a model finds, verified in their source
 
-Status: Proposed · Date: 2026-11-16
+Status: Accepted · Date: 2026-11-16
 
 ## Context
 
