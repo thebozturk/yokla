@@ -37,6 +37,8 @@ import {
   type Cassette,
   type Case,
   type ModelSwap,
+  type ToolInjection,
+  type ToolReversal,
   type CaseCustomer,
   type CaseTurn,
   type Check,
@@ -108,6 +110,8 @@ export interface RunOptions {
   readonly onCassette?: (cassette: Cassette) => void;
   /** Calls that ask for a model go to another, through the model proxy (ADR-0042). */
   readonly swaps?: readonly ModelSwap[];
+  /** Arrays in every result of a tool, reversed by the model proxy (ADR-0043). */
+  readonly reversals?: readonly ToolReversal[];
   /** Cases run in parallel. Default 1. */
   readonly concurrency?: number;
   /** Replaces the profile's request url, e.g. for a target on a random port. */
@@ -365,6 +369,26 @@ export function preflight(options: RunOptions): void {
       problems.push(`case "${c.id}" injects faults, which needs an upstream in modelProxy`);
     }
   }
+  // Tool results are changed in calls the proxy forwards, never under a cassette (ADR-0043).
+  const injecting = options.cases.filter((c) =>
+    c.turns.some((turn) => turn.toolResults !== undefined),
+  );
+  for (const c of injecting) {
+    if (!proxiesCalls(options.profile)) {
+      problems.push(
+        `case "${c.id}" injects into tool results, which needs a modelProxy with upstreams`,
+      );
+    }
+  }
+  const reversing = (options.reversals ?? []).length > 0;
+  if (reversing && !proxiesCalls(options.profile)) {
+    problems.push('--reverse-items needs a modelProxy with upstreams in the profile');
+  }
+  if ((injecting.length > 0 || reversing) && options.cassette !== undefined) {
+    problems.push(
+      "tool results can't be changed with a cassette: a changed request no longer matches what it recorded",
+    );
+  }
   const languages = new Set<string>(options.profile.languages);
   const seen = new Set<string>();
   for (const c of options.cases) {
@@ -408,6 +432,7 @@ type Arm = (
     readonly inFlight: boolean;
     readonly faults?: readonly FaultPlan[];
     readonly seed?: string;
+    readonly toolResults?: readonly ToolInjection[];
   },
 ) => Promise<void>;
 
@@ -706,15 +731,21 @@ async function runSample(
       };
       let outcome: Exchange;
       const faults = turn.faults;
+      const injections = turn.toolResults;
       const started = performance.now();
       try {
         // A cassette keys each call by its turn, so every turn is armed with its key (ADR-0040).
         const keyed = faults !== undefined || options.cassette !== undefined;
-        if (tag !== undefined && proxied && (correlation === 'serial' || keyed)) {
+        if (
+          tag !== undefined &&
+          proxied &&
+          (correlation === 'serial' || keyed || injections !== undefined)
+        ) {
           await arm?.(tag.id, {
             inFlight: correlation === 'serial',
             // The jitter seed: what identifies this turn in every run (ADR-0017).
             ...(faults === undefined ? {} : { faults }),
+            ...(injections === undefined ? {} : { toolResults: injections }),
             ...(keyed
               ? { seed: `${testCase.id}|${String(sampleIndex)}|${String(turnIndex)}` }
               : {}),
@@ -1233,6 +1264,8 @@ function judgeCase(
         toolCalls: toolCallsView(call.toolCalls),
         // The text the model answered, when the proxy read it (ADR-0033).
         output: call.output?.text ?? null,
+        // The changes the proxy made to the tool results the call sent (ADR-0043).
+        toolChanges: call.toolChanges,
       }));
       // A turn without proxy calls is judged on the calls its spans showed, which carry no
       // prompts or tool calls (ADR-0029).
@@ -1412,6 +1445,7 @@ async function openRecording(options: RunOptions): Promise<OpenRecording | undef
           ? { capture: true }
           : { replay: { loose: cassette.loose ?? false, calls: cassette.replay.calls } }),
       ...(swaps.length === 0 ? {} : { swaps }),
+      ...((options.reversals ?? []).length === 0 ? {} : { reversals: options.reversals }),
     });
     return {
       control,
@@ -1728,11 +1762,31 @@ export async function runSuite(input: RunOptions): Promise<Results> {
               ]
             : [],
         );
+  // How many tool results each reversal changed; one that changed none tested nothing.
+  const reversed = (options.reversals ?? []).map((reversal) => ({
+    ...reversal,
+    results: (records ?? [])
+      .flatMap((record) => record.toolChanges ?? [])
+      .filter(
+        (change) => change.kind === 'reverse' && change.tool === reversal.tool && change.applied,
+      ).length,
+  }));
+  const reversalIssues =
+    records === undefined
+      ? []
+      : reversed.flatMap((reversal) =>
+          reversal.results === 0
+            ? [
+                `--reverse-items ${reversal.tool}=${reversal.at} changed no tool result: the run tested nothing by it`,
+              ]
+            : [],
+        );
   const issues = [
     ...observation.issues,
     ...proxyIssues,
     ...replayIssues,
     ...swapIssues,
+    ...reversalIssues,
     ...capIssues,
     ...(stop === undefined ? [] : [stop]),
   ];
@@ -1761,6 +1815,7 @@ export async function runSuite(input: RunOptions): Promise<Results> {
       ...(options.stopEarly === true ? { sampling: { stopEarly: true } } : {}),
       ...(recordedCalls === undefined ? {} : { record: { calls: recordedCalls } }),
       ...(swapped.length === 0 ? {} : { swaps: swapped }),
+      ...(reversed.length === 0 ? {} : { toolChanges: reversed }),
       ...(replay === undefined
         ? {}
         : { replay: { cassetteSha256: replay.sha256, loose: replay.loose === true, diverged } }),

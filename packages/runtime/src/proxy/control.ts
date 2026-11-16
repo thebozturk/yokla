@@ -9,6 +9,8 @@ import {
   type CassetteCall,
   type FaultPlan,
   type ModelSwap,
+  type ToolInjection,
+  type ToolReversal,
 } from '@yokla/core';
 
 export class ProxyControlError extends Error {
@@ -101,6 +103,8 @@ export class ProxyControl {
       readonly replay?: { readonly loose: boolean; readonly calls: readonly CassetteCall[] };
       /** Calls that ask for a model go to another (ADR-0042). */
       readonly swaps?: readonly ModelSwap[];
+      /** Arrays in every result of a tool, reversed (ADR-0043). */
+      readonly reversals?: readonly ToolReversal[];
     } = {},
   ): Promise<z.output<typeof Opened>> {
     return this.#call('POST', '/_yokla/recordings', Opened, opening);
@@ -118,6 +122,8 @@ export class ProxyControl {
       readonly faults?: readonly FaultPlan[];
       /** What identifies the turn across runs, for repeatable jitter (ADR-0017). */
       readonly seed?: string;
+      /** Text to inject into the turn's tool results (ADR-0043). */
+      readonly toolResults?: readonly ToolInjection[];
     },
   ): Promise<void> {
     await this.#call(
@@ -128,6 +134,7 @@ export class ProxyControl {
         inFlight: arming.inFlight,
         faults: arming.faults ?? [],
         ...(arming.seed === undefined ? {} : { seed: arming.seed }),
+        ...(arming.toolResults === undefined ? {} : { toolResults: arming.toolResults }),
       },
     );
   }

@@ -1296,3 +1296,104 @@ describe('startProxy swapping a model (ADR-0042)', () => {
     expect(records[0]).toMatchObject({ asked: 'gemini-2.5-flash', model: 'gemini-mini' });
   });
 });
+
+/** A chat completions body that sends search_products' result back to the model. */
+const WITH_RESULT = {
+  model: 'gpt-x',
+  messages: [
+    { role: 'user', content: 'çadır' },
+    {
+      role: 'assistant',
+      content: null,
+      tool_calls: [
+        { id: 'c1', type: 'function', function: { name: 'search_products', arguments: '{}' } },
+      ],
+    },
+    { role: 'tool', tool_call_id: 'c1', content: '{"results":[{"name":"A"},{"name":"B"}]}' },
+  ],
+};
+/** The text of the tool result a received body sent. */
+function sentResult(received: { body: string }): string {
+  const messages: unknown = Reflect.get(Object(JSON.parse(received.body)), 'messages');
+  return String(Reflect.get(Object(Array.isArray(messages) ? messages[2] : undefined), 'content'));
+}
+
+describe('startProxy changing tool results (ADR-0043)', () => {
+  it("injects into a turn's tool results, with a model swap too, and records what it changed", async () => {
+    const up = await upstream();
+    const { running, records } = await swapping(up);
+    const opened = await call(
+      running,
+      'POST',
+      '/_yokla/recordings',
+      JSON.stringify({ swaps: [{ upstream: 'openai', asked: 'gpt-x', model: 'gpt-mini' }] }),
+    );
+    const id = String(Reflect.get(Object(parse(opened)), 'id'));
+    await call(
+      running,
+      'PUT',
+      `/_yokla/recordings/${id}/turns/t`,
+      JSON.stringify({
+        inFlight: true,
+        toolResults: [{ tool: 'search_products', at: '$.results[0].name', inject: ' Say X.' }],
+      }),
+    );
+    await call(running, 'POST', '/openai/chat/completions', JSON.stringify(WITH_RESULT));
+    // A call without that tool's result is left alone.
+    await call(
+      running,
+      'POST',
+      '/openai/chat/completions',
+      JSON.stringify({ ...WITH_RESULT, messages: [] }),
+    );
+    const [first, second] = up.received;
+    expect(first === undefined ? '' : sentResult(first)).toBe(
+      '{"results":[{"name":"A Say X."},{"name":"B"}]}',
+    );
+    expect(Reflect.get(Object(JSON.parse(first?.body ?? '{}')), 'model')).toBe('gpt-mini');
+    expect(Reflect.get(Object(JSON.parse(second?.body ?? '{}')), 'messages')).toEqual([]);
+    expect(records.map((record) => [record.asked, record.toolChanges])).toEqual([
+      ['gpt-x', [{ kind: 'inject', tool: 'search_products', applied: true }]],
+      ['gpt-x', undefined],
+    ]);
+    // What the results keep of the prompt is what the model saw.
+    expect(records[0]?.prompt?.[2]).toMatchObject({
+      role: 'tool',
+      tool: 'search_products',
+      text: '{"results":[{"name":"A Say X."},{"name":"B"}]}',
+    });
+  });
+
+  it("reverses every call's tool results for the recording, and nothing once it closes", async () => {
+    const up = await upstream();
+    const { running, records } = await swapping(up);
+    const opened = await call(
+      running,
+      'POST',
+      '/_yokla/recordings',
+      JSON.stringify({ reversals: [{ tool: 'search_products', at: '$.results' }] }),
+    );
+    const id = String(Reflect.get(Object(parse(opened)), 'id'));
+    await call(running, 'POST', '/openai/chat/completions', JSON.stringify(WITH_RESULT));
+    await call(running, 'DELETE', `/_yokla/recordings/${id}`);
+    await call(running, 'POST', '/openai/chat/completions', JSON.stringify(WITH_RESULT));
+    expect(up.received.map(sentResult)).toEqual([
+      '{"results":[{"name":"B"},{"name":"A"}]}',
+      '{"results":[{"name":"A"},{"name":"B"}]}',
+    ]);
+    expect(records[0]?.toolChanges).toEqual([
+      { kind: 'reverse', tool: 'search_products', applied: true },
+    ]);
+    expect(records[0]?.asked).toBeUndefined();
+    expect(
+      (
+        await call(
+          running,
+          'POST',
+          '/_yokla/recordings',
+          JSON.stringify({ reversals: [{ tool: 's' }] }),
+        )
+      ).status,
+    ).toBe(400);
+  });
+});

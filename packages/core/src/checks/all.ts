@@ -11,7 +11,13 @@ import {
   routeExpected,
   statusAllowed,
 } from './generic.ts';
-import { piiInPrompt, promptBudget, promptLeak, untrustedInSystem } from './inspection.ts';
+import {
+  injectionCanary,
+  piiInPrompt,
+  promptBudget,
+  promptLeak,
+  untrustedInSystem,
+} from './inspection.ts';
 import { jsonSchemaCheck } from './schema.ts';
 import { answerSimilarity } from './similarity.ts';
 import { toolCalls, toolCallValid } from './tools.ts';
@@ -32,6 +38,7 @@ export const CORE_CHECKS: readonly Check[] = [
   promptLeak,
   untrustedInSystem,
   piiInPrompt,
+  injectionCanary,
   toolCalls,
   toolCallValid,
   goalReachedCheck,
@@ -48,6 +55,7 @@ export const CORE_DIMENSIONS: ReadonlySet<string> = new Set([
   'cost',
   'deadline',
   'evidence',
+  'injection',
   'language',
   'leakage',
   'privacy',

@@ -4,12 +4,18 @@ import { join } from 'node:path';
 import { Comparison, RESULTS_SCHEMA_ID } from '@yokla/core';
 import { describe, expect, it } from 'vitest';
 import { compareCommand } from './commands/compare.ts';
-import { parseSwap } from './commands/run.ts';
+import { parseReversal, parseSwap } from './commands/run.ts';
 import { LoadError } from './load.ts';
 import { schemas } from './schemas.ts';
 
 /** A run of one case with this status, costing `costUsd`, made with these swaps. */
-function results(id: string, status: string, costUsd: number, swaps: unknown[] = []): string {
+function results(
+  id: string,
+  status: string,
+  costUsd: number,
+  swaps: unknown[] = [],
+  definition = 'd',
+): string {
   return JSON.stringify({
     schema: RESULTS_SCHEMA_ID,
     yokla: { version: '0.0.0-test' },
@@ -39,6 +45,7 @@ function results(id: string, status: string, costUsd: number, swaps: unknown[] =
         language: 'tr',
         status,
         unstable: false,
+        definitionSha256: definition.repeat(64).slice(0, 64),
         dimensions: [],
         samples: [],
       },
@@ -108,6 +115,23 @@ describe('yokla compare (ADR-0042)', () => {
     expect(out).toContain('cheapest passing run: B (fake: big → nano), 0.002000 USD');
   });
 
+  it('with --expect-same, exits with 1 when a status moved, and 0 when none did (ADR-0043)', () => {
+    writeFileSync(join(dir, 'reversed.json'), results('reversed', 'pass', 0.008));
+    const same = compare('--results', 'big.json', '--results', 'reversed.json', '--expect-same');
+    expect(same.code).toBe(0);
+    expect(same.out).toContain('--expect-same: every case has the same status in every run');
+    const moved = compare('--results', 'big.json', '--results', 'nano.json', '--expect-same');
+    expect(moved.code).toBe(1);
+    expect(moved.out).toContain('--expect-same: the status of a case differs: a');
+    // Without it, a moved status is reported, and the comparison exits with 0.
+    expect(compare('--results', 'big.json', '--results', 'nano.json').code).toBe(0);
+    // A case whose definition differs isn't compared, so it moves nothing.
+    writeFileSync(join(dir, 'redefined.json'), results('redefined', 'fail', 0.008, [], 'e'));
+    expect(
+      compare('--results', 'big.json', '--results', 'redefined.json', '--expect-same').code,
+    ).toBe(0);
+  });
+
   it('refuses fewer than two runs, and a file it cannot read', () => {
     const one = compare('--results', 'big.json');
     expect(one.code).toBe(2);
@@ -163,6 +187,24 @@ describe('parseSwap (ADR-0042)', () => {
   it('refuses a swap without its three parts', () => {
     for (const text of ['fake', 'fake:a', ':a=b', 'fake:=b', 'fake:a=', 'fake:a=gateway/']) {
       expect(() => parseSwap(text, profile), text).toThrow(LoadError);
+    }
+  });
+});
+
+describe('parseReversal (ADR-0043)', () => {
+  it('reads the tool and the JSONPath, and refuses anything else', () => {
+    expect(parseReversal('search_products=$.results')).toEqual({
+      tool: 'search_products',
+      at: '$.results',
+    });
+    expect(parseReversal("search=$['items'][*].list")).toEqual({
+      tool: 'search',
+      at: "$['items'][*].list",
+    });
+    for (const text of ['search_products', '=$.results', 'search=results', 'search=']) {
+      expect(() => parseReversal(text), text).toThrow(
+        '--reverse-items must be <tool>=<jsonpath>, such as search_products=$.results',
+      );
     }
   });
 });

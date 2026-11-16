@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { getFieldPath, parseJsonPath, queryJsonPath, selectJsonPath } from './jsonpath.ts';
+import {
+  getFieldPath,
+  parseJsonPath,
+  queryJsonPath,
+  selectJsonPath,
+  updateJsonPath,
+} from './jsonpath.ts';
 
 const doc = {
   data: {
@@ -96,5 +102,51 @@ describe('getFieldPath', () => {
     expect(getFieldPath({ price: { amount: 5 } }, 'price.amount')).toBe(5);
     expect(getFieldPath({ price: null }, 'price.amount')).toBeUndefined();
     expect(getFieldPath({}, 'toString')).toBeUndefined();
+  });
+});
+
+/** A tool result's JSON, fresh for each change (ADR-0043). */
+const searchResult = () => ({
+  results: [{ name: 'Kubbe Çadır' }, { name: 'Plaj Çadırı' }],
+  meta: { first: 'a', second: 'b' },
+});
+const exclaim = (value: unknown) => (typeof value === 'string' ? `${value}!` : undefined);
+
+describe('updateJsonPath (ADR-0043)', () => {
+  it('replaces each value the path selects, in place, and counts them', () => {
+    const tree = searchResult();
+    expect(updateJsonPath(tree, '$.results[*].name', exclaim)).toBe(2);
+    expect(tree.results).toEqual([{ name: 'Kubbe Çadır!' }, { name: 'Plaj Çadırı!' }]);
+    expect(updateJsonPath(tree, '$.results[1].name', exclaim)).toBe(1);
+    expect(tree.results[1]).toEqual({ name: 'Plaj Çadırı!!' });
+    expect(updateJsonPath(tree, "$.meta['second']", exclaim)).toBe(1);
+    expect(updateJsonPath(tree, '$.meta[*]', exclaim)).toBe(2);
+    expect(tree.meta).toEqual({ first: 'a!', second: 'b!!' });
+    const reversed = searchResult();
+    expect(
+      updateJsonPath(reversed, '$.results', (value) =>
+        Array.isArray(value) ? value.toReversed() : undefined,
+      ),
+    ).toBe(1);
+    expect(reversed.results.map((item) => item.name)).toEqual(['Plaj Çadırı', 'Kubbe Çadır']);
+    const items = searchResult();
+    expect(updateJsonPath(items, '$.results[*]', () => 'x')).toBe(2);
+    expect(items.results).toEqual(['x', 'x']);
+    const second = searchResult();
+    expect(updateJsonPath(second, '$.results[1]', () => 'y')).toBe(1);
+    expect(second.results).toEqual([{ name: 'Kubbe Çadır' }, 'y']);
+  });
+
+  it('leaves a value whose update is undefined, and counts nothing it found nowhere', () => {
+    const tree = searchResult();
+    expect(updateJsonPath(tree, '$.results[*]', exclaim)).toBe(0);
+    expect(tree).toEqual(searchResult());
+    expect(updateJsonPath(tree, '$.nothing.name', exclaim)).toBe(0);
+    expect(updateJsonPath(tree, '$.results[5].name', exclaim)).toBe(0);
+    expect(updateJsonPath(tree, '$.meta[0]', exclaim)).toBe(0);
+    expect(updateJsonPath(tree, '$.results.name', exclaim)).toBe(0);
+    expect(updateJsonPath('text', '$[*]', exclaim)).toBe(0);
+    // The root can't be replaced in place.
+    expect(updateJsonPath(tree, '$', () => 'x')).toBe(0);
   });
 });

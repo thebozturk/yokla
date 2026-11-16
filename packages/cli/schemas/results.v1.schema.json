@@ -172,6 +172,31 @@
             "additionalProperties": false
           }
         },
+        "toolChanges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "tool": {
+                "type": "string"
+              },
+              "at": {
+                "type": "string"
+              },
+              "results": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "tool",
+              "at",
+              "results"
+            ],
+            "additionalProperties": false
+          }
+        },
         "observation": {
           "type": "object",
           "properties": {
@@ -978,6 +1003,33 @@
                                 },
                                 "asked": {
                                   "type": "string"
+                                },
+                                "toolChanges": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "inject",
+                                          "reverse"
+                                        ]
+                                      },
+                                      "tool": {
+                                        "type": "string"
+                                      },
+                                      "applied": {
+                                        "type": "boolean"
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "tool",
+                                      "applied"
+                                    ],
+                                    "additionalProperties": false
+                                  }
                                 }
                               },
                               "required": [

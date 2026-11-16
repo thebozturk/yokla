@@ -3,8 +3,9 @@
 // configuration's thresholds and the baseline as yokla gate would; the
 // comparison names the cheapest run that passes. It reads results files and
 // contacts nothing.
-// Exit codes: 0 compared, whatever the verdicts; 2 a file can't be read, or
-// fewer than two runs are given.
+// Exit codes: 0 compared, whatever the verdicts; 1 with --expect-same, a case's
+// status differs between the runs (ADR-0043); 2 a file can't be read, or fewer
+// than two runs are given.
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -25,14 +26,17 @@ Options:
   --baseline <file>     a baseline each run is gated against (default: yokla.baseline.json,
                         when present)
   --json <file>         also write the comparison as JSON
+  --expect-same         exit with 1 when a case's status differs between the runs, as a
+                        metamorphic run's must not
 
-Exit codes: 0 compared, whatever the verdicts; 2 a file can't be read.`;
+Exit codes: 0 compared; 1 with --expect-same, a status differs; 2 a file can't be read.`;
 
 const OPTIONS = {
   results: { type: 'string', multiple: true },
   config: { type: 'string' },
   baseline: { type: 'string' },
   json: { type: 'string' },
+  'expect-same': { type: 'boolean' },
   help: { type: 'boolean' },
 } as const;
 
@@ -81,6 +85,16 @@ export function compareCommand(
     }
     if (values.json !== undefined) {
       io.out(`json: ${writeReport(values.json, `${JSON.stringify(comparison, null, 2)}\n`)}`);
+    }
+    // A change that mustn't move a verdict (ADR-0043): any case that moved breaks it.
+    if (values['expect-same'] === true) {
+      const moved = comparison.cases.filter((c) => c.differs && !c.changed);
+      io.out(
+        moved.length === 0
+          ? '--expect-same: every case has the same status in every run'
+          : `--expect-same: the status of ${moved.length === 1 ? 'a case' : `${String(moved.length)} cases`} differs: ${moved.map((c) => c.id).join(', ')}`,
+      );
+      return moved.length === 0 ? 0 : 1;
     }
     return 0;
   } catch (error) {

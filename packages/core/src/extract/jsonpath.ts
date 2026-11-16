@@ -79,6 +79,45 @@ export function selectJsonPath(
   return nodes;
 }
 
+/**
+ * Replaces each value the path selects with what `update` returns for it, in
+ * place, leaving a value alone when it returns undefined. The path's root can't
+ * be replaced. Returns how many values changed (ADR-0043).
+ */
+export function updateJsonPath(
+  document: unknown,
+  path: string,
+  update: (value: unknown) => unknown,
+): number {
+  const segments = parseJsonPath(path);
+  const last = segments.at(-1);
+  if (last === undefined) return 0;
+  let parents: unknown[] = [document];
+  for (const segment of segments.slice(0, -1)) {
+    parents = parents.flatMap((node) => step(node, segment));
+  }
+  let changed = 0;
+  const replace = (holder: Record<string, unknown> | unknown[], key: string | number) => {
+    const next = update(Reflect.get(holder, key));
+    if (next !== undefined) {
+      Reflect.set(holder, key, next);
+      changed += 1;
+    }
+  };
+  for (const parent of parents) {
+    if (last.kind === 'name') {
+      if (isObject(parent) && Object.hasOwn(parent, last.name)) replace(parent, last.name);
+    } else if (last.kind === 'index') {
+      if (Array.isArray(parent) && last.index < parent.length) replace(parent, last.index);
+    } else if (Array.isArray(parent)) {
+      for (let index = 0; index < parent.length; index += 1) replace(parent, index);
+    } else if (isObject(parent)) {
+      for (const name of Object.keys(parent)) replace(parent, name);
+    }
+  }
+  return changed;
+}
+
 /** Every value the path selects, in document order. */
 export function queryJsonPath(document: unknown, path: string): unknown[] {
   let nodes: unknown[] = [document];

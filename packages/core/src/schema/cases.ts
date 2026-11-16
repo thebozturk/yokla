@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { Id, LanguageCode, Pattern, Provenance, SchemaRule, Suite } from './common.ts';
 import { squeeze } from '../text/match.ts';
 import { FaultPlan } from './fault.ts';
+import { ToolInjection } from './proxy.ts';
 
 export const KnownGap = z.strictObject({
   reason: z.string().min(1),
@@ -231,6 +232,10 @@ export function caseShape<E extends z.ZodType>(language: z.ZodType<string>, expe
           faults: z.array(FaultPlan).min(1).optional().meta({
             description:
               'Provider faults the model proxy injects into this turn (ADR-0013); the first plan that matches a call applies.',
+          }),
+          toolResults: z.array(ToolInjection).min(1).optional().meta({
+            description:
+              "Text the model proxy injects into a tool's results in this turn, before the model sees them (ADR-0043).",
           }),
           expect: expect
             .optional()

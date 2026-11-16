@@ -5,7 +5,14 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import type { Cassette, ModelSwap, Profile, Results } from '@yokla/core';
+import {
+  JsonPath,
+  type Cassette,
+  type ModelSwap,
+  type Profile,
+  type Results,
+  type ToolReversal,
+} from '@yokla/core';
 import { htmlReport, junitXml, terminalSummary } from '@yokla/report';
 import { ConfigError, runSuite } from '@yokla/runtime';
 import { LoadError } from '../load.ts';
@@ -31,6 +38,9 @@ Options:
   --swap-model <swap>   <upstream>:<asked model>=<model>: send the calls that ask for a model to
                         another; =<upstream>/<model> sends them to another upstream of the same
                         kind; repeatable
+  --reverse-items <tool>=<jsonpath>
+                        reverse the arrays the path selects in every result of a tool before the
+                        model sees it, to check that verdicts don't move; repeatable
   --concurrency <n>     cases run in parallel (default: 1)
   --target-url <url>    use this url instead of the profile's request url
   --junit <file>        also write a JUnit XML report
@@ -71,6 +81,21 @@ export function parseSwap(text: string, profile: Profile): ModelSwap {
   };
 }
 
+/**
+ * A tool result reversal from the command line (ADR-0043): the tool ends at
+ * the first "=", which no tool name holds, and the rest is a JSONPath.
+ */
+export function parseReversal(text: string): ToolReversal {
+  const equals = text.indexOf('=');
+  const at = text.slice(equals + 1);
+  if (equals <= 0 || !JsonPath.safeParse(at).success) {
+    throw new LoadError(
+      '--reverse-items must be <tool>=<jsonpath>, such as search_products=$.results',
+    );
+  }
+  return { tool: text.slice(0, equals), at };
+}
+
 function positiveInt(value: string | undefined, name: string): number | undefined {
   if (value === undefined) return undefined;
   const number = Number(value);
@@ -104,6 +129,7 @@ const RUN_OPTIONS = {
   replay: { type: 'string' },
   'replay-loose': { type: 'boolean' },
   'swap-model': { type: 'string', multiple: true },
+  'reverse-items': { type: 'string', multiple: true },
   concurrency: { type: 'string' },
   'target-url': { type: 'string' },
   junit: { type: 'string' },
@@ -165,6 +191,8 @@ export async function runCommand(
     const replayed = values.replay === undefined ? undefined : readCassette(values.replay);
     // Calls that ask for a model go to another (ADR-0042).
     const swaps = (values['swap-model'] ?? []).map((text) => parseSwap(text, prepared.profile));
+    // Arrays in every result of a tool, reversed before the model sees them (ADR-0043).
+    const reversals = (values['reverse-items'] ?? []).map(parseReversal);
     const results = await runSuite({
       ...prepared.base,
       cases: [...prepared.cases],
@@ -191,6 +219,7 @@ export async function runCommand(
           }),
       ...(concurrency === undefined ? {} : { concurrency }),
       ...(swaps.length === 0 ? {} : { swaps }),
+      ...(reversals.length === 0 ? {} : { reversals }),
       ...(maxCost === undefined ? {} : { maxCostUsd: maxCost }),
       ...(values['fresh-customer'] === true ? { freshCustomer: true } : {}),
     });

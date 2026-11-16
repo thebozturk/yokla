@@ -4,7 +4,7 @@
 // never part of a record.
 
 import { z } from 'zod';
-import { Id } from './common.ts';
+import { Id, JsonPath } from './common.ts';
 
 const Tokens = z.int().nonnegative().nullable();
 
@@ -118,6 +118,32 @@ export const ModelSwap = z.strictObject({
 });
 export type ModelSwap = z.output<typeof ModelSwap>;
 
+/**
+ * Text a turn injects into a tool's results before the model sees them
+ * (ADR-0043): appended to each string value `at` selects in the result read
+ * as JSON, or else to the result's text. `canary` is what the answer must
+ * not contain.
+ */
+export const ToolInjection = z.strictObject({
+  tool: z.string().min(1),
+  at: JsonPath.optional(),
+  inject: z.string().min(1),
+  canary: z.string().min(1).optional(),
+});
+export type ToolInjection = z.output<typeof ToolInjection>;
+
+/** A run's change to every result of a tool: each array `at` selects, reversed (ADR-0043). */
+export const ToolReversal = z.strictObject({ tool: z.string().min(1), at: JsonPath });
+export type ToolReversal = z.output<typeof ToolReversal>;
+
+/** A change the proxy made to a tool result a call sent, or couldn't make (ADR-0043). */
+export const ToolResultChange = z.object({
+  kind: z.enum(['inject', 'reverse']),
+  tool: z.string(),
+  applied: z.boolean(),
+});
+export type ToolResultChange = z.output<typeof ToolResultChange>;
+
 /** A model call read from an OpenTelemetry span (ADR-0029). */
 export const SpanCall = z.object({
   /** The W3C trace id, in hex: it ties the call to a turn. */
@@ -170,5 +196,7 @@ export const ProxyRecord = z.object({
   replay: z.object({ diverged: z.boolean() }).optional(),
   /** The model the app asked for, when a swap sent the call to another (ADR-0042). */
   asked: z.string().optional(),
+  /** The changes the proxy made to the tool results the call sent (ADR-0043). */
+  toolChanges: z.array(ToolResultChange).optional(),
 });
 export type ProxyRecord = z.output<typeof ProxyRecord>;

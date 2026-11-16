@@ -252,6 +252,37 @@
                     "additionalProperties": false
                   }
                 },
+                "toolResults": {
+                  "description": "Text the model proxy injects into a tool's results in this turn, before the model sees them (ADR-0043).",
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "tool": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "at": {
+                        "type": "string",
+                        "pattern": "^\\$(?:\\.[A-Za-z_][\\w-]*|\\['[^'\\\\]*'\\]|\\[\\d+\\]|\\[\\*\\])*$"
+                      },
+                      "inject": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "canary": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "tool",
+                      "inject"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
                 "expect": {
                   "description": "Expectations for the response to this turn.",
                   "type": "object",

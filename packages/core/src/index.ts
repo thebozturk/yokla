@@ -24,6 +24,7 @@ export {
   parseJsonPath,
   queryJsonPath,
   selectJsonPath,
+  updateJsonPath,
   type Segment,
 } from './extract/jsonpath.ts';
 export {
@@ -118,6 +119,9 @@ export { Cassette, CASSETTE_SCHEMA_ID } from './schema/cassette.ts';
 export {
   CassetteCall,
   ModelSwap,
+  ToolInjection,
+  ToolResultChange,
+  ToolReversal,
   ModelOutput,
   PromptMessage,
   PromptRole,

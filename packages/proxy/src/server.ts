@@ -23,6 +23,9 @@ import {
   CassetteCall,
   FaultPlan,
   ModelSwap,
+  ToolInjection,
+  ToolReversal,
+  type ToolResultChange,
   modelCallOf,
   readOtlpJson,
   readOtlpProtobuf,
@@ -45,6 +48,7 @@ import {
 import { geminiFacts } from './gemini.ts';
 import { readPrompt } from './prompts.ts';
 import { readOutputText } from './output.ts';
+import { changeToolResults, type ToolChange } from './tool-results.ts';
 import { readOffered, readToolCalls } from './tools.ts';
 import { readUsage, UNMEASURED, type UpstreamKind } from './usage.ts';
 
@@ -153,6 +157,8 @@ async function readBody(request: IncomingMessage, max: number): Promise<Buffer |
 const TurnArming = z.object({
   inFlight: z.boolean().default(false),
   faults: z.array(FaultPlan).default([]),
+  /** Text to inject into the turn's tool results (ADR-0043). */
+  toolResults: z.array(ToolInjection).default([]),
   /** What identifies the turn across runs, for repeatable jitter (ADR-0017). */
   seed: z.string().min(1).max(1024).optional(),
 });
@@ -172,6 +178,8 @@ const Opening = z.object({
   capture: z.boolean().default(false),
   /** Send the calls that ask for a model to another (ADR-0042). */
   swaps: z.array(ModelSwap).default([]),
+  /** Reverse arrays in every result of a tool (ADR-0043). */
+  reversals: z.array(ToolReversal).default([]),
   /** Answer each call from these recorded calls, forwarding nothing. */
   replay: z.object({ loose: z.boolean().default(false), calls: z.array(CassetteCall) }).optional(),
 });
@@ -224,14 +232,20 @@ function sha256(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 /**
- * The call a model swap makes of an app's call (ADR-0042): the first swap of
- * the called upstream for the model the call asks for, with the model's name
- * changed in the body, or in a Gemini call's path, and sent to the swap's
- * upstream. Undefined when no swap applies, or the body names no model.
+ * The call the proxy makes of an app's call within a recording: its tool
+ * results changed by the turn's injections and the run's reversals (ADR-0043),
+ * and its model's name changed by the first swap of the called upstream for
+ * the model it asks for, in the body or a Gemini call's path, and sent to the
+ * swap's upstream (ADR-0042). Undefined when nothing applies.
  */
-function swapOf(
+function rewriteRequest(
   swaps: readonly ModelSwap[],
+  changes: readonly ToolChange[],
   upstreams: ReadonlyMap<string, ProxyUpstream>,
   called: ProxyUpstream,
   rest: string,
@@ -239,46 +253,48 @@ function swapOf(
   headers: IncomingHttpHeaders,
 ):
   | {
-      readonly asked: string;
+      readonly asked: string | undefined;
       readonly upstream: ProxyUpstream;
       readonly rest: string;
       readonly body: Buffer;
       readonly headers: OutgoingHttpHeaders;
+      /** How the body sent is encoded: the app's, or none once changed. */
+      readonly encoding: string | undefined;
+      readonly toolChanges: readonly ToolResultChange[];
     }
   | undefined {
-  if (swaps.length === 0) return undefined;
-  if (called.kind === 'gemini') {
-    const asked = geminiFacts(rest).model;
-    const swap = swaps.find((s) => s.upstream === called.id && s.asked === asked);
-    if (swap === undefined || asked === null) return undefined;
-    return {
-      asked,
-      upstream: upstreams.get(swap.to ?? called.id) ?? called,
-      rest: rest.replace(`/models/${asked}:`, `/models/${swap.model}:`),
-      body,
-      headers: endToEnd(headers),
-    };
-  }
+  if (swaps.length === 0 && changes.length === 0) return undefined;
   let value: unknown;
   try {
     value = JSON.parse(decoded(body, headers['content-encoding']) ?? '');
   } catch {
-    return undefined;
+    value = undefined;
   }
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
-  const asked: unknown = Reflect.get(value, 'model');
-  const swap = swaps.find((s) => s.upstream === called.id && s.asked === asked);
-  if (swap === undefined || typeof asked !== 'string') return undefined;
+  const json = isRecord(value) ? value : undefined;
+  const asked = called.kind === 'gemini' ? geminiFacts(rest).model : json?.['model'];
+  const swap =
+    typeof asked === 'string' && (called.kind === 'gemini' || json !== undefined)
+      ? swaps.find((s) => s.upstream === called.id && s.asked === asked)
+      : undefined;
+  const toolChanges = json === undefined ? [] : changeToolResults(called.kind, json, changes);
+  if (swap === undefined && toolChanges.length === 0) return undefined;
+  const renamed = swap !== undefined && called.kind !== 'gemini';
+  if (renamed && json !== undefined) json['model'] = swap.model;
+  const unchanged = !renamed && !toolChanges.some((change) => change.applied);
   // A changed body goes uncompressed, as a fault's does (ADR-0013); the app's length goes,
   // and Node sets the new one, since the body is given whole to end().
-  const changed = Buffer.from(JSON.stringify({ ...value, model: swap.model }), 'utf8');
   const { 'content-encoding': _encoding, 'content-length': _length, ...kept } = endToEnd(headers);
   return {
-    asked,
-    upstream: upstreams.get(swap.to ?? called.id) ?? called,
-    rest,
-    body: changed,
-    headers: kept,
+    asked: swap === undefined || typeof asked !== 'string' ? undefined : asked,
+    upstream: swap === undefined ? called : (upstreams.get(swap.to ?? called.id) ?? called),
+    rest:
+      swap !== undefined && called.kind === 'gemini' && typeof asked === 'string'
+        ? rest.replace(`/models/${asked}:`, `/models/${swap.model}:`)
+        : rest,
+    body: unchanged ? body : Buffer.from(JSON.stringify(json), 'utf8'),
+    headers: unchanged ? endToEnd(headers) : kept,
+    encoding: unchanged ? headers['content-encoding'] : undefined,
+    toolChanges,
   };
 }
 
@@ -294,6 +310,8 @@ interface Recording {
   readonly positions: Map<string, number>;
   /** The model swaps of this recording (ADR-0042). */
   readonly swaps: readonly ModelSwap[];
+  /** The tool result reversals of this recording (ADR-0043). */
+  readonly reversals: readonly ToolReversal[];
   /** The turn the runner says is in flight (serial correlation). */
   mark: string | null;
   /** The turns the runner armed, with their fault plans (ADR-0013). */
@@ -358,7 +376,7 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
         });
         return;
       }
-      const { capture, replay, swaps } = opening.data;
+      const { capture, replay, swaps, reversals } = opening.data;
       // A swap goes to an upstream the proxy routes, of the kind the app called (ADR-0042).
       const misrouted = swaps.flatMap((swap) => {
         const from = upstreams.get(swap.upstream);
@@ -384,6 +402,7 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
             : { loose: replay.loose, calls: replay.calls, used: replay.calls.map(() => false) },
         positions: new Map(),
         swaps,
+        reversals,
         mark: null,
         turns: new Map(),
         inFlight: 0,
@@ -417,7 +436,7 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
       }
       const turn = decodeURIComponent(turned[2] ?? '');
       if (parsed.data.inFlight) open.mark = turn;
-      open.turns.set(turn, armTurn(parsed.data.faults, parsed.data.seed));
+      open.turns.set(turn, armTurn(parsed.data.faults, parsed.data.seed, parsed.data.toolResults));
       sendJson(response, 200, {
         id: open.id,
         turn,
@@ -580,28 +599,50 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
       sendJson(response, 413, { error: 'request body too large for the proxy' });
       return;
     }
-    // A model swap sends the call to another model, within a recording only (ADR-0042).
-    const swapped =
+    const trace = request.headers['x-yokla-trace'];
+    const mark = open?.mark ?? null;
+    // The turn this call belongs to: the one its trace names, else the one in flight.
+    const turnId = typeof trace === 'string' && open?.turns.has(trace) === true ? trace : mark;
+    const armed = turnId === null ? undefined : open?.turns.get(turnId);
+    // Within a recording only, the call goes as the turn and the run change it:
+    // its tool results (ADR-0043), and its model (ADR-0042).
+    const changes: ToolChange[] =
+      open === undefined
+        ? []
+        : [
+            ...(armed?.injections ?? []).map((injection) => ({
+              kind: 'inject' as const,
+              tool: injection.tool,
+              at: injection.at,
+              inject: injection.inject,
+            })),
+            ...open.reversals.map((reversal) => ({ kind: 'reverse' as const, ...reversal })),
+          ];
+    const rewritten =
       open === undefined
         ? undefined
-        : swapOf(open.swaps, upstreams, called, calledRest, received, request.headers);
-    const upstream = swapped?.upstream ?? called;
-    const rest = swapped?.rest ?? calledRest;
-    const body = swapped?.body ?? received;
-    const sentEncoding = swapped === undefined ? request.headers['content-encoding'] : undefined;
+        : rewriteRequest(
+            open.swaps,
+            changes,
+            upstreams,
+            called,
+            calledRest,
+            received,
+            request.headers,
+          );
+    const upstream = rewritten?.upstream ?? called;
+    const rest = rewritten?.rest ?? calledRest;
+    const body = rewritten?.body ?? received;
+    const sentEncoding =
+      rewritten === undefined ? request.headers['content-encoding'] : rewritten.encoding;
     const base = new URL(upstream.upstream);
     const startedAt = new Date();
     const started = performance.now();
     // Gemini names the model and the streaming method in the path (ADR-0032).
     const facts = upstream.kind === 'gemini' ? geminiFacts(rest) : requestFacts(body);
-    const trace = request.headers['x-yokla-trace'];
     const captured: Buffer[] = [];
     let capturedBytes = 0;
     let overflow = false;
-    const mark = open?.mark ?? null;
-    // The turn this call belongs to: the one its trace names, else the one in flight.
-    const turnId = typeof trace === 'string' && open?.turns.has(trace) === true ? trace : mark;
-    const armed = turnId === null ? undefined : open?.turns.get(turnId);
     // Faults name the upstream the app called, swapped or not.
     const fault = armed === undefined ? undefined : nextFault(armed, called.id);
     const callPath = rest.split('?')[0] ?? '';
@@ -676,7 +717,10 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
         // The text the model answered, read as its prompt is (ADR-0033).
         output: output === null ? null : { chars: output.length, text: output },
         ...(extra.replay === undefined ? {} : { replay: extra.replay }),
-        ...(swapped === undefined ? {} : { asked: swapped.asked }),
+        ...(rewritten?.asked === undefined ? {} : { asked: rewritten.asked }),
+        ...(rewritten === undefined || rewritten.toolChanges.length === 0
+          ? {}
+          : { toolChanges: [...rewritten.toolChanges] }),
         // A forwarded call as a cassette keeps it: the provider's own answer (ADR-0040).
         ...(open.capture &&
         extra.forwarded !== false &&
@@ -782,7 +826,7 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
         port: base.port,
         method: request.method,
         path: `${base.pathname.replace(/\/$/u, '')}${rest}`,
-        headers: { ...(swapped?.headers ?? endToEnd(request.headers)), host: base.host },
+        headers: { ...(rewritten?.headers ?? endToEnd(request.headers)), host: base.host },
       },
       (upstreamResponse) => {
         const type = upstreamResponse.headers['content-type'] ?? '';

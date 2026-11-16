@@ -10,6 +10,7 @@ import {
   PromptStore,
   ProxyUsage,
   ToolCall,
+  ToolResultChange,
 } from './proxy.ts';
 
 export const RESULTS_SCHEMA_ID = 'yokla.results/v1';
@@ -145,6 +146,8 @@ export const TurnResult = z.object({
           replay: z.object({ diverged: z.boolean() }).optional(),
           /** The model the app asked for, when a swap sent the call to another (ADR-0042). */
           asked: z.string().optional(),
+          /** The changes the proxy made to the tool results the call sent (ADR-0043). */
+          toolChanges: z.array(ToolResultChange).optional(),
         }),
       ),
       /** The sum of the calls' cost; null when any call has none. */
@@ -296,6 +299,10 @@ export const Results = z
             calls: z.int().nonnegative(),
           }),
         )
+        .optional(),
+      /** The run's changes to every result of a tool, and how many results each changed (ADR-0043). */
+      toolChanges: z
+        .array(z.object({ tool: z.string(), at: z.string(), results: z.int().nonnegative() }))
         .optional(),
       /** Measurements read from the target's logs (ADR-0009). */
       observation: z

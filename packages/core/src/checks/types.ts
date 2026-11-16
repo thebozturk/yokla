@@ -115,6 +115,14 @@ export interface ProxyCallView {
   readonly toolCalls: readonly { readonly name: string; readonly arguments: string }[] | null;
   /** The text the model answered; null when unknown (ADR-0033). */
   readonly output: string | null;
+  /** The changes the proxy made to the tool results the call sent (ADR-0043). */
+  readonly toolChanges?:
+    | readonly {
+        readonly kind: 'inject' | 'reverse';
+        readonly tool: string;
+        readonly applied: boolean;
+      }[]
+    | undefined;
 }
 
 /** A money amount mentioned in text, e.g. "1.299,90 TL". */
