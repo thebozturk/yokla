@@ -1,6 +1,6 @@
 # 0046. Intents that state what they ask, across the catalog's types
 
-Status: Proposed · Date: 2026-11-16
+Status: Accepted · Date: 2026-11-16
 
 ## Context
 
