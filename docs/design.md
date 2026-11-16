@@ -1031,6 +1031,17 @@ configuration.
 - **Gating:** the proposal doesn't run until its entries are approved, and
   two analyses write the same file.
 
+For the intents that state what they ask (ADR-0046), `type-bound-ignored`
+drops the price bound for sleeping bags, a type no written case asks about.
+- **Reach:** at the default six types, the round-robin over the type tree's
+  branches doesn't reach sleeping bags, the camping branch's second type;
+  with `--types 7` it does.
+- **With the defect:** the proposed cases that ask for sleeping bags under
+  their median and under their lowest price, in both languages, fail
+  `filter-honoured-or-disclosed`.
+- **Without it:** no explored case fails, under-the-lowest-price turns
+  included, and ADR-0044's criteria hold at the default budget.
+
 **Spans.** With `--otel-url` and the model over HTTP, the demo-shop exports a
 GenAI span for each model call, in the trace of the incoming `traceparent`,
 as OTLP/HTTP JSON or protobuf (ADR-0029). Its exporter has no dependency and

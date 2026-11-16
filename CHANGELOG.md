@@ -57,6 +57,17 @@ hold.
   the demo-shop, every entry it proposes is the hand-written one. A new
   package, `@yokla/analyzer`, makes nine. profile.v1 gains `provenance`,
   and `yokla schema analysis` prints the report's schema.
+- **Intents that state what they ask, across the catalog's types
+  (ADR-0046).** `yokla explore`'s opening turns spread over `--types`
+  product types (6 by default), taken in turn from each branch of the type
+  tree. For each, the e-commerce pack asks for a product by name, the type,
+  the type under its median price, and the type under its lowest price,
+  where nothing can match. A turn that asks for a type or a price bound
+  carries it as its expectation, from the catalog, so
+  `type-matched-or-disclosed` and `filter-honoured-or-disclosed` judge it;
+  the proposed case keeps it and names where it came from. The results gain
+  an additive `run.exploration.candidates`: every candidate that ran, kept
+  or not, with its messages and routes.
 
 ## 0.3.0 — 2026-11-15
 

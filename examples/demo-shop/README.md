@@ -153,7 +153,11 @@ simulated customer there too.
   rate limit off and header correlation (ADR-0044). It reaches every route
   and every tool. On a shop with `cart-total-off`, a proposed case that adds
   two tents to the cart fails `price-grounded`; without the defect, no
-  explored case fails.
+  explored case fails. Its opening turns spread over the catalog's types and
+  state the type and price bound they ask (ADR-0046): with
+  `type-bound-ignored` and `--types 7`, the proposed cases that ask for
+  sleeping bags under a price fail `filter-honoured-or-disclosed`. Every
+  candidate that ran is in the results' trace.
 - **Messages as users write them.** `packages/cli/src/robustness.e2e.test.ts`
   runs the acceptance cases as written and with each `--transform`:
   without diacritics, in lower case, without punctuation and with a typo
@@ -430,6 +434,7 @@ them (ADR-0029).
 | `internal-ids` | Each product the answer names is followed by its catalog id. | `no-internal-ids`, the shop's own check (v0.3) |
 | `cart-total-off` | A cart of two products or more is totalled 10% below the sum of their prices. | `price-grounded`, on a case `yokla explore` proposes: no written case puts two products in a cart (ADR-0044) |
 | `language-by-letters` | The model tells Turkish from English by Turkish letters alone, so a Turkish message typed without them is answered in English. | `yokla run --transform no-diacritics` and `yokla compare --expect-same`: three Turkish cases fail `filter-honoured-or-disclosed`, `absence-correct` and `answer-similarity` (ADR-0045) |
+| `type-bound-ignored` | The price bound is dropped for sleeping bags, which are still presented as matching it. | `filter-honoured-or-disclosed`, on a case `yokla explore --types 7` proposes: no written case asks for sleeping bags (ADR-0046) |
 
 `src/assistant.test.ts` holds a fixed set of probe questions. For each defect,
 it asserts that the defect changes exactly the listed probes and nothing else.

@@ -563,8 +563,8 @@ be read or fewer than two runs are given.
 ## `yokla explore`
 
 ```sh
-pnpm yokla explore [--max-runs 64] [--max-cost <usd>] [--out explored.yaml] \
-  [--results runs/<run id>.json]
+pnpm yokla explore [--max-runs 64] [--types 6] [--max-cost <usd>] \
+  [--out explored.yaml] [--results runs/<run id>.json]
 ```
 
 Searches for paths the written cases never take, and writes the
@@ -590,9 +590,14 @@ mapped route, it refuses.
   a check fails on its last turn. Kept candidates join the pool, and the
   search goes on from them.
 - The candidates, in this order:
-  - **the domain pack's opening turns:** the e-commerce pack asks for the
-    catalog's first product by its name, for that product's type and for the
-    type under its median price, and about each policy the profile declares;
+  - **the domain pack's opening turns** (ADR-0046): the e-commerce pack
+    takes up to `--types` product types (6 by default), in turn from each
+    branch of the type tree: the first level below the levels all types
+    share, branches by name, and in each the types with most products first.
+    For each type it asks for a product by its name (one in stock first),
+    for the type, for the type under its median price, and for the type
+    under the largest whole amount below its lowest price, where nothing can
+    match. Then it asks about each policy the profile declares;
   - **the pack's turns after an answer that showed products:** adding the
     first of them to the cart, then the next while the conversation only adds
     to the cart, and asking for a cheaper one;
@@ -607,9 +612,14 @@ mapped route, it refuses.
 - The search is deterministic: the same cases, data and answers give the
   same candidates in the same order.
 
-**Judging.** A candidate states no expectation. Every check that needs none
-judges it, such as `price-grounded`, `stock-claim`, the response contract
-and `everyAnswer`, and `graceful-under-fault` under a fault. A case with a
+**Judging.** Every check that needs no expectation judges a candidate, such
+as `price-grounded`, `stock-claim`, the response contract and `everyAnswer`,
+and `graceful-under-fault` under a fault. An opening turn that asks for a
+type or a price bound also states it, from the catalog: `productType`, and
+`filters.maxPrice` (ADR-0046). So `type-matched-or-disclosed` and
+`filter-honoured-or-disclosed` judge it too: products of other types, or over
+the bound, fail unless the answer says so. Only that turn states it; a
+candidate built on it, or the turn asked again, states nothing. A case with a
 simulated customer is left out.
 
 **Budget.** Before it sends anything, it prints the most runs it can make:
@@ -626,14 +636,19 @@ It stops at either cap, and says so.
   It never overwrites a file.
   - Each kept candidate is a case named `<operator>-<n>`, such as `cart-1` or
     `fault-2`, with status `proposed` and the provenance source `explore`.
-    Its evidence says where it came from and what it reached or failed.
+    Its evidence says where it came from and what it reached or failed, and,
+    for a turn that states an expectation, the type and bound it came from.
+    That turn keeps its expectation in the case.
   - The cases a check failed on come first.
   - A proposed case runs, but gates only once a person approves it
     (ADR-0004).
 - **A results file**, by default `runs/<run id>.json`: the written cases'
   results with the kept cases', the model calls of every run, dropped
   candidates too, and the coverage as `run.coverage`, with what the search
-  added under `added`.
+  added under `added`. `run.exploration.candidates` traces every candidate
+  that ran, kept or not, in order: its operator, the conversation it went on
+  from, the messages it sent, the route of each answer, the id it was kept
+  under, and what it reached or failed. It holds no answer text.
 
 It exits with `0` when the search ran, whatever it found, and with `2` on a
 configuration problem, before any request.
