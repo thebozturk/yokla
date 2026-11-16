@@ -220,9 +220,10 @@ turns:
 ## Approval
 
 A case a person writes needs no `provenance`: it is approved. A case yokla
-writes, such as the starter cases of `yokla init`, carries
-`provenance: { source: template, evidence: ..., status: proposed }`
-(ADR-0004, ADR-0018):
+writes carries `provenance: { source, evidence, status: proposed }`
+(ADR-0004): the starter cases of `yokla init` with the source `template`
+(ADR-0018), a case `yokla shrink` cut down with `shrink` (ADR-0035), and a
+case `yokla explore` found with `explore` (ADR-0044):
 
 - **`proposed`:** the case runs, and its results say so, but the gate and the
   baseline leave it out. The gate names it in a notice.

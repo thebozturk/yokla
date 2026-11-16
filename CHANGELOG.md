@@ -28,6 +28,14 @@ hold.
   holds the canary. `yokla run --reverse-items` reverses arrays in a tool's
   results for a whole run, and `yokla compare --expect-same` exits with 1
   when a verdict moved.
+- **A search for untried paths (ADR-0044).** `yokla explore` runs the written
+  cases once, then conversations built from them: a fault on the last turn,
+  the last turn again, another case's first turn, and turns a domain pack
+  builds from the target's data. It keeps those that reach a new route, tool,
+  argument shape or fault state, or fail a check, and writes them as proposed
+  cases with the new provenance source `explore`. The results gain an
+  additive `run.coverage`. The e-commerce catalog maps an optional product
+  `name`, one field or one per language, which the pack's intents ask by.
 
 ## 0.3.0 — 2026-11-15
 

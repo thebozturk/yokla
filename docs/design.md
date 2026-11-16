@@ -384,6 +384,22 @@ that comes and goes is reported as flaky, not shrunk. Messages are cut to
 fewer words only on request, because a cut message can stop asking what its
 expectations describe. The result is a proposed case.
 
+**Searching for untried paths (ADR-0044).** `yokla explore` runs the written
+cases once, then small conversations built from them, and keeps those that
+reach a route, tool, argument shape or fault state no run reached before, or
+that a check fails on.
+- **Generic operators:** a fault on the last turn, the last turn asked
+  again, and the first turn of another case after a case's turns.
+- **Domain intents:** turns a pack builds from the target's own data. The
+  e-commerce pack asks for a catalog product by name, a type and the type
+  under a price, and each declared policy; after products, it adds them to
+  the cart one by one and asks for a cheaper one.
+- **Judging:** the candidates state no expectation, so the checks that need
+  none judge them.
+- **Output:** kept candidates are written as proposed cases, with the
+  coverage map in the results.
+- **Later:** a model-written next turn is left to a later ADR.
+
 ## 10. Checks (oracles)
 
 A check runs once per turn: `run(ctx) → outcome`. Its context `ctx` is
@@ -775,7 +791,8 @@ ADR-0014 sets how cost and latency are bounded.
 - **Results file.** A versioned JSON schema (`results.v1`) holding:
   - run metadata: yokla version, profile hash, environment, correlation mode,
     the model proxy's totals, whether the run recorded or replayed a
-    cassette (ADR-0040), and the model swaps it made (ADR-0042),
+    cassette (ADR-0040), the model swaps it made (ADR-0042), and, from
+    `yokla explore`, the coverage it reached (ADR-0044),
   - findings per case, sample and turn, with the origin of a failing
     finding's value (ADR-0033),
   - each turn's model calls and cost, and the fields observed in the target's
@@ -811,6 +828,9 @@ ADR-0014 sets how cost and latency are bounded.
 - case expectation extensions, such as filters and product types,
 - checks,
 - dimension policies,
+- intents: turns built from the target's data and profile, for `yokla
+  explore` (ADR-0044); the e-commerce pack's ask for products, types, prices,
+  policies and the cart, in Turkish and English,
 - later: generators (v0.4), attack templates (v0.5) and a glossary.
 
 **A language pack provides:**
@@ -930,6 +950,16 @@ cheapest, `demo-writer-nano`, invents a price. The acceptance runs as the
 app asks and with each swap, and `yokla compare` names `demo-writer-mini`
 as the cheapest run that passes the gate (ADR-0042).
 
+For D8, a cart of two products or more is answered with each product's price
+and a total, and `cart-total-off` totals it 10 % low. No written case puts
+two products in a cart.
+- **Reach:** `yokla explore`, from the acceptance cases with the model over
+  HTTP behind the proxy, reaches every route and every tool.
+- **With the defect:** the acceptance cases pass, and a proposed case fails
+  `price-grounded` on its second cart addition.
+- **Without it:** no explored case fails, and two explorations write the
+  same cases (ADR-0044).
+
 **Spans.** With `--otel-url` and the model over HTTP, the demo-shop exports a
 GenAI span for each model call, in the trace of the incoming `traceparent`,
 as OTLP/HTTP JSON or protobuf (ADR-0029). Its exporter has no dependency and
@@ -1015,7 +1045,7 @@ them.
 | **D5. yokla as a tool for coding agents** (done, ADR-0041) | a local MCP server over stdio: run a case, explain a finding (D1), shrink it (D2), verify a fix against the shrunk case and its neighbours; no egress beyond the run's own | an agent, given only the MCP tools, finds and verifies the fix of a seeded demo-shop defect: in CI a scripted client, at no model cost; once by hand, a real coding agent |
 | **D6. Comparing models through the proxy** (done, ADR-0042) | the proxy can send a call to another model than the app asked for, as the command line says; the same cases run once per model, and a report compares verdicts, cost and latency | on the demo-shop, three fake models give the comparison expected of them; the cheapest model that still passes the gate is named |
 | **D7. Tool results changed by the proxy** (done, ADR-0043) | the proxy can change a tool result before the model sees it: a canary instruction, for indirect injection without a test copy of the target's data; and changes that must not change the verdict, such as reordered items, for metamorphic checks | the demo-shop's injection defect (v0.5) is caught through a tool result the proxy changed; a metamorphic change gives the same verdicts |
-| **D8. A search for untried paths** | a run that steers new turns towards what the proxy hasn't seen yet: routes, tool sets, argument shapes, fault states; deterministic mutations first, a model-written turn only when configured and budgeted | on the demo-shop, the search reaches every route and every tool, and finds a seeded defect that no written case reaches |
+| **D8. A search for untried paths** (done, ADR-0044) | a run that steers new turns towards what the proxy hasn't seen yet: routes, tool sets, argument shapes, fault states; deterministic mutations first, a model-written turn only when configured and budgeted | on the demo-shop, the search reaches every route and every tool, and finds a seeded defect that no written case reaches |
 
 **Later:** sampling production logs, more domains (banking, travel), more
 languages, SDK adapters.

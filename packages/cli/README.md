@@ -135,6 +135,10 @@ answer, or only in your app's code after the model call.
 - **`yokla mcp`** gives a coding agent these as tools, over the Model Context
   Protocol: run the cases, explain a failure, shrink it, and verify a fix
   against it and its neighbours, within a cost cap you set.
+- **`yokla explore`** searches for the routes, tools, argument shapes and
+  fault states your cases never reach. It writes the conversations that reach
+  one, or fail a check, as proposed cases, such as a cart of two products
+  whose total is wrong.
 
 **Cost and CI**
 - Per-turn and per-suite budgets for cost and latency. `yokla plan`

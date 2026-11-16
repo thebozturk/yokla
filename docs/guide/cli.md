@@ -12,7 +12,11 @@ From a checkout of the repository, run each command as `pnpm yokla <command>`.
 | `baseline` | Accepts a run as the baseline. |
 | `proxy` | Runs the model proxy until stopped. |
 | `plan` | Estimates the cost of a run from an earlier one. |
-| `schema <name>` | Prints a JSON Schema: `profile`, `cases`, `config`, `results` or `baseline`. |
+| `shrink` | Cuts a failing case down to the smallest that still fails. |
+| `mcp` | Serves yokla's tools to a coding agent over stdio. |
+| `compare` | Sets runs side by side and names the cheapest that passes. |
+| `explore` | Searches for paths the written cases never take, and proposes cases for them. |
+| `schema <name>` | Prints a JSON Schema: `profile`, `cases`, `config`, `results`, `baseline` or `comparison`. |
 
 ## `yokla init`
 
@@ -444,3 +448,81 @@ Sets runs of the same cases side by side, such as one run per model that
 It exits with `0` when it compared the runs, whatever their verdicts; with
 `1` under `--expect-same` when a status moved; and with `2` when a file can't
 be read or fewer than two runs are given.
+
+## `yokla explore`
+
+```sh
+pnpm yokla explore [--max-runs 64] [--max-cost <usd>] [--out explored.yaml] \
+  [--results runs/<run id>.json]
+```
+
+Searches for paths the written cases never take, and writes the
+conversations that reach one as proposed cases (ADR-0044). It takes the
+profile, cases, configuration and target options of `yokla run`.
+
+**Coverage.** What the runs reached:
+- the routes the target answered on, by the profile's `response.route`;
+- through the model proxy, the tools the model asked for;
+- each tool's argument shape: the tool with the sorted keys of its
+  arguments, nested ones as dotted paths, such as
+  `search_products{filters.priceMax,language,productType}`;
+- the fault states: a route the target answered on under a fault kind.
+
+Without a model proxy, only routes count, and explore says so. Without a
+mapped route, it refuses.
+
+**The search.**
+- The written cases run first, once each, with one sample. What they reach is
+  the coverage to beat.
+- Then candidates run one at a time, each a small conversation of one sample.
+  A candidate is kept when it reaches something no run before it did, or when
+  a check fails on its last turn. Kept candidates join the pool, and the
+  search goes on from them.
+- The candidates, in this order:
+  - **the domain pack's opening turns:** the e-commerce pack asks for the
+    catalog's first product by its name, for that product's type and for the
+    type under its median price, and about each policy the profile declares;
+  - **the pack's turns after an answer that showed products:** adding the
+    first of them to the cart, then the next while the conversation only adds
+    to the cart, and asking for a cheaper one;
+  - **a fault on the last turn,** one kind at a time: a `503`, a timeout,
+    empty content and malformed JSON; only with the model proxy;
+  - **the last turn asked again;**
+  - **the first turn of another conversation** in the same language.
+- An operator is tried once per state a conversation ends in: the route of
+  its last answer, with the tools the model asked for in it. From a second
+  conversation that ended the same way, it would most likely reach the same
+  paths.
+- The search is deterministic: the same cases, data and answers give the
+  same candidates in the same order.
+
+**Judging.** A candidate states no expectation. Every check that needs none
+judges it, such as `price-grounded`, `stock-claim`, the response contract
+and `everyAnswer`, and `graceful-under-fault` under a fault. A case with a
+simulated customer is left out.
+
+**Budget.** Before it sends anything, it prints the most runs it can make:
+the written cases, then up to `--max-runs` candidates. An exploration that
+can spend money on model calls needs `--max-cost`, its cap over every run.
+It stops at either cap, and says so.
+
+**What it writes.**
+- The terminal shows the coverage map: each kind with what the written
+  cases reached and what the search added, and the tools the model was
+  offered but never asked for. Then each kept case, with what it reached or
+  failed.
+- **A case file** at `--out`, by default `explored.yaml` next to the profile.
+  It never overwrites a file.
+  - Each kept candidate is a case named `<operator>-<n>`, such as `cart-1` or
+    `fault-2`, with status `proposed` and the provenance source `explore`.
+    Its evidence says where it came from and what it reached or failed.
+  - The cases a check failed on come first.
+  - A proposed case runs, but gates only once a person approves it
+    (ADR-0004).
+- **A results file**, by default `runs/<run id>.json`: the written cases'
+  results with the kept cases', the model calls of every run, dropped
+  candidates too, and the coverage as `run.coverage`, with what the search
+  added under `added`.
+
+It exits with `0` when the search ran, whatever it found, and with `2` on a
+configuration problem, before any request.
