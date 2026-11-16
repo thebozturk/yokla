@@ -54,8 +54,8 @@ old one.
 | [0039](0039-a-majority-failure-in-the-demo-shop.md) | A majority-of-N failure in the demo-shop | Accepted |
 | [0040](0040-recorded-model-calls-replayed.md) | Recorded model calls, replayed | Accepted |
 | [0041](0041-yokla-as-an-mcp-server.md) | yokla as an MCP server for coding agents | Accepted |
-| [0042](0042-comparing-models-through-the-proxy.md) | Comparing models through the proxy | Accepted |
-| [0043](0043-tool-results-changed-by-the-proxy.md) | Tool results changed by the proxy | Proposed |
+| [0042](0042-comparing-models-through-the-proxy.md) | Comparing models through the proxy | Accepted; amended by 0043 |
+| [0043](0043-tool-results-changed-by-the-proxy.md) | Tool results changed by the proxy | Accepted |
 
 ## Template
 

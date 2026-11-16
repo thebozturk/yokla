@@ -1,6 +1,6 @@
 # 0043. Tool results changed by the proxy
 
-Status: Proposed · Date: 2026-11-16 · Amends 0042
+Status: Accepted · Date: 2026-11-16 · Amends 0042
 
 ## Context
 
