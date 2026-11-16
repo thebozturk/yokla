@@ -351,10 +351,22 @@ example, in an MCP client's configuration:
 | Tool | Does | Costs |
 |---|---|---|
 | `list_cases` | Lists the cases: id, suite, title, language, turns and review status. | nothing |
-| `run_cases` | Runs the cases named, or every case, as `yokla run` does. Returns the run id, the statuses, and each case that didn't pass with its failing findings: check, dimension, message, subject and origin. | model calls |
-| `explain_finding` | Shows one case of a run, turn by turn: the user's message, the answer, the failing findings with their origin, and the turn's model calls. | nothing |
-| `shrink_case` | Shrinks a failing case of a run, as `yokla shrink` does, and writes `<id>-min` next to it as a proposed case. | model calls |
-| `verify_fix` | Runs a failing case of a run again, with its `<id>-min` case when there is one, and the other cases of its suite. `fixed` says whether the target failure is gone; `regressions` lists each case that passed in that run and no longer passes. | model calls |
+| `run_cases` | Runs the cases named, or every case, as `yokla run` does. Returns the run id, the statuses, the proposed cases' statuses apart, and each case that didn't pass with its failing findings: check, dimension, message, subject and origin. | model calls |
+| `explain_finding` | Shows one case of a run, turn by turn: the user's message, the answer with the evidence the profile maps from it, the failing findings with their origin, and the turn's model calls. | nothing |
+| `shrink_case` | Shrinks a failing case of a run, as `yokla shrink` does, and writes `<id>-min` in a new file next to it, as a proposed case. Returns how many of the reproduction runs failed and how many candidates ran. | model calls |
+| `verify_fix` | Runs a failing case of a run again, with its `<id>-min` case when there is one, and the other cases of its suite. See below. | model calls |
+
+**What `verify_fix` returns.**
+- `fixed`: neither the case nor its `<id>-min` case still fails the target
+  check, none of them errored, and the session's cap didn't cut the run
+  short (`partial`).
+- `ran`: every case it ran, with its status in the run given and now.
+- `regressions`: each case that passed in the run given and doesn't now.
+- `changed`: cases whose definition changed since that run; they aren't
+  compared.
+- `otherNotPassing`: cases of other suites that didn't pass in the run
+  given. `verify_fix` doesn't run them, so `fixed` says nothing about them;
+  `run_cases` checks them.
 
 **What the person fixes at start.** The profile, the case paths, the
 configuration and the target and proxy urls. No tool takes a path, a url
@@ -384,7 +396,8 @@ customer model. Without it, `yokla mcp` refuses to start.
   turns and samples aren't the recorded ones.
 
 **What the agent sees.** Tool results hold the target's answers, cut at
-4,000 characters, and the agent may send them to a hosted model. That is
+4,000 characters, and the evidence mapped from them, 20 items per
+collection, and the agent may send them to a hosted model. That is
 your choice, as a hosted customer model is (ADR-0028). Prompts and the
 model's answers appear only as far as the profile's `prompts.store` keeps
 them in the results.

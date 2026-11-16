@@ -135,7 +135,9 @@ simulated customer there too.
   `yokla mcp` over stdio, as a coding agent would (ADR-0041), against a shop
   with `price-rewritten`. It finds the rewritten price, traced to the app,
   shrinks `tents-after-small-talk-tr` to its last turn, and verifies the fix
-  once the shop restarts on the same port without the defect.
+  once the shop restarts on the same port without the defect. A coding agent
+  with no other context did the same once by hand, on a copy of the shop
+  whose rewrite was written into its code with no flag (design §19).
 
 ```sh
 mkdir -p runs

@@ -891,6 +891,14 @@ shop whose prompts changed (`prompt-bloat`) no longer matches the cassette
 a shop with `price-rewritten`: it runs the cases, reads a failing one, shrinks
 it, and verifies the fix once the shop restarts without the defect, and a
 shop that breaks the response contract shows the regressions (ADR-0041).
+On 2026-11-16 a coding agent with no other context did the same by hand. It
+had only the tools, through a shell bridge, and a copy of the shop with a
+launch-price rewrite written into its code. In 28 tool calls it ran the
+cases, read the origin `app`, shrank the failing case, removed the rewrite
+and confirmed the fix with `verify_fix`. Its feedback added the cases
+`verify_fix` ran and the failing cases of other suites to its result, the
+reproduction rate and candidates to `shrink_case`'s, the proposed cases
+apart to `run_cases`'s, and the evidence to `explain_finding`'s.
 
 **Spans.** With `--otel-url` and the model over HTTP, the demo-shop exports a
 GenAI span for each model call, in the trace of the incoming `traceparent`,
@@ -972,7 +980,7 @@ them.
 | **D2. The smallest failing conversation** (done, ADR-0035, ADR-0036) | `yokla shrink` cuts a failing case down to the fewest turns and the shortest messages that still fail the same check, with the samples needed to tell a real failure from chance; it writes the result as a proposed case | every demo-shop defect's failing case shrinks to a case that still fails only its own check; a flaky failure is reported as flaky, not shrunk |
 | **D3. Sampling that stops when the verdict is settled** (done, ADR-0038, ADR-0039) | with `--stop-early`, a case stops its samples once no further sample can change its failure: a worst-of-N failure, a majority-of-N failure the remaining samples can't outvote, or an error; a passing case runs every sample | on the demo-shop, verdicts match fixed-N runs while fewer samples run; a worst-of-N failure stops after one sample, a majority-of-N one after two of three |
 | **D4. Recorded model calls, replayed** (done, ADR-0040) | the proxy records the target's model calls into a cassette and can answer from it, so a run repeats with no model cost; a replay can change one recorded answer, to ask what the app does when the model says something else | a recorded demo-shop run replays with identical results and no upstream call; the resilience cases catch each resilience defect on a cassette; a changed answer's price is traced to the model; a changed prompt diverges from the cassette |
-| **D5. yokla as a tool for coding agents** (built, ADR-0041; the run with a real agent is still to come) | a local MCP server over stdio: run a case, explain a finding (D1), shrink it (D2), verify a fix against the shrunk case and its neighbours; no egress beyond the run's own | an agent, given only the MCP tools, finds and verifies the fix of a seeded demo-shop defect: in CI a scripted client, at no model cost; once by hand, a real coding agent |
+| **D5. yokla as a tool for coding agents** (done, ADR-0041) | a local MCP server over stdio: run a case, explain a finding (D1), shrink it (D2), verify a fix against the shrunk case and its neighbours; no egress beyond the run's own | an agent, given only the MCP tools, finds and verifies the fix of a seeded demo-shop defect: in CI a scripted client, at no model cost; once by hand, a real coding agent |
 | **D6. Comparing models through the proxy** | the proxy can send a call to another model than the app asked for, as the profile or the command line says; the same cases run once per model, and a report compares verdicts, cost and latency | on the demo-shop, two fake models give the comparison expected of them; the cheapest model that still passes the gate is named |
 | **D7. Tool results changed by the proxy** | the proxy can change a tool result before the model sees it: a canary instruction, for indirect injection without a test copy of the target's data; and changes that must not change the verdict, such as reordered items, for metamorphic checks | the demo-shop's injection defect (v0.5) is caught through a tool result the proxy changed; a metamorphic change gives the same verdicts |
 | **D8. A search for untried paths** | a run that steers new turns towards what the proxy hasn't seen yet: routes, tool sets, argument shapes, fault states; deterministic mutations first, a model-written turn only when configured and budgeted | on the demo-shop, the search reaches every route and every tool, and finds a seeded defect that no written case reaches |
