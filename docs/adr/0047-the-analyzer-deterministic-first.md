@@ -1,6 +1,6 @@
 # 0047. The analyzer, deterministic first: inventory, data and probes
 
-Status: Proposed · Date: 2026-11-16 · Amends 0034
+Status: Accepted · Date: 2026-11-16 · Amends 0034
 
 ## Context
 

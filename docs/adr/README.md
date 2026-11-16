@@ -46,7 +46,7 @@ old one.
 | [0031](0031-tokens-yokla-obtains.md) | Authentication: tokens yokla obtains and refreshes | Accepted |
 | [0032](0032-gemini.md) | Gemini: the model proxy and yokla's own calls | Accepted |
 | [0033](0033-where-a-failure-arose.md) | Where a failure arose: the origin of the value a finding names | Accepted |
-| [0034](0034-publishing-to-npm.md) | Publishing to npm | Accepted |
+| [0034](0034-publishing-to-npm.md) | Publishing to npm | Accepted; amended by 0047 |
 | [0035](0035-the-smallest-failing-conversation.md) | The smallest failing conversation: yokla shrink | Accepted; amended by 0036 |
 | [0036](0036-shrink-keeps-whole-messages-by-default.md) | yokla shrink keeps whole messages by default | Accepted |
 | [0037](0037-the-first-publish-of-the-npm-names.md) | The first publish of the npm names | Accepted |
@@ -58,7 +58,7 @@ old one.
 | [0043](0043-tool-results-changed-by-the-proxy.md) | Tool results changed by the proxy | Accepted |
 | [0044](0044-a-search-for-untried-paths.md) | A search for untried paths | Accepted |
 | [0045](0045-robustness-transforms-of-a-cases-messages.md) | Robustness transforms of a case's messages | Accepted |
-| [0047](0047-the-analyzer-deterministic-first.md) | The analyzer, deterministic first: inventory, data and probes | Proposed |
+| [0047](0047-the-analyzer-deterministic-first.md) | The analyzer, deterministic first: inventory, data and probes | Accepted |
 
 ## Template
 
