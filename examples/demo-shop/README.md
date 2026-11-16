@@ -154,6 +154,13 @@ simulated customer there too.
   and every tool. On a shop with `cart-total-off`, a proposed case that adds
   two tents to the cart fails `price-grounded`; without the defect, no
   explored case fails.
+- **Messages as users write them.** `packages/cli/src/robustness.e2e.test.ts`
+  runs the acceptance cases as written and with each `--transform`:
+  without diacritics, in lower case, without punctuation and with a typo
+  (ADR-0045). The correct shop keeps every verdict. On a shop with
+  `language-by-letters`, the written cases pass, and without diacritics
+  `tents-under-500-tr`, `sleeping-pad-tr` and `returns-tr` are answered in
+  English and fail.
 - **A coding agent's tools.** `packages/cli/src/mcp.e2e.test.ts` drives
   `yokla mcp` over stdio, as a coding agent would (ADR-0041), against a shop
   with `price-rewritten`. It finds the rewritten price, traced to the app,
@@ -381,6 +388,15 @@ them (ADR-0029).
   can't verify them.
 - **Out-of-scope questions.** It refuses them, for example investment or
   medical questions.
+- **Language.** It answers in Turkish when the message has a Turkish letter,
+  and otherwise in the language whose common words the message uses more:
+  "Cadir onerir misin?" is Turkish.
+- **Typos.** It reads past a typo of a word it knows (`src/typos.ts`): a
+  word of four letters or more, or its start before a suffix, one edit away
+  from exactly one word of its vocabulary with the same first letter. An
+  edit is a letter swapped with its neighbour, dropped, doubled or replaced.
+  Its common words and the words of its products' names are never read as
+  typos, so "carbon" stays "carbon".
 
 ## Defects
 
@@ -407,6 +423,7 @@ them (ADR-0029).
 | `missing-contract-field` | The response's metadata leaves out the answer's language. | `json-schema`, by the profile's contract (v0.3) |
 | `internal-ids` | Each product the answer names is followed by its catalog id. | `no-internal-ids`, the shop's own check (v0.3) |
 | `cart-total-off` | A cart of two products or more is totalled 10% below the sum of their prices. | `price-grounded`, on a case `yokla explore` proposes: no written case puts two products in a cart (ADR-0044) |
+| `language-by-letters` | The model tells Turkish from English by Turkish letters alone, so a Turkish message typed without them is answered in English. | `yokla run --transform no-diacritics` and `yokla compare --expect-same`: three Turkish cases fail `filter-honoured-or-disclosed`, `absence-correct` and `answer-similarity` (ADR-0045) |
 
 `src/assistant.test.ts` holds a fixed set of probe questions. For each defect,
 it asserts that the defect changes exactly the listed probes and nothing else.

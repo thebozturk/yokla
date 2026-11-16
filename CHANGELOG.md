@@ -36,6 +36,15 @@ hold.
   cases with the new provenance source `explore`. The results gain an
   additive `run.coverage`. The e-commerce catalog maps an optional product
   `name`, one field or one per language, which the pack's intents ask by.
+- **Robustness transforms of a case's messages (ADR-0045).** `yokla run
+  --transform` sends each written message without diacritics, in lower case,
+  without punctuation, or with one typo seeded by case, sample and turn.
+  Words with a digit, money amounts and the values the expectations quote
+  stay as written, and each case keeps its definition, so `yokla compare
+  --expect-same` and the gate set it beside the run as written. Language
+  packs gain `lowerCase` and `removeDiacritics`; the results gain an
+  additive `run.transforms` and a turn's `written`. `yokla compare` names a
+  run by its tool changes and transforms too.
 
 ## 0.3.0 — 2026-11-15
 

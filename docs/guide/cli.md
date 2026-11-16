@@ -62,6 +62,7 @@ the profile by hand (see
 | `--replay-loose` | | With `--replay`, answer a call the cassette has no match for with the recorded call at the same position. |
 | `--reverse-items <tool>=<jsonpath>` | | Reverse the arrays the path selects in every result of a tool before the model sees it, through the model proxy (ADR-0043). Repeatable; not with a cassette. |
 | `--swap-model <swap>` | | `<upstream>:<asked model>=<model>`: send the calls that ask for a model to another, through the model proxy (ADR-0042). `=<upstream>/<model>` sends them to another upstream of the same kind. Repeatable; not with a cassette. |
+| `--transform <kind>` | | Send each written message as users write it: `no-diacritics`, `lowercase`, `no-punctuation` or `typos` (ADR-0045). Repeatable. |
 | `--concurrency <n>` | 1 | Cases run in parallel. Serial correlation needs 1, unless spans alone show the model calls. |
 | `--target-url <url>` | the profile's | Use this url instead of `target.request.url`. |
 | `--junit <file>` | | Also write a JUnit XML report. |
@@ -120,6 +121,51 @@ Keep it out of version control when the answers may hold personal data.
 app unchanged (ADR-0042); the [model proxy guide](model-proxy.md#model-swaps)
 says how. Run the cases once per model, then set the runs side by side with
 [`yokla compare`](#yokla-compare).
+
+**`--transform`** asks whether the target understands users as they write
+(ADR-0045). The run sends each written message of each case as the
+transform changes it, and the verdicts should be those of the run as
+written:
+
+```sh
+pnpm yokla run --out runs/written.json
+pnpm yokla run --transform no-diacritics --out runs/no-diacritics.json
+pnpm yokla compare --results runs/written.json --results runs/no-diacritics.json --expect-same
+```
+
+| Kind | What it does | Example |
+|---|---|---|
+| `no-diacritics` | each letter with a diacritic becomes its base letter, by the case's language pack | "Çadır önerir misin?" → "Cadir onerir misin?" |
+| `lowercase` | the message in lower case, by the language's rules | "İADE" → "iade", "KIŞ" → "kış" |
+| `no-punctuation` | each punctuation mark removed; a mark between two letters, but an apostrophe or a hyphen, leaves a space | "women's jackets?" → "womens jackets" |
+| `typos` | one typo in one word of four letters or more, never at its first letter: two neighbouring letters swapped, one dropped or one doubled | "Siyah kadın mont" → "Siyha kadın mont" |
+
+- **The same typo in every run.** It is drawn from the case id, the sample
+  index and the turn index, as fault jitter is (ADR-0017). The samples of a
+  case get different typos.
+- **Several kinds** apply in the order of the table. One per run tells which
+  one moved a verdict.
+- **What no transform changes:**
+  - a word that holds a digit, `@` or `/`, and a money amount with its
+    currency, as the language pack finds it: "1.500 TL" stays;
+  - a `notSentToModel` value, or a phrase of `answer.contains` or
+    `answer.notContains`, wherever the message holds it, such as a canary
+    the message asks the target to repeat;
+  - the turn's expectations, faults, tool-result injections and request
+    additions;
+  - a simulated customer's messages, which the customer model writes. The
+    run's issues count the cases left as they are.
+- **The case keeps its definition** (ADR-0011), so `yokla compare` and the
+  gate set it beside the case as written, and a case that passed in the
+  baseline and fails under a transform is a regression.
+- **The results** record `run.transforms`, with how many messages each kind
+  changed; a kind that changed none is a run issue. A turn keeps the message
+  sent as `user`, and the checks see it; `written` holds the message as the
+  case wrote it, when a transform changed it. The HTML report shows both.
+- **A cassette** records the run's transforms, and a replay with other
+  transforms is refused before any request, since every call would diverge
+  (ADR-0040).
+- **Each transform is a run.** On a paid target, plan and cap it as any run.
 
 ## `yokla report`
 
@@ -428,7 +474,9 @@ pnpm yokla compare --results runs/as-is.json --results runs/mini.json \
 Sets runs of the same cases side by side, such as one run per model that
 `--swap-model` tried, and names the cheapest run that passes the gate
 (ADR-0042). It reads results files and contacts nothing.
-- **Each run** is named by its swaps, or "as the app asks", and shows the
+- **Each run** is named by what it changed: its swaps, its tool changes
+  (`reversed: …`) and its transforms (`transforms: …`), or "as the app asks"
+  for none. It shows the
   gate's verdict with the configuration's thresholds and the baseline, as
   `yokla gate` gives it; its statuses; its model cost and the mean cost of an
   answered turn; and the latency p50 and p95 of its answered turns.
@@ -442,8 +490,8 @@ Sets runs of the same cases side by side, such as one run per model that
   prints.
 - **`--expect-same`** exits with `1` when a case's status differs between
   the runs, as after a change that mustn't move a verdict, such as
-  `--reverse-items` (ADR-0043). A case whose definition differs isn't
-  counted.
+  `--reverse-items` (ADR-0043) or `--transform` (ADR-0045). A case whose
+  definition differs isn't counted.
 
 It exits with `0` when it compared the runs, whatever their verdicts; with
 `1` under `--expect-same` when a status moved; and with `2` when a file can't

@@ -108,6 +108,10 @@ answer, or only in your app's code after the model call.
   choose, local or hosted. The deterministic checks judge every answer, and
   the goal counts as reached only when the answer shows it. Replies are
   cached, so a rerun repeats the conversation.
+- **Messages as users write them.** `yokla run --transform` sends your cases
+  without diacritics, in lower case, without punctuation, or with a typo
+  that repeats from run to run, and `yokla compare --expect-same` shows any
+  verdict that moved.
 
 **Your own rules**
 - Regular expressions on the answer, a JSON Schema on the response, and

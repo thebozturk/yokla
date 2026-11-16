@@ -368,6 +368,16 @@ chooses, natively in Turkish and English.
 **Robustness transforms.** These apply to any approved case: typos, removed
 diacritics, Turkish–English code-switching, paraphrase, casing and punctuation
 noise. The expectation is the same verdict as the source case.
+- **At no model cost (ADR-0045).** `yokla run --transform` sends each written
+  message without diacritics, in lower case, without punctuation, or with one
+  typo, drawn from the case, sample and turn. The language pack removes
+  diacritics and lower-cases.
+- **What stays as written:** words with a digit, `@` or `/`, money amounts,
+  and the values the turn's expectations quote, such as a canary.
+- **Judging:** the case keeps its definition, so `yokla compare
+  --expect-same` and the gate set it beside the run as written.
+- **Later:** paraphrase and code-switching, with a configured, budgeted
+  model.
 
 **Freshness.** Data-grounded cases are either re-derived from the snapshot at
 run time, or pinned to the data facts they depend on. If the snapshot no longer
@@ -791,8 +801,9 @@ ADR-0014 sets how cost and latency are bounded.
 - **Results file.** A versioned JSON schema (`results.v1`) holding:
   - run metadata: yokla version, profile hash, environment, correlation mode,
     the model proxy's totals, whether the run recorded or replayed a
-    cassette (ADR-0040), the model swaps it made (ADR-0042), and, from
-    `yokla explore`, the coverage it reached (ADR-0044),
+    cassette (ADR-0040), the model swaps it made (ADR-0042), the transforms
+    of its messages (ADR-0045), and, from `yokla explore`, the coverage it
+    reached (ADR-0044),
   - findings per case, sample and turn, with the origin of a failing
     finding's value (ADR-0033),
   - each turn's model calls and cost, and the fields observed in the target's
@@ -836,6 +847,8 @@ ADR-0014 sets how cost and latency are bounded.
 **A language pack provides:**
 - **money and number parsing and formatting:** `1.299,90 TL` vs `$1,299.90`,
 - **case and diacritic folding:** Turkish dotted and dotless *i*,
+- **lower casing and diacritic removal,** apart, for robustness transforms
+  (ADR-0045),
 - **lexicons** for refusal, absence and inability,
 - **policy-claim patterns:** `14 gün`, `30 days`,
 - **attack phrasing templates** (v0.5),
@@ -896,6 +909,8 @@ turns on one seeded defect at a time:
 - an out-of-scope question answered instead of refused,
 - following an instruction injected into a tool result, with `--tool-results`
   (ADR-0043),
+- a Turkish message typed without Turkish letters answered in English
+  (ADR-0045),
 - later (v0.5): exposing another session's order.
 
 Each defect is added in the version whose checks detect it, so that "every
@@ -960,6 +975,17 @@ two products in a cart.
 - **Without it:** no explored case fails, and two explorations write the
   same cases (ADR-0044).
 
+For v0.4's robustness transforms, the shop reads past a typo of a word it
+knows, and `language-by-letters` tells Turkish from English by Turkish letters
+alone. Every written Turkish message has one but the greeting, which expects
+nothing that depends on the language.
+- **The correct shop:** the acceptance cases keep every verdict under every
+  transform.
+- **With the defect:** the written cases pass; without diacritics, three
+  Turkish cases are answered in English and fail, and `yokla compare
+  --expect-same` names them (ADR-0045).
+- **Repeats:** two runs with typos send the same messages.
+
 **Spans.** With `--otel-url` and the model over HTTP, the demo-shop exports a
 GenAI span for each model call, in the trace of the incoming `traceparent`,
 as OTLP/HTTP JSON or protobuf (ADR-0029). Its exporter has no dependency and
@@ -989,7 +1015,8 @@ the model proxy's reconciliation, resilience and inspection runs in
 `packages/cli/src/proxy.e2e.test.ts`, the recorded and replayed runs in
 `packages/cli/src/replay.e2e.test.ts`, the model swaps in
 `packages/cli/src/compare.e2e.test.ts`, the tool result changes in
-`packages/cli/src/tool-results.e2e.test.ts`, and the MCP session in
+`packages/cli/src/tool-results.e2e.test.ts`, the transformed runs in
+`packages/cli/src/robustness.e2e.test.ts`, and the MCP session in
 `packages/cli/src/mcp.e2e.test.ts`, whose `yokla mcp` child process loads
 the guard with `--import`.
 
@@ -1016,7 +1043,7 @@ Each version is usable on its own. A version ships when its exit criteria hold.
 | **0.1 — core** | core schemas (profile, case, results); HTTP adapter; runner with rate limiting and cache bypass; observation from the target's logs (ADR-0009); e-commerce checks (price, stock, policy, filter, type, duplicates, absence, over-refusal); `lang-tr`, `lang-en`; aggregation policies; JSON, terminal and JUnit reports; gate; demo-shop | every demo-shop defect detected; a real assistant tested with a hand-written profile |
 | **0.2 — proxy** | OpenAI-compatible and Anthropic proxy; `serial` and `header` correlation; cost and latency per request; fault plans; inspection checks; perf, cost and resilience suites; `yokla plan`; streaming targets, session setup, and model calls the target makes after its answer | cost on demo-shop and on one real target reconciles with the provider's usage records; resilience defects detected |
 | **0.3 — reach and conversations** | a first run in five minutes: `yokla init` sends the target one message, works out where the answer is in its JSON or event stream, writes a profile for review, and adds starter cases that suit any assistant (greeting, out of scope, a basic injection, personal data, an empty or very long message, a switch of language, a deadline), all at no model cost; a static HTML report; publishing to npm; WebSocket targets; authentication (OAuth2 and the like); richer evidence mapping, which the first real target needed: one collection read from several paths, stock given only as in or out of stock, amounts quoted from data other than the shown products (such as an order history), and the text of an answer given only as a component; a Gemini protocol adapter (AI Studio and Vertex); model calls read from OpenTelemetry GenAI spans, for targets the proxy can't see; tool-call and trajectory checks on what the proxy records; a simulated customer: a model plays a customer with a goal, and the deterministic checks judge every turn; generic checks (patterns, JSON Schema, similarity, checks the user writes) | on the demo-shop and on the open-source target, `yokla init` writes a profile that needs no edit for the starter cases, which then run and gate; the demo-shop's tool-call defects detected; the simulated customer reaches each demo-shop purchase goal, and a run repeats from its seed; on the demo-shop, calls read from OpenTelemetry spans match the proxy's records |
-| **0.4 — analyzer** | inventory, LLM extraction with evidence, probe mode, profile review and diff; e-commerce data generators; freshness and `fixture-missing`; robustness transforms of approved cases (§9): typos, removed diacritics, casing and punctuation at no model cost, and paraphrase and Turkish–English code-switching only with a configured, budgeted model | on demo-shop the analyzer reproduces the approved entries of the hand-written profile (precision and recall reported); on the private target it rediscovers the known issue classes; on the demo-shop, a transform catches a seeded defect that shows only in a message without diacritics, and the transforms of every other approved case keep its verdict |
+| **0.4 — analyzer** | inventory, LLM extraction with evidence, probe mode, profile review and diff; e-commerce data generators; freshness and `fixture-missing`; robustness transforms of approved cases (§9): typos, removed diacritics, casing and punctuation at no model cost (done, ADR-0045), and paraphrase and Turkish–English code-switching only with a configured, budgeted model | on demo-shop the analyzer reproduces the approved entries of the hand-written profile (precision and recall reported); on the private target it rediscovers the known issue classes; on the demo-shop, a transform catches a seeded defect that shows only in a message without diacritics, and the transforms of every other approved case keep its verdict |
 | **0.5 — red team** | local attack generation (templates plus attacker model), native TR and EN; e-commerce attacks: price and discount manipulation, order fraud, card data, age and region restrictions, unauthorised commitments, competitor steering, hijacking, excessive agency, another customer's data, injection through product content and through tool descriptions, including a description that changes mid-conversation, unsafe advice; canary-based deterministic detection; multi-turn and encoding strategies; findings mapped to OWASP LLM Top 10, OWASP Agentic, GDPR and KVKK, and the EU AI Act; calibrated judge | demo-shop injection, leakage and BOLA defects detected deterministically; the egress test passes |
 | **0.6 — ecosystem** | import and export for other evaluation tools; CI recipes and a GitHub Action; a library API; two runs compared side by side; documentation site | |
 
