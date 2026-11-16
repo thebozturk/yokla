@@ -1,6 +1,6 @@
 # 0048. Intents ask as a shopper names things
 
-Status: Proposed · Date: 2026-11-16
+Status: Accepted · Date: 2026-11-16
 
 ## Context
 
