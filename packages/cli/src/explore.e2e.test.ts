@@ -4,7 +4,11 @@
 // two products 10 % low (cart-total-off), the acceptance cases all pass, and a
 // proposed case fails price-grounded on its second cart addition; on the shop
 // without the defect, no explored case fails, and two explorations write the
-// same cases. Everything runs behind the network guard.
+// same cases. Its opening turns spread over the catalog's types and state the
+// type and price bound they ask (ADR-0046): on a shop that drops the price
+// bound for sleeping bags, a type no written case asks about, a proposed case
+// fails filter-honoured-or-disclosed. Every candidate that ran is in the trace.
+// Everything runs behind the network guard.
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -77,7 +81,7 @@ interface Explored {
   readonly results: Results;
 }
 
-async function exploreShop(name: string, url: string): Promise<Explored> {
+async function exploreShop(name: string, url: string, ...extra: string[]): Promise<Explored> {
   const out = join(dir, `${name}.yaml`);
   const resultsFile = join(dir, `${name}.json`);
   const lines: string[] = [];
@@ -101,6 +105,7 @@ async function exploreShop(name: string, url: string): Promise<Explored> {
       config,
       '--max-cost',
       '1',
+      ...extra,
     ],
     io,
   );
@@ -146,12 +151,19 @@ beforeAll(async () => {
   }
   if (proxyUrl === '') throw new Error(`yokla proxy didn't start:\n${proxyLines.join('\n')}`);
   ports.add(Number(new URL(proxyUrl).port));
-  const [clean, defective] = await Promise.all([shop(), shop('--defect', 'cart-total-off')]);
+  const [clean, defective, bound] = await Promise.all([
+    shop(),
+    shop('--defect', 'cart-total-off'),
+    shop('--defect', 'type-bound-ignored'),
+  ]);
 
   // One recording at a time: the explorations go one after the other.
   explored.set('clean', await exploreShop('clean', clean));
   explored.set('again', await exploreShop('again', clean));
   explored.set('defective', await exploreShop('defective', defective));
+  // Round-robin over the branches, sleeping bags are the camping branch's second type: the
+  // seventh (ADR-0046).
+  explored.set('bound', await exploreShop('bound', bound, '--types', '7'));
 }, 600_000);
 
 afterAll(async () => {
@@ -218,5 +230,53 @@ describe('yokla explore on the demo-shop (ADR-0044)', () => {
     expect(cases).toContain('status: proposed');
     // A timeout fault holds a call as long as yokla waits for the shop: the profile's 30 s.
     expect(cases).toMatch(/kind: timeout\n\s+holdMs: 30000\n/u);
+  });
+  it('finds a price bound dropped for a type no written case asks about (ADR-0046)', () => {
+    const { code, output, results } = get('bound');
+    expect(code, output).toBe(0);
+    const written = loadCases([join(DEMO, 'cases')]);
+    expect(
+      written.some((c) => c.turns.some((turn) => /uyku tulum|sleeping bag/iu.test(turn.user))),
+    ).toBe(false);
+    const seeds = results.cases.filter((c) => written.some((w) => w.id === c.id));
+    expect(seeds.map((c) => c.status)).toEqual(written.map(() => 'pass'));
+    const failing = loadCases([join(dir, 'bound.yaml')]).filter((c) =>
+      /failed /u.test(c.provenance?.evidence ?? ''),
+    );
+    expect(failing.map((c) => [c.id, c.turns.map((turn) => turn.user)])).toEqual([
+      ['under-price-1', ['1849 TRY altında sleeping bag var mı?']],
+      ['empty-band-1', ['749 TRY altında sleeping bag var mı?']],
+      ['under-price-2', ['Do you have any sleeping bag under 1849 TRY?']],
+      ['empty-band-2', ['Do you have any sleeping bag under 749 TRY?']],
+    ]);
+    expect(failing[0]?.provenance?.evidence).toBe(
+      'yokla explore, under-price from an opening turn: failed filter-honoured-or-disclosed (filter-honesty) on turn 1; expects type outdoor/camping/sleeping-bag at most 1849, its median price',
+    );
+    expect(failing[0]?.turns[0]?.expect).toEqual({
+      productType: ['outdoor/camping/sleeping-bag'],
+      filters: { maxPrice: 1849 },
+    });
+    // At the default six types, the search doesn't ask about sleeping bags.
+    const clean = get('clean').results.run.exploration?.candidates ?? [];
+    expect(clean.some((entry) => entry.messages.some((m) => m.includes('sleeping bag')))).toBe(
+      false,
+    );
+  });
+
+  it('traces every candidate it ran, the same way twice', () => {
+    const { output, results } = get('clean');
+    const trace = results.run.exploration?.candidates ?? [];
+    const ran = Number(/(\d+) candidates run/u.exec(output)?.[1]);
+    expect(trace).toHaveLength(ran);
+    expect(get('again').results.run.exploration).toEqual(results.run.exploration);
+    // Openings first: six types in two languages, each by the type and under two bounds.
+    const openings = trace.filter((entry) => entry.from === null);
+    expect(
+      openings.filter((entry) => ['type', 'under-price', 'empty-band'].includes(entry.operator)),
+    ).toHaveLength(36);
+    const kept = new Set(results.cases.map((c) => c.id));
+    const keptIds = trace.flatMap((entry) => (entry.kept === null ? [] : [entry.kept]));
+    expect(keptIds.filter((id) => !kept.has(id))).toEqual([]);
+    expect(trace.filter((entry) => entry.routes.length !== entry.messages.length)).toEqual([]);
   });
 });

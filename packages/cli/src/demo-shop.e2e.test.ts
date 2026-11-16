@@ -109,6 +109,9 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
   // that depends on the language; a run without diacritics finds the defect in
   // robustness.e2e.test.ts (ADR-0045).
   'language-by-letters': {},
+  // No written case asks for sleeping bags under a price; yokla explore finds the defect
+  // in explore.e2e.test.ts (ADR-0046).
+  'type-bound-ignored': {},
   // The generic checks (ADR-0030): the profile's everyAnswer patterns, its
   // response contract, and the check the demo-shop's team wrote.
   'unfilled-template': { 'answer-text': ['greeting-tr'] },

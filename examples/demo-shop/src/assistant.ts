@@ -332,7 +332,7 @@ export class Assistant {
     const matching =
       this.#defect === 'filter-ignored'
         ? all
-        : all.filter((product) => satisfies(product, filters));
+        : all.filter((product) => satisfies(product, this.#boundsKept(productType, filters)));
     const relaxed = matching.length === 0 && hasFilters(filters);
     const shown = (relaxed ? all : matching).slice(0, RESULT_LIMIT);
     const products = this.#duplicate(relaxed ? shown : this.#pad(shown, productType, filters));
@@ -340,6 +340,16 @@ export class Assistant {
       draft: { kind: relaxed ? 'relaxed' : 'products', language, productType, filters, products },
       next: { productType, filters, products },
     };
+  }
+
+  /**
+   * The type-bound-ignored defect (ADR-0046): sleeping bags, a type no written
+   * case asks about, are searched without their price bounds.
+   */
+  #boundsKept(productType: string, filters: Filters): Filters {
+    if (this.#defect !== 'type-bound-ignored' || productType !== 'sleeping-bag') return filters;
+    const { priceMax: _max, priceMin: _min, ...rest } = filters;
+    return rest;
   }
 
   /** The type-padding defect: fills a short result with other types that satisfy the filters. */

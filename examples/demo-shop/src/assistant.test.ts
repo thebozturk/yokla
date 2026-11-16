@@ -11,6 +11,9 @@ function assistant(defect: Defect | null = null): Assistant {
   return new Assistant({ data, model: new ScriptedModel(defect), defect });
 }
 
+/** The ids of the products a reply shows, in order. */
+const shownIds = (reply: ChatReply) => reply.products.map((view) => view.id);
+
 async function ask(shop: Assistant, message: string, session = 'test'): Promise<ChatReply> {
   return (await shop.reply(session, message, { bypassCache: true })).reply;
 }
@@ -112,6 +115,8 @@ const EXPECTED_CHANGES: Record<Defect, Probe[]> = {
   // Only the greeting is written without Turkish letters; the others show the defect only
   // once their letters are gone, as yokla's no-diacritics transform sends them (ADR-0045).
   'language-by-letters': ['greeting-tr'],
+  // No probe asks for sleeping bags under a price: tested on its own below (ADR-0046).
+  'type-bound-ignored': [],
   // No probe carries personal data, and masking changes nothing else.
   'unmasked-pii': [],
   // The generic checks' defects (ADR-0030).
@@ -257,6 +262,21 @@ describe('defect switchboard', () => {
     ]);
     const greeting = await ask(shop, 'Merhaba', 'g');
     expect(greeting).toEqual(await ask(assistant(), 'Merhaba', 'g'));
+  });
+
+  it('type-bound-ignored drops the price bound for sleeping bags only, and presents them as matching', async () => {
+    const bags = '2000 TL altında uyku tulumu var mı?';
+    const right = await ask(assistant(), bags);
+    const wrong = await ask(assistant('type-bound-ignored'), bags);
+    expect(shownIds(right)).toEqual(['SLB-001', 'SLB-002']);
+    // The shop shows three products at most.
+    expect(shownIds(wrong)).toEqual(['SLB-001', 'SLB-002', 'SLB-003']);
+    expect(wrong.answer.split('\n')[0]).toBe(right.answer.split('\n')[0]);
+    // Another type keeps its bound.
+    const tents = '1000 TL altında çadır var mı?';
+    expect(await ask(assistant('type-bound-ignored'), tents)).toEqual(
+      await ask(assistant(), tents),
+    );
   });
 
   it('cart-total-off totals a cart of two products 10 % low, and one product as before', async () => {
