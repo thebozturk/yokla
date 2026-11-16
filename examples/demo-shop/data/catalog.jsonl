@@ -39,3 +39,4 @@
 {"id":"STV-003","category_path":"outdoor/camping/camping-stove","name_tr":"Çok Yakıtlı Kamp Ocağı","name_en":"Multi-Fuel Camping Stove","price":3899.9,"currency":"TRY","stock":0}
 {"id":"TRP-001","category_path":"outdoor/hiking/trekking-pole","name_tr":"Alüminyum Baton (Çift)","name_en":"Aluminium Trekking Poles (Pair)","price":999.9,"currency":"TRY","stock":14}
 {"id":"TRP-002","category_path":"outdoor/hiking/trekking-pole","name_tr":"Karbon Baton (Çift)","name_en":"Carbon Trekking Poles (Pair)","price":2199.9,"currency":"TRY","stock":null}
+{"id":"TRP-K01","category_path":"outdoor/kids/trekking-pole","name_tr":"Çocuk Batonu (Çift)","name_en":"Kids Trekking Poles (Pair)","price":649.9,"currency":"TRY","stock":6}

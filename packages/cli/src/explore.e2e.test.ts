@@ -244,13 +244,13 @@ describe('yokla explore on the demo-shop (ADR-0044)', () => {
       /failed /u.test(c.provenance?.evidence ?? ''),
     );
     expect(failing.map((c) => [c.id, c.turns.map((turn) => turn.user)])).toEqual([
-      ['under-price-1', ['1849 TRY altında sleeping bag var mı?']],
-      ['empty-band-1', ['749 TRY altında sleeping bag var mı?']],
+      ['under-price-1', ['1849 TL altında sleeping bag var mı?']],
+      ['empty-band-1', ['749 TL altında sleeping bag var mı?']],
       ['under-price-2', ['Do you have any sleeping bag under 1849 TRY?']],
       ['empty-band-2', ['Do you have any sleeping bag under 749 TRY?']],
     ]);
     expect(failing[0]?.provenance?.evidence).toBe(
-      'yokla explore, under-price from an opening turn: failed filter-honoured-or-disclosed (filter-honesty) on turn 1; expects type outdoor/camping/sleeping-bag at most 1849, its median price',
+      'yokla explore, under-price from an opening turn: failed filter-honoured-or-disclosed (filter-honesty) on turn 1; expects type "sleeping bag" (1 catalog type) at most 1849, its median price',
     );
     expect(failing[0]?.turns[0]?.expect).toEqual({
       productType: ['outdoor/camping/sleeping-bag'],
@@ -261,6 +261,24 @@ describe('yokla explore on the demo-shop (ADR-0044)', () => {
     expect(clean.some((entry) => entry.messages.some((m) => m.includes('sleeping bag')))).toBe(
       false,
     );
+  });
+
+  it('asks for trekking poles as a shopper would, which two branches of the catalog hold (ADR-0048)', () => {
+    const trace = get('clean').results.run.exploration?.candidates ?? [];
+    const poles = trace.filter((entry) => entry.messages[0]?.includes('trekking pole') === true);
+    // Both types are one type to a shopper: asked once per language and intent, and passed.
+    expect(poles.map((entry) => [entry.operator, entry.messages[0], entry.failed])).toEqual([
+      ['type', 'trekking pole var mı?', []],
+      ['under-price', '1000 TL altında trekking pole var mı?', []],
+      ['empty-band', '649 TL altında trekking pole var mı?', []],
+      ['type', 'Do you have any trekking pole?', []],
+      ['under-price', 'Do you have any trekking pole under 1000 TRY?', []],
+      ['empty-band', 'Do you have any trekking pole under 649 TRY?', []],
+    ]);
+    // One Turkish turn writes the currency code; English has no other word for the lira.
+    expect(
+      trace.filter((entry) => entry.operator === 'currency-code').map((entry) => entry.messages),
+    ).toEqual([['1500 TRY altında backpack var mı?']]);
   });
 
   it('traces every candidate it ran, the same way twice', () => {
