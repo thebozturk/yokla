@@ -346,6 +346,8 @@ describe('yokla mcp against the demo-shop (ADR-0041)', () => {
       check: 'price-grounded',
       origin: { stage: 'app' },
     });
+    // The products the answer returned, which price-grounded compares with.
+    expect(list(field(turns[2], 'answer', 'evidence', 'products')).length).toBeGreaterThan(0);
     expect(list(field(turns[2], 'calls')).map((call) => field(call, 'model'))).toEqual([
       'demo-writer-1',
       'demo-writer-1',
@@ -381,6 +383,12 @@ describe('yokla mcp against the demo-shop (ADR-0041)', () => {
       ],
       regressions: [],
     });
+    // The quality suite's failures aren't run, and are named for run_cases to check.
+    expect(list(field(steps['fixed'], 'otherNotPassing')).map((c) => field(c, 'id'))).toEqual([
+      'stoves-tr',
+      'cheaper-follow-up-en',
+    ]);
+    expect(list(field(steps['fixed'], 'ran'))).toHaveLength(16);
     const regressions = list(field(steps['regressed'], 'regressions'));
     expect(regressions.map((c) => String(field(c, 'id'))).toSorted()).toEqual([
       'returns-en',

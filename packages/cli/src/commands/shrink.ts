@@ -165,6 +165,10 @@ export type ShrinkOutcome =
   | {
       readonly reproduced: true;
       readonly kind: 'minimal' | 'written';
+      /** How the original's reproduction went: every sample failed. */
+      readonly failed: number;
+      readonly samples: number;
+      readonly interval: { readonly lower: number; readonly upper: number };
       /** The kept turns' messages. */
       readonly turns: readonly string[];
       readonly before: { readonly turns: number; readonly characters: number };
@@ -265,6 +269,9 @@ export async function runShrink(
   const after = { turns: turns.length, characters: characters(turns) };
   const kept = {
     reproduced: true as const,
+    failed: reproduced.failed,
+    samples: reproduced.samples,
+    interval: reproduced.interval,
     turns: turns.map((turn) => turn.user),
     before,
     after,

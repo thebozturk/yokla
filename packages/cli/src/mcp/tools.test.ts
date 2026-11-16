@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { readResults } from '../load.ts';
 import { prepareRun } from '../prepare.ts';
 import { ToolError, type McpTool } from './protocol.ts';
-import { canSpend, Session, sessionTools, spentBy, TEXT_LIMIT } from './tools.ts';
+import { canSpend, EVIDENCE_LIMIT, Session, sessionTools, spentBy, TEXT_LIMIT } from './tools.ts';
 
 const servers: TestServer[] = [];
 afterEach(async () => {
@@ -16,7 +16,7 @@ afterEach(async () => {
 
 /** A target over HTTP whose answer `answers` gives; undefined answers 500. */
 async function target(answers: {
-  reply: (message: string) => string | undefined;
+  reply: (message: string) => string | { answer: string; products: unknown[] } | undefined;
 }): Promise<string> {
   const server = await startTestServer({
     onHttp: (request, response) => {
@@ -28,7 +28,15 @@ async function target(answers: {
         response.writeHead(answer === undefined ? 500 : 200, {
           'content-type': 'application/json',
         });
-        response.end(JSON.stringify(answer === undefined ? { error: 'down' } : { answer }));
+        response.end(
+          JSON.stringify(
+            answer === undefined
+              ? { error: 'down' }
+              : typeof answer === 'string'
+                ? { answer }
+                : answer,
+          ),
+        );
       });
     },
   });
@@ -57,6 +65,12 @@ cases:
     turns:
       - user: teşekkürler
         expect: { answer: { notEmpty: true } }
+  - id: deals
+    suite: factual
+    language: tr
+    turns:
+      - user: kampanya
+        expect: { answer: { notContains: [bozuk] } }
   - id: other
     suite: factual
     language: tr
@@ -80,7 +94,10 @@ target:
   name: t
   adapter: http
   request: { url: '${url}', body: { message: '{{message}}' } }
-  response: { text: $.answer }
+  response:
+    text: $.answer
+    evidence:
+      products: { items: '$.products[*]', fields: { id: id, name: name, price: price } }
 languages: [tr]
 domain: ecommerce
 ${extra}`,
@@ -106,24 +123,35 @@ function tool(tools: McpTool[], name: string): McpTool {
 const field = (value: unknown, ...path: (string | number)[]): unknown =>
   path.reduce<unknown>((at, key) => Reflect.get(Object(at), key), value);
 
-/** The shop: answers "bozuk" to the price question while broken. */
+/** The shop: answers "bozuk" to the price and deals questions while broken. */
 function shop() {
   const state = { broken: true, emptyGreeting: false, down: false, flaky: false, asked: 0 };
-  return {
-    state,
-    reply: (message: string) =>
-      state.down
-        ? undefined
-        : message === 'fiyat nedir'
-          ? state.broken && (!state.flaky || (state.asked += 1) % 2 === 0)
-            ? 'bozuk fiyat: 1.169,10 TL'
-            : 'fiyat 899,50 TL'
-          : message === 'uzun'
-            ? 'ç'.repeat(TEXT_LIMIT + 10)
-            : (message === 'selam' || message === 'çok teşekkürler') && state.emptyGreeting
-              ? ''
-              : 'Merhaba!',
+  const reply = (message: string): string | { answer: string; products: unknown[] } | undefined => {
+    if (state.down) return undefined;
+    switch (message) {
+      case 'fiyat nedir':
+        return state.broken && (!state.flaky || (state.asked += 1) % 2 === 0)
+          ? 'bozuk fiyat: 1.169,10 TL'
+          : 'fiyat 899,50 TL';
+      case 'kampanya':
+        return state.broken ? 'bozuk kampanya' : 'kampanya yok';
+      case 'uzun':
+        return {
+          answer: 'ç'.repeat(TEXT_LIMIT + 10),
+          products: Array.from({ length: EVIDENCE_LIMIT + 5 }, (_v, i) => ({
+            id: `P${String(i)}`,
+            name: `Ürün ${String(i)}`,
+            price: 10 + i,
+          })),
+        };
+      case 'selam':
+      case 'çok teşekkürler':
+        return state.emptyGreeting ? '' : 'Merhaba!';
+      default:
+        return 'Merhaba!';
+    }
   };
+  return { state, reply };
 }
 
 describe('the MCP tools (ADR-0041)', () => {
@@ -135,6 +163,7 @@ describe('the MCP tools (ADR-0041)', () => {
       { id: 'price', suite: 'quality', language: 'tr', turns: 2, review: 'approved' },
       { id: 'greet', suite: 'quality', language: 'tr', turns: 1, review: 'approved' },
       { id: 'thanks', suite: 'quality', language: 'tr', turns: 1, review: 'approved' },
+      { id: 'deals', suite: 'factual', language: 'tr', turns: 1, review: 'approved' },
       { id: 'other', suite: 'factual', language: 'tr', turns: 1, review: 'approved' },
       { id: 'draft', suite: 'quality', language: 'tr', turns: 1, review: 'proposed' },
     ]);
@@ -177,7 +206,20 @@ describe('the MCP tools (ADR-0041)', () => {
   it('explains a case turn by turn, with long answers cut and only the failing findings', async () => {
     const { settings } = workspace(await target(shop()));
     const tools = sessionTools(new Session(settings));
-    const run = String(field(await tool(tools, 'run_cases').call({}), 'run'));
+    const all = await tool(tools, 'run_cases').call({});
+    const run = String(field(all, 'run'));
+    // A proposed case is counted, and also apart.
+    expect(field(all, 'proposed')).toEqual({ unmeasured: 1 });
+    const notPassed = field(all, 'notPassed');
+    expect(
+      Array.isArray(notPassed)
+        ? notPassed.map((c: unknown) => [field(c, 'id'), field(c, 'proposed')])
+        : [],
+    ).toEqual([
+      ['price', undefined],
+      ['deals', undefined],
+      ['draft', true],
+    ]);
     const explained = await tool(tools, 'explain_finding').call({ run, case: 'price' });
     expect(explained).toMatchObject({
       run,
@@ -200,6 +242,19 @@ describe('the MCP tools (ADR-0041)', () => {
     const long = await tool(tools, 'explain_finding').call({ run, case: 'other' });
     expect(field(long, 'turns', 0, 'answer', 'text')).toHaveLength(TEXT_LIMIT);
     expect(field(long, 'turns', 0, 'answer', 'cut')).toBe(true);
+    // The evidence a check compares with, each collection cut at its first items.
+    expect(field(long, 'turns', 0, 'answer', 'evidence', 'products', 'length')).toBe(
+      EVIDENCE_LIMIT,
+    );
+    expect(field(long, 'turns', 0, 'answer', 'evidence', 'products', 0)).toEqual({
+      id: 'P0',
+      name: 'Ürün 0',
+      price: 10,
+    });
+    expect(field(long, 'turns', 0, 'answer', 'evidenceCut')).toEqual(['products']);
+    // A turn that returned no product says so; nothing was cut.
+    expect(field(explained, 'turns', 1, 'answer', 'evidence')).toEqual({ products: [] });
+    expect(field(explained, 'turns', 1, 'answer', 'evidenceCut')).toBeUndefined();
     await expect(
       tool(tools, 'explain_finding').call({ run, case: 'price', sample: 3 }),
     ).rejects.toThrow(/ran 1 sample\(s\)/u);
@@ -246,8 +301,10 @@ describe('the MCP tools (ADR-0041)', () => {
       turns: ['fiyat nedir'],
       before: { turns: 2 },
       after: { turns: 1 },
+      failureRate: { failed: 2, samples: 2 },
       cost: { spentUsd: 0 },
     });
+    expect(field(shrunk, 'candidates')).toBeGreaterThan(0);
     expect(readFileSync(join(dir, 'price.min.yaml'), 'utf8')).toContain('id: price-min');
     // It never overwrites, and a passing case has nothing to shrink.
     await expect(tool(tools, 'shrink_case').call({ run, case: 'price' })).rejects.toThrow(
@@ -282,8 +339,17 @@ describe('the MCP tools (ADR-0041)', () => {
         { id: 'price', status: 'pass', failsTarget: false },
         { id: 'price-min', status: 'pass', failsTarget: false },
       ],
+      ran: [
+        { id: 'price', before: 'fail', now: 'pass' },
+        { id: 'greet', before: 'pass', now: 'pass' },
+        { id: 'thanks', before: 'pass', now: 'pass' },
+        { id: 'draft', before: 'unmeasured', now: 'unmeasured' },
+        { id: 'price-min', now: 'pass' },
+      ],
       regressions: [],
       changed: [],
+      // Another suite's failure isn't run, and fixed says nothing of it.
+      otherNotPassing: [{ id: 'deals', suite: 'factual', status: 'fail' }],
     });
     // Only the case's suite runs: quality, not factual.
     const verified = readResults(String(field(fixed, 'results')));

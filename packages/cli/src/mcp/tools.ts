@@ -70,6 +70,8 @@ const Cost = z.object({
 const CaseSummary = z.object({
   id: z.string(),
   status: CaseStatus,
+  /** A case a person hasn't approved yet: it runs, but doesn't gate (ADR-0004). */
+  proposed: z.boolean().optional(),
   failing: z.array(Failing),
   error: z.string().optional(),
 });
@@ -103,6 +105,7 @@ function summaryOf(result: CaseResult): z.output<typeof CaseSummary> {
   return {
     id: result.id,
     status: result.status,
+    ...(result.review === 'proposed' ? { proposed: true } : {}),
     failing: failingOf(result),
     ...(error === undefined ? {} : { error }),
   };
@@ -112,6 +115,20 @@ function summaryOf(result: CaseResult): z.output<typeof CaseSummary> {
 function bounded(text: string | undefined): { text?: string; cut?: true } {
   if (text === undefined) return {};
   return text.length > TEXT_LIMIT ? { text: text.slice(0, TEXT_LIMIT), cut: true } : { text };
+}
+
+/** An evidence collection shows at most this many items in a tool result. */
+export const EVIDENCE_LIMIT = 20;
+
+/** A turn's mapped evidence, each collection cut at the limit. */
+function boundedEvidence(evidence: Record<string, readonly unknown[]>) {
+  const cut = Object.entries(evidence).filter(([, items]) => items.length > EVIDENCE_LIMIT);
+  return {
+    evidence: Object.fromEntries(
+      Object.entries(evidence).map(([name, items]) => [name, items.slice(0, EVIDENCE_LIMIT)]),
+    ),
+    ...(cut.length === 0 ? {} : { evidenceCut: cut.map(([name]) => name) }),
+  };
 }
 
 /** Whether a case's results still fail the target: its check, in its dimension, anywhere. */
@@ -302,7 +319,10 @@ const RunOutput = z.object({
   run: z.string(),
   results: z.string(),
   partial: z.boolean(),
+  /** Every case's status, proposed cases included. */
   statuses: z.record(z.string(), z.int()),
+  /** The statuses of the proposed cases alone: they don't gate until a person approves them. */
+  proposed: z.record(z.string(), z.int()).optional(),
   notPassed: z.array(CaseSummary),
   issues: z.array(z.string()),
   cost: Cost,
@@ -358,6 +378,10 @@ const ExplainOutput = z.object({
           route: z.string().optional(),
           text: z.string().optional(),
           cut: z.boolean().optional(),
+          /** What the profile mapped from the answer, such as products and their prices. */
+          evidence: z.record(z.string(), z.array(z.json())).optional(),
+          /** The collections cut at their first items. */
+          evidenceCut: z.array(z.string()).optional(),
         })
         .optional(),
       error: z.string().optional(),
@@ -399,9 +423,12 @@ const ShrinkOutput = z.object({
   turns: z.array(z.string()).optional(),
   before: z.object({ turns: z.int(), characters: z.int() }).optional(),
   after: z.object({ turns: z.int(), characters: z.int() }).optional(),
+  /** How many of the original's reproduction runs failed, with the rate's 95 % interval. */
   failureRate: z
     .object({ failed: z.int(), samples: z.int(), lower: z.number(), upper: z.number() })
     .optional(),
+  /** How many smaller candidates ran, each `samples` times. */
+  candidates: z.int().optional(),
   stopped: z.string().optional(),
   cost: Cost,
 });
@@ -423,10 +450,20 @@ const VerifyOutput = z.object({
   target: z.object({ check: z.string(), dimension: z.string() }),
   /** The case and its shrunk case, and whether each still fails the target. */
   checked: z.array(z.object({ id: z.string(), status: CaseStatus, failsTarget: z.boolean() })),
+  /** Every case this check ran, with its status in the run given (absent: it didn't run there). */
+  ran: z.array(z.object({ id: z.string(), before: CaseStatus.optional(), now: CaseStatus })),
   /** Cases that passed in the run given and don't now. */
   regressions: z.array(CaseSummary),
-  /** Cases whose definition changed since the run given: not compared. */
+  /**
+   * Cases whose definition (turns, expectations, samples or checks) changed
+   * since the run given: their statuses aren't compared.
+   */
   changed: z.array(z.string()),
+  /**
+   * Cases of other suites that didn't pass in the run given. verify_fix doesn't
+   * run them, so `fixed` says nothing about them: run_cases checks them.
+   */
+  otherNotPassing: z.array(z.object({ id: z.string(), suite: z.string(), status: CaseStatus })),
   issues: z.array(z.string()),
   cost: Cost,
 });
@@ -496,11 +533,16 @@ export function sessionTools(session: Session): McpTool[] {
               n === undefined ? [] : [[status, n]],
             ),
           );
+          const proposed: Record<string, number> = {};
+          for (const c of ran.results.cases) {
+            if (c.review === 'proposed') proposed[c.status] = (proposed[c.status] ?? 0) + 1;
+          }
           return {
             run: ran.results.run.id,
             results: ran.path,
             partial: ran.results.run.partial,
             statuses,
+            ...(Object.keys(proposed).length === 0 ? {} : { proposed }),
             notPassed: ran.results.cases
               .filter((c) => c.status !== 'pass')
               .map((c) => summaryOf(c)),
@@ -512,7 +554,7 @@ export function sessionTools(session: Session): McpTool[] {
     {
       name: 'explain_finding',
       description:
-        "Shows one case of a run, turn by turn: the user's message, the answer's text, route and status, the failing findings with where their value arose, and the turn's model calls by model, tokens, cost and fault. Prompts and the model's answers appear only as far as the profile's prompts.store keeps them. Costs nothing.",
+        "Shows one case of a run, turn by turn: the user's message; the answer's text, route, status and the evidence the profile maps from it, such as the products and prices a check compares with; the failing findings with where their value arose; and the turn's model calls by model, tokens, cost and fault. Prompts and the model's answers appear only as far as the profile's prompts.store keeps them. Costs nothing.",
       input: ExplainInput,
       output: ExplainOutput,
       call: (input) =>
@@ -555,6 +597,9 @@ export function sessionTools(session: Session): McpTool[] {
                         status: answer.status,
                         ...(answer.route === undefined ? {} : { route: answer.route }),
                         ...text,
+                        ...(Object.keys(answer.evidence).length === 0
+                          ? {}
+                          : boundedEvidence(answer.evidence)),
                       },
                     }),
                 ...(turn.error === undefined ? {} : { error: turn.error }),
@@ -596,7 +641,7 @@ export function sessionTools(session: Session): McpTool[] {
     {
       name: 'shrink_case',
       description:
-        "Cuts a failing case of a run down to the fewest turns that still fail the same check, as yokla shrink does, and writes it as a proposed case <id>-min next to the original. The original runs `reproduce` times first: a failure that comes and goes is reported as flaky, not shrunk. Model calls count against the session's cost cap.",
+        "Cuts a failing case of a run down to the fewest turns that still fail the same check, as yokla shrink does, and writes it as a proposed case <id>-min, in a new file <id>.min.yaml next to the original case's file. The original runs `reproduce` times first: `failureRate` says how many failed, and a failure that comes and goes is reported as flaky, not shrunk. `candidates` says how many smaller versions ran, each `samples` times. Model calls count against the session's cost cap.",
       input: ShrinkInput,
       output: ShrinkOutput,
       call: (input) =>
@@ -655,6 +700,13 @@ export function sessionTools(session: Session): McpTool[] {
           return {
             outcome: outcome.kind,
             target,
+            failureRate: {
+              failed: outcome.failed,
+              samples: outcome.samples,
+              lower: outcome.interval.lower,
+              upper: outcome.interval.upper,
+            },
+            candidates: outcome.runs,
             ...(outcome.id === undefined ? {} : { case: outcome.id }),
             ...(outcome.file === undefined ? {} : { file: outcome.file }),
             turns: [...outcome.turns],
@@ -668,7 +720,7 @@ export function sessionTools(session: Session): McpTool[] {
     {
       name: 'verify_fix',
       description:
-        "Checks a fix: runs a failing case of a run again, with its shrunk case <id>-min when the cases hold one, and the other cases of its suite. `fixed` is true when neither still fails the target check; `regressions` lists each case that passed in the run given and doesn't now. Model calls count against the session's cost cap.",
+        "Checks a fix: runs a failing case of a run again, with its shrunk case <id>-min when the cases hold one, and the other cases of its suite. `fixed` is true when neither the case nor its shrunk case still fails the target check, and the run wasn't cut short; it says nothing about other suites, whose cases that didn't pass are listed in `otherNotPassing` for run_cases to check. `ran` lists every case it ran, with its status then and now; `regressions` lists each that passed in the run given and doesn't now; `changed` lists cases whose definition changed since that run, which aren't compared. Model calls count against the session's cost cap.",
       input: VerifyInput,
       output: VerifyOutput,
       call: (input) =>
@@ -724,8 +776,15 @@ export function sessionTools(session: Session): McpTool[] {
             results: ran.path,
             target: { check: target.check, dimension: target.dimension },
             checked,
+            ran: ran.results.cases.map((c) => {
+              const was = before.cases.find((b) => b.id === c.id)?.status;
+              return { id: c.id, ...(was === undefined ? {} : { before: was }), now: c.status };
+            }),
             regressions,
             changed,
+            otherNotPassing: before.cases
+              .filter((c) => c.suite !== original.suite && c.status !== 'pass')
+              .map((c) => ({ id: c.id, suite: c.suite, status: c.status })),
             issues: ran.results.run.issues ?? [],
             cost: ran.cost,
           };
