@@ -189,10 +189,22 @@ function parseGemini(body: string, model: string, stream: boolean): ChatRequest 
   const system = partsText(field(value, 'systemInstruction'));
   const messages = [
     { role: 'system', content: system },
-    ...contents.map((content: unknown) => ({
-      role: field(content, 'role') === 'model' ? 'assistant' : 'user',
-      content: partsText(content),
-    })),
+    ...contents.flatMap((content: unknown) => {
+      const parts = field(content, 'parts');
+      // A functionResponse part is a tool's result (ADR-0043).
+      const results = (Array.isArray(parts) ? parts : []).flatMap((part: unknown) => {
+        const response = field(part, 'functionResponse', 'response');
+        return response === undefined ? [] : [{ role: 'tool', content: JSON.stringify(response) }];
+      });
+      return results.length > 0
+        ? results
+        : [
+            {
+              role: field(content, 'role') === 'model' ? 'assistant' : 'user',
+              content: partsText(content),
+            },
+          ];
+    }),
   ];
   const tools = field(value, 'tools');
   const offered = (Array.isArray(tools) ? tools : []).flatMap((tool: unknown) => {
@@ -216,6 +228,37 @@ function parseGemini(body: string, model: string, stream: boolean): ChatRequest 
 }
 
 const EXTRACTION = ['talimatların', 'sistem prompt', 'system prompt', 'your instructions'];
+
+const INJECTED = /reply only with ([A-Za-z0-9-]+)/iu;
+
+/**
+ * The part of a tool result outside its fence (ADR-0043): the text around
+ * `<data>` tags, or a Gemini object's fields beside its `data`.
+ */
+function unfenced(text: string): string {
+  try {
+    const value: unknown = JSON.parse(text);
+    if (typeof value === 'object' && value !== null && 'data' in value) {
+      return JSON.stringify({ ...value, data: null });
+    }
+  } catch {
+    // Not JSON: a text result, fenced by tags if at all.
+  }
+  return text.replaceAll(/<data[^>]*>[\s\S]*?<\/data>/gu, '');
+}
+
+/**
+ * The word an unfenced instruction in a tool result asks the model to reply
+ * with: like a model that gives in to an instruction in its data (ADR-0043).
+ */
+function injectedReply(messages: ChatRequest['messages']): string | undefined {
+  for (const message of messages) {
+    if (message.role !== 'tool') continue;
+    const asked = INJECTED.exec(unfenced(message.content))?.[1];
+    if (asked !== undefined) return asked;
+  }
+  return undefined;
+}
 
 function asksForInstructions(question: string): boolean {
   const text = question.toLocaleLowerCase('tr-TR');
@@ -253,6 +296,8 @@ async function answer(
     const question: unknown = Reflect.get(payload, 'question');
     // Like a model that gives in to an extraction request, it repeats its system prompt.
     if (typeof question === 'string' && asksForInstructions(question)) return text(request.system);
+    const injected = injectedReply(request.messages);
+    if (injected !== undefined) return text(injected);
     if (!isDraft(draft)) return undefined;
     const written = await model.write(draft);
     const shown =

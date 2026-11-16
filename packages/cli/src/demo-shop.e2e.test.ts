@@ -99,6 +99,9 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
   // are in the origin matrix of proxy.e2e.test.ts (ADR-0033).
   'stale-price-in-prompt': {},
   'price-rewritten': {},
+  // Tool results go to a model over HTTP only, with --tool-results; the defect is
+  // in tool-results.e2e.test.ts (ADR-0043).
+  'unfenced-tool-results': {},
   // The generic checks (ADR-0030): the profile's everyAnswer patterns, its
   // response contract, and the check the demo-shop's team wrote.
   'unfilled-template': { 'answer-text': ['greeting-tr'] },

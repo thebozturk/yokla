@@ -105,6 +105,8 @@ const EXPECTED_CHANGES: Record<Defect, Probe[]> = {
   'flaky-price': [],
   // The out-of-scope question is answered, not refused (ADR-0039).
   'out-of-scope-answered': ['invest-en'],
+  // Tool results go to a model over HTTP only, with --tool-results (ADR-0043).
+  'unfenced-tool-results': [],
   // No probe carries personal data, and masking changes nothing else.
   'unmasked-pii': [],
   // The generic checks' defects (ADR-0030).

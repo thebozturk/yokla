@@ -1,6 +1,7 @@
 // Starts the demo-shop: node src/main.ts [--port 3000] [--defect <name>] [--rate-limit off]
 //   [--model-url <OpenAI-compatible base URL>] [--model-stream] [--model-timeout-ms 3000]
 //   [--model-canary <text>] [--model-summary] [--model-protocol chat-completions|gemini]
+//   [--tool-results]
 //   [--otel-url <OTLP/HTTP traces endpoint>] [--otel-protocol json|protobuf] [--otel-delay-ms 5000]
 //   [--auth] [--token-ttl-ms 3600000] [--token-uses <n>]
 
@@ -27,6 +28,7 @@ function main(): void {
       'model-canary': { type: 'string' },
       'model-summary': { type: 'boolean' },
       'model-protocol': { type: 'string' },
+      'tool-results': { type: 'boolean' },
       'otel-url': { type: 'string' },
       'otel-protocol': { type: 'string' },
       'otel-delay-ms': { type: 'string' },
@@ -63,6 +65,8 @@ function main(): void {
     throw new Error('--otel-delay-ms must be a whole number of milliseconds');
   if (otelUrl !== undefined && modelUrl === undefined)
     throw new Error('--otel-url needs --model-url: only model calls over HTTP become spans');
+  if (values['tool-results'] === true && modelUrl === undefined)
+    throw new Error('--tool-results needs --model-url: only a model over HTTP gets tool results');
   const modelProtocol = parseModelProtocol(values['model-protocol'] ?? 'chat-completions');
   if (modelProtocol === undefined)
     throw new Error('--model-protocol must be "chat-completions" or "gemini"');
@@ -80,6 +84,8 @@ function main(): void {
           ...(values['model-canary'] === undefined ? {} : { canary: values['model-canary'] }),
           ...(spans === undefined ? {} : { spans }),
           protocol: modelProtocol,
+          // The writer gets its products as a tool result too (ADR-0043).
+          ...(values['tool-results'] === true ? { toolResults: true } : {}),
           // Gemini names its models; the provider answers as it does over chat completions.
           ...(modelProtocol === 'gemini' ? { model: 'gemini-demo-1' } : {}),
         });
