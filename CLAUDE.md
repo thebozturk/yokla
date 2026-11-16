@@ -35,7 +35,7 @@ change a decision, propose a new ADR. Never edit an accepted one.
   CI runs it on Node.js 24 and 26.
 - **Single steps:** `pnpm build`, `pnpm typecheck`, `pnpm lint`, `pnpm test`,
   `pnpm format`.
-- **`pnpm pack-check`** packs the eight published packages, checks what each
+- **`pnpm pack-check`** packs the nine published packages, checks what each
   tarball holds, installs them into an empty project and runs `yokla` from
   there against the demo-shop (ADR-0034). It needs the npm registry for the
   outside dependencies. CI runs it after `pnpm check`. Nothing is published.

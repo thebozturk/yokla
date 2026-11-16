@@ -422,6 +422,34 @@ Results keep only the mapped fields, labelled as reported by the target.
 - **`refusal.canonical`:** per language, the target's own refusal sentences.
   The refusal checks recognise them besides the language pack's wording.
 
+## `provenance`
+
+A profile `yokla analyze` proposed says where each of its entries came from
+(ADR-0047), in a map at its top, keyed by JSON Pointer (RFC 6901):
+
+```yaml
+provenance:
+  /ecommerce/catalog/path:
+    source: data
+    evidence: "./data/catalog.jsonl: 41 of 41 rows, with id as id, price as price"
+    status: proposed
+  /target/response/evidence/products/fields/price:
+    source: probe
+    evidence: "probe 2: price.amount equals the catalog's price in 3 of 3 items"
+    status: proposed
+```
+
+- **Each key** is a pointer to an entry of the profile; one that leads to no
+  entry refuses the file.
+- **Each value** is a provenance: its `source` (`data`, `probe`, `doc`,
+  `code` and the like), its `evidence`, and its `status`.
+- **An entry without one** was written by a person, and is approved.
+- **A profile with a `proposed` or `rejected` entry doesn't run:** `yokla
+  run`, `explore`, `shrink` and `mcp` refuse it and name the entries.
+  - To approve an entry, set its status to `approved`, or delete its line,
+    which makes the entry yours.
+  - To reject one, delete the entry and its line.
+
 ## `everyAnswer`
 
 Rules every turn with a usable answer is held to, in every case, judged by

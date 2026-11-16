@@ -51,6 +51,12 @@ npx yokla gate --results runs/<run id>.json
 - **`gate`** decides the build: `0` passed, `1` broken, `2` the run can't be
   judged.
 
+With your assistant's repository at hand, `npx yokla analyze --dir <repo>
+--url <chat url>` proposes more of the profile: your catalog and its fields,
+your policies' sources, and where the products are in an answer, found by
+matching its values to your catalog's. Each entry says where it came from,
+and nothing runs until you approve it. It makes no model call either.
+
 ## What a failure looks like
 
 The demo-shop is a small outdoor-gear assistant in this repository, with
@@ -233,13 +239,14 @@ upstreams your profile names. An egress test in CI holds yokla to that.
 - [The design](https://github.com/thebozturk/yokla/blob/main/docs/design.md)
   and the [decision records](https://github.com/thebozturk/yokla/blob/main/docs/adr/README.md).
 - [The changelog](https://github.com/thebozturk/yokla/blob/main/CHANGELOG.md).
-- `yokla <command> --help`, and `yokla schema <profile|cases|config|results|baseline>`
+- `yokla <command> --help`, and `yokla schema <profile|cases|config|results|baseline|comparison|analysis>`
   for the JSON Schemas.
 
 ## Roadmap
 
 - **v0.4:** an analyzer that reads your code, API contract, prompts, data
-  schema and docs, and writes a profile for you to review.
+  schema and docs, and writes a profile for you to review. Its first step,
+  from your data and a few probes, is `yokla analyze`.
 - **v0.5:** red teaming with local attack generation, mapped to OWASP, GDPR
   and KVKK, and the EU AI Act.
 - **v0.6:** import and export for other evaluation tools, a GitHub Action and
@@ -254,6 +261,7 @@ upstreams your profile names. An egress test in CI holds yokla to that.
 | [`@yokla/runtime`](https://www.npmjs.com/package/@yokla/runtime) | the runner and the target adapters |
 | [`@yokla/proxy`](https://www.npmjs.com/package/@yokla/proxy) | the model proxy |
 | [`@yokla/report`](https://www.npmjs.com/package/@yokla/report) | terminal, JUnit XML and HTML reports |
+| [`@yokla/analyzer`](https://www.npmjs.com/package/@yokla/analyzer) | the analyzer behind `yokla analyze` |
 | [`@yokla/pack-ecommerce`](https://www.npmjs.com/package/@yokla/pack-ecommerce) | the e-commerce checks |
 | [`@yokla/pack-lang-tr`](https://www.npmjs.com/package/@yokla/pack-lang-tr), [`@yokla/pack-lang-en`](https://www.npmjs.com/package/@yokla/pack-lang-en) | Turkish and English |
 

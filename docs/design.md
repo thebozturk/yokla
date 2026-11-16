@@ -173,7 +173,7 @@ yokla uses models in two distinct roles, and the design keeps them apart:
 | `packs/*` | `core` | domain and language packs |
 | `runtime` | `core` | runner, target adapter, proxy control, cost cap, file system; later the `ModelClient` |
 | `proxy` | `core` | model proxy |
-| `analyzer`, `generator` | `core`, `runtime` | later |
+| `analyzer`, `generator` | `core`, `runtime` | the analyzer (ADR-0047); `generator` later |
 | `report`, `interop-*` | `core` | `interop-*` later |
 | `cli` | everything | nothing depends on `cli` |
 | `examples/demo-shop` | no `@yokla/*` package | the system under test |
@@ -186,8 +186,8 @@ rules is cheaper than restoring them later.
 
 ```
 packages/
-  core/  runtime/  proxy/  report/  cli/
-  analyzer/  generator/   (later)
+  core/  runtime/  proxy/  report/  cli/  analyzer/
+  generator/          (later)
   interop-*/          mappings to other tools' formats (later)
 packs/
   ecommerce/  lang-tr/  lang-en/
@@ -210,6 +210,10 @@ An entry without `provenance` was written by a person: it counts as
 `source: human` and `status: approved`. Any other source must state its
 evidence and status explicitly, so a machine-made entry can never be approved
 by default.
+
+A profile `yokla analyze` proposes keeps these in one `provenance` map at its
+top, keyed by JSON Pointer to each entry (ADR-0047). A profile with a
+`proposed` or `rejected` entry there doesn't run.
 
 The core fields are domain-neutral. A domain pack adds its own section under
 its id, here `ecommerce` (§17). The v1 schema is
@@ -292,7 +296,24 @@ guide shows them.
 
 ## 8. Analyzer
 
-Planned for v0.4. Until then, a person writes the profile.
+Built in two steps for v0.4. The first is done (ADR-0047): `yokla analyze`
+inventories the repository, proposes what the target's data and a few probes
+give, and measures the proposal against a profile, at no model cost.
+- **From data:** the domain pack's data analyzer. The e-commerce pack finds
+  the catalog and its fields, its type separator, the languages of its
+  names, and the policies' sources.
+- **From probes:** a greeting, read by `yokla init`'s rules, then a type
+  question and a cart request. Where the products are in an answer is found
+  by matching its values to the catalog's.
+- **The proposal:** `yokla.profile.proposed.yaml`, with a `provenance` map
+  (§7). It never overwrites `yokla.profile.yaml`.
+- **The measure:** each entry `same`, `different`, `new` or `missed` against
+  a profile, with precision and recall. On the demo-shop: 30 entries
+  proposed, all the hand-written ones; recall 46.9 %.
+- **Next:** extraction by a model from code, docs and prompts, in a later
+  ADR, judged by the same measure.
+
+The plan for the whole analyzer:
 
 **Inputs, all optional except one way to reach the target:**
 - the repository path,
@@ -303,16 +324,18 @@ Planned for v0.4. Until then, a person writes the profile.
 
 **Steps:**
 
-1. **Inventory (deterministic, no LLM).** Find OpenAPI files, prompt-like files,
-   docs, env examples that reveal provider base URLs, and framework hints.
+1. **Inventory (deterministic, no LLM; done, ADR-0047).** Find OpenAPI files,
+   prompt-like files, docs, env examples that reveal provider base URLs, and
+   framework hints.
 2. **Extraction (LLM agent, budgeted).** Read the inventoried files in bounded
    chunks and propose profile entries, each pointing to its evidence.
-3. **Probe (optional, black-box).** Send a small fixed probe set to the live
-   target to confirm the response mapping, languages, refusal style and rate
-   limits. Probe transcripts are stored as evidence.
-4. **Review.** Write `yokla.profile.yaml` with every new entry `proposed`.
-   `yokla profile review` walks the user through the entries. Re-running the
-   analysis produces a diff; it never silently overwrites approved entries.
+3. **Probe (black-box).** Send a small fixed probe set to the live target to
+   confirm the response mapping, languages, refusal style and rate limits.
+   ADR-0047 sends three, for the response mapping and the evidence.
+4. **Review.** Write the proposal with every new entry `proposed`; ADR-0047
+   writes it to a file of its own, and compares it with a profile.
+   `yokla profile review` walks the user through the entries later.
+   Re-running the analysis never silently overwrites approved entries.
 
 **Rules:**
 
@@ -787,6 +810,12 @@ ADR-0014 sets how cost and latency are bounded.
   in `yokla-data/customer/` (ADR-0028). A cassette holds the provider's
   answers in full, though no request text, and is kept like a results file
   (ADR-0040).
+- **The analyzer.** `yokla analyze` reads the target's repository and data
+  on the machine and sends none of it anywhere; it contacts only the
+  target's urls, with up to three probes. It never opens environment files
+  that may hold secrets. Its proposal and report hold paths, field names,
+  answer shapes and the probes' messages, which name a type and a product of
+  the catalog; never a data file's rows or an answer's values (ADR-0047).
 - **Coding agents.** `yokla mcp`'s tool results hold the target's answers,
   which the agent may send to its own model, hosted or local. Prompts appear
   only as `prompts.store` keeps them (ADR-0041).
@@ -986,6 +1015,22 @@ nothing that depends on the language.
   --expect-same` names them (ADR-0045).
 - **Repeats:** two runs with typos send the same messages.
 
+For the analyzer's first step, `yokla analyze` reads a copy of the
+demo-shop's repository and probes the shop in process, with its hand-written
+profile's request (ADR-0047). It never lists that profile, the cases or the
+configuration.
+- **What it proposes:** 30 entries, every one the hand-written profile's:
+  the response's text and route, the session mode, the product and cart
+  evidence, the catalog and its type separator, the languages, the domain,
+  and the three policies' sources.
+- **What it misses:** 34 entries, recall 46.9 %: the size and gender of
+  products, which the probed tents don't have, and what code, docs and
+  prompts must give: the limits, the cache bypass, the response contract,
+  the capabilities, the canonical refusals, `everyAnswer` and
+  `neverFabricate`.
+- **Gating:** the proposal doesn't run until its entries are approved, and
+  two analyses write the same file.
+
 **Spans.** With `--otel-url` and the model over HTTP, the demo-shop exports a
 GenAI span for each model call, in the trace of the incoming `traceparent`,
 as OTLP/HTTP JSON or protobuf (ADR-0029). Its exporter has no dependency and
@@ -1016,7 +1061,8 @@ the model proxy's reconciliation, resilience and inspection runs in
 `packages/cli/src/replay.e2e.test.ts`, the model swaps in
 `packages/cli/src/compare.e2e.test.ts`, the tool result changes in
 `packages/cli/src/tool-results.e2e.test.ts`, the transformed runs in
-`packages/cli/src/robustness.e2e.test.ts`, and the MCP session in
+`packages/cli/src/robustness.e2e.test.ts`, the analysis of the demo-shop's
+repository in `packages/cli/src/analyze.e2e.test.ts`, and the MCP session in
 `packages/cli/src/mcp.e2e.test.ts`, whose `yokla mcp` child process loads
 the guard with `--import`.
 
@@ -1043,7 +1089,7 @@ Each version is usable on its own. A version ships when its exit criteria hold.
 | **0.1 — core** | core schemas (profile, case, results); HTTP adapter; runner with rate limiting and cache bypass; observation from the target's logs (ADR-0009); e-commerce checks (price, stock, policy, filter, type, duplicates, absence, over-refusal); `lang-tr`, `lang-en`; aggregation policies; JSON, terminal and JUnit reports; gate; demo-shop | every demo-shop defect detected; a real assistant tested with a hand-written profile |
 | **0.2 — proxy** | OpenAI-compatible and Anthropic proxy; `serial` and `header` correlation; cost and latency per request; fault plans; inspection checks; perf, cost and resilience suites; `yokla plan`; streaming targets, session setup, and model calls the target makes after its answer | cost on demo-shop and on one real target reconciles with the provider's usage records; resilience defects detected |
 | **0.3 — reach and conversations** | a first run in five minutes: `yokla init` sends the target one message, works out where the answer is in its JSON or event stream, writes a profile for review, and adds starter cases that suit any assistant (greeting, out of scope, a basic injection, personal data, an empty or very long message, a switch of language, a deadline), all at no model cost; a static HTML report; publishing to npm; WebSocket targets; authentication (OAuth2 and the like); richer evidence mapping, which the first real target needed: one collection read from several paths, stock given only as in or out of stock, amounts quoted from data other than the shown products (such as an order history), and the text of an answer given only as a component; a Gemini protocol adapter (AI Studio and Vertex); model calls read from OpenTelemetry GenAI spans, for targets the proxy can't see; tool-call and trajectory checks on what the proxy records; a simulated customer: a model plays a customer with a goal, and the deterministic checks judge every turn; generic checks (patterns, JSON Schema, similarity, checks the user writes) | on the demo-shop and on the open-source target, `yokla init` writes a profile that needs no edit for the starter cases, which then run and gate; the demo-shop's tool-call defects detected; the simulated customer reaches each demo-shop purchase goal, and a run repeats from its seed; on the demo-shop, calls read from OpenTelemetry spans match the proxy's records |
-| **0.4 — analyzer** | inventory, LLM extraction with evidence, probe mode, profile review and diff; e-commerce data generators; freshness and `fixture-missing`; robustness transforms of approved cases (§9): typos, removed diacritics, casing and punctuation at no model cost (done, ADR-0045), and paraphrase and Turkish–English code-switching only with a configured, budgeted model | on demo-shop the analyzer reproduces the approved entries of the hand-written profile (precision and recall reported); on the private target it rediscovers the known issue classes; on the demo-shop, a transform catches a seeded defect that shows only in a message without diacritics, and the transforms of every other approved case keep its verdict |
+| **0.4 — analyzer** | inventory, LLM extraction with evidence, probe mode, profile review and diff (the deterministic step done, ADR-0047); e-commerce data generators; freshness and `fixture-missing`; robustness transforms of approved cases (§9): typos, removed diacritics, casing and punctuation at no model cost (done, ADR-0045), and paraphrase and Turkish–English code-switching only with a configured, budgeted model | on demo-shop the analyzer reproduces the approved entries of the hand-written profile (precision and recall reported); on the private target it rediscovers the known issue classes; on the demo-shop, a transform catches a seeded defect that shows only in a message without diacritics, and the transforms of every other approved case keep its verdict |
 | **0.5 — red team** | local attack generation (templates plus attacker model), native TR and EN; e-commerce attacks: price and discount manipulation, order fraud, card data, age and region restrictions, unauthorised commitments, competitor steering, hijacking, excessive agency, another customer's data, injection through product content and through tool descriptions, including a description that changes mid-conversation, unsafe advice; canary-based deterministic detection; multi-turn and encoding strategies; findings mapped to OWASP LLM Top 10, OWASP Agentic, GDPR and KVKK, and the EU AI Act; calibrated judge | demo-shop injection, leakage and BOLA defects detected deterministically; the egress test passes |
 | **0.6 — ecosystem** | import and export for other evaluation tools; CI recipes and a GitHub Action; a library API; two runs compared side by side; documentation site | |
 

@@ -45,6 +45,18 @@ hold.
   packs gain `lowerCase` and `removeDiacritics`; the results gain an
   additive `run.transforms` and a turn's `written`. `yokla compare` names a
   run by its tool changes and transforms too.
+- **The analyzer, deterministic first (ADR-0047).** `yokla analyze` lists the
+  target's repository, leaving yokla's own files and secrets out, and
+  proposes what the target's data and up to three probes give: the
+  e-commerce catalog and its fields, its type separator, the languages of its
+  names and the policies' sources, and the response's text, route, session
+  and product and cart evidence, found by matching the answers' values to
+  the catalog's. The proposal goes to `yokla.profile.proposed.yaml` with a
+  `provenance` map by JSON Pointer, and a profile with proposed entries
+  doesn't run. Compared with a profile, it reports precision and recall; on
+  the demo-shop, every entry it proposes is the hand-written one. A new
+  package, `@yokla/analyzer`, makes nine. profile.v1 gains `provenance`,
+  and `yokla schema analysis` prints the report's schema.
 
 ## 0.3.0 — 2026-11-15
 

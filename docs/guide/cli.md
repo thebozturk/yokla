@@ -48,6 +48,69 @@ It probes HTTP targets only. For a WebSocket target it exits with `2`: write
 the profile by hand (see
 [WebSocket targets](profile.md#websocket-targets), ADR-0024).
 
+## `yokla analyze`
+
+```sh
+pnpm yokla analyze --dir . --url http://127.0.0.1:3000/v1/chat \
+  --body '{"message": "{{message}}", "sessionId": "{{session}}"}' \
+  [--header <name: value>]... [--session-url <url>] [--language <tr|en>]... \
+  [--out yokla.profile.proposed.yaml] [--profile yokla.profile.yaml] \
+  [--json analysis.json] [--max-files 5000] [--force]
+```
+
+Proposes a profile from the target's repository, its data and up to three
+probes, for a person to review (ADR-0047). yokla makes no model call; the
+target may make its own, and the analyzer contacts only its urls.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--dir <path>` | `.` | The target's repository. |
+| `--url`, `--body`, `--header`, `--session-url` | | The request, as for [`yokla init`](#yokla-init). `--url` is required. |
+| `--language <tr\|en>` | those of the catalog's names, else `en` | A language of the profile; repeatable. The probes are written in the first. |
+| `--out <file>` | `<dir>/yokla.profile.proposed.yaml` | Where to write the proposal. Data paths in it are relative to it. |
+| `--profile <file>` | `<dir>/yokla.profile.yaml`, when present | A profile to compare the proposal with. |
+| `--json <file>` | | Also write the analysis report, by the schema `yokla schema analysis` prints. |
+| `--max-files <n>` | 5000 | List at most this many files. |
+| `--force` | | Overwrite the proposal. |
+
+**What it does, in order:**
+1. **The inventory.** It lists the repository's files and sorts each into a
+   kind: `data`, `contract`, `prompt`, `doc`, `env-example`, `manifest`,
+   `code` or `other`. It doesn't enter hidden, dependency or build folders,
+   and leaves out binary files, files over 5 MB, environment files that may
+   hold secrets, and yokla's own files: profiles, the configuration, the
+   baseline, case files, `runs/` and `yokla-data/`.
+2. **The data.** The domain pack reads the data files. The e-commerce pack
+   proposes the catalog (a JSON Lines file with a unique id-like column and
+   a positive price-like one) and its fields, its type separator, the
+   languages of its names, and for each policy topic a FAQ in JSON Lines
+   (rows with `topic` and `answer`) or `{ source: none }`.
+3. **The probes.** It prints the messages, then sends a greeting, read by
+   `yokla init`'s rules for the answer's text, route and session. With a
+   catalog, it then asks for a type and puts the first product shown in the
+   cart, in the same session. Where the products and the cart are in the
+   answers is found by matching their values to the catalog's.
+
+**The proposal** is a profile with a [`provenance`](profile.md#provenance)
+map at its top: each machine-made entry with its source, its evidence and
+the status `proposed`. The request you gave is written as given. Until you
+approve its entries, `yokla run` and the other commands that reach the target
+refuse it.
+
+**The comparison.** With a profile to compare with, it sorts each entry, a
+scalar or a list of scalars by its pointer, into `same`, `different`, `new`
+(not in the profile) or `missed` (in the profile, not proposed), and prints
+the precision, same ÷ (same + different + new), and the recall, same ÷
+(same + different + missed). Your own inputs, the request and the
+languages you named, are left out, and so are the profile's entries that
+aren't approved. On the demo-shop it proposes 30 entries, all the
+hand-written ones: precision 100 %, recall 46.9 %. What it misses, such as
+the cache bypass, the limits, the response contract and the canonical
+refusals, is what code, docs and prompts must give a later step.
+
+It exits with `0` when the proposal was written, and with `2` for a wrong
+option, a probe that failed, or a proposal that exists without `--force`.
+
 ## `yokla run`
 
 | Option | Default | Meaning |
