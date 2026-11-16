@@ -56,6 +56,7 @@ the profile by hand (see
 | `--record <file>` | | Write the run's model calls to a cassette, their answers in full (ADR-0040). Needs a model proxy with upstreams. |
 | `--replay <file>` | | Answer the model calls from a cassette, forwarding none to a provider (ADR-0040). Not with `--record`. |
 | `--replay-loose` | | With `--replay`, answer a call the cassette has no match for with the recorded call at the same position. |
+| `--swap-model <swap>` | | `<upstream>:<asked model>=<model>`: send the calls that ask for a model to another, through the model proxy (ADR-0042). `=<upstream>/<model>` sends them to another upstream of the same kind. Repeatable; not with a cassette. |
 | `--concurrency <n>` | 1 | Cases run in parallel. Serial correlation needs 1, unless spans alone show the model calls. |
 | `--target-url <url>` | the profile's | Use this url instead of `target.request.url`. |
 | `--junit <file>` | | Also write a JUnit XML report. |
@@ -109,6 +110,11 @@ refuses to run.
 The results file (`results.v1`) holds every turn: the answer, the evidence,
 the checks with their findings, timings, and the model calls with their cost.
 Keep it out of version control when the answers may hold personal data.
+
+**`--swap-model`** tries another model under the app's own cases, with the
+app unchanged (ADR-0042); the [model proxy guide](model-proxy.md#model-swaps)
+says how. Run the cases once per model, then set the runs side by side with
+[`yokla compare`](#yokla-compare).
 
 ## `yokla report`
 
@@ -404,3 +410,31 @@ them in the results.
 
 It exits with `0` when the client closes stdin, and with `2` for a
 configuration problem, such as a missing `--max-cost`.
+
+## `yokla compare`
+
+```sh
+pnpm yokla run --out runs/as-is.json
+pnpm yokla run --swap-model openai:gpt-big=gpt-mini --out runs/mini.json
+pnpm yokla compare --results runs/as-is.json --results runs/mini.json \
+  [--config yokla.config.yaml] [--baseline yokla.baseline.json] [--json runs/compare.json]
+```
+
+Sets runs of the same cases side by side, such as one run per model that
+`--swap-model` tried, and names the cheapest run that passes the gate
+(ADR-0042). It reads results files and contacts nothing.
+- **Each run** is named by its swaps, or "as the app asks", and shows the
+  gate's verdict with the configuration's thresholds and the baseline, as
+  `yokla gate` gives it; its statuses; its model cost and the mean cost of an
+  answered turn; and the latency p50 and p95 of its answered turns.
+- **The cases whose status differs** come first, a status per run. A case
+  whose definition differs between runs is shown, not compared; one a run
+  lacks shows as missing.
+- **The cheapest run that passes the gate** is named by its total cost.
+  None is named when no run passes, or when a passing run's cost isn't
+  known.
+- `--json` writes the comparison, by the schema `yokla schema comparison`
+  prints.
+
+It exits with `0` when it compared the runs, whatever their verdicts, and
+with `2` when a file can't be read or fewer than two runs are given.

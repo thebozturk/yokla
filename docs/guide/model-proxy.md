@@ -247,6 +247,32 @@ status, latency, a timeout, malformed JSON, empty content, a cut stream or
 invalid tool-call arguments. An `answer` fault makes the model say a text of
 your choosing instead (ADR-0040). See [cases](cases.md#provider-faults).
 
+## Model swaps
+
+`yokla run --swap-model <upstream>:<asked model>=<model>` tries another
+model under the app's own cases, with the app unchanged (ADR-0042). Each
+call to that upstream that asks for the model goes to the other instead.
+
+```sh
+pnpm yokla run --swap-model openai:gpt-big=gpt-mini --out runs/mini.json
+pnpm yokla run --swap-model openai:gpt-big=gateway/vendor/gpt-mini --out runs/gateway.json
+```
+
+- **The same protocol only.** The proxy changes the model's name: the
+  body's `model`, or the `models/{model}` segment of a Gemini path. A body
+  it changes is sent uncompressed, with its new length.
+- **`=<upstream>/<model>`** sends the call to another upstream of the same
+  kind, when the profile names one by that name; otherwise the whole is the
+  model's name, so a gateway's `vendor/model` stays one.
+- **Only the model asked for is swapped,** so an app that uses two models
+  for two jobs can swap each apart.
+- **What the results keep.** Each swapped call keeps the model the app asked
+  for as `asked`, and is priced by the model that answered: a model without
+  a price costs null. `run.swaps` lists each swap with the calls it changed;
+  a swap that changed none is a run issue.
+- **Within the run's recording only,** and never with a cassette.
+- Compare the runs with [`yokla compare`](cli.md#yokla-compare).
+
 ## Cassettes
 
 A run can record the target's model calls into a cassette, and a later run

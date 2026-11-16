@@ -131,6 +131,12 @@ simulated customer there too.
   `packages/cli/src/replay.e2e.test.ts` records and replays the acceptance
   and resilience cases, and replays the acceptance cassette against a shop
   with `prompt-bloat`, whose changed prompts no longer match it.
+- **Three writer models.** The fake provider answers a call by the model it
+  asks for: `demo-writer-1`, as the shop asks, and `demo-writer-mini` alike;
+  `demo-writer-nano` writes the first price wrong, as `fabricated-price`
+  does. `packages/cli/src/compare.e2e.test.ts` runs the acceptance with each
+  swapped in through `--swap-model`, and `yokla compare` names
+  `demo-writer-mini` as the cheapest run that passes the gate (ADR-0042).
 - **A coding agent's tools.** `packages/cli/src/mcp.e2e.test.ts` drives
   `yokla mcp` over stdio, as a coding agent would (ADR-0041), against a shop
   with `price-rewritten`. It finds the rewritten price, traced to the app,

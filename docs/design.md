@@ -618,6 +618,13 @@ repeats with no model cost and with the answers it got.
 - The runner writes the file; the proxy keeps the answers in memory for the
   recording that asked for them.
 
+**Model swaps (ADR-0042).** `yokla run --swap-model <upstream>:<asked>=<model>`
+has the proxy send each call that asks for a model to another, in the same
+protocol, on the same upstream or another of its kind, within the run's
+recording. Each call keeps the model the app asked for, and is priced by the
+one that answered. `yokla compare` sets the runs side by side and names the
+cheapest that passes the gate.
+
 **Tool calls (ADR-0025).** The proxy also records the tools each call offers
 and the tool calls its answer asks for, with arguments kept as prompt text is.
 `tool-calls` judges a turn's trajectory against its case, and
@@ -761,8 +768,8 @@ ADR-0014 sets how cost and latency are bounded.
 
 - **Results file.** A versioned JSON schema (`results.v1`) holding:
   - run metadata: yokla version, profile hash, environment, correlation mode,
-    the model proxy's totals, and whether the run recorded or replayed a
-    cassette (ADR-0040),
+    the model proxy's totals, whether the run recorded or replayed a
+    cassette (ADR-0040), and the model swaps it made (ADR-0042),
   - findings per case, sample and turn, with the origin of a failing
     finding's value (ADR-0033),
   - each turn's model calls and cost, and the fields observed in the target's
@@ -783,6 +790,8 @@ ADR-0014 sets how cost and latency are bounded.
     prints what changed.
   - A run with an `error` or `fixture-missing` case, or a partial run, can't
     be judged and exits with `2`.
+  - `yokla compare` sets runs side by side, such as one per model, gates
+    each, and names the cheapest that passes (ADR-0042).
   - Latency percentiles and cost thresholds per suite (`latencyP95Ms`,
     `costPerTurnUsd`, ...) are judged over every answered turn, every sample
     pooled; a threshold without data breaks the gate as `unmeasured`
@@ -900,6 +909,11 @@ and confirmed the fix with `verify_fix`. Its feedback added the cases
 reproduction rate and candidates to `shrink_case`'s, the proposed cases
 apart to `run_cases`'s, and the evidence to `explain_finding`'s.
 
+For D6, the fake provider answers three writer models by name, and the
+cheapest, `demo-writer-nano`, invents a price. The acceptance runs as the
+app asks and with each swap, and `yokla compare` names `demo-writer-mini`
+as the cheapest run that passes the gate (ADR-0042).
+
 **Spans.** With `--otel-url` and the model over HTTP, the demo-shop exports a
 GenAI span for each model call, in the trace of the incoming `traceparent`,
 as OTLP/HTTP JSON or protobuf (ADR-0029). Its exporter has no dependency and
@@ -927,7 +941,8 @@ harness asserts each mutation was applied.
 the gate and the baseline in `packages/cli/src/demo-shop.e2e.test.ts`, and
 the model proxy's reconciliation, resilience and inspection runs in
 `packages/cli/src/proxy.e2e.test.ts`, the recorded and replayed runs in
-`packages/cli/src/replay.e2e.test.ts`, and the MCP session in
+`packages/cli/src/replay.e2e.test.ts`, the model swaps in
+`packages/cli/src/compare.e2e.test.ts`, and the MCP session in
 `packages/cli/src/mcp.e2e.test.ts`, whose `yokla mcp` child process loads
 the guard with `--import`.
 
@@ -981,7 +996,7 @@ them.
 | **D3. Sampling that stops when the verdict is settled** (done, ADR-0038, ADR-0039) | with `--stop-early`, a case stops its samples once no further sample can change its failure: a worst-of-N failure, a majority-of-N failure the remaining samples can't outvote, or an error; a passing case runs every sample | on the demo-shop, verdicts match fixed-N runs while fewer samples run; a worst-of-N failure stops after one sample, a majority-of-N one after two of three |
 | **D4. Recorded model calls, replayed** (done, ADR-0040) | the proxy records the target's model calls into a cassette and can answer from it, so a run repeats with no model cost; a replay can change one recorded answer, to ask what the app does when the model says something else | a recorded demo-shop run replays with identical results and no upstream call; the resilience cases catch each resilience defect on a cassette; a changed answer's price is traced to the model; a changed prompt diverges from the cassette |
 | **D5. yokla as a tool for coding agents** (done, ADR-0041) | a local MCP server over stdio: run a case, explain a finding (D1), shrink it (D2), verify a fix against the shrunk case and its neighbours; no egress beyond the run's own | an agent, given only the MCP tools, finds and verifies the fix of a seeded demo-shop defect: in CI a scripted client, at no model cost; once by hand, a real coding agent |
-| **D6. Comparing models through the proxy** | the proxy can send a call to another model than the app asked for, as the profile or the command line says; the same cases run once per model, and a report compares verdicts, cost and latency | on the demo-shop, two fake models give the comparison expected of them; the cheapest model that still passes the gate is named |
+| **D6. Comparing models through the proxy** (done, ADR-0042) | the proxy can send a call to another model than the app asked for, as the command line says; the same cases run once per model, and a report compares verdicts, cost and latency | on the demo-shop, three fake models give the comparison expected of them; the cheapest model that still passes the gate is named |
 | **D7. Tool results changed by the proxy** | the proxy can change a tool result before the model sees it: a canary instruction, for indirect injection without a test copy of the target's data; and changes that must not change the verdict, such as reordered items, for metamorphic checks | the demo-shop's injection defect (v0.5) is caught through a tool result the proxy changed; a metamorphic change gives the same verdicts |
 | **D8. A search for untried paths** | a run that steers new turns towards what the proxy hasn't seen yet: routes, tool sets, argument shapes, fault states; deterministic mutations first, a model-written turn only when configured and budgeted | on the demo-shop, the search reaches every route and every tool, and finds a seeded defect that no written case reaches |
 

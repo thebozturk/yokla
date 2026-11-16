@@ -125,6 +125,9 @@ answer, or only in your app's code after the model call.
 - **`yokla run --record` and `--replay`** keep a run's model calls in a
   cassette and answer them from it, so a suite repeats with no model cost. A
   fault can make the model say something else, to see what the app does.
+- **`yokla run --swap-model`** tries another model under your cases, with
+  the app unchanged, and **`yokla compare`** names the cheapest run that
+  still passes the gate.
 - **`yokla mcp`** gives a coding agent these as tools, over the Model Context
   Protocol: run the cases, explain a failure, shrink it, and verify a fix
   against it and its neighbours, within a cost cap you set.

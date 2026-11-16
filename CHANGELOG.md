@@ -17,6 +17,11 @@ hold.
   `verify_fix` over stdio. The person fixes the profile, cases and target at
   start, and a session that can spend needs `--max-cost`, which covers every
   run of the session.
+- **Comparing models through the proxy (ADR-0042).** `yokla run --swap-model
+  <upstream>:<asked>=<model>` sends the calls that ask for a model to
+  another, in the same protocol, and each call keeps the model asked for.
+  `yokla compare` sets runs side by side, gates each, and names the cheapest
+  that passes.
 
 ## 0.3.0 — 2026-11-15
 
