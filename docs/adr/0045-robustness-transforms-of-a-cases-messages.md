@@ -1,6 +1,6 @@
 # 0045. Robustness transforms of a case's messages
 
-Status: Proposed · Date: 2026-11-16 · Amends 0042
+Status: Accepted · Date: 2026-11-16 · Amends 0042
 
 ## Context
 
