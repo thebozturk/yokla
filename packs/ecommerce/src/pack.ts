@@ -1,6 +1,7 @@
 // The ecommerce domain pack (design §17).
 
 import type { DomainPack } from '@yokla/core';
+import { ecommerceAnalyzer } from './analyze.ts';
 import { absenceCorrect } from './checks/absence.ts';
 import { filterHonoured } from './checks/filters.ts';
 import { noDuplicates } from './checks/no-duplicates.ts';
@@ -17,6 +18,8 @@ export const ecommercePack: DomainPack = {
   id: 'ecommerce',
   profile: ecommerceProfile,
   expectations: ecommerceExpectations,
+  // What the pack proposes from the target's data, for yokla analyze (ADR-0047).
+  analyzer: ecommerceAnalyzer,
   // Design §13: one bad sample fails these dimensions.
   dimensions: {
     fabrication: 'worst-of-n',

@@ -270,6 +270,27 @@ export {
 } from './text/transform.ts';
 export { seededFraction, seededIndex } from './seed.ts';
 export {
+  compareProfiles,
+  pointerOf,
+  pointerPath,
+  profileEntries,
+  resolvePointer,
+  unapprovedEntries,
+  type ProfileComparison,
+  type ProfileEntry,
+} from './profile/entries.ts';
+export { matchRows, type KnownRows, type MatchedCollection } from './analyze/match.ts';
+export type {
+  DataAnalysis,
+  DataAnalyzer,
+  DataEntry,
+  DataFile,
+  DataRow,
+  ProbedRows,
+  ProbeIntent,
+} from './analyze/pack.ts';
+export { Analysis, ANALYSIS_SCHEMA_ID, INVENTORY_KINDS, InventoryKind } from './schema/analysis.ts';
+export {
   answerText,
   answeredStatus,
   answeredWithinDeadline,

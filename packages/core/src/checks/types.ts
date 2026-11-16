@@ -9,6 +9,7 @@ import type { Case } from '../schema/cases.ts';
 import type { Profile } from '../schema/profile.ts';
 import type { PromptRole } from '../schema/proxy.ts';
 import type { FindingSubject } from '../schema/results.ts';
+import type { DataAnalyzer } from '../analyze/pack.ts';
 
 export type FindingSeverity = 'info' | 'low' | 'medium' | 'high' | 'critical';
 
@@ -247,6 +248,8 @@ export interface PackIo {
 }
 
 export interface DomainPack extends DomainPackSchemas {
+  /** What the pack gives yokla analyze from the target's data (ADR-0047). */
+  readonly analyzer?: DataAnalyzer;
   /** Aggregation per dimension; a dimension not listed uses worst-of-n. */
   readonly dimensions: Readonly<Record<string, AggregationPolicy>>;
   /** Loads the pack's data (e.g. a catalog snapshot) and binds its checks. */

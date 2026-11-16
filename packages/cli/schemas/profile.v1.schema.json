@@ -2260,6 +2260,82 @@
       },
       "additionalProperties": false
     },
+    "provenance": {
+      "description": "ADR-0047: where entries came from, by JSON Pointer. An entry without one was written by a person. A profile with a proposed or rejected entry does not run.",
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^(?:\\/(?:[^~/]|~[01])*)+$"
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "const": "human"
+              },
+              "evidence": {
+                "type": "string",
+                "minLength": 1
+              },
+              "status": {
+                "default": "approved",
+                "type": "string",
+                "enum": [
+                  "proposed",
+                  "approved",
+                  "rejected"
+                ]
+              }
+            },
+            "required": [
+              "source"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "enum": [
+                  "doc",
+                  "prompt",
+                  "contract",
+                  "data",
+                  "code",
+                  "probe",
+                  "import",
+                  "template",
+                  "shrink",
+                  "explore"
+                ]
+              },
+              "evidence": {
+                "type": "string",
+                "minLength": 1
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "proposed",
+                  "approved",
+                  "rejected"
+                ]
+              }
+            },
+            "required": [
+              "source",
+              "evidence",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
     "ecommerce": {
       "type": "object",
       "properties": {

@@ -93,6 +93,44 @@ describe('profile schema', () => {
   });
 });
 
+const by = (pointer: string, source = 'data') => ({
+  provenance: { [pointer]: { source, evidence: 'data/catalog.jsonl', status: 'proposed' } },
+});
+
+const provenanceIssues = (change: Record<string, unknown>) =>
+  profile.safeParse(withChange(change)).error?.issues.map((issue) => issue.message) ?? [];
+
+describe('the provenance map (ADR-0047)', () => {
+  it('names entries of the profile by JSON Pointer', () => {
+    for (const pointer of ['/shop/currency', '/target/response/evidence/products/fields/price']) {
+      expect(provenanceIssues(by(pointer)), pointer).toEqual([]);
+    }
+    expect(profile.parse(withChange(by('/languages'))).provenance).toEqual({
+      '/languages': { source: 'data', evidence: 'data/catalog.jsonl', status: 'proposed' },
+    });
+  });
+
+  it('refuses a pointer that leads to no entry, or into the map itself', () => {
+    expect(provenanceIssues(by('/shop/vat'))).toEqual([
+      '/shop/vat leads to no entry of the profile',
+    ]);
+    expect(provenanceIssues(by('/provenance'))).toEqual([
+      'a provenance names an entry of the profile, not of the provenance map',
+    ]);
+  });
+
+  it('refuses a key that is no JSON Pointer, and a machine source without evidence', () => {
+    expect(provenanceIssues(by('shop/currency'))).toEqual([
+      'each key is a JSON Pointer to an entry, such as /ecommerce/catalog/path',
+    ]);
+    expect(provenanceIssues(by('/shop/currency~2'))).toHaveLength(1);
+    expect(
+      profile.safeParse(withChange({ provenance: { '/shop/currency': { source: 'data' } } }))
+        .success,
+    ).toBe(false);
+  });
+});
+
 const proxied = (prompts?: unknown) =>
   profile.safeParse(
     withChange({

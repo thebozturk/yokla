@@ -13,6 +13,7 @@ import {
   SchemaRule,
 } from './common.ts';
 import { PromptStore } from './proxy.ts';
+import { resolvePointer } from '../profile/entries.ts';
 
 /** A command run locally as an argument list, never through a shell. */
 const Command = z
@@ -456,6 +457,11 @@ const ModelProxy = z.strictObject({
   }),
 });
 
+/** A JSON Pointer (RFC 6901) to an entry of the profile (ADR-0047). */
+const EntryPointer = z
+  .string()
+  .regex(/^(?:\/(?:[^~/]|~[01])*)+$/u, 'use a JSON Pointer such as /ecommerce/catalog/path');
+
 const Capability = z.strictObject({
   id: Id,
   description: z.string().min(1).optional(),
@@ -494,6 +500,18 @@ export const profileShape = {
       canonical: z.partialRecord(LanguageCode, z.array(z.string().min(1)).min(1)).optional(),
     })
     .optional(),
+  provenance: z
+    .record(EntryPointer, Provenance, {
+      error: (issue) =>
+        issue.code === 'invalid_key'
+          ? 'each key is a JSON Pointer to an entry, such as /ecommerce/catalog/path'
+          : undefined,
+    })
+    .optional()
+    .meta({
+      description:
+        'ADR-0047: where entries came from, by JSON Pointer. An entry without one was written by a person. A profile with a proposed or rejected entry does not run.',
+    }),
 };
 
 const BaseProfile = z.strictObject(profileShape);
@@ -526,9 +544,23 @@ export function isSafeCredentialUrl(url: string): boolean {
  * the profile maps, and a WebSocket target can't correlate by header (ADR-0024).
  */
 export function profileProblems(
-  profile: Pick<Profile, 'target' | 'modelProxy'>,
+  profile: Pick<Profile, 'target' | 'modelProxy' | 'provenance'>,
 ): { path: (string | number)[]; message: string }[] {
   const problems: { path: (string | number)[]; message: string }[] = [];
+  // Each pointer of the provenance map names an entry of the profile (ADR-0047).
+  for (const pointer of Object.keys(profile.provenance ?? {})) {
+    if (pointer === '/provenance' || pointer.startsWith('/provenance/')) {
+      problems.push({
+        path: ['provenance', pointer],
+        message: 'a provenance names an entry of the profile, not of the provenance map',
+      });
+    } else if (resolvePointer(profile, pointer) === undefined) {
+      problems.push({
+        path: ['provenance', pointer],
+        message: `${pointer} leads to no entry of the profile`,
+      });
+    }
+  }
   const evidence = profile.target.response.evidence ?? {};
   for (const [name, fields] of Object.entries(profile.modelProxy?.inspect?.untrusted ?? {})) {
     const path = ['modelProxy', 'inspect', 'untrusted', name];
