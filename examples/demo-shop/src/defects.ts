@@ -27,6 +27,7 @@ export const DEFECTS = [
   'flaky-price',
   'out-of-scope-answered',
   'unfenced-tool-results',
+  'cart-total-off',
 ] as const;
 
 export type Defect = (typeof DEFECTS)[number];
@@ -71,6 +72,7 @@ export const DEFECT_DESCRIPTIONS: Readonly<Record<Defect, string>> = {
   'out-of-scope-answered': 'out-of-scope questions, such as investment advice, are answered',
   'unfenced-tool-results':
     'with the model over HTTP and --tool-results, tool results reach the model as they are, not fenced as data',
+  'cart-total-off': 'a cart of two products or more is totalled 10% below the sum of their prices',
 };
 
 /** Parses a defect name. Empty, undefined and "none" mean no defect. */

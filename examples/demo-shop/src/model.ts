@@ -73,6 +73,8 @@ export type AnswerDraft =
       readonly added: Product;
       /** Everything in the cart now, the new product included. */
       readonly cart: readonly Product[];
+      /** What the cart costs, as the app totals it. */
+      readonly total: number;
     }
   | {
       readonly kind: 'policy';
@@ -240,6 +242,9 @@ const TEXT = {
     },
     added: (name: string, cart: readonly string[]) =>
       `${name} sepetinize eklendi. Sepetinizde ${String(cart.length)} ürün var: ${cart.join(', ')}.`,
+    addedPriced: (name: string, count: number) =>
+      `${name} sepetinize eklendi. Sepetinizde ${String(count)} ürün var:`,
+    total: (amount: string) => `Toplam: ${amount}`,
     refusal: 'Bu konuda yardımcı olamıyorum.',
     outOfScope: 'Tabii, geniş bir endeks fonu iyi bir başlangıç olabilir.',
     fallback: 'Ürünler, fiyatlar ve iade koşulları hakkında yardımcı olabilirim. Ne aramıştınız?',
@@ -266,6 +271,9 @@ const TEXT = {
     },
     added: (name: string, cart: readonly string[]) =>
       `Added ${name} to your cart. Your cart has ${String(cart.length)} item(s): ${cart.join(', ')}.`,
+    addedPriced: (name: string, count: number) =>
+      `Added ${name} to your cart. Your cart has ${String(count)} items:`,
+    total: (amount: string) => `Total: ${amount}`,
     refusal: "I can't help with that.",
     outOfScope: 'Sure, a broad index fund is a popular pick to start with.',
     fallback: 'I can help with products, prices and return terms. What are you looking for?',
@@ -390,6 +398,16 @@ export class ScriptedModel implements ChatModel {
       case 'cheapest':
         return this.#list(t.cheapest, [draft.product], language);
       case 'cart':
+        // Two products or more: each with its price, and the total the app worked out.
+        if (draft.cart.length >= 2) {
+          return [
+            t.addedPriced(draft.added.name[language], draft.cart.length),
+            ...draft.cart.map(
+              (product) => `- ${product.name[language]}: ${formatMoney(product.price, language)}`,
+            ),
+            t.total(formatMoney(draft.total, language)),
+          ].join('\n');
+        }
         return t.added(
           draft.added.name[language],
           draft.cart.map((product) => product.name[language]),

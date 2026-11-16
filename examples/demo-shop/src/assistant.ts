@@ -268,8 +268,12 @@ export class Assistant {
         const ids = [...(this.#carts.get(sessionId) ?? []), product.id];
         remember(this.#carts, sessionId, ids, MAX_SESSIONS);
         const cart = ids.flatMap((id) => this.#data.catalog.filter((p) => p.id === id));
+        const sum = cart.reduce((total, item) => total + item.price, 0);
+        // The cart-total-off defect (ADR-0044): the cart is totalled 10 % low. The
+        // answer shows a total from two products on.
+        const total = this.#defect === 'cart-total-off' ? sum * 0.9 : sum;
         return {
-          draft: { kind: 'cart', language, added: product, cart },
+          draft: { kind: 'cart', language, added: product, cart, total },
           next: context ?? EMPTY_CONTEXT,
         };
       }

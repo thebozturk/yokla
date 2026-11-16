@@ -107,6 +107,8 @@ const EXPECTED_CHANGES: Record<Defect, Probe[]> = {
   'out-of-scope-answered': ['invest-en'],
   // Tool results go to a model over HTTP only, with --tool-results (ADR-0043).
   'unfenced-tool-results': [],
+  // No probe puts two products in a cart: tested on its own below (ADR-0044).
+  'cart-total-off': [],
   // No probe carries personal data, and masking changes nothing else.
   'unmasked-pii': [],
   // The generic checks' defects (ADR-0030).
@@ -252,6 +254,47 @@ describe('defect switchboard', () => {
     ]);
     const greeting = await ask(shop, 'Merhaba', 'g');
     expect(greeting).toEqual(await ask(assistant(), 'Merhaba', 'g'));
+  });
+
+  it('cart-total-off totals a cart of two products 10 % low, and one product as before', async () => {
+    const cart = async (shop: Assistant) => {
+      await ask(shop, PROBES['tents-tr'], 'c');
+      const one = await ask(shop, 'Plaj Çadırı ürününü sepete ekler misin?', 'c');
+      const two = await ask(shop, 'Kubbe Çadır 2 Kişilik ürününü sepete ekler misin?', 'c');
+      return { one, two };
+    };
+    const right = await cart(assistant());
+    const wrong = await cart(assistant('cart-total-off'));
+    expect(right.one.answer).toBe(
+      'Plaj Çadırı sepetinize eklendi. Sepetinizde 1 ürün var: Plaj Çadırı.',
+    );
+    expect(wrong.one).toEqual(right.one);
+    expect(right.two.answer).toBe(
+      [
+        'Kubbe Çadır 2 Kişilik sepetinize eklendi. Sepetinizde 2 ürün var:',
+        '- Plaj Çadırı: 899,50 TL',
+        '- Kubbe Çadır 2 Kişilik: 2.499,90 TL',
+        'Toplam: 3.399,40 TL',
+      ].join('\n'),
+    );
+    expect(wrong.two.answer).toBe(right.two.answer.replace('3.399,40 TL', '3.059,46 TL'));
+    expect(wrong.two.cart).toEqual(right.two.cart);
+    const english = assistant();
+    await ask(english, PROBES['headlamps-en'], 'e');
+    await ask(english, 'Please add the Headlamp 200 lm to my cart.', 'e');
+    const second = await ask(
+      english,
+      'Please add the Rechargeable Headlamp 400 lm to my cart.',
+      'e',
+    );
+    expect(second.answer).toBe(
+      [
+        'Added Rechargeable Headlamp 400 lm to your cart. Your cart has 2 items:',
+        '- Headlamp 200 lm: TRY 349.90',
+        '- Rechargeable Headlamp 400 lm: TRY 699.00',
+        'Total: TRY 1,048.90',
+      ].join('\n'),
+    );
   });
 
   it('fabricated-price changes the shown price, not the evidence', async () => {

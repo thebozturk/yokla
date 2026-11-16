@@ -148,6 +148,12 @@ simulated customer there too.
   does. `packages/cli/src/compare.e2e.test.ts` runs the acceptance with each
   swapped in through `--swap-model`, and `yokla compare` names
   `demo-writer-mini` as the cheapest run that passes the gate (ADR-0042).
+- **Untried paths.** `packages/cli/src/explore.e2e.test.ts` runs `yokla
+  explore` from the acceptance cases, with the model behind the proxy, the
+  rate limit off and header correlation (ADR-0044). It reaches every route
+  and every tool. On a shop with `cart-total-off`, a proposed case that adds
+  two tents to the cart fails `price-grounded`; without the defect, no
+  explored case fails.
 - **A coding agent's tools.** `packages/cli/src/mcp.e2e.test.ts` drives
   `yokla mcp` over stdio, as a coding agent would (ADR-0041), against a shop
   with `price-rewritten`. It finds the rewritten price, traced to the app,
@@ -335,6 +341,8 @@ pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml \
   the session's cart.
   - The answer lists the cart, and the JSON answer carries it as
     `data.cart`, which the profile maps as the evidence `cart`.
+  - With two products or more, the answer gives each product's price and
+    the cart's total.
   - With the model over HTTP, the interpret call asks for it as
     `add_to_cart` (ADR-0028).
 - **A simulated customer.** The fake provider also plays yokla's customer
@@ -398,6 +406,7 @@ them (ADR-0029).
 | `unfilled-template` | The greeting keeps the placeholder `{{customer_name}}` of its template. | `answer-text`, by the profile's `everyAnswer` (v0.3) |
 | `missing-contract-field` | The response's metadata leaves out the answer's language. | `json-schema`, by the profile's contract (v0.3) |
 | `internal-ids` | Each product the answer names is followed by its catalog id. | `no-internal-ids`, the shop's own check (v0.3) |
+| `cart-total-off` | A cart of two products or more is totalled 10% below the sum of their prices. | `price-grounded`, on a case `yokla explore` proposes: no written case puts two products in a cart (ADR-0044) |
 
 `src/assistant.test.ts` holds a fixed set of probe questions. For each defect,
 it asserts that the defect changes exactly the listed probes and nothing else.

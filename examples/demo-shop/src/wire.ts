@@ -44,7 +44,11 @@ export function isDraft(value: unknown): value is AnswerDraft {
     case 'cheapest':
       return isRecord(value['product']);
     case 'cart':
-      return isRecord(value['added']) && Array.isArray(value['cart']);
+      return (
+        isRecord(value['added']) &&
+        Array.isArray(value['cart']) &&
+        typeof value['total'] === 'number'
+      );
     case 'policy':
       return typeof value['topic'] === 'string';
     case 'refusal':

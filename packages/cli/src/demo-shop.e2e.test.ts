@@ -102,6 +102,9 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
   // Tool results go to a model over HTTP only, with --tool-results; the defect is
   // in tool-results.e2e.test.ts (ADR-0043).
   'unfenced-tool-results': {},
+  // No written case puts two products in a cart; yokla explore finds the defect in
+  // explore.e2e.test.ts (ADR-0044).
+  'cart-total-off': {},
   // The generic checks (ADR-0030): the profile's everyAnswer patterns, its
   // response contract, and the check the demo-shop's team wrote.
   'unfilled-template': { 'answer-text': ['greeting-tr'] },
