@@ -597,7 +597,13 @@ mapped route, it refuses.
     For each type it asks for a product by its name (one in stock first),
     for the type, for the type under its median price, and for the type
     under the largest whole amount below its lowest price, where nothing can
-    match. Then it asks about each policy the profile declares;
+    match. Then it asks about each policy the profile declares. A type is
+    asked by the words of its last level, and types with the same words are
+    one to a shopper: they count once, and the turn's expectation and prices
+    cover them all (ADR-0048). Amounts are written as shoppers of the
+    language write them, such as `300 TL` or `$300`; one last turn per
+    language asks the first type under its median with the currency code,
+    such as `300 TRY`, where that differs;
   - **the pack's turns after an answer that showed products:** adding the
     first of them to the cart, then the next while the conversation only adds
     to the cart, and asking for a cheaper one;
@@ -615,8 +621,8 @@ mapped route, it refuses.
 **Judging.** Every check that needs no expectation judges a candidate, such
 as `price-grounded`, `stock-claim`, the response contract and `everyAnswer`,
 and `graceful-under-fault` under a fault. An opening turn that asks for a
-type or a price bound also states it, from the catalog: `productType`, and
-`filters.maxPrice` (ADR-0046). So `type-matched-or-disclosed` and
+type or a price bound also states it, from the catalog: `productType`, every
+type with the asked words, and `filters.maxPrice` (ADR-0046, ADR-0048). So `type-matched-or-disclosed` and
 `filter-honoured-or-disclosed` judge it too: products of other types, or over
 the bound, fail unless the answer says so. Only that turn states it; a
 candidate built on it, or the turn asked again, states nothing. A case with a

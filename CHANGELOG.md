@@ -68,6 +68,11 @@ hold.
   the proposed case keeps it and names where it came from. The results gain
   an additive `run.exploration.candidates`: every candidate that ran, kept
   or not, with its messages and routes.
+- **Intents ask as a shopper names things (ADR-0048).** A type is asked by
+  its words, so its expectation and prices cover every catalog type with the
+  same words, and `--types` counts distinct words. Amounts are written in
+  the language's usual unit ("300 TL", "$300"); one turn per language asks
+  with the currency code, where shoppers write it otherwise.
 
 ## 0.3.0 — 2026-11-15
 

@@ -157,7 +157,9 @@ simulated customer there too.
   state the type and price bound they ask (ADR-0046): with
   `type-bound-ignored` and `--types 7`, the proposed cases that ask for
   sleeping bags under a price fail `filter-honoured-or-disclosed`. Every
-  candidate that ran is in the results' trace.
+  candidate that ran is in the results' trace. Trekking poles sit in two
+  branches of the catalog, `hiking` and `kids`: a shopper asks for both by
+  the same words, and the turns state both types (ADR-0048).
 - **Messages as users write them.** `packages/cli/src/robustness.e2e.test.ts`
   runs the acceptance cases as written and with each `--transform`:
   without diacritics, in lower case, without punctuation and with a typo

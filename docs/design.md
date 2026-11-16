@@ -1042,6 +1042,12 @@ drops the price bound for sleeping bags, a type no written case asks about.
 - **Without it:** no explored case fails, under-the-lowest-price turns
   included, and ADR-0044's criteria hold at the default budget.
 
+For intents that ask as a shopper names things (ADR-0048), the catalog holds
+trekking poles under two branches, `hiking` and `kids`. The search asks for
+them once per intent and language, each turn states both types, and on the
+correct shop none fails. Turkish amounts are written in `TL`, and one Turkish
+turn asks with `TRY`.
+
 **Spans.** With `--otel-url` and the model over HTTP, the demo-shop exports a
 GenAI span for each model call, in the trace of the incoming `traceparent`,
 as OTLP/HTTP JSON or protobuf (ADR-0029). Its exporter has no dependency and
