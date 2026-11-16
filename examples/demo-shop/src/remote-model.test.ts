@@ -7,7 +7,7 @@ import {
 import { afterEach, describe, expect, it } from 'vitest';
 import { Assistant, maskPersonalData } from './assistant.ts';
 import { loadShopData } from './catalog.ts';
-import { createFakeProvider, tokenCount, type UsageEntry } from './fake-provider.ts';
+import { createFakeProvider, NANO_MODEL, tokenCount, type UsageEntry } from './fake-provider.ts';
 import { ScriptedModel, type ChatModel, type ModelCall } from './model.ts';
 import { INSTRUCTIONS, RemoteModel, ROLES, systemPrompt } from './remote-model.ts';
 import { CART_INSTRUCTION, INTERPRET_TOOLS, interpretationOf, toolCallOf } from './tools.ts';
@@ -102,6 +102,22 @@ describe('the demo-shop model over HTTP', () => {
       expect(entry.thoughtsTokens).toBeGreaterThan(0);
       expect(entry.completionTokens).toBeGreaterThan(entry.thoughtsTokens ?? 0);
     }
+  });
+
+  it('answers each writer model by its name: demo-writer-nano invents a price (ADR-0042)', async () => {
+    const { url, root, usage } = await provider();
+    const expected = await replies(new ScriptedModel());
+    expect(await replies(new RemoteModel({ url, key: 'k', model: 'demo-writer-mini' }))).toEqual(
+      expected,
+    );
+    const invented = await replies(new ScriptedModel('fabricated-price'));
+    expect(invented).not.toEqual(expected);
+    expect(await replies(new RemoteModel({ url, key: 'k', model: NANO_MODEL }))).toEqual(invented);
+    const gemini = { url: `${root}/v1beta`, key: 'k', protocol: 'gemini' as const };
+    expect(await replies(new RemoteModel({ ...gemini, model: NANO_MODEL }))).toEqual(invented);
+    expect(new Set(usage.map((entry) => entry.model))).toEqual(
+      new Set(['demo-writer-mini', NANO_MODEL]),
+    );
   });
 
   it("sends Gemini's request shape: the system apart, the tools as declarations, the key in its header", async () => {

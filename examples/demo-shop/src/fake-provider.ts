@@ -7,7 +7,9 @@
 // the first product to the cart (ADR-0025). It also plays yokla's simulated
 // customer (ADR-0028), by simple rules over the shop's catalog. It speaks
 // Gemini's native API too (ADR-0032), at /v1beta/models/{model}:generateContent
-// and :streamGenerateContent, answering the same, with thinking tokens.
+// and :streamGenerateContent, answering the same, with thinking tokens. A call
+// that asks for demo-writer-nano gets a model that invents a price, as
+// fabricated-price does, so swapping models shows a difference (ADR-0042).
 
 import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
@@ -290,8 +292,14 @@ async function readAll(request: IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
+/** The writer model that invents the first product's price (ADR-0042). */
+export const NANO_MODEL = 'demo-writer-nano';
+
 export function createFakeProvider(options: FakeProviderOptions): Server {
   const model = new ScriptedModel(options.defect ?? null);
+  const nano = new ScriptedModel('fabricated-price');
+  /** The model that answers a call: the one it asks for, by name. */
+  const named = (name: string) => (name === NANO_MODEL ? nano : model);
   const { catalog } = loadShopData();
 
   /** Gemini's native API (ADR-0032): one answer, or a stream of events or a JSON array. */
@@ -312,7 +320,9 @@ export function createFakeProvider(options: FakeProviderOptions): Server {
     const stream = route[2] === 'streamGenerateContent';
     const chat = parseGemini(await readAll(request), name, stream);
     const answered =
-      chat === undefined ? undefined : await answer(model, chat, catalog).catch(() => undefined);
+      chat === undefined
+        ? undefined
+        : await answer(named(chat.model), chat, catalog).catch(() => undefined);
     if (chat === undefined || answered === undefined) {
       send(response, 400, {
         error: { code: 400, message: 'invalid request', status: 'INVALID_ARGUMENT' },
@@ -395,7 +405,9 @@ export function createFakeProvider(options: FakeProviderOptions): Server {
     }
     const chat = parse(await readAll(request));
     const answered =
-      chat === undefined ? undefined : await answer(model, chat, catalog).catch(() => undefined);
+      chat === undefined
+        ? undefined
+        : await answer(named(chat.model), chat, catalog).catch(() => undefined);
     if (chat === undefined || answered === undefined) {
       send(response, 400, { error: { message: 'invalid request' } });
       return;
