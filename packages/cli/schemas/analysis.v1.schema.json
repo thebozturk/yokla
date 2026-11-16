@@ -1,0 +1,390 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "yokla.analysis/v1"
+    },
+    "yokla": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "inventory": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "data",
+                  "contract",
+                  "prompt",
+                  "doc",
+                  "env-example",
+                  "manifest",
+                  "code",
+                  "other"
+                ]
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "path",
+              "kind",
+              "bytes"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "capped": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "files",
+        "skipped",
+        "capped"
+      ],
+      "additionalProperties": false
+    },
+    "probes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "latencyMs": {
+            "type": "number",
+            "minimum": 0
+          },
+          "shape": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message",
+          "status",
+          "latencyMs",
+          "shape"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "pointer": {
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "provenance": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "const": "human"
+                  },
+                  "evidence": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "status": {
+                    "default": "approved",
+                    "type": "string",
+                    "enum": [
+                      "proposed",
+                      "approved",
+                      "rejected"
+                    ]
+                  }
+                },
+                "required": [
+                  "source",
+                  "status"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "doc",
+                      "prompt",
+                      "contract",
+                      "data",
+                      "code",
+                      "probe",
+                      "import",
+                      "template",
+                      "shrink",
+                      "explore"
+                    ]
+                  },
+                  "evidence": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "proposed",
+                      "approved",
+                      "rejected"
+                    ]
+                  }
+                },
+                "required": [
+                  "source",
+                  "evidence",
+                  "status"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "required": [
+          "pointer",
+          "value",
+          "provenance"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "comparison": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "type": "string"
+        },
+        "same": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pointer": {
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/__schema0"
+              }
+            },
+            "required": [
+              "pointer",
+              "value"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "different": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pointer": {
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "reference": {
+                "$ref": "#/$defs/__schema1"
+              }
+            },
+            "required": [
+              "pointer",
+              "value",
+              "reference"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "new": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pointer": {
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/__schema0"
+              }
+            },
+            "required": [
+              "pointer",
+              "value"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "missed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pointer": {
+                "type": "string"
+              },
+              "value": {
+                "$ref": "#/$defs/__schema0"
+              }
+            },
+            "required": [
+              "pointer",
+              "value"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "precision": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recall": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "profile",
+        "same",
+        "different",
+        "new",
+        "missed",
+        "precision",
+        "recall"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema",
+    "yokla",
+    "inventory",
+    "probes",
+    "entries"
+  ],
+  "additionalProperties": false,
+  "title": "yokla analysis v1",
+  "$defs": {
+    "__schema0": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema0"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema0"
+          }
+        }
+      ]
+    },
+    "__schema1": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema1"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema1"
+          }
+        }
+      ]
+    }
+  }
+}

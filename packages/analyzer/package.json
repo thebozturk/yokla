@@ -1,0 +1,49 @@
+{
+  "name": "@yokla/analyzer",
+  "version": "0.3.0",
+  "description": "Proposes a profile from the target's repository, its data and a few probes.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thebozturk/yokla.git",
+    "directory": "packages/analyzer"
+  },
+  "homepage": "https://github.com/thebozturk/yokla#readme",
+  "bugs": {
+    "url": "https://github.com/thebozturk/yokla/issues"
+  },
+  "keywords": [
+    "yokla",
+    "llm",
+    "ai-assistant",
+    "chatbot",
+    "testing",
+    "evaluation",
+    "end-to-end",
+    "profile",
+    "analyzer"
+  ],
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": {
+      "@yokla/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "src",
+    "!src/**/*.test.*"
+  ],
+  "sideEffects": false,
+  "dependencies": {
+    "@yokla/core": "workspace:*",
+    "@yokla/runtime": "workspace:*",
+    "yaml": "^2.9.1"
+  }
+}

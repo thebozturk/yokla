@@ -38,8 +38,23 @@ importers:
 
   examples/demo-shop: {}
 
+  packages/analyzer:
+    dependencies:
+      '@yokla/core':
+        specifier: workspace:*
+        version: link:../core
+      '@yokla/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
+
   packages/cli:
     dependencies:
+      '@yokla/analyzer':
+        specifier: workspace:*
+        version: link:../analyzer
       '@yokla/core':
         specifier: workspace:*
         version: link:../core

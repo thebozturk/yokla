@@ -1,6 +1,7 @@
 // The yokla command line.
 
 import { readFileSync } from 'node:fs';
+import { ANALYZE_HELP, analyzeCommand } from './commands/analyze.ts';
 import { BASELINE_HELP, baselineCommand } from './commands/baseline.ts';
 import { COMPARE_HELP, compareCommand } from './commands/compare.ts';
 import { EXPLORE_HELP, exploreCommand } from './commands/explore.ts';
@@ -18,6 +19,7 @@ const HELP = `yokla — test conversational AI assistants end to end
 
 Usage:
   yokla init [options]       write a first profile and starter cases from one message
+  yokla analyze [options]    propose a profile from the target's repository, data and probes
   yokla run [options]        run cases against the profile's target
   yokla report [options]     render the reports of a results file
   yokla gate [options]       judge a results file; exit 0, 1 or 2
@@ -28,7 +30,8 @@ Usage:
   yokla mcp [options]        serve yokla's tools to a coding agent over stdio (MCP)
   yokla compare [options]    set runs side by side, such as one per model, and name the cheapest that passes
   yokla explore [options]    search for paths the written cases never take, and propose cases for them
-  yokla schema <name>        print a JSON Schema: profile, cases, config, results, baseline, comparison
+  yokla schema <name>        print a JSON Schema: profile, cases, config, results, baseline, comparison,
+                             analysis
   yokla --version
 
 ${INIT_HELP}
@@ -51,7 +54,9 @@ ${MCP_HELP}
 
 ${COMPARE_HELP}
 
-${EXPLORE_HELP}`;
+${EXPLORE_HELP}
+
+${ANALYZE_HELP}`;
 
 export function version(): string {
   const manifest: unknown = JSON.parse(
@@ -72,6 +77,7 @@ const SCHEMA_FILES: Readonly<Record<string, string>> = {
   results: 'results.v1.schema.json',
   baseline: 'baseline.v1.schema.json',
   comparison: 'comparison.v1.schema.json',
+  analysis: 'analysis.v1.schema.json',
 };
 
 export async function main(argv: readonly string[], io: Output): Promise<number> {
@@ -99,10 +105,12 @@ export async function main(argv: readonly string[], io: Output): Promise<number>
       return compareCommand(rest, io);
     case 'explore':
       return exploreCommand(rest, io, version());
+    case 'analyze':
+      return analyzeCommand(rest, io, version());
     case 'schema': {
       const file = SCHEMA_FILES[rest[0] ?? ''];
       if (file === undefined) {
-        io.err('usage: yokla schema <profile|cases|config|results|baseline|comparison>');
+        io.err('usage: yokla schema <profile|cases|config|results|baseline|comparison|analysis>');
         return 2;
       }
       io.out(JSON.stringify(jsonSchemas()[file], null, 2));

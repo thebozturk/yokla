@@ -9,6 +9,8 @@ import {
   Cassette,
   CASSETTE_SCHEMA_ID,
   CORE_CHECKS,
+  toJson,
+  unapprovedEntries,
   type Case,
   type Profile,
   type YoklaConfig,
@@ -56,6 +58,17 @@ export interface PreparedRun {
 /** Loads the profile, the cases and the configuration, and the check modules it names. */
 export async function prepareRun(setup: RunSetup, version: string): Promise<PreparedRun> {
   const loaded = loadProfile(setup.profile);
+  // Nothing a machine proposed reaches the target until a person approves it (ADR-0047).
+  const unapproved = unapprovedEntries(toJson(loaded.profile));
+  if (unapproved.length > 0) {
+    throw new LoadError(
+      [
+        `${setup.profile}: ${String(unapproved.length)} entr${unapproved.length === 1 ? 'y is' : 'ies are'} not approved:`,
+        ...unapproved.map((entry) => `  ${entry.pointer} (${entry.status})`),
+        "set a proposed entry's status in provenance to approved, or delete its line there; delete a rejected entry and its line",
+      ].join('\n'),
+    );
+  }
   const given = setup.cases ?? [resolve(loaded.dir, 'cases')];
   const casePaths = [
     ...given,

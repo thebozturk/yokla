@@ -49,6 +49,7 @@
   ],
   "sideEffects": false,
   "dependencies": {
+    "@yokla/analyzer": "workspace:*",
     "@yokla/core": "workspace:*",
     "@yokla/pack-ecommerce": "workspace:*",
     "@yokla/pack-lang-en": "workspace:*",

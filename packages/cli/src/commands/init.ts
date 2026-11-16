@@ -62,15 +62,15 @@ const INIT_OPTIONS = {
   help: { type: 'boolean' },
 } as const;
 
-const GREETINGS: Readonly<Record<StarterLanguage, string>> = {
+export const GREETINGS: Readonly<Record<StarterLanguage, string>> = {
   en: 'Hello! What can you help me with?',
   tr: 'Merhaba! Bana nasıl yardımcı olabilirsin?',
 };
-const PROBE_TIMEOUT_MS = 120_000;
+export const PROBE_TIMEOUT_MS = 120_000;
 
-class InitError extends Error {}
+export class InitError extends Error {}
 
-function parseHeaders(lines: readonly string[]): Record<string, string> {
+export function parseHeaders(lines: readonly string[]): Record<string, string> {
   const headers: Record<string, string> = {};
   for (const line of lines) {
     const colon = line.indexOf(':');
@@ -80,7 +80,7 @@ function parseHeaders(lines: readonly string[]): Record<string, string> {
   return headers;
 }
 
-function parseBody(text: string): JsonValue {
+export function parseBody(text: string): JsonValue {
   try {
     return toJson(JSON.parse(text));
   } catch {
@@ -88,7 +88,7 @@ function parseBody(text: string): JsonValue {
   }
 }
 
-function parseLanguages(values: readonly string[] | undefined): StarterLanguage[] {
+export function parseLanguages(values: readonly string[] | undefined): StarterLanguage[] {
   const languages = values ?? ['en'];
   const known = languages.filter(
     (value): value is StarterLanguage => value === 'tr' || value === 'en',
@@ -99,7 +99,7 @@ function parseLanguages(values: readonly string[] | undefined): StarterLanguage[
 }
 
 /** A target name from the URL's host; an address or localhost names nothing. */
-function nameOf(url: URL): string {
+export function nameOf(url: URL): string {
   const host = url.hostname.toLowerCase();
   if (host === 'localhost' || /^[\d.]+$/u.test(host) || host.includes(':')) return 'assistant';
   const name = host.replaceAll(/[^a-z0-9]+/gu, '-').replaceAll(/^-|-$/gu, '');
@@ -107,7 +107,7 @@ function nameOf(url: URL): string {
 }
 
 /** A path as the person will type it: relative to where they are, unless it climbs out. */
-function shown(cwd: string, path: string): string {
+export function shown(cwd: string, path: string): string {
   const rel = relative(cwd, path);
   return rel === '' ? '.' : rel.startsWith('..') ? path : rel;
 }
