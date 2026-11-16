@@ -1,6 +1,6 @@
 # 0044. A search for untried paths
 
-Status: Proposed · Date: 2026-11-16
+Status: Accepted · Date: 2026-11-16
 
 ## Context
 

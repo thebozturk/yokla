@@ -56,7 +56,7 @@ old one.
 | [0041](0041-yokla-as-an-mcp-server.md) | yokla as an MCP server for coding agents | Accepted |
 | [0042](0042-comparing-models-through-the-proxy.md) | Comparing models through the proxy | Accepted; amended by 0043 |
 | [0043](0043-tool-results-changed-by-the-proxy.md) | Tool results changed by the proxy | Accepted |
-| [0044](0044-a-search-for-untried-paths.md) | A search for untried paths | Proposed |
+| [0044](0044-a-search-for-untried-paths.md) | A search for untried paths | Accepted |
 
 ## Template
 
