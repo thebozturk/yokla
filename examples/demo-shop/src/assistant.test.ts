@@ -109,6 +109,9 @@ const EXPECTED_CHANGES: Record<Defect, Probe[]> = {
   'unfenced-tool-results': [],
   // No probe puts two products in a cart: tested on its own below (ADR-0044).
   'cart-total-off': [],
+  // Only the greeting is written without Turkish letters; the others show the defect only
+  // once their letters are gone, as yokla's no-diacritics transform sends them (ADR-0045).
+  'language-by-letters': ['greeting-tr'],
   // No probe carries personal data, and masking changes nothing else.
   'unmasked-pii': [],
   // The generic checks' defects (ADR-0030).

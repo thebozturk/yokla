@@ -15,7 +15,7 @@ export function fold(text: string): string {
 const TURKISH_LETTERS = /[çğıöşüÇĞİÖŞÜ]/u;
 
 // Folded words that are typical of one language and rare in the other.
-const TURKISH_HINTS = new Set([
+export const TURKISH_HINTS: ReadonlySet<string> = new Set([
   'var',
   'mi',
   'mu',
@@ -73,7 +73,7 @@ const TURKISH_HINTS = new Set([
   'hamak',
   'tozluk',
 ]);
-const ENGLISH_HINTS = new Set([
+export const ENGLISH_HINTS: ReadonlySet<string> = new Set([
   'the',
   'a',
   'an',
@@ -142,9 +142,15 @@ const ENGLISH_HINTS = new Set([
   'it',
 ]);
 
-/** Detects Turkish or English. Ties go to Turkish, the primary language. */
-export function detectLanguage(message: string): Language {
+/**
+ * Detects Turkish or English: by Turkish letters, else by each language's
+ * common words. Ties go to Turkish, the primary language. With `lettersOnly`,
+ * the language-by-letters defect (ADR-0045), a message without Turkish
+ * letters is English.
+ */
+export function detectLanguage(message: string, lettersOnly = false): Language {
   if (TURKISH_LETTERS.test(message)) return 'tr';
+  if (lettersOnly) return 'en';
   let turkish = 0;
   let english = 0;
   for (const word of fold(message).split(/[^a-z0-9']+/u)) {

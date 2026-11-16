@@ -105,6 +105,10 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
   // No written case puts two products in a cart; yokla explore finds the defect in
   // explore.e2e.test.ts (ADR-0044).
   'cart-total-off': {},
+  // Every written message has a Turkish letter but the greeting, which expects nothing
+  // that depends on the language; a run without diacritics finds the defect in
+  // robustness.e2e.test.ts (ADR-0045).
+  'language-by-letters': {},
   // The generic checks (ADR-0030): the profile's everyAnswer patterns, its
   // response contract, and the check the demo-shop's team wrote.
   'unfilled-template': { 'answer-text': ['greeting-tr'] },

@@ -28,6 +28,7 @@ export const DEFECTS = [
   'out-of-scope-answered',
   'unfenced-tool-results',
   'cart-total-off',
+  'language-by-letters',
 ] as const;
 
 export type Defect = (typeof DEFECTS)[number];
@@ -73,6 +74,8 @@ export const DEFECT_DESCRIPTIONS: Readonly<Record<Defect, string>> = {
   'unfenced-tool-results':
     'with the model over HTTP and --tool-results, tool results reach the model as they are, not fenced as data',
   'cart-total-off': 'a cart of two products or more is totalled 10% below the sum of their prices',
+  'language-by-letters':
+    'the model tells Turkish from English by its letters alone, so a Turkish message typed without them is answered in English',
 };
 
 /** Parses a defect name. Empty, undefined and "none" mean no defect. */

@@ -6,6 +6,7 @@
 import type { Product } from './catalog.ts';
 import type { Defect } from './defects.ts';
 import { detectLanguage, fold, formatMoney, parseAmount, type Language } from './language.ts';
+import { correctTypos } from './typos.ts';
 import {
   ABSENT_TYPES,
   CART_TERMS,
@@ -307,8 +308,9 @@ export class ScriptedModel implements ChatModel {
   }
 
   #interpret(message: string, context: ConversationContext | undefined): Interpretation {
-    const language = detectLanguage(message);
-    const text = fold(message);
+    const language = detectLanguage(message, this.#defect === 'language-by-letters');
+    // A typo of a word the shop knows is read past (ADR-0045).
+    const text = correctTypos(fold(message));
 
     if (longestMatch(text, OUT_OF_SCOPE_TERMS) > 0) return { route: 'refusal', language };
 
