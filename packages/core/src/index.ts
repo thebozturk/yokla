@@ -156,6 +156,7 @@ export {
   unionCoverage,
 } from './explore/coverage.ts';
 export {
+  DEFAULT_EXPLORE_TYPES,
   explore,
   exploreFaults,
   type ExploreCandidate,
@@ -168,6 +169,7 @@ export {
   type ObservedTurn,
 } from './explore/search.ts';
 export { explorationEvidence, exploredCaseYaml } from './explore/write.ts';
+export { Exploration, TracedCandidate } from './explore/trace.ts';
 export { Baseline, BASELINE_SCHEMA_ID } from './schema/baseline.ts';
 export { baselineChanges, baselineOf } from './baseline/baseline.ts';
 export { caseDefinition, stableJson } from './baseline/definition.ts';

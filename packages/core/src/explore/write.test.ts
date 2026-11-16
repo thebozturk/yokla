@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
+import { z } from 'zod';
 import { buildSchemas } from '../schema/build.ts';
 import { EMPTY_COVERAGE } from './coverage.ts';
 import type { ExploreResult, KeptCandidate } from './search.ts';
@@ -48,6 +49,7 @@ const result = (kept: KeptCandidate[]): ExploreResult => ({
   added: [],
   runs: kept.length,
   stopped: false,
+  trace: [],
 });
 
 describe('the case file of an exploration (ADR-0044)', () => {
@@ -61,6 +63,45 @@ describe('the case file of an exploration (ADR-0044)', () => {
     expect(explorationEvidence(opening)).toBe(
       'yokla explore, policy from an opening turn: failed policy-claim (fabrication) on turn 1',
     );
+  });
+
+  it("keeps an intent's expectation in the case, and names the data it came from (ADR-0046)", () => {
+    const bounded: KeptCandidate = {
+      id: 'under-price-1',
+      candidate: {
+        operator: 'under-price',
+        from: undefined,
+        suite: 'factual',
+        language: 'en',
+        turns: [
+          {
+            user: 'Do you have any tent under 900 TRY?',
+            expect: { productType: ['outdoor/tent'], filters: { maxPrice: 900 } },
+          },
+        ],
+        basis: 'type outdoor/tent at most 900, its median price',
+      },
+      reached: [],
+      failed: ['filter-honoured-or-disclosed (fabrication)'],
+    };
+    expect(explorationEvidence(bounded)).toBe(
+      'yokla explore, under-price from an opening turn: failed filter-honoured-or-disclosed (fabrication) on turn 1; expects type outdoor/tent at most 900, its median price',
+    );
+    const text = exploredCaseYaml(result([bounded]));
+    // A shop pack that owns the two keys, as the ecommerce pack does.
+    const shop = {
+      id: 'shop',
+      expectations: {
+        productType: z.array(z.string()),
+        filters: z.strictObject({ maxPrice: z.number() }),
+      },
+    };
+    const { caseFile } = buildSchemas({ languages: ['en'], domainPacks: [shop] });
+    expect(caseFile.parse(parse(text)).cases[0]?.turns[0]?.expect).toEqual({
+      productType: ['outdoor/tent'],
+      filters: { maxPrice: 900 },
+    });
+    expect(text).toContain('states only\n# what it asked, from the catalog (ADR-0046)');
   });
 
   it('writes the kept cases as proposed, those a check failed on first, in a valid case file', () => {

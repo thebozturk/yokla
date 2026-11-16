@@ -225,12 +225,19 @@ export interface IntentTurn {
   /** What the turn asks for, such as `cart`; explored cases are named after it. */
   readonly intent: string;
   readonly user: string;
+  /**
+   * What the turn asked, from the same data its words came from, in the
+   * pack's expectation keys (ADR-0046). Core passes it on without reading it.
+   */
+  readonly expect?: Readonly<Record<string, unknown>>;
+  /** Where the expectation came from, for the proposed case's provenance (ADR-0046). */
+  readonly basis?: string;
 }
 
 /** The turns a domain pack offers yokla explore, in the pack's own phrasings (ADR-0044). */
 export interface Intents {
-  /** Turns that open a conversation, in a language. */
-  opening(language: string): readonly IntentTurn[];
+  /** Turns that open a conversation, in a language, over at most `types` product types (ADR-0046). */
+  opening(language: string, types: number): readonly IntentTurn[];
   /** Turns that go on from a conversation, after its last answer. */
   following(language: string, conversation: readonly ExploredTurn[]): readonly IntentTurn[];
 }

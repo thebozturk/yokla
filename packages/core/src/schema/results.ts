@@ -3,6 +3,7 @@
 
 import { z } from 'zod';
 import { RunCoverage } from '../explore/coverage.ts';
+import { Exploration } from '../explore/trace.ts';
 import { Id, LanguageCode, Suite, TransformKind } from './common.ts';
 import {
   ModelOutput,
@@ -310,6 +311,8 @@ export const Results = z
         .optional(),
       /** What the run reached, when asked to measure it (ADR-0044). */
       coverage: RunCoverage.optional(),
+      /** Every candidate yokla explore ran, kept or not (ADR-0046). */
+      exploration: Exploration.optional(),
       /** The run's changes to every result of a tool, and how many results each changed (ADR-0043). */
       toolChanges: z
         .array(z.object({ tool: z.string(), at: z.string(), results: z.int().nonnegative() }))

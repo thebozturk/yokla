@@ -248,6 +248,75 @@
           ],
           "additionalProperties": false
         },
+        "exploration": {
+          "type": "object",
+          "properties": {
+            "candidates": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "operator": {
+                    "type": "string"
+                  },
+                  "from": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "messages": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "routes": {
+                    "type": "array",
+                    "items": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "kept": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reached": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "failed": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "operator",
+                  "from",
+                  "messages",
+                  "routes",
+                  "kept",
+                  "reached",
+                  "failed"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "candidates"
+          ],
+          "additionalProperties": false
+        },
         "toolChanges": {
           "type": "array",
           "items": {

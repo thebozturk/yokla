@@ -2,7 +2,8 @@
 // conversations built from them and from the domain pack's intents, and keeps
 // those that reach a route, tool, argument shape or fault state no run reached
 // before, or fail a check. It writes them as proposed cases, and a results
-// file of the exploration with its coverage map.
+// file of the exploration with its coverage map and a trace of every
+// candidate it ran (ADR-0046).
 // Exit codes: 0 the search ran; 2 a configuration problem.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -12,6 +13,7 @@ import {
   type Case,
   type CaseTurn,
   type Coverage,
+  DEFAULT_EXPLORE_TYPES,
   EMPTY_COVERAGE,
   explorationEvidence,
   explore,
@@ -45,6 +47,8 @@ Options:
   --profile <file>      the profile (default: yokla.profile.yaml)
   --cases <path>        a case file or directory; repeatable (default: cases)
   --max-runs <n>        candidates to run at most (default: 64)
+  --types <n>           product types the domain pack's opening turns spread over
+                        (default: ${String(DEFAULT_EXPLORE_TYPES)})
   --max-cost <usd>      stop once the model cost of the exploration reaches this;
                         required when it can spend
   --out <file>          where to write the cases (default: explored.yaml next to the profile)
@@ -57,6 +61,7 @@ const OPTIONS = {
   profile: { type: 'string', default: 'yokla.profile.yaml' },
   cases: { type: 'string', multiple: true },
   'max-runs': { type: 'string' },
+  types: { type: 'string' },
   'max-cost': { type: 'string' },
   out: { type: 'string' },
   results: { type: 'string' },
@@ -191,6 +196,7 @@ export function explorationResults(
       ...(proxy === undefined ? {} : { proxy }),
       ...(spans === undefined ? {} : { spans }),
       coverage: { ...result.coverage, added: [...result.added] },
+      exploration: { candidates: [...result.trace] },
       ...(issues.length === 0 ? {} : { issues }),
     },
     cases,
@@ -230,6 +236,10 @@ export async function exploreCommand(
     const maxRuns = runsValue === undefined ? 64 : Number(runsValue);
     if (!Number.isInteger(maxRuns) || maxRuns < 1) {
       throw new LoadError('--max-runs must be a positive integer');
+    }
+    const types = values.types === undefined ? DEFAULT_EXPLORE_TYPES : Number(values.types);
+    if (!Number.isInteger(types) || types < 1) {
+      throw new LoadError('--types must be a positive integer');
     }
     const maxCost = values['max-cost'] === undefined ? undefined : Number(values['max-cost']);
     if (maxCost !== undefined && !(Number.isFinite(maxCost) && maxCost > 0)) {
@@ -343,6 +353,7 @@ export async function exploreCommand(
         // A timeout fault holds a call as long as yokla waits for the target.
         faults: proxied ? exploreFaults(profile.target.request.timeoutMs) : [],
         languages: profile.languages,
+        types,
         reserved: prepared.cases.map((c) => c.id),
       },
       trial,

@@ -3,6 +3,7 @@ import type { Intents } from '../checks/types.ts';
 import type { CaseTurn } from '../schema/cases.ts';
 import type { Coverage } from './coverage.ts';
 import {
+  DEFAULT_EXPLORE_TYPES,
   explore,
   exploreFaults,
   type ExploreCandidate,
@@ -185,6 +186,79 @@ describe('explore (ADR-0044)', () => {
     expect(result.coverage.routes).toEqual(['cart', 'fallback', 'policy', 'search']);
     expect(result.runs).toBe(18);
     expect(result.stopped).toBe(false);
+  });
+
+  it("carries an opening intent's expectation on its own turn only, and traces every run (ADR-0046)", async () => {
+    const asked: number[] = [];
+    const bounded: Intents = {
+      opening: (_language, types) => {
+        asked.push(types);
+        return [
+          {
+            intent: 'under-price',
+            user: 'cheap tents',
+            expect: { productType: ['tent'], filters: { maxPrice: 2 } },
+            basis: 'type tent at most 2',
+          },
+        ];
+      },
+      following: () => [],
+    };
+    const seeds = [seed('hi-en', ['hi'])];
+    const { trial, ran } = world({ failing: ['cheap tents'] });
+    const result = await explore(
+      seeds,
+      seedCoverage(seeds),
+      { intents: bounded, faults: [], languages: ['en'] },
+      trial,
+    );
+    expect(asked).toEqual([DEFAULT_EXPLORE_TYPES]);
+    expect(DEFAULT_EXPLORE_TYPES).toBe(6);
+    const [first] = ran;
+    expect(first?.turns).toEqual([
+      { user: 'cheap tents', expect: { productType: ['tent'], filters: { maxPrice: 2 } } },
+    ]);
+    expect(first?.basis).toBe('type tent at most 2');
+    expect(result.kept[0]).toMatchObject({
+      id: 'under-price-1',
+      failed: ['price-grounded (fabrication)'],
+    });
+    // Built on the kept intent: no turn carries its expectation any more.
+    const later = ran.slice(1);
+    expect(later.length).toBeGreaterThan(0);
+    for (const candidate of later) {
+      expect(candidate.turns.every((turn) => turn.expect === undefined)).toBe(true);
+      expect(candidate.basis).toBeUndefined();
+    }
+    // One trace entry per run, kept or not, in order.
+    expect(result.trace).toHaveLength(result.runs);
+    expect(result.trace.map((entry) => entry.messages)).toEqual(
+      ran.map((candidate) => candidate.turns.map((turn) => turn.user)),
+    );
+    expect(result.trace[0]).toEqual({
+      operator: 'under-price',
+      from: null,
+      messages: ['cheap tents'],
+      routes: ['search'],
+      kept: 'under-price-1',
+      reached: ['route:search', 'tool:search', 'shape:search{"q":1,"max":2}'],
+      failed: ['price-grounded (fabrication)'],
+    });
+    const dropped = result.trace.find((entry) => entry.kept === null);
+    expect(dropped).toMatchObject({ reached: [], failed: [] });
+    expect(result.trace.filter((entry) => entry.kept !== null).map((entry) => entry.kept)).toEqual(
+      result.kept.map((kept) => kept.id),
+    );
+    expect(result.trace.find((entry) => entry.from !== null)?.from).toBe('hi-en');
+
+    // The command's count reaches the intents.
+    await explore(
+      seeds,
+      seedCoverage(seeds),
+      { intents: bounded, faults: [], languages: ['en'], types: 2 },
+      world().trial,
+    );
+    expect(asked).toEqual([DEFAULT_EXPLORE_TYPES, 2]);
   });
 
   it('keeps a candidate a check fails on, and goes on from it', async () => {

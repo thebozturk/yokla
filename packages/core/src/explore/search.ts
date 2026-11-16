@@ -11,12 +11,20 @@
 // model asked for in it. An operator is tried once per state: from a second
 // conversation that ended the same way, it would most likely reach the same
 // paths, and the budget is better spent elsewhere.
+//
+// An opening intent's turn carries what it asked, such as a type under a
+// price, so the data-backed checks judge it (ADR-0046). Only that turn does:
+// a candidate built on it, or the turn asked again, carries none.
 
 import type { ExploredTurn, Intents } from '../checks/types.ts';
 import type { CaseTurn } from '../schema/cases.ts';
 import type { Suite } from '../schema/common.ts';
 import type { Fault } from '../schema/fault.ts';
 import { type Coverage, newCoverage, unionCoverage } from './coverage.ts';
+import type { TracedCandidate } from './trace.ts';
+
+/** The product types opening intents spread over when the command says nothing (ADR-0046). */
+export const DEFAULT_EXPLORE_TYPES = 6;
 
 /** The fault kinds the fault operator tries, in order (ADR-0044). */
 export function exploreFaults(holdMs: number): Fault[] {
@@ -52,6 +60,8 @@ export interface ExploreCandidate {
   readonly suite: Suite;
   readonly language: string;
   readonly turns: readonly CaseTurn[];
+  /** Where the expectation of an intent's turn came from (ADR-0046). */
+  readonly basis?: string | undefined;
 }
 
 /** What a candidate's run showed. */
@@ -82,6 +92,8 @@ export interface ExploreResult {
   readonly added: readonly string[];
   /** The candidates that ran. */
   readonly runs: number;
+  /** Every candidate that ran, kept or not, in order (ADR-0046). */
+  readonly trace: readonly TracedCandidate[];
   /** true when the budget ended the search before the operators ran out. */
   readonly stopped: boolean;
 }
@@ -93,6 +105,8 @@ export interface ExploreOptions {
   readonly faults: readonly Fault[];
   /** The languages opening intents are asked in. */
   readonly languages: readonly string[];
+  /** The product types opening intents spread over; DEFAULT_EXPLORE_TYPES by default (ADR-0046). */
+  readonly types?: number | undefined;
   /** Ids a kept candidate must not take, such as the written cases'. */
   readonly reserved?: readonly string[];
 }
@@ -160,6 +174,7 @@ export async function explore(
   const counts = new Map<string, number>();
   const taken = new Set([...(options.reserved ?? []), ...seeds.map((seed) => seed.id)]);
   const kept: KeptCandidate[] = [];
+  const trace: TracedCandidate[] = [];
   let coverage = seedCoverage;
   let runs = 0;
   let stopped = false;
@@ -192,8 +207,18 @@ export async function explore(
     if (state !== undefined) states.add(state);
     const reached = newCoverage(coverage, outcome.coverage);
     coverage = unionCoverage(coverage, outcome.coverage);
-    if (reached.length === 0 && outcome.failed.length === 0) return;
-    const id = nextId(candidate.operator);
+    const keep = reached.length > 0 || outcome.failed.length > 0;
+    const id = keep ? nextId(candidate.operator) : null;
+    trace.push({
+      operator: candidate.operator,
+      from: candidate.from ?? null,
+      messages: candidate.turns.map((turn) => turn.user),
+      routes: outcome.observed.map((turn) => turn.route ?? null),
+      kept: id,
+      reached: [...reached],
+      failed: [...outcome.failed],
+    });
+    if (id === null) return;
     kept.push({ id, candidate, reached, failed: outcome.failed });
     pool.push({
       id,
@@ -254,13 +279,20 @@ export async function explore(
 
   // Opening intents, once: they don't depend on the pool.
   for (const language of options.languages) {
-    for (const intent of options.intents?.opening(language) ?? []) {
+    const types = options.types ?? DEFAULT_EXPLORE_TYPES;
+    for (const intent of options.intents?.opening(language, types) ?? []) {
+      // The intent's own turn carries what it asked; a candidate built on it drops it (goOn).
+      const turn: CaseTurn = {
+        user: intent.user,
+        ...(intent.expect === undefined ? {} : { expect: { ...intent.expect } }),
+      };
       await attempt({
         operator: intent.intent,
         from: undefined,
         suite: 'factual',
         language,
-        turns: [{ user: intent.user }],
+        turns: [turn],
+        ...(intent.basis === undefined ? {} : { basis: intent.basis }),
       });
     }
   }
@@ -277,5 +309,5 @@ export async function explore(
     }
     grew = pool.length > before;
   }
-  return { kept, coverage, added: newCoverage(seedCoverage, coverage), runs, stopped };
+  return { kept, coverage, added: newCoverage(seedCoverage, coverage), runs, stopped, trace };
 }

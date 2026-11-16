@@ -1,6 +1,8 @@
 // The case file yokla explore writes (ADR-0044): each kept candidate as a
 // proposed case, with provenance `explore` whose evidence says where it came
 // from and what it reached or failed. Those a check failed on come first.
+// An intent's turn keeps what it asked, and the evidence names the data it
+// came from (ADR-0046).
 
 import { Document } from 'yaml';
 import type { ExploreResult, KeptCandidate } from './search.ts';
@@ -14,6 +16,7 @@ export function explorationEvidence(kept: KeptCandidate): string {
       ? []
       : [`failed ${kept.failed.join(', ')} on turn ${String(candidate.turns.length)}`]),
     ...(kept.reached.length === 0 ? [] : [`reached ${kept.reached.join(', ')}`]),
+    ...(candidate.basis === undefined ? [] : [`expects ${candidate.basis}`]),
   ];
   return `yokla explore, ${candidate.operator} from ${from}: ${parts.join('; ')}`;
 }
@@ -34,9 +37,10 @@ export function exploredCaseYaml(result: ExploreResult): string {
   const doc = new Document({ version: 1, cases }, { aliasDuplicateObjects: false });
   doc.commentBefore = [
     ' Written by yokla explore (ADR-0044): conversations on paths the written cases',
-    ' never took, or on which a check failed. They state no expectation: the checks',
-    ' that need none judge them. They run, but gate only once a person reads them',
-    ' and sets their status to approved (ADR-0004). See docs/guide/cli.md.',
+    ' never took, or on which a check failed. A turn the domain pack wrote states only',
+    ' what it asked, from the catalog (ADR-0046); the rest state no expectation. They',
+    ' run, but gate only once a person reads them and sets their status to approved',
+    ' (ADR-0004). See docs/guide/cli.md.',
   ].join('\n');
   return doc.toString({ lineWidth: 100 });
 }

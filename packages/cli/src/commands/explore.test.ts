@@ -146,8 +146,13 @@ describe('yokla explore (ADR-0044)', () => {
     ]);
     expect(out).toContain('  routes: chat, search; added: cart, policy');
     const cases = loadCases([join(dir, 'explored.yaml')]);
-    // The cart answer's total is no price the conversation showed: it fails first.
+    // The shop ignores price bounds: under its lowest price, it still shows the tent as
+    // matching (ADR-0046). The cart answer's total is no price the conversation showed.
     expect(cases.map((c) => [c.id, c.provenance?.evidence])).toEqual([
+      [
+        'empty-band-1',
+        'yokla explore, empty-band from an opening turn: failed filter-honoured-or-disclosed (filter-honesty) on turn 1; expects type out/tent at most 9, below its lowest price 10',
+      ],
       [
         'cart-1',
         'yokla explore, cart from tents: failed price-grounded (fabrication) on turn 2; reached route:cart',
@@ -159,7 +164,19 @@ describe('yokla explore (ADR-0044)', () => {
       ],
       ['policy-1', 'yokla explore, policy from an opening turn: reached route:policy'],
     ]);
-    expect(cases.map((c) => c.provenance?.status)).toEqual(['proposed', 'proposed', 'proposed']);
+    expect(cases.map((c) => c.provenance?.status)).toEqual([
+      'proposed',
+      'proposed',
+      'proposed',
+      'proposed',
+    ]);
+    // The intent's turn keeps what it asked.
+    expect(cases[0]?.turns).toEqual([
+      {
+        user: '9 altında tent var mı?',
+        expect: { productType: ['out/tent'], filters: { maxPrice: 9 } },
+      },
+    ]);
     expect(cases.every((c) => c.turns.every((turn) => turn.faults === undefined))).toBe(true);
     const results = Results.parse(JSON.parse(readFileSync(join(dir, 'results.json'), 'utf8')));
     expect(results.run.coverage).toEqual({
@@ -174,11 +191,29 @@ describe('yokla explore (ADR-0044)', () => {
       ['tents', 'pass'],
       // No check applies to small talk.
       ['hello', 'unmeasured'],
+      ['empty-band-1', 'fail'],
       ['policy-1', 'pass'],
       ['cart-1', 'fail'],
       ['repeat-1', 'fail'],
     ]);
-    expect(results.summary).toEqual({ cases: 5, statuses: { pass: 2, unmeasured: 1, fail: 2 } });
+    expect(results.summary).toEqual({ cases: 6, statuses: { pass: 2, unmeasured: 1, fail: 3 } });
+    // The trace holds every candidate that ran, kept or not (ADR-0046).
+    const trace = results.run.exploration?.candidates ?? [];
+    const ranLine = out.find((line) => / candidates run;/u.test(line)) ?? '';
+    expect(trace).toHaveLength(Number(/\d+/u.exec(ranLine)?.[0]));
+    expect(trace.slice(0, 4).map((entry) => [entry.operator, entry.messages, entry.kept])).toEqual([
+      ['product', ['Kubbe Çadır var mı?'], null],
+      ['type', ['tent var mı?'], null],
+      ['under-price', ['10 altında tent var mı?'], null],
+      ['empty-band', ['9 altında tent var mı?'], 'empty-band-1'],
+    ]);
+    expect(trace[0]?.routes).toEqual(['search']);
+    expect(
+      trace
+        .filter((entry) => entry.kept !== null)
+        .map((entry) => entry.kept ?? '')
+        .toSorted((a, b) => a.localeCompare(b)),
+    ).toEqual(cases.map((c) => c.id).toSorted());
     expect(out.at(-1)).toBe(`  results: ${join(dir, 'results.json')}`);
     // Never over a file it wrote.
     const again = await explore(dir);
@@ -186,6 +221,31 @@ describe('yokla explore (ADR-0044)', () => {
     expect(again.err).toEqual([
       `${join(dir, 'explored.yaml')} exists: explore never overwrites a file`,
     ]);
+  });
+
+  it('spreads its opening turns over --types types, 6 by default (ADR-0046)', async () => {
+    const url = await shop();
+    const asked = async (...args: string[]) => {
+      const dir = workspace(url);
+      writeFileSync(
+        join(dir, 'catalog.jsonl'),
+        [
+          { id: 'T1', type: 'out/tent', price: 10, name: 'Kubbe Çadır' },
+          { id: 'B1', type: 'out/bag', price: 20, name: 'Uyku Tulumu' },
+        ]
+          .map((row) => JSON.stringify(row))
+          .join('\n'),
+      );
+      await explore(dir, '--max-runs', '8', ...args);
+      const results = Results.parse(JSON.parse(readFileSync(join(dir, 'results.json'), 'utf8')));
+      return (results.run.exploration?.candidates ?? []).flatMap((entry) => entry.messages);
+    };
+    // Branches by name: bag, then tent.
+    const both = await asked();
+    expect(both).toEqual(expect.arrayContaining(['bag var mı?', 'tent var mı?']));
+    const one = await asked('--types', '1');
+    expect(one).toContain('bag var mı?');
+    expect(one).not.toContain('tent var mı?');
   });
 
   it('stops at --max-runs, and writes no case when nothing new was reached', async () => {
@@ -243,6 +303,7 @@ describe('yokla explore (ADR-0044)', () => {
       added: ['route:x'],
       runs: 1,
       stopped: true,
+      trace: [],
     });
     expect(merged.run.partial).toBe(true);
     expect(merged.run.proxy).toEqual({ ...proxy(5, 1, 3, 1), attributed: 4 });
@@ -257,6 +318,7 @@ describe('yokla explore (ADR-0044)', () => {
       added: [],
       runs: 2,
       stopped: false,
+      trace: [],
     });
     expect(plain.run.proxy).toEqual(proxy(3, 1, 2, 1));
     expect(plain.run.partial).toBe(true);
@@ -265,7 +327,7 @@ describe('yokla explore (ADR-0044)', () => {
       { ...ran, run: { ...ran.run, spans: spans(1, true) } },
       [ran, { ...ran, run: { ...ran.run, spans: spans(2, false) } }],
       [],
-      { kept: [], coverage, added: [], runs: 2, stopped: false },
+      { kept: [], coverage, added: [], runs: 2, stopped: false, trace: [] },
     );
     expect(spanned.run.spans).toEqual(spans(3, false));
   });
@@ -298,6 +360,11 @@ describe('yokla explore (ADR-0044)', () => {
     expect((await explore(dir, '--max-runs', '0')).err).toEqual([
       '--max-runs must be a positive integer',
     ]);
+    for (const bad of ['0', '1.5', 'x']) {
+      expect((await explore(dir, '--types', bad)).err).toEqual([
+        '--types must be a positive integer',
+      ]);
+    }
     expect((await explore(dir, '--max-cost', '0')).err).toEqual([
       '--max-cost must be a positive number of USD',
     ]);
