@@ -1346,7 +1346,8 @@
                       "probe",
                       "import",
                       "template",
-                      "shrink"
+                      "shrink",
+                      "explore"
                     ]
                   },
                   "evidence": {

@@ -172,6 +172,55 @@
             "additionalProperties": false
           }
         },
+        "coverage": {
+          "type": "object",
+          "properties": {
+            "routes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "tools": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "shapes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "faultStates": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "offered": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "added": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "routes",
+            "tools",
+            "shapes",
+            "faultStates",
+            "offered"
+          ],
+          "additionalProperties": false
+        },
         "toolChanges": {
           "type": "array",
           "items": {

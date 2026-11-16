@@ -1903,7 +1903,8 @@
                       "probe",
                       "import",
                       "template",
-                      "shrink"
+                      "shrink",
+                      "explore"
                     ]
                   },
                   "evidence": {
@@ -2393,6 +2394,26 @@
                   "description": "Available or not, a boolean, for a catalog without quantities (ADR-0020).",
                   "type": "string",
                   "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                },
+                "name": {
+                  "description": "The product's name: one field, or one per language such as { tr: name_tr, en: name_en }. yokla explore asks for products by it (ADR-0044).",
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                    },
+                    {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "pattern": "^[a-z]{2}$"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                      }
+                    }
+                  ]
                 }
               },
               "required": [
@@ -2476,7 +2497,8 @@
                           "probe",
                           "import",
                           "template",
-                          "shrink"
+                          "shrink",
+                          "explore"
                         ]
                       },
                       "evidence": {

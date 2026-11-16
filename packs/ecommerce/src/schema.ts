@@ -5,6 +5,7 @@ import {
   FieldPath,
   Id,
   JsonPath,
+  LanguageCode,
   Provenance,
   z,
   type DomainPackSchemas,
@@ -47,6 +48,13 @@ const Catalog = z.strictObject({
     inStock: FieldPath.optional().meta({
       description: 'Available or not, a boolean, for a catalog without quantities (ADR-0020).',
     }),
+    name: z
+      .union([FieldPath, z.record(LanguageCode, FieldPath)])
+      .optional()
+      .meta({
+        description:
+          "The product's name: one field, or one per language such as { tr: name_tr, en: name_en }. yokla explore asks for products by it (ADR-0044).",
+      }),
   }),
 });
 

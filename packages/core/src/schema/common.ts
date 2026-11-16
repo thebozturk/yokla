@@ -134,6 +134,8 @@ export const MACHINE_SOURCES = [
   'template',
   // Cut down from a failing case by yokla shrink (ADR-0035).
   'shrink',
+  // Found by yokla explore on a path no written case took (ADR-0044).
+  'explore',
 ] as const;
 
 /**

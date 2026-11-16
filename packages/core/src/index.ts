@@ -145,6 +145,27 @@ export { plan, type Plan, type PlannedCase } from './plan/plan.ts';
 export { GateConfig, YoklaConfig, type OwnModel, type Price } from './schema/config.ts';
 export { evaluateGate, type GateBreach, type GateOutcome } from './gate/gate.ts';
 export { Comparison, COMPARISON_SCHEMA_ID, compareRuns, swapLabel } from './compare/compare.ts';
+export {
+  argumentShape,
+  Coverage,
+  EMPTY_COVERAGE,
+  newCoverage,
+  RunCoverage,
+  unionCoverage,
+} from './explore/coverage.ts';
+export {
+  explore,
+  exploreFaults,
+  type ExploreCandidate,
+  type Explored,
+  type ExploreOptions,
+  type ExploreOutcome,
+  type ExploreResult,
+  type ExploreTrial,
+  type KeptCandidate,
+  type ObservedTurn,
+} from './explore/search.ts';
+export { explorationEvidence, exploredCaseYaml } from './explore/write.ts';
 export { Baseline, BASELINE_SCHEMA_ID } from './schema/baseline.ts';
 export { baselineChanges, baselineOf } from './baseline/baseline.ts';
 export { caseDefinition, stableJson } from './baseline/definition.ts';
@@ -224,7 +245,10 @@ export type {
   CheckOutcome,
   DomainPack,
   DurationMention,
+  ExploredTurn,
   FindingSeverity,
+  Intents,
+  IntentTurn,
   LanguagePack,
   MoneyMention,
   PackIo,

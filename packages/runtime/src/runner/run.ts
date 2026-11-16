@@ -84,6 +84,7 @@ import {
   type TurnSpans,
   type TurnTag,
 } from './proxy.ts';
+import { measureCoverage } from './coverage.ts';
 
 type CaseResult = Results['cases'][number];
 type SampleResult = CaseResult['samples'][number];
@@ -112,6 +113,8 @@ export interface RunOptions {
   readonly swaps?: readonly ModelSwap[];
   /** Arrays in every result of a tool, reversed by the model proxy (ADR-0043). */
   readonly reversals?: readonly ToolReversal[];
+  /** Measure what the run reached into `run.coverage`, as yokla explore does (ADR-0044). */
+  readonly coverage?: boolean;
   /** Cases run in parallel. Default 1. */
   readonly concurrency?: number;
   /** Replaces the profile's request url, e.g. for a target on a random port. */
@@ -1722,6 +1725,17 @@ export async function runSuite(input: RunOptions): Promise<Results> {
     ...judgeCase(options, prepared, c, observation, calls, spanned?.byTurn),
     ...(c.stoppedEarly ? { samplesPlanned: c.planned } : {}),
   }));
+  const coverage =
+    options.coverage === true
+      ? measureCoverage(
+          exchanged
+            .flatMap((c) => c.samples.flatMap((sample) => sample.exchanges))
+            .map((exchange) => ({
+              route: exchange.turn.response?.route,
+              proxy: calls?.byTurn.get(exchange),
+            })),
+        )
+      : undefined;
   const stop = cap?.reason();
   const capIssues =
     options.maxCostUsd !== undefined && recording === undefined && simulation !== undefined
@@ -1816,6 +1830,7 @@ export async function runSuite(input: RunOptions): Promise<Results> {
       ...(recordedCalls === undefined ? {} : { record: { calls: recordedCalls } }),
       ...(swapped.length === 0 ? {} : { swaps: swapped }),
       ...(reversed.length === 0 ? {} : { toolChanges: reversed }),
+      ...(coverage === undefined ? {} : { coverage }),
       ...(replay === undefined
         ? {}
         : { replay: { cassetteSha256: replay.sha256, loose: replay.loose === true, diverged } }),

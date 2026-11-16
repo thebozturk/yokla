@@ -22,6 +22,8 @@ export interface CatalogRow {
   readonly stock: number | null | undefined;
   /** Available or not (ADR-0020); null means unknown, undefined not mapped. */
   readonly inStock: boolean | null | undefined;
+  /** Its name per language, or under `*` from a single name field; undefined when not mapped (ADR-0044). */
+  readonly names?: Readonly<Record<string, string>>;
 }
 
 export interface PolicySource {
@@ -80,6 +82,17 @@ export function loadData(profile: Profile, io: PackIo): EcommerceData {
       const stockValue = fields.stock === undefined ? undefined : getFieldPath(row, fields.stock);
       const inStockValue =
         fields.inStock === undefined ? undefined : getFieldPath(row, fields.inStock);
+      const nameFields =
+        fields.name === undefined
+          ? {}
+          : typeof fields.name === 'string'
+            ? { '*': fields.name }
+            : fields.name;
+      const names: Record<string, string> = {};
+      for (const [language, field] of Object.entries(nameFields)) {
+        const name = getFieldPath(row, field);
+        if (typeof name === 'string' && name.trim() !== '') names[language] = name;
+      }
       catalog.set(String(id), {
         id: String(id),
         type: typeof type === 'string' ? type : undefined,
@@ -87,6 +100,7 @@ export function loadData(profile: Profile, io: PackIo): EcommerceData {
         currency: typeof currency === 'string' ? currency : undefined,
         stock: fields.stock === undefined ? undefined : (asNumber(stockValue) ?? null),
         inStock: fields.inStock === undefined ? undefined : (asBoolean(inStockValue) ?? null),
+        ...(fields.name === undefined ? {} : { names }),
       });
     }
   }

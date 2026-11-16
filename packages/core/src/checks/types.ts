@@ -204,9 +204,34 @@ export interface Check {
  */
 export type AggregationPolicy = 'worst-of-n' | 'majority-of-n' | 'advisory';
 
+/** A turn of a conversation yokla explore ran, as intents read it (ADR-0044). */
+export interface ExploredTurn {
+  readonly user: string;
+  /** The route the target answered on, where the profile maps one. */
+  readonly route: string | undefined;
+  readonly evidence: Readonly<Record<string, readonly EvidenceItem[]>>;
+}
+
+/** A turn a domain pack writes from the target's own data and profile (ADR-0044). */
+export interface IntentTurn {
+  /** What the turn asks for, such as `cart`; explored cases are named after it. */
+  readonly intent: string;
+  readonly user: string;
+}
+
+/** The turns a domain pack offers yokla explore, in the pack's own phrasings (ADR-0044). */
+export interface Intents {
+  /** Turns that open a conversation, in a language. */
+  opening(language: string): readonly IntentTurn[];
+  /** Turns that go on from a conversation, after its last answer. */
+  following(language: string, conversation: readonly ExploredTurn[]): readonly IntentTurn[];
+}
+
 /** A domain pack bound to one profile: its checks, with their data already loaded. */
 export interface PreparedPack {
   readonly checks: readonly Check[];
+  /** Turns built from the target's data, for yokla explore (ADR-0044). */
+  readonly intents?: Intents;
 }
 
 export interface PackIo {

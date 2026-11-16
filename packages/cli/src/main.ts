@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { BASELINE_HELP, baselineCommand } from './commands/baseline.ts';
 import { COMPARE_HELP, compareCommand } from './commands/compare.ts';
+import { EXPLORE_HELP, exploreCommand } from './commands/explore.ts';
 import { GATE_HELP, gateCommand } from './commands/gate.ts';
 import { INIT_HELP, initCommand } from './commands/init.ts';
 import { MCP_HELP, mcpCommand } from './commands/mcp.ts';
@@ -26,6 +27,7 @@ Usage:
   yokla shrink [options]     cut a failing case down to the smallest that still fails
   yokla mcp [options]        serve yokla's tools to a coding agent over stdio (MCP)
   yokla compare [options]    set runs side by side, such as one per model, and name the cheapest that passes
+  yokla explore [options]    search for paths the written cases never take, and propose cases for them
   yokla schema <name>        print a JSON Schema: profile, cases, config, results, baseline, comparison
   yokla --version
 
@@ -47,7 +49,9 @@ ${SHRINK_HELP}
 
 ${MCP_HELP}
 
-${COMPARE_HELP}`;
+${COMPARE_HELP}
+
+${EXPLORE_HELP}`;
 
 export function version(): string {
   const manifest: unknown = JSON.parse(
@@ -93,6 +97,8 @@ export async function main(argv: readonly string[], io: Output): Promise<number>
       return mcpCommand(rest, io, version());
     case 'compare':
       return compareCommand(rest, io);
+    case 'explore':
+      return exploreCommand(rest, io, version());
     case 'schema': {
       const file = SCHEMA_FILES[rest[0] ?? ''];
       if (file === undefined) {

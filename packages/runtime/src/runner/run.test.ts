@@ -2025,6 +2025,49 @@ describe('runSuite with the model proxy', () => {
     expect(JSON.stringify(results)).not.toMatch(/a@b\.com|SKU-77/u);
   });
 
+  it('measures what the run reached, when asked, from the arguments the results leave out (ADR-0044)', async () => {
+    const proxy = await fakeProxy();
+    const pending: Pick<ProxyRecord, 'tools' | 'toolCalls' | 'fault'>[] = [
+      {
+        tools: ['search', 'cart'],
+        toolCalls: [{ name: 'search', chars: 24, arguments: '{"q":"x","f":{"max":1}}' }],
+      },
+      // A fault that applied counts under the route the turn answered on.
+      { tools: ['search', 'cart'], toolCalls: null, fault: { kind: 'status', applied: true } },
+      {
+        tools: null,
+        toolCalls: [{ name: 'cart', chars: 2 }],
+        fault: { kind: 'timeout', applied: false },
+      },
+    ];
+    const routes = ['search', 'fallback', 'cart'];
+    const t = await target((_r, _i, response) => {
+      for (const tools of pending.splice(0, 1))
+        proxy.records.push({ ...call(null, proxy.mark()), ...tools });
+      json(response, answer({ route: routes.shift() }));
+    });
+    const run = (coverage?: boolean) =>
+      runSuite(
+        options(
+          proxied(t.url, 'serial'),
+          cases({ turns: [{ user: 'a' }, { user: 'b' }, { user: 'c' }] }),
+          { proxyUrl: proxy.url, ...(coverage === undefined ? {} : { coverage }) },
+        ),
+      );
+    const results = await run(true);
+    expect(Results.safeParse(results).success).toBe(true);
+    expect(results.run.coverage).toEqual({
+      routes: ['cart', 'fallback', 'search'],
+      tools: ['cart', 'search'],
+      shapes: ['cart{}', 'search{f.max,q}'],
+      faultStates: ['fallback/status'],
+      offered: ['cart', 'search'],
+    });
+    // The results keep sizes: the shape came from the arguments before they were dropped.
+    expect(JSON.stringify(results.cases)).not.toContain('"max"');
+    expect((await run()).run.coverage).toBeUndefined();
+  });
+
   it('keeps what the model saw in mapped tool results, and shows it to the checks (ADR-0026)', async () => {
     const proxy = await fakeProxy();
     const prompts: ProxyRecord['prompt'][] = [

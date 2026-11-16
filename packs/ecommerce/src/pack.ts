@@ -10,6 +10,7 @@ import { deflection, overRefusal } from './checks/refusal.ts';
 import { stockClaim } from './checks/stock-claim.ts';
 import { typeMatched } from './checks/type-match.ts';
 import { loadData } from './data.ts';
+import { ecommerceIntents } from './intents.ts';
 import { ecommerceExpectations, ecommerceProfile } from './schema.ts';
 
 export const ecommercePack: DomainPack = {
@@ -42,6 +43,7 @@ export const ecommercePack: DomainPack = {
         absenceCorrect(data),
         deflection(),
       ],
+      intents: ecommerceIntents(data),
     };
   },
 };
