@@ -58,6 +58,7 @@ old one.
 | [0043](0043-tool-results-changed-by-the-proxy.md) | Tool results changed by the proxy | Accepted |
 | [0044](0044-a-search-for-untried-paths.md) | A search for untried paths | Accepted |
 | [0045](0045-robustness-transforms-of-a-cases-messages.md) | Robustness transforms of a case's messages | Accepted |
+| [0047](0047-the-analyzer-deterministic-first.md) | The analyzer, deterministic first: inventory, data and probes | Proposed |
 
 ## Template
 
