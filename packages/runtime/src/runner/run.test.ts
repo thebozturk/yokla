@@ -3662,3 +3662,107 @@ describe('runSuite with a cassette (ADR-0040)', () => {
     expect(t.received).toHaveLength(0);
   });
 });
+
+describe('runSuite with a model swap (ADR-0042)', () => {
+  const swap = { upstream: 'fake', asked: 'm', model: 'm-mini' };
+
+  it('opens the recording with its swaps, and records the model each call asked for', async () => {
+    const proxy = await fakeProxy({
+      health: { ok: true, upstreams: ['fake', 'other'], recording: false },
+    });
+    const t = await target((_r, _i, response) => {
+      proxy.records.push(
+        { ...call(null, proxy.mark(), 'm-mini'), asked: 'm' },
+        call(null, proxy.mark(), 'other'),
+      );
+      json(response, answer());
+    });
+    const base = proxied(t.url, 'serial');
+    // A second upstream: a swap of the same model there changed none of these calls.
+    const two: Profile =
+      base.modelProxy === undefined
+        ? base
+        : {
+            ...base,
+            modelProxy: {
+              ...base.modelProxy,
+              upstreams: [
+                ...base.modelProxy.upstreams,
+                { id: 'other', kind: 'openai-compatible', upstream: 'http://127.0.0.1:9/v1' },
+              ],
+            },
+          };
+    const elsewhere = { upstream: 'other', asked: 'm', model: 'm-mini' };
+    const results = await runSuite(
+      options(two, cases({ turns: [{ user: 'a' }, { user: 'b' }] }), {
+        proxyUrl: proxy.url,
+        swaps: [swap, elsewhere],
+      }),
+    );
+    expect(Results.safeParse(results).success).toBe(true);
+    expect(proxy.openings).toEqual([{ swaps: [swap, elsewhere] }]);
+    const calls = results.cases[0]?.samples[0]?.turns[0]?.proxy?.calls ?? [];
+    expect(calls.map((c) => [c.model, c.asked])).toEqual([
+      ['m-mini', 'm'],
+      ['other', undefined],
+    ]);
+    expect(results.run.swaps).toEqual([
+      { ...swap, calls: 2 },
+      { ...elsewhere, calls: 0 },
+    ]);
+    expect(results.run.issues).toEqual([
+      'the swap of other:m changed no call: the app may ask for another model',
+    ]);
+  });
+
+  it('records nothing of swaps in a run without them', async () => {
+    const proxy = await fakeProxy();
+    const t = await target((_r, _i, response) => {
+      json(response, answer());
+    });
+    const results = await runSuite(
+      options(proxied(t.url, 'serial'), cases({ turns: [{ user: 'a' }] }), { proxyUrl: proxy.url }),
+    );
+    expect(proxy.openings).toEqual([{}]);
+    expect(results.run.swaps).toBeUndefined();
+  });
+
+  it('refuses a swap it cannot make, before any request', async () => {
+    const t = await target((_r, _i, response) => {
+      json(response, answer());
+    });
+    const c = cases({ turns: [{ user: 'a' }] });
+    const base = proxied(t.url, 'serial');
+    const mixed: Profile =
+      base.modelProxy === undefined
+        ? base
+        : {
+            ...base,
+            modelProxy: {
+              ...base.modelProxy,
+              upstreams: [
+                ...base.modelProxy.upstreams,
+                { id: 'gem', kind: 'gemini', upstream: 'http://127.0.0.1:9' },
+              ],
+            },
+          };
+    await expect(runSuite(options(profile(t.url), c, { swaps: [swap] }))).rejects.toThrow(
+      'a model swap needs a modelProxy with upstreams in the profile',
+    );
+    await expect(
+      runSuite(options(base, c, { swaps: [{ ...swap, upstream: 'nope' }] })),
+    ).rejects.toThrow('a model swap names the upstream "nope", which modelProxy doesn\'t list');
+    await expect(runSuite(options(base, c, { swaps: [{ ...swap, to: 'nope' }] }))).rejects.toThrow(
+      'a model swap names the upstream "nope", which modelProxy doesn\'t list',
+    );
+    await expect(runSuite(options(mixed, c, { swaps: [{ ...swap, to: 'gem' }] }))).rejects.toThrow(
+      'a model swap can\'t send calls of "fake" (openai-compatible) to "gem" (gemini)',
+    );
+    await expect(
+      runSuite(options(base, c, { swaps: [swap], cassette: { record: true } })),
+    ).rejects.toThrow(
+      "a model swap can't go with a cassette: it would hold another model's answers to the app's requests",
+    );
+    expect(t.received).toHaveLength(0);
+  });
+});

@@ -2,7 +2,14 @@
 // that the proxy answers, and open and close a recording around a run. It
 // talks only to the proxy's own local address.
 
-import { ProxyRecord, SpanCall, z, type CassetteCall, type FaultPlan } from '@yokla/core';
+import {
+  ProxyRecord,
+  SpanCall,
+  z,
+  type CassetteCall,
+  type FaultPlan,
+  type ModelSwap,
+} from '@yokla/core';
 
 export class ProxyControlError extends Error {
   override readonly name = 'ProxyControlError';
@@ -92,6 +99,8 @@ export class ProxyControl {
     opening: {
       readonly capture?: boolean;
       readonly replay?: { readonly loose: boolean; readonly calls: readonly CassetteCall[] };
+      /** Calls that ask for a model go to another (ADR-0042). */
+      readonly swaps?: readonly ModelSwap[];
     } = {},
   ): Promise<z.output<typeof Opened>> {
     return this.#call('POST', '/_yokla/recordings', Opened, opening);

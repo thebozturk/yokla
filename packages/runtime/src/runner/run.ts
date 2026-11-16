@@ -36,6 +36,7 @@ import {
   type AggregationPolicy,
   type Cassette,
   type Case,
+  type ModelSwap,
   type CaseCustomer,
   type CaseTurn,
   type Check,
@@ -105,6 +106,8 @@ export interface RunOptions {
     | { readonly replay: Cassette; readonly sha256: string; readonly loose?: boolean };
   /** Receives the cassette a recording run made (ADR-0040). */
   readonly onCassette?: (cassette: Cassette) => void;
+  /** Calls that ask for a model go to another, through the model proxy (ADR-0042). */
+  readonly swaps?: readonly ModelSwap[];
   /** Cases run in parallel. Default 1. */
   readonly concurrency?: number;
   /** Replaces the profile's request url, e.g. for a target on a random port. */
@@ -271,6 +274,39 @@ export function preflight(options: RunOptions): void {
     problems.push(
       'recording or replaying a cassette needs a modelProxy with upstreams in the profile',
     );
+  }
+  // A swap is the model proxy's, between upstreams of one kind, and never on a cassette (ADR-0042).
+  const swaps = options.swaps ?? [];
+  if (swaps.length > 0) {
+    const upstreams = new Map(
+      (options.profile.modelProxy?.upstreams ?? []).map((upstream) => [upstream.id, upstream]),
+    );
+    if (!proxiesCalls(options.profile)) {
+      problems.push('a model swap needs a modelProxy with upstreams in the profile');
+    } else {
+      for (const swap of swaps) {
+        const from = upstreams.get(swap.upstream);
+        const to = upstreams.get(swap.to ?? swap.upstream);
+        if (from === undefined) {
+          problems.push(
+            `a model swap names the upstream "${swap.upstream}", which modelProxy doesn't list`,
+          );
+        } else if (to === undefined) {
+          problems.push(
+            `a model swap names the upstream "${swap.to ?? ''}", which modelProxy doesn't list`,
+          );
+        } else if (to.kind !== from.kind) {
+          problems.push(
+            `a model swap can't send calls of "${from.id}" (${from.kind}) to "${to.id}" (${to.kind})`,
+          );
+        }
+      }
+    }
+    if (options.cassette !== undefined) {
+      problems.push(
+        "a model swap can't go with a cassette: it would hold another model's answers to the app's requests",
+      );
+    }
   }
   // Logs and spans arrive after the run, and can change a verdict judged during it (ADR-0038).
   if (options.stopEarly === true && logs !== undefined) {
@@ -1368,13 +1404,15 @@ async function openRecording(options: RunOptions): Promise<OpenRecording | undef
       );
     }
     const cassette = options.cassette;
-    const { id } = await control.open(
-      cassette === undefined
+    const swaps = options.swaps ?? [];
+    const { id } = await control.open({
+      ...(cassette === undefined
         ? {}
         : 'record' in cassette
           ? { capture: true }
-          : { replay: { loose: cassette.loose ?? false, calls: cassette.replay.calls } },
-    );
+          : { replay: { loose: cassette.loose ?? false, calls: cassette.replay.calls } }),
+      ...(swaps.length === 0 ? {} : { swaps }),
+    });
     return {
       control,
       id,
@@ -1673,10 +1711,28 @@ export async function runSuite(input: RunOptions): Promise<Results> {
                 `${String(diverged)} model call(s) had no match in the cassette${replay.loose === true ? ' and were answered by position' : ''}`,
               ]),
         ];
+  // How many calls each swap changed; one that changed none measured the app's own model.
+  const swapped = (options.swaps ?? []).map((swap) => ({
+    ...swap,
+    calls: (records ?? []).filter(
+      (record) => record.asked === swap.asked && record.upstream === (swap.to ?? swap.upstream),
+    ).length,
+  }));
+  const swapIssues =
+    records === undefined
+      ? []
+      : swapped.flatMap((swap) =>
+          swap.calls === 0
+            ? [
+                `the swap of ${swap.upstream}:${swap.asked} changed no call: the app may ask for another model`,
+              ]
+            : [],
+        );
   const issues = [
     ...observation.issues,
     ...proxyIssues,
     ...replayIssues,
+    ...swapIssues,
     ...capIssues,
     ...(stop === undefined ? [] : [stop]),
   ];
@@ -1704,6 +1760,7 @@ export async function runSuite(input: RunOptions): Promise<Results> {
       partial: cap?.stopped() === true,
       ...(options.stopEarly === true ? { sampling: { stopEarly: true } } : {}),
       ...(recordedCalls === undefined ? {} : { record: { calls: recordedCalls } }),
+      ...(swapped.length === 0 ? {} : { swaps: swapped }),
       ...(replay === undefined
         ? {}
         : { replay: { cassetteSha256: replay.sha256, loose: replay.loose === true, diverged } }),

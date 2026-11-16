@@ -106,6 +106,18 @@ export const CassetteCall = z.object({
 });
 export type CassetteCall = z.output<typeof CassetteCall>;
 
+/**
+ * A model swap (ADR-0042): each call to `upstream` that asks for `asked` goes
+ * to `model` instead, on `to` when given, another upstream of the same kind.
+ */
+export const ModelSwap = z.strictObject({
+  upstream: Id,
+  asked: z.string().min(1),
+  model: z.string().min(1),
+  to: Id.optional(),
+});
+export type ModelSwap = z.output<typeof ModelSwap>;
+
 /** A model call read from an OpenTelemetry span (ADR-0029). */
 export const SpanCall = z.object({
   /** The W3C trace id, in hex: it ties the call to a turn. */
@@ -156,5 +168,7 @@ export const ProxyRecord = z.object({
   capture: CassetteCall.optional(),
   /** Set when the proxy answered from a cassette, or found no call in it to answer with (ADR-0040). */
   replay: z.object({ diverged: z.boolean() }).optional(),
+  /** The model the app asked for, when a swap sent the call to another (ADR-0042). */
+  asked: z.string().optional(),
 });
 export type ProxyRecord = z.output<typeof ProxyRecord>;

@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "yokla.comparison/v1"
+    },
+    "runs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "profileSha256": {
+            "type": "string"
+          },
+          "gate": {
+            "type": "object",
+            "properties": {
+              "verdict": {
+                "type": "string",
+                "enum": [
+                  "pass",
+                  "broken",
+                  "unjudgeable"
+                ]
+              },
+              "breaches": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "problems": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "verdict",
+              "breaches",
+              "problems"
+            ],
+            "additionalProperties": false
+          },
+          "statuses": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "enum": [
+                "pass",
+                "fail",
+                "error",
+                "fixture-missing",
+                "known-gap",
+                "gap-closed",
+                "unmeasured"
+              ]
+            },
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "costUsd": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "costPerTurnUsd": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "latencyP50Ms": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "latencyP95Ms": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "profileSha256",
+          "gate",
+          "statuses",
+          "costUsd",
+          "costPerTurnUsd",
+          "latencyP50Ms",
+          "latencyP95Ms"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "suite": {
+            "type": "string"
+          },
+          "statuses": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "pass",
+                    "fail",
+                    "error",
+                    "fixture-missing",
+                    "known-gap",
+                    "gap-closed",
+                    "unmeasured"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "differs": {
+            "type": "boolean"
+          },
+          "changed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "suite",
+          "statuses",
+          "differs",
+          "changed"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "cheapest": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "runs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "costUsd": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "runs",
+            "costUsd"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "noCheapest": {
+      "type": "string"
+    },
+    "notices": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "runs",
+    "cases",
+    "cheapest",
+    "notices"
+  ],
+  "additionalProperties": false,
+  "title": "yokla comparison v1"
+}

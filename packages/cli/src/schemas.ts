@@ -1,7 +1,7 @@
 // The config and results schemas for the first-party packs, and their JSON
 // Schema files in packages/cli/schemas/ (ADR-0006).
 
-import { Baseline, buildSchemas, Results, YoklaConfig, z } from '@yokla/core';
+import { Baseline, buildSchemas, Comparison, Results, YoklaConfig, z } from '@yokla/core';
 import { DOMAIN_PACKS, LANGUAGE_PACKS } from './packs.ts';
 
 const [firstLanguage, ...otherLanguages] = LANGUAGE_PACKS.map((pack) => pack.language);
@@ -21,5 +21,6 @@ export function jsonSchemas(): Record<string, unknown> {
     'config.v1.schema.json': z.toJSONSchema(YoklaConfig, { ...options, io: 'input' }),
     'results.v1.schema.json': z.toJSONSchema(Results, { ...options, io: 'output' }),
     'baseline.v1.schema.json': z.toJSONSchema(Baseline, { ...options, io: 'output' }),
+    'comparison.v1.schema.json': z.toJSONSchema(Comparison, { ...options, io: 'output' }),
   };
 }

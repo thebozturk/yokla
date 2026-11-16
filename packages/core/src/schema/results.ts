@@ -143,6 +143,8 @@ export const TurnResult = z.object({
           output: ModelOutput.nullable().optional(),
           /** Set when the proxy answered from a cassette, or found no call in it (ADR-0040). */
           replay: z.object({ diverged: z.boolean() }).optional(),
+          /** The model the app asked for, when a swap sent the call to another (ADR-0042). */
+          asked: z.string().optional(),
         }),
       ),
       /** The sum of the calls' cost; null when any call has none. */
@@ -282,6 +284,18 @@ export const Results = z
           /** Calls the cassette had no match for. */
           diverged: z.int().nonnegative(),
         })
+        .optional(),
+      /** The model swaps the run made, and how many calls each changed (ADR-0042). */
+      swaps: z
+        .array(
+          z.object({
+            upstream: Id,
+            asked: z.string(),
+            model: z.string(),
+            to: Id.optional(),
+            calls: z.int().nonnegative(),
+          }),
+        )
         .optional(),
       /** Measurements read from the target's logs (ADR-0009). */
       observation: z

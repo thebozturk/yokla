@@ -117,6 +117,7 @@ export {
 export { Cassette, CASSETTE_SCHEMA_ID } from './schema/cassette.ts';
 export {
   CassetteCall,
+  ModelSwap,
   ModelOutput,
   PromptMessage,
   PromptRole,
@@ -139,6 +140,7 @@ export {
 export { plan, type Plan, type PlannedCase } from './plan/plan.ts';
 export { GateConfig, YoklaConfig, type OwnModel, type Price } from './schema/config.ts';
 export { evaluateGate, type GateBreach, type GateOutcome } from './gate/gate.ts';
+export { Comparison, COMPARISON_SCHEMA_ID, compareRuns, swapLabel } from './compare/compare.ts';
 export { Baseline, BASELINE_SCHEMA_ID } from './schema/baseline.ts';
 export { baselineChanges, baselineOf } from './baseline/baseline.ts';
 export { caseDefinition, stableJson } from './baseline/definition.ts';

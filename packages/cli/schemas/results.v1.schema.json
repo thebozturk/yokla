@@ -138,6 +138,40 @@
           ],
           "additionalProperties": false
         },
+        "swaps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "upstream": {
+                "type": "string",
+                "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+              },
+              "asked": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string",
+                "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+              },
+              "calls": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "upstream",
+              "asked",
+              "model",
+              "calls"
+            ],
+            "additionalProperties": false
+          }
+        },
         "observation": {
           "type": "object",
           "properties": {
@@ -941,6 +975,9 @@
                                     "diverged"
                                   ],
                                   "additionalProperties": false
+                                },
+                                "asked": {
+                                  "type": "string"
                                 }
                               },
                               "required": [

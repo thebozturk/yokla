@@ -1152,3 +1152,147 @@ describe('startProxy recording and replaying a cassette (ADR-0040)', () => {
     });
   });
 });
+
+/** A proxy with two OpenAI-compatible upstreams on the same fake provider, and a Gemini one. */
+async function swapping(up: { url: string }) {
+  const records: ProxyRecord[] = [];
+  const running = await startProxy({
+    port: 0,
+    upstreams: [
+      { id: 'openai', kind: 'openai-compatible', upstream: up.url },
+      { id: 'gateway', kind: 'openai-compatible', upstream: up.url },
+      { id: 'gem', kind: 'gemini', upstream: up.url.replace(/\/v1$/u, '') },
+    ],
+    onRecord: (record) => records.push(record),
+  });
+  closers.push(() => running.close());
+  return { running, records };
+}
+
+const ASKED = { model: 'gpt-x', messages: [{ role: 'user', content: 'çadır' }] };
+
+describe('startProxy swapping a model (ADR-0042)', () => {
+  it('sends a call that asks for the swapped model to the other, and records the model asked for', async () => {
+    const up = await upstream();
+    const { running, records } = await swapping(up);
+    const opened = await call(
+      running,
+      'POST',
+      '/_yokla/recordings',
+      JSON.stringify({ swaps: [{ upstream: 'openai', asked: 'gpt-x', model: 'gpt-mini' }] }),
+    );
+    expect(opened.status).toBe(201);
+    const id = String(Reflect.get(Object(parse(opened)), 'id'));
+    // A compressed body is read, changed and sent uncompressed with its new length.
+    const zipped = gzipSync(JSON.stringify(ASKED));
+    await call(running, 'POST', '/openai/chat/completions', zipped, {
+      'content-type': 'application/json',
+      'content-encoding': 'gzip',
+      'content-length': String(zipped.length),
+    });
+    // The same model on another upstream isn't this swap's.
+    await call(running, 'POST', '/gateway/chat/completions', JSON.stringify(ASKED));
+    await call(
+      running,
+      'POST',
+      '/openai/chat/completions',
+      JSON.stringify({ ...ASKED, model: 'gpt-other' }),
+    );
+    // The swap is the recording's: once it closes, nothing changes.
+    await call(running, 'DELETE', `/_yokla/recordings/${id}`);
+    await call(running, 'POST', '/openai/chat/completions', JSON.stringify(ASKED));
+    expect(up.received.map((received) => JSON.parse(received.body) as unknown)).toEqual([
+      { ...ASKED, model: 'gpt-mini' },
+      ASKED,
+      { ...ASKED, model: 'gpt-other' },
+      ASKED,
+    ]);
+    expect(up.received[0]?.headers['content-encoding']).toBeUndefined();
+    expect(up.received[0]?.headers['content-length']).toBe(
+      String(Buffer.byteLength(JSON.stringify({ ...ASKED, model: 'gpt-mini' }))),
+    );
+    expect(records.map((record) => [record.upstream, record.asked])).toEqual([
+      ['openai', 'gpt-x'],
+      ['gateway', undefined],
+      ['openai', undefined],
+    ]);
+    // The prompt is read from the body as it was sent.
+    expect(records[0]?.prompt).toEqual([{ role: 'user', chars: 5, text: 'çadır' }]);
+  });
+
+  it('sends a swap to another upstream of the same kind, and refuses one it cannot apply', async () => {
+    const up = await upstream();
+    const { running, records } = await swapping(up);
+    const open = (swaps: unknown) =>
+      call(running, 'POST', '/_yokla/recordings', JSON.stringify({ swaps }));
+    const refused = async (swaps: unknown) => {
+      const answer = await open(swaps);
+      expect(answer.status).toBe(400);
+      return String(Reflect.get(Object(parse(answer)), 'error'));
+    };
+    expect(await refused([{ upstream: 'nope', asked: 'a', model: 'b' }])).toBe(
+      'a model swap can\'t apply: no upstream "nope"',
+    );
+    expect(await refused([{ upstream: 'openai', asked: 'a', model: 'b', to: 'nope' }])).toBe(
+      'a model swap can\'t apply: no upstream "nope"',
+    );
+    expect(await refused([{ upstream: 'openai', asked: 'a', model: 'b', to: 'gem' }])).toBe(
+      'a model swap can\'t apply: upstream "gem" is gemini, not openai-compatible like "openai"',
+    );
+    expect(
+      (await open([{ upstream: 'openai', asked: 'gpt-x', model: 'gpt-mini', to: 'gateway' }]))
+        .status,
+    ).toBe(201);
+    await call(running, 'POST', '/openai/chat/completions', JSON.stringify(ASKED));
+    expect(records[0]).toMatchObject({ upstream: 'gateway', asked: 'gpt-x' });
+  });
+
+  it('applies a fault plan by the upstream the app called, wherever the swap sends the call', async () => {
+    const up = await upstream();
+    const { running, records } = await swapping(up);
+    const opened = await call(
+      running,
+      'POST',
+      '/_yokla/recordings',
+      JSON.stringify({
+        swaps: [{ upstream: 'openai', asked: 'gpt-x', model: 'gpt-mini', to: 'gateway' }],
+      }),
+    );
+    const id = String(Reflect.get(Object(parse(opened)), 'id'));
+    await call(
+      running,
+      'PUT',
+      `/_yokla/recordings/${id}/turns/t`,
+      JSON.stringify({
+        inFlight: true,
+        faults: [{ fault: { kind: 'status', status: 503 }, upstream: 'openai' }],
+      }),
+    );
+    const answer = await call(running, 'POST', '/openai/chat/completions', JSON.stringify(ASKED));
+    expect(answer.status).toBe(503);
+    expect(records[0]).toMatchObject({ fault: { kind: 'status', applied: true } });
+    expect(up.received).toEqual([]);
+  });
+
+  it("changes a Gemini call's model in its path", async () => {
+    const up = await upstream();
+    const { running, records } = await swapping(up);
+    await call(
+      running,
+      'POST',
+      '/_yokla/recordings',
+      JSON.stringify({
+        swaps: [{ upstream: 'gem', asked: 'gemini-2.5-flash', model: 'gemini-mini' }],
+      }),
+    );
+    await call(
+      running,
+      'POST',
+      '/gem/v1beta/models/gemini-2.5-flash:generateContent?key=k',
+      '{"contents":[]}',
+    );
+    expect(up.received[0]?.url).toBe('/v1beta/models/gemini-mini:generateContent?key=k');
+    expect(up.received[0]?.body).toBe('{"contents":[]}');
+    expect(records[0]).toMatchObject({ asked: 'gemini-2.5-flash', model: 'gemini-mini' });
+  });
+});

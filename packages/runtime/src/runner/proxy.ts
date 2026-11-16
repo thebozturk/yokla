@@ -83,6 +83,7 @@ export function attributeCalls<K>(
       ...(record.toolCalls === undefined ? {} : { toolCalls: record.toolCalls }),
       ...(record.output === undefined ? {} : { output: record.output }),
       ...(record.replay === undefined ? {} : { replay: record.replay }),
+      ...(record.asked === undefined ? {} : { asked: record.asked }),
     });
   }
 

@@ -2,6 +2,7 @@
 
 import { readFileSync } from 'node:fs';
 import { BASELINE_HELP, baselineCommand } from './commands/baseline.ts';
+import { COMPARE_HELP, compareCommand } from './commands/compare.ts';
 import { GATE_HELP, gateCommand } from './commands/gate.ts';
 import { INIT_HELP, initCommand } from './commands/init.ts';
 import { MCP_HELP, mcpCommand } from './commands/mcp.ts';
@@ -24,7 +25,8 @@ Usage:
   yokla plan [options]       estimate the cost of a run from a calibration
   yokla shrink [options]     cut a failing case down to the smallest that still fails
   yokla mcp [options]        serve yokla's tools to a coding agent over stdio (MCP)
-  yokla schema <name>        print a JSON Schema: profile, cases, config, results, baseline
+  yokla compare [options]    set runs side by side, such as one per model, and name the cheapest that passes
+  yokla schema <name>        print a JSON Schema: profile, cases, config, results, baseline, comparison
   yokla --version
 
 ${INIT_HELP}
@@ -43,7 +45,9 @@ ${PLAN_HELP}
 
 ${SHRINK_HELP}
 
-${MCP_HELP}`;
+${MCP_HELP}
+
+${COMPARE_HELP}`;
 
 export function version(): string {
   const manifest: unknown = JSON.parse(
@@ -63,6 +67,7 @@ const SCHEMA_FILES: Readonly<Record<string, string>> = {
   config: 'config.v1.schema.json',
   results: 'results.v1.schema.json',
   baseline: 'baseline.v1.schema.json',
+  comparison: 'comparison.v1.schema.json',
 };
 
 export async function main(argv: readonly string[], io: Output): Promise<number> {
@@ -86,10 +91,12 @@ export async function main(argv: readonly string[], io: Output): Promise<number>
       return shrinkCommand(rest, io, version());
     case 'mcp':
       return mcpCommand(rest, io, version());
+    case 'compare':
+      return compareCommand(rest, io);
     case 'schema': {
       const file = SCHEMA_FILES[rest[0] ?? ''];
       if (file === undefined) {
-        io.err('usage: yokla schema <profile|cases|config|results|baseline>');
+        io.err('usage: yokla schema <profile|cases|config|results|baseline|comparison>');
         return 2;
       }
       io.out(JSON.stringify(jsonSchemas()[file], null, 2));

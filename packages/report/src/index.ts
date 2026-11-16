@@ -2,6 +2,7 @@
 
 export { CONTENT_SECURITY_POLICY, htmlReport } from './html.ts';
 export { junitXml, xmlAttribute, xmlText } from './junit.ts';
+export { comparisonText } from './compare.ts';
 export { caseProblems, caseReason, type CaseProblems, type Problem } from './problems.ts';
 export { terminalSummary, type TerminalSummary } from './terminal.ts';
 export { originText, withOrigin } from './format.ts';

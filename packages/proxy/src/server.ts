@@ -22,6 +22,7 @@ import { brotliDecompressSync, gunzipSync, inflateSync } from 'node:zlib';
 import {
   CassetteCall,
   FaultPlan,
+  ModelSwap,
   modelCallOf,
   readOtlpJson,
   readOtlpProtobuf,
@@ -169,6 +170,8 @@ const NOTHING_SPENT: ProxyUsage = {
 const Opening = z.object({
   /** Keep each forwarded call as a cassette keeps it. */
   capture: z.boolean().default(false),
+  /** Send the calls that ask for a model to another (ADR-0042). */
+  swaps: z.array(ModelSwap).default([]),
   /** Answer each call from these recorded calls, forwarding nothing. */
   replay: z.object({ loose: z.boolean().default(false), calls: z.array(CassetteCall) }).optional(),
 });
@@ -221,6 +224,64 @@ function sha256(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
+/**
+ * The call a model swap makes of an app's call (ADR-0042): the first swap of
+ * the called upstream for the model the call asks for, with the model's name
+ * changed in the body, or in a Gemini call's path, and sent to the swap's
+ * upstream. Undefined when no swap applies, or the body names no model.
+ */
+function swapOf(
+  swaps: readonly ModelSwap[],
+  upstreams: ReadonlyMap<string, ProxyUpstream>,
+  called: ProxyUpstream,
+  rest: string,
+  body: Buffer,
+  headers: IncomingHttpHeaders,
+):
+  | {
+      readonly asked: string;
+      readonly upstream: ProxyUpstream;
+      readonly rest: string;
+      readonly body: Buffer;
+      readonly headers: OutgoingHttpHeaders;
+    }
+  | undefined {
+  if (swaps.length === 0) return undefined;
+  if (called.kind === 'gemini') {
+    const asked = geminiFacts(rest).model;
+    const swap = swaps.find((s) => s.upstream === called.id && s.asked === asked);
+    if (swap === undefined || asked === null) return undefined;
+    return {
+      asked,
+      upstream: upstreams.get(swap.to ?? called.id) ?? called,
+      rest: rest.replace(`/models/${asked}:`, `/models/${swap.model}:`),
+      body,
+      headers: endToEnd(headers),
+    };
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(decoded(body, headers['content-encoding']) ?? '');
+  } catch {
+    return undefined;
+  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const asked: unknown = Reflect.get(value, 'model');
+  const swap = swaps.find((s) => s.upstream === called.id && s.asked === asked);
+  if (swap === undefined || typeof asked !== 'string') return undefined;
+  // A changed body goes uncompressed, as a fault's does (ADR-0013); the app's length goes,
+  // and Node sets the new one, since the body is given whole to end().
+  const changed = Buffer.from(JSON.stringify({ ...value, model: swap.model }), 'utf8');
+  const { 'content-encoding': _encoding, 'content-length': _length, ...kept } = endToEnd(headers);
+  return {
+    asked,
+    upstream: upstreams.get(swap.to ?? called.id) ?? called,
+    rest,
+    body: changed,
+    headers: kept,
+  };
+}
+
 interface Recording {
   readonly id: string;
   readonly startedAt: string;
@@ -231,6 +292,8 @@ interface Recording {
   readonly replay: Replay | undefined;
   /** Per turn key, how many calls have arrived, for each call's position (ADR-0040). */
   readonly positions: Map<string, number>;
+  /** The model swaps of this recording (ADR-0042). */
+  readonly swaps: readonly ModelSwap[];
   /** The turn the runner says is in flight (serial correlation). */
   mark: string | null;
   /** The turns the runner armed, with their fault plans (ADR-0013). */
@@ -295,7 +358,21 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
         });
         return;
       }
-      const { capture, replay } = opening.data;
+      const { capture, replay, swaps } = opening.data;
+      // A swap goes to an upstream the proxy routes, of the kind the app called (ADR-0042).
+      const misrouted = swaps.flatMap((swap) => {
+        const from = upstreams.get(swap.upstream);
+        const to = upstreams.get(swap.to ?? swap.upstream);
+        if (from === undefined) return [`no upstream "${swap.upstream}"`];
+        if (to === undefined) return [`no upstream "${swap.to ?? ''}"`];
+        return to.kind === from.kind
+          ? []
+          : [`upstream "${to.id}" is ${to.kind}, not ${from.kind} like "${from.id}"`];
+      });
+      if (misrouted.length > 0) {
+        sendJson(response, 400, { error: `a model swap can't apply: ${misrouted.join('; ')}` });
+        return;
+      }
       recording = {
         id: randomUUID(),
         startedAt: new Date().toISOString(),
@@ -306,6 +383,7 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
             ? undefined
             : { loose: replay.loose, calls: replay.calls, used: replay.calls.map(() => false) },
         positions: new Map(),
+        swaps,
         mark: null,
         turns: new Map(),
         inFlight: 0,
@@ -485,8 +563,8 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
   async function forward(
     request: IncomingMessage,
     response: ServerResponse,
-    upstream: ProxyUpstream,
-    rest: string,
+    called: ProxyUpstream,
+    calledRest: string,
   ): Promise<void> {
     const open = recording;
     if (open !== undefined) {
@@ -497,11 +575,20 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
         open.lastActivity = performance.now();
       });
     }
-    const body = await readBody(request, maxRequest);
-    if (body === undefined) {
+    const received = await readBody(request, maxRequest);
+    if (received === undefined) {
       sendJson(response, 413, { error: 'request body too large for the proxy' });
       return;
     }
+    // A model swap sends the call to another model, within a recording only (ADR-0042).
+    const swapped =
+      open === undefined
+        ? undefined
+        : swapOf(open.swaps, upstreams, called, calledRest, received, request.headers);
+    const upstream = swapped?.upstream ?? called;
+    const rest = swapped?.rest ?? calledRest;
+    const body = swapped?.body ?? received;
+    const sentEncoding = swapped === undefined ? request.headers['content-encoding'] : undefined;
     const base = new URL(upstream.upstream);
     const startedAt = new Date();
     const started = performance.now();
@@ -515,7 +602,8 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
     // The turn this call belongs to: the one its trace names, else the one in flight.
     const turnId = typeof trace === 'string' && open?.turns.has(trace) === true ? trace : mark;
     const armed = turnId === null ? undefined : open?.turns.get(turnId);
-    const fault = armed === undefined ? undefined : nextFault(armed, upstream.id);
+    // Faults name the upstream the app called, swapped or not.
+    const fault = armed === undefined ? undefined : nextFault(armed, called.id);
     const callPath = rest.split('?')[0] ?? '';
     // A cassette keys a call by its turn and its position there, in arrival order (ADR-0040).
     const turnKey = armed?.seed;
@@ -525,9 +613,7 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
       position = open.positions.get(turnKey) ?? 0;
       open.positions.set(turnKey, position + 1);
     }
-    const requestSha256 = cassette
-      ? sha256(decoded(body, request.headers['content-encoding']) ?? '')
-      : '';
+    const requestSha256 = cassette ? sha256(decoded(body, sentEncoding) ?? '') : '';
 
     const finish = (
       status: number | null,
@@ -552,7 +638,7 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
             ? { usage: UNMEASURED, model: null }
             : readUsage(upstream.kind, raw, stream);
       const path = callPath;
-      const sent = decoded(body, request.headers['content-encoding']);
+      const sent = decoded(body, sentEncoding);
       const asked = readToolCalls(upstream.kind, raw, stream, status);
       // What the app got: the changed answer, when a fault changed it (ADR-0033).
       const output = readOutputText(upstream.kind, extra.answered ?? raw, stream, status);
@@ -590,6 +676,7 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
         // The text the model answered, read as its prompt is (ADR-0033).
         output: output === null ? null : { chars: output.length, text: output },
         ...(extra.replay === undefined ? {} : { replay: extra.replay }),
+        ...(swapped === undefined ? {} : { asked: swapped.asked }),
         // A forwarded call as a cassette keeps it: the provider's own answer (ADR-0040).
         ...(open.capture &&
         extra.forwarded !== false &&
@@ -642,7 +729,7 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
       return;
     }
     if (fault?.kind === 'latency') {
-      const seed = jitterSeed(armed, turnId, upstream.id);
+      const seed = jitterSeed(armed, turnId, called.id);
       await new Promise((resolve) => setTimeout(resolve, fault.ms + jitter(seed, fault.jitterMs)));
     }
     const changing = fault !== undefined && isChanging(fault) ? fault : undefined;
@@ -695,7 +782,7 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
         port: base.port,
         method: request.method,
         path: `${base.pathname.replace(/\/$/u, '')}${rest}`,
-        headers: { ...endToEnd(request.headers), host: base.host },
+        headers: { ...(swapped?.headers ?? endToEnd(request.headers)), host: base.host },
       },
       (upstreamResponse) => {
         const type = upstreamResponse.headers['content-type'] ?? '';

@@ -5,7 +5,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import type { Cassette, Results } from '@yokla/core';
+import type { Cassette, ModelSwap, Profile, Results } from '@yokla/core';
 import { htmlReport, junitXml, terminalSummary } from '@yokla/report';
 import { ConfigError, runSuite } from '@yokla/runtime';
 import { LoadError } from '../load.ts';
@@ -28,6 +28,9 @@ Options:
   --record <file>       write the run's model calls to a cassette, answers in full
   --replay <file>       answer the model calls from a cassette, calling no provider
   --replay-loose        with --replay, answer a call the cassette has no match for by position
+  --swap-model <swap>   <upstream>:<asked model>=<model>: send the calls that ask for a model to
+                        another; =<upstream>/<model> sends them to another upstream of the same
+                        kind; repeatable
   --concurrency <n>     cases run in parallel (default: 1)
   --target-url <url>    use this url instead of the profile's request url
   --junit <file>        also write a JUnit XML report
@@ -37,6 +40,36 @@ Options:
   --max-cost <usd>      stop starting samples once the model cost, the target's and yokla's own,
                         reaches this
   --fresh-customer      ask the customer model anew, whatever its reply cache holds`;
+
+const SWAP_USAGE =
+  '--swap-model must be <upstream>:<asked model>=<model>, or <upstream>:<asked model>=<other upstream>/<model>';
+
+/**
+ * A model swap from the command line (ADR-0042). The upstream ends at the
+ * first ":", which no upstream id holds, and the asked model at the first "=".
+ * `<other>/` before the model names another upstream only when the profile
+ * has one by that name, so a gateway's "vendor/model" stays a model name.
+ */
+export function parseSwap(text: string, profile: Profile): ModelSwap {
+  const colon = text.indexOf(':');
+  const equals = text.indexOf('=', colon + 1);
+  if (colon <= 0 || equals <= colon + 1 || equals === text.length - 1) {
+    throw new LoadError(SWAP_USAGE);
+  }
+  const target = text.slice(equals + 1);
+  const slash = target.indexOf('/');
+  const upstreams = new Set((profile.modelProxy?.upstreams ?? []).map((upstream) => upstream.id));
+  const to =
+    slash > 0 && upstreams.has(target.slice(0, slash)) ? target.slice(0, slash) : undefined;
+  const model = to === undefined ? target : target.slice(slash + 1);
+  if (model === '') throw new LoadError(SWAP_USAGE);
+  return {
+    upstream: text.slice(0, colon),
+    asked: text.slice(colon + 1, equals),
+    model,
+    ...(to === undefined ? {} : { to }),
+  };
+}
 
 function positiveInt(value: string | undefined, name: string): number | undefined {
   if (value === undefined) return undefined;
@@ -70,6 +103,7 @@ const RUN_OPTIONS = {
   record: { type: 'string' },
   replay: { type: 'string' },
   'replay-loose': { type: 'boolean' },
+  'swap-model': { type: 'string', multiple: true },
   concurrency: { type: 'string' },
   'target-url': { type: 'string' },
   junit: { type: 'string' },
@@ -129,6 +163,8 @@ export async function runCommand(
     }
     // A cassette answers the model calls instead of the provider (ADR-0040).
     const replayed = values.replay === undefined ? undefined : readCassette(values.replay);
+    // Calls that ask for a model go to another (ADR-0042).
+    const swaps = (values['swap-model'] ?? []).map((text) => parseSwap(text, prepared.profile));
     const results = await runSuite({
       ...prepared.base,
       cases: [...prepared.cases],
@@ -154,6 +190,7 @@ export async function runCommand(
             },
           }),
       ...(concurrency === undefined ? {} : { concurrency }),
+      ...(swaps.length === 0 ? {} : { swaps }),
       ...(maxCost === undefined ? {} : { maxCostUsd: maxCost }),
       ...(values['fresh-customer'] === true ? { freshCustomer: true } : {}),
     });
