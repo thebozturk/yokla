@@ -1,6 +1,6 @@
 # 0042. Comparing models through the proxy
 
-Status: Proposed · Date: 2026-11-16
+Status: Accepted · Date: 2026-11-16
 
 ## Context
 
