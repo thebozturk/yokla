@@ -7,7 +7,10 @@
 //   type under its median price, and the type under its lowest price, where
 //   nothing can match; then each policy the profile declares. A turn that
 //   asks for a type or a price bound states it as its expectation, from the
-//   same catalog data its words came from (ADR-0004).
+//   same catalog data its words came from (ADR-0004). A type is asked by its
+//   words, so the expectation and the prices cover every type with the same
+//   words; amounts are written in the language's usual unit, and one turn
+//   per language writes the currency code (ADR-0048).
 // - After an answer that showed products: adding the first of them to the
 //   cart (then the next, while the conversation only adds to the cart), and
 //   asking for a cheaper one.
@@ -20,6 +23,8 @@ interface Phrasings {
   product(name: string): string;
   type(type: string): string;
   underPrice(type: string, amount: string): string;
+  /** An amount as shoppers in the language write it, by currency code (ADR-0048). */
+  money(amount: string, currency: string | undefined): string;
   policy(topic: string): string;
   cart(name: string): string;
   readonly cheaper: string;
@@ -27,11 +32,24 @@ interface Phrasings {
   readonly topics: Readonly<Record<string, string>>;
 }
 
+/** The words Turkish shoppers write after an amount, by currency code (ADR-0048). */
+const TR_UNITS: Readonly<Record<string, string>> = {
+  TRY: 'TL',
+  USD: 'dolar',
+  EUR: 'euro',
+  GBP: 'sterlin',
+};
+
+/** The signs English shoppers write before an amount; the lira has none, so its code stays. */
+const EN_SIGNS: Readonly<Record<string, string>> = { USD: '$', EUR: '€', GBP: '£' };
+
 export const PHRASINGS: Readonly<Record<string, Phrasings>> = {
   tr: {
     product: (name) => `${name} var mı?`,
     type: (type) => `${type} var mı?`,
     underPrice: (type, amount) => `${amount} altında ${type} var mı?`,
+    money: (amount, currency) =>
+      currency === undefined ? amount : `${amount} ${TR_UNITS[currency] ?? currency}`,
     policy: (topic) => `${topic} koşullarınız neler?`,
     cart: (name) => `${name} ürününü sepete ekler misin?`,
     cheaper: 'Daha ucuz bir seçenek var mı?',
@@ -41,6 +59,11 @@ export const PHRASINGS: Readonly<Record<string, Phrasings>> = {
     product: (name) => `Do you have the ${name}?`,
     type: (type) => `Do you have any ${type}?`,
     underPrice: (type, amount) => `Do you have any ${type} under ${amount}?`,
+    money: (amount, currency) => {
+      if (currency === undefined) return amount;
+      const sign = EN_SIGNS[currency];
+      return sign === undefined ? `${amount} ${currency}` : `${sign}${amount}`;
+    },
     policy: (topic) => `What are your ${topic} terms?`,
     cart: (name) => `Please add the ${name} to my cart.`,
     cheaper: 'Do you have anything cheaper?',
@@ -111,7 +134,15 @@ export function spreadTypes(
   const ordered = [...counts.keys()].toSorted(
     (a, b) => (counts.get(b) ?? 0) - (counts.get(a) ?? 0) || (a < b ? -1 : a > b ? 1 : 0),
   );
-  if (separator === undefined) return ordered.slice(0, count);
+  // Types asked by the same words are one type to a shopper: the first taken stands for them.
+  const asked = new Set<string>();
+  const fresh = (type: string): boolean => {
+    const words = typeWords(type, separator);
+    if (asked.has(words)) return false;
+    asked.add(words);
+    return true;
+  };
+  if (separator === undefined) return ordered.filter(fresh).slice(0, count);
   const levels = ordered.map((type) => type.split(separator));
   const shared = sharedLevels(levels);
   const branches = new Map<string, string[]>();
@@ -129,7 +160,7 @@ export function spreadTypes(
       return type === undefined ? [] : [type];
     });
     if (taken.length === 0) break;
-    chosen.push(...taken.slice(0, count - chosen.length));
+    chosen.push(...taken.filter(fresh).slice(0, count - chosen.length));
   }
   return chosen;
 }
@@ -152,66 +183,109 @@ function namedProduct(rows: readonly CatalogRow[], language: string): string | u
   return row === undefined ? undefined : nameIn(row, language);
 }
 
-/** The opening turns about one type: by a product's name, the type, and the type under two bounds. */
-function aboutType(
-  rows: readonly CatalogRow[],
-  type: string,
-  data: EcommerceData,
-  language: string,
+/** The types a shopper's words for a type name: every catalog type with the same words. */
+interface WordGroup {
+  readonly words: string;
+  /** The types, in the order the catalog first lists them. */
+  readonly types: readonly string[];
+  readonly rows: readonly CatalogRow[];
+  /** How the turn's basis names the group, such as `type "tent" (1 catalog type)`. */
+  readonly label: string;
+}
+
+function wordGroup(type: string, rows: readonly CatalogRow[], separator: string | undefined) {
+  const words = typeWords(type, separator);
+  const members = rows.filter(
+    (row) => row.type !== undefined && typeWords(row.type, separator) === words,
+  );
+  const types = [...new Set(members.map((row) => row.type ?? ''))];
+  const label = `type "${words}" (${String(types.length)} catalog type${types.length === 1 ? '' : 's'})`;
+  return { words, types, rows: members, label } satisfies WordGroup;
+}
+
+/** The turn that asks for a group under an amount, written as `amount` says. */
+function underTurn(
+  group: WordGroup,
+  intent: string,
+  bound: number,
+  amount: string,
+  why: string,
   say: Phrasings,
-): IntentTurn[] {
+): IntentTurn {
+  return {
+    intent,
+    user: say.underPrice(group.words, amount),
+    expect: { productType: [...group.types], filters: { maxPrice: bound } },
+    basis: `${group.label} at most ${String(bound)}, ${why}`,
+  };
+}
+
+/** The currency of a group's first product that has one. */
+function currencyOf(group: WordGroup): string | undefined {
+  return group.rows.find((row) => row.currency !== undefined)?.currency;
+}
+
+/** The opening turns about a group: by a product's name, the group, and the group under two bounds. */
+function aboutGroup(group: WordGroup, language: string, say: Phrasings): IntentTurn[] {
   const turns: IntentTurn[] = [];
-  const name = namedProduct(rows, language);
+  const name = namedProduct(group.rows, language);
   if (name !== undefined) turns.push({ intent: 'product', user: say.product(name) });
-  const words = typeWords(type, data.config.typeSeparator);
   turns.push({
     intent: 'type',
-    user: say.type(words),
-    expect: { productType: [type] },
-    basis: `type ${type} from the catalog`,
+    user: say.type(group.words),
+    expect: { productType: [...group.types] },
+    basis: `${group.label} from the catalog`,
   });
-  const prices = pricesOf(rows);
-  const currency = rows.find((row) => row.currency !== undefined)?.currency;
-  const money = (amount: number) =>
-    currency === undefined ? String(amount) : `${String(amount)} ${currency}`;
-  const bounded = (intent: string, amount: number, why: string): IntentTurn => ({
-    intent,
-    user: say.underPrice(words, money(amount)),
-    expect: { productType: [type], filters: { maxPrice: amount } },
-    basis: `type ${type} at most ${String(amount)}, ${why}`,
-  });
+  const prices = pricesOf(group.rows);
+  const currency = currencyOf(group);
+  const money = (bound: number) => say.money(String(bound), currency);
   const median = medianPrice(prices);
-  if (median !== undefined) turns.push(bounded('under-price', median, 'its median price'));
+  if (median !== undefined) {
+    turns.push(underTurn(group, 'under-price', median, money(median), 'its median price', say));
+  }
   const empty = emptyBand(prices);
   if (empty !== undefined) {
     const lowest = String(prices[0]);
-    turns.push(bounded('empty-band', empty, `below its lowest price ${lowest}`));
+    const why = `below its lowest price ${lowest}`;
+    turns.push(underTurn(group, 'empty-band', empty, money(empty), why, say));
   }
   return turns;
+}
+
+/**
+ * The turn that writes the first group's median with the currency code, where
+ * shoppers of the language write it otherwise (ADR-0048); undefined if not.
+ */
+function codeTurn(group: WordGroup | undefined, say: Phrasings): IntentTurn | undefined {
+  if (group === undefined) return undefined;
+  const currency = currencyOf(group);
+  const median = medianPrice(pricesOf(group.rows));
+  if (currency === undefined || median === undefined) return undefined;
+  const coded = `${String(median)} ${currency}`;
+  if (say.money(String(median), currency) === coded) return undefined;
+  const why = `its median price, with the currency code ${currency}`;
+  return underTurn(group, 'currency-code', median, coded, why, say);
 }
 
 function opening(data: EcommerceData, language: string, count: number): IntentTurn[] {
   const say = PHRASINGS[language];
   if (say === undefined) return [];
   const rows = [...(data.catalog?.values() ?? [])];
-  const types = spreadTypes(rows, data.config.typeSeparator, count);
-  const turns = types.flatMap((type) =>
-    aboutType(
-      rows.filter((row) => row.type === type),
-      type,
-      data,
-      language,
-      say,
-    ),
+  const separator = data.config.typeSeparator;
+  const groups = spreadTypes(rows, separator, count).map((type) =>
+    wordGroup(type, rows, separator),
   );
+  const turns = groups.flatMap((group) => aboutGroup(group, language, say));
   // A catalog without types: a product by its name, as before.
-  if (types.length === 0) {
+  if (groups.length === 0) {
     const name = namedProduct(rows, language);
     if (name !== undefined) turns.push({ intent: 'product', user: say.product(name) });
   }
   for (const topic of data.policies.keys()) {
     turns.push({ intent: 'policy', user: say.policy(say.topics[topic] ?? topic) });
   }
+  const code = codeTurn(groups[0], say);
+  if (code !== undefined) turns.push(code);
   return turns;
 }
 

@@ -151,7 +151,7 @@ describe('yokla explore (ADR-0044)', () => {
     expect(cases.map((c) => [c.id, c.provenance?.evidence])).toEqual([
       [
         'empty-band-1',
-        'yokla explore, empty-band from an opening turn: failed filter-honoured-or-disclosed (filter-honesty) on turn 1; expects type out/tent at most 9, below its lowest price 10',
+        'yokla explore, empty-band from an opening turn: failed filter-honoured-or-disclosed (filter-honesty) on turn 1; expects type "tent" (1 catalog type) at most 9, below its lowest price 10',
       ],
       [
         'cart-1',

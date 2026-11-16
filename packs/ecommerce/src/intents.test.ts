@@ -136,44 +136,53 @@ describe('the ecommerce intents (ADR-0044)', () => {
         intent: 'type',
         user: 'sleeping bag var mı?',
         expect: { productType: [bag] },
-        basis: `type ${bag} from the catalog`,
+        basis: 'type "sleeping bag" (1 catalog type) from the catalog',
       },
       {
         intent: 'under-price',
-        user: '1501 TRY altında sleeping bag var mı?',
+        user: '1501 TL altında sleeping bag var mı?',
         expect: { productType: [bag], filters: { maxPrice: 1501 } },
-        basis: `type ${bag} at most 1501, its median price`,
+        basis: 'type "sleeping bag" (1 catalog type) at most 1501, its median price',
       },
       {
         intent: 'empty-band',
-        user: '899 TRY altında sleeping bag var mı?',
+        user: '899 TL altında sleeping bag var mı?',
         expect: { productType: [bag], filters: { maxPrice: 899 } },
-        basis: `type ${bag} at most 899, below its lowest price 900`,
+        basis: 'type "sleeping bag" (1 catalog type) at most 899, below its lowest price 900',
       },
       { intent: 'product', user: 'Kafa Lambası var mı?' },
       {
         intent: 'type',
         user: 'head lamp var mı?',
         expect: { productType: [lamp] },
-        basis: `type ${lamp} from the catalog`,
+        basis: 'type "head lamp" (1 catalog type) from the catalog',
       },
       {
         intent: 'under-price',
-        user: '200 TRY altında head lamp var mı?',
+        user: '200 TL altında head lamp var mı?',
         expect: { productType: [lamp], filters: { maxPrice: 200 } },
-        basis: `type ${lamp} at most 200, its median price`,
+        basis: 'type "head lamp" (1 catalog type) at most 200, its median price',
       },
       {
         intent: 'empty-band',
-        user: '199 TRY altında head lamp var mı?',
+        user: '199 TL altında head lamp var mı?',
         expect: { productType: [lamp], filters: { maxPrice: 199 } },
-        basis: `type ${lamp} at most 199, below its lowest price 200`,
+        basis: 'type "head lamp" (1 catalog type) at most 199, below its lowest price 200',
       },
       { intent: 'policy', user: 'İade koşullarınız neler?' },
       { intent: 'policy', user: 'Garanti koşullarınız neler?' },
       { intent: 'policy', user: 'gift-cards koşullarınız neler?' },
+      // Last, the first type's median once more, with the currency code (ADR-0048).
+      {
+        intent: 'currency-code',
+        user: '1501 TRY altında sleeping bag var mı?',
+        expect: { productType: [bag], filters: { maxPrice: 1501 } },
+        basis:
+          'type "sleeping bag" (1 catalog type) at most 1501, its median price, with the currency code TRY',
+      },
     ]);
-    // A blank name is no name: the first bag named in English is T1.
+    // A blank name is no name: the first bag named in English is T1. English shoppers
+    // have no word of their own for the lira: the code stays, and no code turn follows.
     expect(
       intents(PER_LANGUAGE)
         .opening('en', 1)
@@ -341,12 +350,90 @@ describe('the ecommerce intents (ADR-0044)', () => {
     // Types that share nothing branch at their first level; a type that is a
     // prefix of another stops the shared levels there.
     expect(
-      spreadTypes([catalogRow('a', 'x/1'), catalogRow('b', 'y/1'), catalogRow('c', 'y/2')], '/', 3),
-    ).toEqual(['x/1', 'y/1', 'y/2']);
+      spreadTypes([catalogRow('a', 'x/1'), catalogRow('b', 'y/2'), catalogRow('c', 'y/3')], '/', 3),
+    ).toEqual(['x/1', 'y/2', 'y/3']);
     expect(
       spreadTypes([catalogRow('a', 'x'), catalogRow('b', 'x/1'), catalogRow('c', 'x/1')], '/', 2),
     ).toEqual(['x/1', 'x']);
     expect(spreadTypes([], '/', 3)).toEqual([]);
+  });
+
+  it('counts types a shopper names with the same words once, by the first the round-robin takes (ADR-0048)', () => {
+    const rows = [
+      catalogRow('1', 'shop/baby/wipes/general'),
+      catalogRow('2', 'shop/newborn/wipes/general'),
+      catalogRow('3', 'shop/newborn/wipes/general'),
+      catalogRow('4', 'shop/newborn/hats'),
+    ];
+    // Branches baby, newborn: round one takes .../baby/.../general and the newborn
+    // general, whose words were asked; round two the newborn hats.
+    expect(spreadTypes(rows, '/', 3)).toEqual(['shop/baby/wipes/general', 'shop/newborn/hats']);
+    expect(spreadTypes(rows, '/', 1)).toEqual(['shop/baby/wipes/general']);
+    // Without a separator, a type's words are the whole path, dashes and underscores as spaces.
+    expect(
+      spreadTypes([catalogRow('1', 'baby-hat'), catalogRow('2', 'baby_hat')], undefined, 2),
+    ).toEqual(['baby-hat']);
+    expect(spreadTypes(rows, undefined, 3)).toEqual([
+      'shop/newborn/wipes/general',
+      'shop/baby/wipes/general',
+      'shop/newborn/hats',
+    ]);
+  });
+
+  it('asks for every type with the same words, and takes the prices from all of them (ADR-0048)', () => {
+    const data = loadData(profileWith({ currency: 'cur' }), {
+      readText: (path: string) =>
+        path === 'catalog.jsonl'
+          ? [
+              { sku: 'A', path: 'p/baby/general', amount: 50, cur: 'TRY' },
+              { sku: 'B', path: 'p/new/general', amount: 40, cur: 'TRY' },
+              { sku: 'C', path: 'p/new/general', amount: 90, cur: 'TRY' },
+              { sku: 'D', path: 'p/new/hats', amount: 10, cur: 'TRY' },
+            ]
+              .map((row) => JSON.stringify(row))
+              .join('\n')
+          : '',
+    });
+    const turns = ecommerceIntents(data).opening('tr', 1);
+    const both = ['p/baby/general', 'p/new/general'];
+    expect(turns).toEqual([
+      {
+        intent: 'type',
+        user: 'general var mı?',
+        expect: { productType: both },
+        basis: 'type "general" (2 catalog types) from the catalog',
+      },
+      {
+        intent: 'under-price',
+        user: '50 TL altında general var mı?',
+        expect: { productType: both, filters: { maxPrice: 50 } },
+        basis: 'type "general" (2 catalog types) at most 50, its median price',
+      },
+      {
+        intent: 'empty-band',
+        user: '39 TL altında general var mı?',
+        expect: { productType: both, filters: { maxPrice: 39 } },
+        basis: 'type "general" (2 catalog types) at most 39, below its lowest price 40',
+      },
+      {
+        intent: 'currency-code',
+        user: '50 TRY altında general var mı?',
+        expect: { productType: both, filters: { maxPrice: 50 } },
+        basis:
+          'type "general" (2 catalog types) at most 50, its median price, with the currency code TRY',
+      },
+    ]);
+  });
+
+  it('writes amounts in the usual unit of each language, and the code where it has none', () => {
+    expect(
+      ['TRY', 'USD', 'EUR', 'GBP', 'JPY'].map((code) => PHRASINGS['tr']?.money('300', code)),
+    ).toEqual(['300 TL', '300 dolar', '300 euro', '300 sterlin', '300 JPY']);
+    expect(
+      ['TRY', 'USD', 'EUR', 'GBP', 'JPY'].map((code) => PHRASINGS['en']?.money('300', code)),
+    ).toEqual(['300 TRY', '$300', '€300', '£300', '300 JPY']);
+    expect(PHRASINGS['tr']?.money('300', undefined)).toBe('300');
+    expect(PHRASINGS['en']?.money('300', undefined)).toBe('300');
   });
 
   it('asks under its lowest price only for a bound of at least 1', () => {
@@ -372,7 +459,7 @@ describe('the ecommerce intents (ADR-0044)', () => {
         .opening('en', 1)
         .filter((intent) => intent.intent === 'under-price')
         .map((intent) => intent.user),
-    ).toEqual(['Do you have any y under 5 EUR?']);
+    ).toEqual(['Do you have any y under €5?']);
     expect(emptyBandAt(0.5)).toEqual([]);
   });
 });
