@@ -128,6 +128,10 @@ answer, or only in your app's code after the model call.
 - **`yokla run --swap-model`** tries another model under your cases, with
   the app unchanged, and **`yokla compare`** names the cheapest run that
   still passes the gate.
+- **Indirect injection without a copy of your data:** the proxy writes an
+  instruction into a tool result before the model sees it, and
+  `injection-canary` checks the answer didn't follow it. A run that reverses
+  a tool's results checks that no verdict moves.
 - **`yokla mcp`** gives a coding agent these as tools, over the Model Context
   Protocol: run the cases, explain a failure, shrink it, and verify a fix
   against it and its neighbours, within a cost cap you set.

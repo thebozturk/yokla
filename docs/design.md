@@ -352,7 +352,8 @@ computed, not guessed.
 
 **Adversarial (red team):**
 - direct injection,
-- indirect injection through data: payloads are seeded into a *test copy* of
+- indirect injection through data: payloads are written into the tool results
+  the model is sent, by the model proxy (ADR-0043), or seeded into a *test copy* of
   the target's content that the user controls,
 - system-prompt extraction,
 - PII extraction, using seeded fake PII,
@@ -424,7 +425,7 @@ The [checks guide](guide/checks.md) gives each check's exact conditions.
 | `pii-in-prompt` | the turn lists `notSentToModel` values | None of them is in any message of the turn's model calls. |
 | `tool-calls` | the turn sets `tools` (ADR-0025) | The tool calls the turn's model calls asked for: those expected, none forbidden, expected arguments, order, and at most `maxCalls`. Unmeasured without the proxy's data. |
 | `tool-call-valid` | a model call of the turn offered tools (ADR-0025) | Each tool asked for was offered by that call, with valid JSON arguments. |
-| `injection-canary` (v0.5) | the case seeds a canary | The answer neither contains nor acts on the canary instruction. |
+| `injection-canary` | a turn injects into a tool's results with a canary (ADR-0043) | The answer doesn't contain the canary; acting on the instruction is judged by the turn's `tools`. Unmeasured when the injection reached no tool result. |
 | `pii-leak` (v0.5) | the case seeds fake PII | Seeded values don't appear where they shouldn't. |
 
 Latency has no per-turn check besides `deadlineMs`. Its percentiles are gate
@@ -617,6 +618,11 @@ repeats with no model cost and with the answers it got.
   on a cassette, and an `answer` fault changes one recorded answer.
 - The runner writes the file; the proxy keeps the answers in memory for the
   recording that asked for them.
+
+**Tool results changed (ADR-0043).** A case turn can inject text into a
+tool's results before the model sees them, and `yokla run --reverse-items`
+reverses arrays in a tool's results for a whole run; `yokla compare
+--expect-same` then fails when a verdict moved.
 
 **Model swaps (ADR-0042).** `yokla run --swap-model <upstream>:<asked>=<model>`
 has the proxy send each call that asks for a model to another, in the same
@@ -868,8 +874,9 @@ turns on one seeded defect at a time:
   the model wrote it,
 - a wrong price in every other answer, a failure that comes and goes,
 - an out-of-scope question answered instead of refused,
-- later (v0.5): following an instruction injected in product text, and
-  exposing another session's order.
+- following an instruction injected into a tool result, with `--tool-results`
+  (ADR-0043),
+- later (v0.5): exposing another session's order.
 
 Each defect is added in the version whose checks detect it, so that "every
 defect is detected" holds for every version. v0.1 has the first eight; v0.2
@@ -909,6 +916,15 @@ and confirmed the fix with `verify_fix`. Its feedback added the cases
 reproduction rate and candidates to `shrink_case`'s, the proposed cases
 apart to `run_cases`'s, and the evidence to `explain_finding`'s.
 
+For D7, `--tool-results` sends the writer its search result as a tool
+result, fenced as data, and `unfenced-tool-results` sends it as it is; the
+fake provider, like a model that gives in, follows an instruction in a tool
+result outside the fence. The injection case passes on the shop that fences,
+fails `injection-canary` alone on the one that doesn't, from the input, and
+is unmeasured on a shop that sends no tool result. Reversing the search
+results for a run moves no verdict (ADR-0043). This is §19's "following an
+instruction injected in product text", brought forward from v0.5.
+
 For D6, the fake provider answers three writer models by name, and the
 cheapest, `demo-writer-nano`, invents a price. The acceptance runs as the
 app asks and with each swap, and `yokla compare` names `demo-writer-mini`
@@ -942,7 +958,8 @@ the gate and the baseline in `packages/cli/src/demo-shop.e2e.test.ts`, and
 the model proxy's reconciliation, resilience and inspection runs in
 `packages/cli/src/proxy.e2e.test.ts`, the recorded and replayed runs in
 `packages/cli/src/replay.e2e.test.ts`, the model swaps in
-`packages/cli/src/compare.e2e.test.ts`, and the MCP session in
+`packages/cli/src/compare.e2e.test.ts`, the tool result changes in
+`packages/cli/src/tool-results.e2e.test.ts`, and the MCP session in
 `packages/cli/src/mcp.e2e.test.ts`, whose `yokla mcp` child process loads
 the guard with `--import`.
 
@@ -997,7 +1014,7 @@ them.
 | **D4. Recorded model calls, replayed** (done, ADR-0040) | the proxy records the target's model calls into a cassette and can answer from it, so a run repeats with no model cost; a replay can change one recorded answer, to ask what the app does when the model says something else | a recorded demo-shop run replays with identical results and no upstream call; the resilience cases catch each resilience defect on a cassette; a changed answer's price is traced to the model; a changed prompt diverges from the cassette |
 | **D5. yokla as a tool for coding agents** (done, ADR-0041) | a local MCP server over stdio: run a case, explain a finding (D1), shrink it (D2), verify a fix against the shrunk case and its neighbours; no egress beyond the run's own | an agent, given only the MCP tools, finds and verifies the fix of a seeded demo-shop defect: in CI a scripted client, at no model cost; once by hand, a real coding agent |
 | **D6. Comparing models through the proxy** (done, ADR-0042) | the proxy can send a call to another model than the app asked for, as the command line says; the same cases run once per model, and a report compares verdicts, cost and latency | on the demo-shop, three fake models give the comparison expected of them; the cheapest model that still passes the gate is named |
-| **D7. Tool results changed by the proxy** | the proxy can change a tool result before the model sees it: a canary instruction, for indirect injection without a test copy of the target's data; and changes that must not change the verdict, such as reordered items, for metamorphic checks | the demo-shop's injection defect (v0.5) is caught through a tool result the proxy changed; a metamorphic change gives the same verdicts |
+| **D7. Tool results changed by the proxy** (done, ADR-0043) | the proxy can change a tool result before the model sees it: a canary instruction, for indirect injection without a test copy of the target's data; and changes that must not change the verdict, such as reordered items, for metamorphic checks | the demo-shop's injection defect (v0.5) is caught through a tool result the proxy changed; a metamorphic change gives the same verdicts |
 | **D8. A search for untried paths** | a run that steers new turns towards what the proxy hasn't seen yet: routes, tool sets, argument shapes, fault states; deterministic mutations first, a model-written turn only when configured and budgeted | on the demo-shop, the search reaches every route and every tool, and finds a seeded defect that no written case reaches |
 
 **Later:** sampling production logs, more domains (banking, travel), more

@@ -131,6 +131,17 @@ simulated customer there too.
   `packages/cli/src/replay.e2e.test.ts` records and replays the acceptance
   and resilience cases, and replays the acceptance cassette against a shop
   with `prompt-bloat`, whose changed prompts no longer match it.
+- **Tool results.** With `--tool-results`, the writer also gets its products
+  as the result of a `search_products` call, fenced as data: a `<data>` tag
+  around the text, or a `data` field in Gemini, with a note that it is data,
+  not instructions. The fake provider, like a model that gives in, follows a
+  "reply only with <word>" it finds in a tool result outside such a fence.
+  The `unfenced-tool-results` defect sends tool results as they are.
+  `cases-injection/` holds a case whose turn has the model proxy inject that
+  instruction into the first product name (ADR-0043).
+  `packages/cli/src/tool-results.e2e.test.ts` shows the fenced shop passing,
+  the unfenced one failing `injection-canary` alone, and a run with the
+  search results reversed giving the same verdicts.
 - **Three writer models.** The fake provider answers a call by the model it
   asks for: `demo-writer-1`, as the shop asks, and `demo-writer-mini` alike;
   `demo-writer-nano` writes the first price wrong, as `fabricated-price`

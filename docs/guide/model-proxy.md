@@ -273,6 +273,35 @@ pnpm yokla run --swap-model openai:gpt-big=gateway/vendor/gpt-mini --out runs/ga
 - **Within the run's recording only,** and never with a cassette.
 - Compare the runs with [`yokla compare`](cli.md#yokla-compare).
 
+## Tool results changed by the proxy
+
+Within a recording, the proxy can change the tool results a call sends
+before the model sees them (ADR-0043). A result is found where the proxy
+reads it (ADR-0026) and named by its call's id, in every protocol it speaks.
+
+- **An injection, per turn.** A case turn's `toolResults` append text to a
+  tool's results, to test indirect injection; `injection-canary` judges it
+  (see [cases](cases.md#tool-results-changed-by-the-proxy)).
+- **A metamorphic change, per run.**
+  `yokla run --reverse-items 'search_products=$.results'` reverses each
+  array the path selects in every result of that tool. Run the cases with
+  and without it, then `yokla compare --expect-same` exits with `1` when a
+  verdict moved.
+
+  ```sh
+  pnpm yokla run --out runs/plain.json
+  pnpm yokla run --reverse-items 'search_products=$.results' --out runs/reversed.json
+  pnpm yokla compare --results runs/plain.json --results runs/reversed.json --expect-same
+  ```
+
+- **What is recorded.** Each call keeps the changes it made, applied or not,
+  and `run.toolChanges` how many results each reversal changed. A reversal
+  that changed none is a run issue: the run tested nothing by it.
+- **A changed body** goes uncompressed, without the app's length. What the
+  results keep of the prompt is the changed text, as the model saw it.
+- **Not with a cassette:** a changed request no longer matches what it
+  recorded.
+
 ## Cassettes
 
 A run can record the target's model calls into a cassette, and a later run

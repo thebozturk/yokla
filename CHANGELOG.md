@@ -22,6 +22,12 @@ hold.
   another, in the same protocol, and each call keeps the model asked for.
   `yokla compare` sets runs side by side, gates each, and names the cheapest
   that passes.
+- **Tool results changed by the proxy (ADR-0043).** A case turn's
+  `toolResults` inject text into a tool's results before the model sees
+  them, and the new core check `injection-canary` fails a turn whose answer
+  holds the canary. `yokla run --reverse-items` reverses arrays in a tool's
+  results for a whole run, and `yokla compare --expect-same` exits with 1
+  when a verdict moved.
 
 ## 0.3.0 — 2026-11-15
 
