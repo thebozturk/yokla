@@ -2,7 +2,7 @@
 // turn gets a fault, deterministic jitter, provider-shaped error bodies, and
 // the changes to a real answer that empty it, break it or cut it short.
 
-import type { Fault, FaultPlan, ToolInjection } from '@yokla/core';
+import { seededFraction, type Fault, type FaultPlan, type ToolInjection } from '@yokla/core';
 import { geminiBreakToolCalls, geminiEmptyText, geminiError } from './gemini.ts';
 import type { UpstreamKind } from './usage.ts';
 
@@ -74,17 +74,7 @@ export function nextFault(turn: ArmedTurn, upstream: string): Fault | undefined 
 /** A number from 0 to max, the same for the same seed, so a faulted run repeats. */
 export function jitter(seed: string, max: number): number {
   if (max <= 0) return 0;
-  let hash = 0x81_1c_9d_c5;
-  for (let i = 0; i < seed.length; i += 1) {
-    hash ^= seed.charCodeAt(i);
-    hash = Math.imul(hash, 0x01_00_01_93) >>> 0;
-  }
-  // One step of mulberry32 turns the hash into a uniform fraction.
-  let t = (hash + 0x6d_2b_79_f5) >>> 0;
-  t = Math.imul(t ^ (t >>> 15), t | 1);
-  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-  const fraction = ((t ^ (t >>> 14)) >>> 0) / 4_294_967_296;
-  return Math.round(fraction * max);
+  return Math.round(seededFraction(seed) * max);
 }
 
 /** An error body in the shape the provider uses, so the app parses it as it would a real one. */

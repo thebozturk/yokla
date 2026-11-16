@@ -6,6 +6,16 @@ export function fold(text: string): string {
   return text.toLowerCase().replaceAll('’', "'").normalize('NFD').replaceAll(/\p{M}/gu, '');
 }
 
+/** English lower-casing (ADR-0045). */
+export function lowerCase(text: string): string {
+  return text.toLocaleLowerCase('en');
+}
+
+/** Each letter with a diacritic as its base letter, case kept: "café" → "cafe" (ADR-0045). */
+export function removeDiacritics(text: string): string {
+  return text.normalize('NFD').replaceAll(/\p{M}/gu, '').normalize('NFC');
+}
+
 // Thousands groups with an optional decimal dot (1,299.90), or plain digits
 // with an optional decimal dot (1299 or 899.50).
 const NUMBER = String.raw`(?<num>\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)(?![\d])`;

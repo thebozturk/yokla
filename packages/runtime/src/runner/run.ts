@@ -19,6 +19,7 @@ import {
   extractResponse,
   goalReached,
   maskDeep,
+  quotedValues,
   Results as ResultsSchema,
   messageEvents,
   seenEvidence,
@@ -33,12 +34,15 @@ import {
   runChecks,
   summariseChecks,
   toJson,
+  transformMessage,
+  TRANSFORM_KINDS,
   type AggregationPolicy,
   type Cassette,
   type Case,
   type ModelSwap,
   type ToolInjection,
   type ToolReversal,
+  type TransformKind,
   type CaseCustomer,
   type CaseTurn,
   type Check,
@@ -113,6 +117,8 @@ export interface RunOptions {
   readonly swaps?: readonly ModelSwap[];
   /** Arrays in every result of a tool, reversed by the model proxy (ADR-0043). */
   readonly reversals?: readonly ToolReversal[];
+  /** Each written message sent as these transforms change it (ADR-0045). */
+  readonly transforms?: readonly TransformKind[];
   /** Measure what the run reached into `run.coverage`, as yokla explore does (ADR-0044). */
   readonly coverage?: boolean;
   /** Cases run in parallel. Default 1. */
@@ -392,6 +398,26 @@ export function preflight(options: RunOptions): void {
       "tool results can't be changed with a cassette: a changed request no longer matches what it recorded",
     );
   }
+  // A transformed message is the language pack's to write; a cassette holds the messages
+  // of the transforms it was recorded with (ADR-0045).
+  const transforms = orderedTransforms(options.transforms);
+  if (transforms.length > 0) {
+    const packs = new Set((options.languages ?? []).map((pack) => pack.language));
+    const unpacked = [...new Set(options.cases.map((c) => c.language))].filter(
+      (language) => !packs.has(language),
+    );
+    for (const language of unpacked) {
+      problems.push(`--transform needs the language pack of "${language}", which isn't loaded`);
+    }
+  }
+  if (options.cassette !== undefined && 'replay' in options.cassette) {
+    const recorded = orderedTransforms(options.cassette.replay.transforms);
+    if (recorded.join(',') !== transforms.join(',')) {
+      problems.push(
+        `the cassette was recorded with ${transformsText(recorded)}, and this run asks for ${transformsText(transforms)}: every model call would diverge`,
+      );
+    }
+  }
   const languages = new Set<string>(options.profile.languages);
   const seen = new Set<string>();
   for (const c of options.cases) {
@@ -421,6 +447,51 @@ interface Exchange {
   readonly view: TurnView | undefined;
   /** What ties the model proxy's calls to this turn. */
   readonly tag?: TurnTag;
+  /** The transforms that changed the turn's message (ADR-0045). */
+  readonly changedBy?: readonly TransformKind[];
+}
+
+/** A turn's message as the run's transforms changed it (ADR-0045). */
+interface Sent {
+  /** The message as the case wrote it. */
+  readonly written: string;
+  readonly changedBy: readonly TransformKind[];
+}
+
+/** The run's transforms, each once, in the order they apply (ADR-0045). */
+function orderedTransforms(kinds: readonly TransformKind[] | undefined): TransformKind[] {
+  return TRANSFORM_KINDS.filter((kind) => kinds?.includes(kind) === true);
+}
+
+function transformsText(kinds: readonly TransformKind[]): string {
+  return kinds.length === 0 ? 'no transform' : `--transform ${kinds.join(', ')}`;
+}
+
+/**
+ * A written turn as the run's transforms send it (ADR-0045): its message
+ * changed, seeded by the case, sample and turn as fault jitter is (ADR-0017),
+ * with the values its expectations quote left as written.
+ */
+function transformTurn(
+  options: RunOptions,
+  testCase: Case,
+  sampleIndex: number,
+  turnIndex: number,
+  turn: CaseTurn,
+): { readonly turn: CaseTurn; readonly sent?: Sent } {
+  const kinds = orderedTransforms(options.transforms);
+  const lang = options.languages?.find((pack) => pack.language === testCase.language);
+  if (kinds.length === 0 || lang === undefined) return { turn };
+  const result = transformMessage(turn.user, kinds, {
+    lang,
+    seed: `${testCase.id}|${String(sampleIndex)}|${String(turnIndex)}`,
+    keep: quotedValues(turn.expect),
+  });
+  if (result.changedBy.length === 0) return { turn };
+  return {
+    turn: { ...turn, user: result.text },
+    sent: { written: turn.user, changedBy: result.changedBy },
+  };
 }
 
 /** Whether the model proxy forwards the target's calls: without upstreams, only spans show them (ADR-0029). */
@@ -709,7 +780,7 @@ async function runSample(
   };
 
   /** Sends one turn, reads and keeps its answer. */
-  const runTurn = async (turn: CaseTurn, turnIndex: number): Promise<Exchange> => {
+  const runTurn = async (turn: CaseTurn, turnIndex: number, sent?: Sent): Promise<Exchange> => {
     {
       const requestId = sendsRequestId(target, turn.request?.body) ? ids() : undefined;
       // With a model proxy, the turn's id: marked on the proxy before the request
@@ -729,6 +800,7 @@ async function runSample(
       const trace = correlation === 'header' && proxied ? tag?.id : undefined;
       const base = {
         user: turn.user,
+        ...(sent === undefined ? {} : { written: sent.written }),
         ...(requestId === undefined ? {} : { requestId }),
         checks: [],
       };
@@ -903,6 +975,7 @@ async function runSample(
           };
         }
       }
+      if (sent !== undefined) outcome = { ...outcome, changedBy: sent.changedBy };
       exchanges.push(outcome);
       options.onTurn?.({
         caseId: testCase.id,
@@ -917,8 +990,9 @@ async function runSample(
   let customer: ExchangedSample['customer'];
   try {
     if (testCase.customer === undefined) {
-      for (const [turnIndex, turn] of testCase.turns.entries()) {
-        const outcome = await runTurn(turn, turnIndex);
+      for (const [turnIndex, written] of testCase.turns.entries()) {
+        const { turn, sent } = transformTurn(options, testCase, sampleIndex, turnIndex, written);
+        const outcome = await runTurn(turn, turnIndex, sent);
         if (outcome.turn.error !== undefined) break;
       }
     } else if (simulation !== undefined) {
@@ -1476,6 +1550,8 @@ export async function runSuite(input: RunOptions): Promise<Results> {
   preflight(options);
   const prepared = prepare(options);
   const target = options.profile.target;
+  // The transforms of the written messages, in the order they apply (ADR-0045).
+  const transformed = orderedTransforms(options.transforms);
   const startedAt = new Date();
   const started = performance.now();
   const url = options.targetUrl ?? withEnv(target.request.url, options.env);
@@ -1670,6 +1746,7 @@ export async function runSuite(input: RunOptions): Promise<Results> {
             schema: CASSETTE_SCHEMA_ID,
             profileSha256: options.profileSha256,
             recordedAt: new Date().toISOString(),
+            ...(transformed.length === 0 ? {} : { transforms: transformed }),
             calls: captured,
           });
         }
@@ -1795,12 +1872,33 @@ export async function runSuite(input: RunOptions): Promise<Results> {
               ]
             : [],
         );
+  // How many messages each transform changed; one that changed none measured the cases as written.
+  const sentTurns = exchanged.flatMap((c) => c.samples.flatMap((sample) => sample.exchanges));
+  const transformCounts = transformed.map((kind) => ({
+    kind,
+    messages: sentTurns.filter((exchange) => exchange.changedBy?.includes(kind) === true).length,
+  }));
+  const simulatedLeft =
+    transformed.length === 0 ? 0 : options.cases.filter((c) => c.customer !== undefined).length;
+  const transformIssues = [
+    ...transformCounts.flatMap((count) =>
+      count.messages === 0
+        ? [`--transform ${count.kind} changed no message: the run measured the cases as written`]
+        : [],
+    ),
+    ...(simulatedLeft === 0
+      ? []
+      : [
+          `--transform left ${counted(simulatedLeft, 'case')} with a simulated customer as ${simulatedLeft === 1 ? 'it is' : 'they are'}: the customer model writes their messages`,
+        ]),
+  ];
   const issues = [
     ...observation.issues,
     ...proxyIssues,
     ...replayIssues,
     ...swapIssues,
     ...reversalIssues,
+    ...transformIssues,
     ...capIssues,
     ...(stop === undefined ? [] : [stop]),
   ];
@@ -1830,6 +1928,7 @@ export async function runSuite(input: RunOptions): Promise<Results> {
       ...(recordedCalls === undefined ? {} : { record: { calls: recordedCalls } }),
       ...(swapped.length === 0 ? {} : { swaps: swapped }),
       ...(reversed.length === 0 ? {} : { toolChanges: reversed }),
+      ...(transformCounts.length === 0 ? {} : { transforms: transformCounts }),
       ...(coverage === undefined ? {} : { coverage }),
       ...(replay === undefined
         ? {}

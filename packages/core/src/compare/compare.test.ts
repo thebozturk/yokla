@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateGate } from '../gate/gate.ts';
 import { Results, RESULTS_SCHEMA_ID } from '../schema/results.ts';
-import { Comparison, compareRuns, swapLabel } from './compare.ts';
+import { Comparison, compareRuns, runLabel } from './compare.ts';
 
 type CaseResult = Results['cases'][number];
 
@@ -88,12 +88,12 @@ const swapped = (model: string) => ({
 const compared = (...runs: Results[]) =>
   compareRuns(runs.map((results) => ({ results, gate: evaluateGate(results) })));
 
-describe('swapLabel', () => {
+describe('runLabel', () => {
   it("names a run by its swaps, or as the app's own", () => {
-    expect(swapLabel(run('a', []))).toBe('as the app asks');
-    expect(swapLabel(run('b', [], swapped('mini')))).toBe('fake: big → mini');
+    expect(runLabel(run('a', []))).toBe('as the app asks');
+    expect(runLabel(run('b', [], swapped('mini')))).toBe('fake: big → mini');
     expect(
-      swapLabel(
+      runLabel(
         run('c', [], {
           swaps: [
             { upstream: 'fake', asked: 'big', model: 'mini', to: 'gw', calls: 1 },
@@ -102,6 +102,28 @@ describe('swapLabel', () => {
         }),
       ),
     ).toBe('fake: big → gw/mini; fake: small → nano');
+  });
+
+  it('names the tool changes and the transforms a run made, after its swaps (ADR-0045)', () => {
+    expect(
+      runLabel(
+        run('d', [], {
+          transforms: [
+            { kind: 'no-diacritics', messages: 3 },
+            { kind: 'typos', messages: 5 },
+          ],
+        }),
+      ),
+    ).toBe('transforms: no-diacritics, typos');
+    expect(
+      runLabel(
+        run('e', [], {
+          ...swapped('mini'),
+          toolChanges: [{ tool: 'search_products', at: '$.results', results: 2 }],
+          transforms: [{ kind: 'lowercase', messages: 1 }],
+        }),
+      ),
+    ).toBe('fake: big → mini; reversed: search_products=$.results; transforms: lowercase');
   });
 });
 

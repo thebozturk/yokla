@@ -103,6 +103,8 @@ export {
   reviewStatus,
   Suite,
   SUITES,
+  TRANSFORM_KINDS,
+  TransformKind,
 } from './schema/common.ts';
 export {
   FieldSpec,
@@ -144,7 +146,7 @@ export {
 export { plan, type Plan, type PlannedCase } from './plan/plan.ts';
 export { GateConfig, YoklaConfig, type OwnModel, type Price } from './schema/config.ts';
 export { evaluateGate, type GateBreach, type GateOutcome } from './gate/gate.ts';
-export { Comparison, COMPARISON_SCHEMA_ID, compareRuns, swapLabel } from './compare/compare.ts';
+export { Comparison, COMPARISON_SCHEMA_ID, compareRuns, runLabel } from './compare/compare.ts';
 export {
   argumentShape,
   Coverage,
@@ -260,6 +262,13 @@ export type {
 } from './checks/types.ts';
 export { findPhrases, hasPhrase, type PhraseMatch } from './text/phrases.ts';
 export { findQuantities, type QuantityMention } from './text/quantities.ts';
+export {
+  quotedValues,
+  transformMessage,
+  type TransformContext,
+  type TransformedMessage,
+} from './text/transform.ts';
+export { seededFraction, seededIndex } from './seed.ts';
 export {
   answerText,
   answeredStatus,

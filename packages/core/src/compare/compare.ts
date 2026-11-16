@@ -11,7 +11,7 @@ export const COMPARISON_SCHEMA_ID = 'yokla.comparison/v1';
 
 const Run = z.object({
   id: z.string(),
-  /** The run's swaps, or "as the app asks". */
+  /** What the run changed, or "as the app asks" (runLabel). */
   label: z.string(),
   profileSha256: z.string(),
   gate: z.object({
@@ -54,16 +54,28 @@ export const Comparison = z
   .meta({ title: 'yokla comparison v1' });
 export type Comparison = z.output<typeof Comparison>;
 
-/** "fake: demo-writer-1 → demo-writer-mini", or "as the app asks" for a run with no swap. */
-export function swapLabel(results: Results): string {
-  const swaps = results.run.swaps ?? [];
-  if (swaps.length === 0) return 'as the app asks';
-  return swaps
-    .map(
-      (swap) =>
-        `${swap.upstream}: ${swap.asked} → ${swap.to === undefined ? '' : `${swap.to}/`}${swap.model}`,
-    )
-    .join('; ');
+/**
+ * A run named by what it changed: its swaps (ADR-0042), such as "fake:
+ * demo-writer-1 → demo-writer-mini", its tool changes (ADR-0043) and its
+ * transforms (ADR-0045); "as the app asks" for a run that changed nothing.
+ */
+export function runLabel(results: Results): string {
+  const swaps = (results.run.swaps ?? []).map(
+    (swap) =>
+      `${swap.upstream}: ${swap.asked} → ${swap.to === undefined ? '' : `${swap.to}/`}${swap.model}`,
+  );
+  const reversals = (results.run.toolChanges ?? []).map(
+    (change) => `reversed: ${change.tool}=${change.at}`,
+  );
+  const transforms = results.run.transforms ?? [];
+  const parts = [
+    ...swaps,
+    ...reversals,
+    ...(transforms.length === 0
+      ? []
+      : [`transforms: ${transforms.map((transform) => transform.kind).join(', ')}`]),
+  ];
+  return parts.length === 0 ? 'as the app asks' : parts.join('; ');
 }
 
 /** The target's model cost of a run, from the proxy or else its spans; null when unknown. */
@@ -85,7 +97,7 @@ function summaryOf(results: Results, gate: GateOutcome) {
   const cost = costOf(results);
   return {
     id: results.run.id,
-    label: swapLabel(results),
+    label: runLabel(results),
     profileSha256: results.run.profile.sha256,
     gate: {
       verdict: gate.verdict,

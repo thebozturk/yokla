@@ -98,6 +98,8 @@ export function stubLanguagePack(language: string): LanguagePack {
   return {
     language,
     fold: (text) => text.toLowerCase(),
+    lowerCase: (text) => text.toLowerCase(),
+    removeDiacritics: (text) => text.normalize('NFD').replaceAll(/\p{M}/gu, '').normalize('NFC'),
     findMoney: () => [],
     findDurations: () => [],
     formatMoney: (amount, currency) => `${String(amount)} ${currency}`,

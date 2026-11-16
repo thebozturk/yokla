@@ -172,6 +172,33 @@
             "additionalProperties": false
           }
         },
+        "transforms": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "no-diacritics",
+                  "lowercase",
+                  "no-punctuation",
+                  "typos"
+                ]
+              },
+              "messages": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "kind",
+              "messages"
+            ],
+            "additionalProperties": false
+          }
+        },
         "coverage": {
           "type": "object",
           "properties": {
@@ -682,6 +709,9 @@
                     "type": "object",
                     "properties": {
                       "user": {
+                        "type": "string"
+                      },
+                      "written": {
                         "type": "string"
                       },
                       "requestId": {

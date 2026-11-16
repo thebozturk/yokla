@@ -161,6 +161,13 @@ export interface LanguagePack {
   readonly language: string;
   /** Lower-cases with the language's rules and removes diacritics. */
   fold(text: string): string;
+  /** Lower-cases with the language's rules, as a user who skips capitals writes (ADR-0045). */
+  lowerCase(text: string): string;
+  /**
+   * Each letter with a diacritic as its base letter, case kept, as a user
+   * without the language's keyboard writes (ADR-0045).
+   */
+  removeDiacritics(text: string): string;
   /** Money amounts with a currency marker; bare numbers are not money. */
   findMoney(text: string): MoneyMention[];
   findDurations(text: string): DurationMention[];

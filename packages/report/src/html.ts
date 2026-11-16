@@ -166,6 +166,17 @@ function runSection(results: Results): Html {
     ),
     item('Correlation', run.correlation),
   ];
+  const { transforms } = run;
+  if (transforms !== undefined && transforms.length > 0) {
+    items.push(
+      item(
+        'Transforms',
+        transforms
+          .map((transform) => `${transform.kind}: ${counted(transform.messages, 'message')}`)
+          .join('; '),
+      ),
+    );
+  }
   const { proxy, observation } = run;
   if (proxy !== undefined) {
     const { calls: _calls, ...sums } = proxy.totals;
@@ -424,7 +435,11 @@ function turnBlock(turn: TurnResult, sample: number, index: number): Html {
   const skipped = turn.checks.filter((check) => !check.applicable).map((check) => check.check);
   return h`<div class="turn"><h4>Sample ${sample}, turn ${index}</h4><div class="label">User${
     turn.requestId === undefined ? '' : ` · request id ${turn.requestId}`
-  }</div><pre class="text">${turn.user}</pre>${answerBlock(turn)}${
+  }</div><pre class="text">${turn.user}</pre>${
+    turn.written === undefined
+      ? undefined
+      : h`<div class="label">As the case wrote it</div><pre class="text">${turn.written}</pre>`
+  }${answerBlock(turn)}${
     turn.error === undefined ? undefined : h`<p class="bad">Error: ${turn.error}</p>`
   }${
     turn.issues === undefined || turn.issues.length === 0

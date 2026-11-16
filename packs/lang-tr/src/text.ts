@@ -12,6 +12,19 @@ export function fold(text: string): string {
     .replaceAll(/\p{M}/gu, '');
 }
 
+/** Turkish lower-casing: I → ı, İ → i (ADR-0045). */
+export function lowerCase(text: string): string {
+  return text.toLocaleLowerCase('tr-TR');
+}
+
+/**
+ * Each Turkish letter as a keyboard without them writes it: ç → c, ğ → g,
+ * ı → i, İ → I, ö → o, ş → s, ü → u, and â → a; case kept (ADR-0045).
+ */
+export function removeDiacritics(text: string): string {
+  return text.replaceAll('ı', 'i').normalize('NFD').replaceAll(/\p{M}/gu, '').normalize('NFC');
+}
+
 // Thousands groups with an optional decimal comma (1.299,90); a decimal dot
 // with one or two digits (1299.90); or plain digits with an optional decimal
 // comma (1299 or 899,50).

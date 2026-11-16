@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { Comparison, RESULTS_SCHEMA_ID } from '@yokla/core';
 import { describe, expect, it } from 'vitest';
 import { compareCommand } from './commands/compare.ts';
-import { parseReversal, parseSwap } from './commands/run.ts';
+import { parseReversal, parseSwap, parseTransform } from './commands/run.ts';
 import { LoadError } from './load.ts';
 import { schemas } from './schemas.ts';
 
@@ -204,6 +204,19 @@ describe('parseReversal (ADR-0043)', () => {
     for (const text of ['search_products', '=$.results', 'search=results', 'search=']) {
       expect(() => parseReversal(text), text).toThrow(
         '--reverse-items must be <tool>=<jsonpath>, such as search_products=$.results',
+      );
+    }
+  });
+});
+
+describe('parseTransform (ADR-0045)', () => {
+  it('reads each kind, and refuses anything else', () => {
+    for (const kind of ['no-diacritics', 'lowercase', 'no-punctuation', 'typos'] as const) {
+      expect(parseTransform(kind)).toBe(kind);
+    }
+    for (const text of ['', 'typo', 'Lowercase', 'uppercase', 'no-diacritics,typos']) {
+      expect(() => parseTransform(text), text).toThrow(
+        '--transform must be one of no-diacritics, lowercase, no-punctuation, typos',
       );
     }
   });

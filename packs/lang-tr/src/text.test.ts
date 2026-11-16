@@ -2,7 +2,14 @@ import { findPhrases, findQuantities } from '@yokla/core';
 import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { turkish } from './index.ts';
-import { findDurations, findMoney, fold, formatMoney } from './text.ts';
+import {
+  findDurations,
+  findMoney,
+  fold,
+  formatMoney,
+  lowerCase,
+  removeDiacritics,
+} from './text.ts';
 
 const amounts = (text: string) => findMoney(text).map((m) => [m.amount, m.currency]);
 
@@ -19,6 +26,54 @@ describe('fold', () => {
 
   it('is idempotent', () => {
     fc.assert(fc.property(fc.string(), (text) => fold(fold(text)) === fold(text)));
+  });
+});
+
+// Turkish letters and their look-alikes, so fast-check meets them often.
+const turkishText = fc.string({
+  unit: fc.constantFrom(...'aAçÇğĞıIiİöÖşŞüÜâÂkKzZ ,.?’'.split('')),
+});
+
+describe('lowerCase (ADR-0045)', () => {
+  it.each([
+    ['İADE', 'iade'],
+    ['KIŞ', 'kış'],
+    ['Işık', 'ışık'],
+    ['Çadır Önerir Misin?', 'çadır önerir misin?'],
+  ])('%s → %s', (text, expected) => {
+    expect(lowerCase(text)).toBe(expected);
+  });
+
+  it('folds to what the message as written folds to', () => {
+    fc.assert(fc.property(turkishText, (text) => fold(lowerCase(text)) === fold(text)));
+    fc.assert(fc.property(fc.string(), (text) => fold(lowerCase(text)) === fold(text)));
+  });
+});
+
+describe('removeDiacritics (ADR-0045)', () => {
+  it.each([
+    ['Çadır önerir misin?', 'Cadir onerir misin?'],
+    ['ÇĞİÖŞÜ çğıöşü', 'CGIOSU cgiosu'],
+    ['Kamp ocağı', 'Kamp ocagi'],
+    ['kâr', 'kar'],
+    ['Siyah kadın mont', 'Siyah kadin mont'],
+  ])('%s → %s', (text, expected) => {
+    expect(removeDiacritics(text)).toBe(expected);
+  });
+
+  it('leaves text without diacritics as it is, case included', () => {
+    expect(removeDiacritics('Merhaba, 1.500 TL altinda MONT')).toBe(
+      'Merhaba, 1.500 TL altinda MONT',
+    );
+  });
+
+  it('leaves no Turkish letter', () => {
+    fc.assert(fc.property(turkishText, (text) => !/[çÇğĞıİöÖşŞüÜ]/u.test(removeDiacritics(text))));
+  });
+
+  it('folds to what the message as written folds to', () => {
+    fc.assert(fc.property(turkishText, (text) => fold(removeDiacritics(text)) === fold(text)));
+    fc.assert(fc.property(fc.string(), (text) => fold(removeDiacritics(text)) === fold(text)));
   });
 });
 

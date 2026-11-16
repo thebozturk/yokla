@@ -839,3 +839,46 @@ describe('cases that stopped early (ADR-0038)', () => {
     expect(terminalSummary(mixed).out.join('\n')).not.toContain('stop');
   });
 });
+
+describe('transformed messages (ADR-0045)', () => {
+  const transformed = results(
+    [
+      kase('stroller', 'pass', {
+        samples: [
+          {
+            index: 0,
+            cache: 'cold' as const,
+            turns: [turn({ user: 'Cadir onerir misin?', written: 'Çadır önerir misin?' })],
+          },
+        ],
+      }),
+    ],
+    {
+      transforms: [
+        { kind: 'no-diacritics', messages: 1 },
+        { kind: 'typos', messages: 0 },
+      ],
+    },
+  );
+
+  it('names the transforms and how many messages each changed', () => {
+    expect(terminalSummary(transformed).out).toContain(
+      'transforms: no-diacritics (1 message), typos (0 messages)',
+    );
+    expect(htmlReport(transformed)).toContain('no-diacritics: 1 message; typos: 0 messages');
+  });
+
+  it('shows the message as the case wrote it under the one sent', () => {
+    const page = htmlReport(transformed);
+    const sent = page.indexOf('Cadir onerir misin?');
+    const written = page.indexOf('Çadır önerir misin?');
+    expect(sent).toBeGreaterThan(-1);
+    expect(written).toBeGreaterThan(sent);
+    expect(page).toContain('As the case wrote it');
+  });
+
+  it('says nothing of transforms in a run without them', () => {
+    expect(terminalSummary(mixed).out.join('\n')).not.toContain('transforms');
+    expect(htmlReport(mixed)).not.toContain('As the case wrote it');
+  });
+});

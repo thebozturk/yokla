@@ -5,6 +5,11 @@ import { schemaProblems } from '../jsonschema/jsonschema.ts';
 export const ID_PATTERN = /^[a-z0-9]+(?:[-.][a-z0-9]+)*$/u;
 export const Id = z.string().regex(ID_PATTERN, 'use lowercase letters, digits, "-" and "."');
 
+/** Robustness transforms of a case's messages (ADR-0045), in the order they apply. */
+export const TRANSFORM_KINDS = ['no-diacritics', 'lowercase', 'no-punctuation', 'typos'] as const;
+export const TransformKind = z.enum(TRANSFORM_KINDS);
+export type TransformKind = z.output<typeof TransformKind>;
+
 /** Language codes: ISO 639-1, as provided by language packs. */
 export const LanguageCode = z.string().regex(/^[a-z]{2}$/u, 'use a two-letter language code');
 

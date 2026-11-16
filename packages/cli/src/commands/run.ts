@@ -7,6 +7,8 @@ import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import {
   JsonPath,
+  TRANSFORM_KINDS,
+  TransformKind,
   type Cassette,
   type ModelSwap,
   type Profile,
@@ -41,6 +43,9 @@ Options:
   --reverse-items <tool>=<jsonpath>
                         reverse the arrays the path selects in every result of a tool before the
                         model sees it, to check that verdicts don't move; repeatable
+  --transform <kind>    send each written message as users write it, to check that verdicts
+                        don't move: no-diacritics, lowercase, no-punctuation or typos (one,
+                        seeded by case, sample and turn); repeatable
   --concurrency <n>     cases run in parallel (default: 1)
   --target-url <url>    use this url instead of the profile's request url
   --junit <file>        also write a JUnit XML report
@@ -96,6 +101,15 @@ export function parseReversal(text: string): ToolReversal {
   return { tool: text.slice(0, equals), at };
 }
 
+/** A robustness transform from the command line (ADR-0045). */
+export function parseTransform(text: string): TransformKind {
+  const kind = TransformKind.safeParse(text);
+  if (!kind.success) {
+    throw new LoadError(`--transform must be one of ${TRANSFORM_KINDS.join(', ')}`);
+  }
+  return kind.data;
+}
+
 function positiveInt(value: string | undefined, name: string): number | undefined {
   if (value === undefined) return undefined;
   const number = Number(value);
@@ -130,6 +144,7 @@ const RUN_OPTIONS = {
   'replay-loose': { type: 'boolean' },
   'swap-model': { type: 'string', multiple: true },
   'reverse-items': { type: 'string', multiple: true },
+  transform: { type: 'string', multiple: true },
   concurrency: { type: 'string' },
   'target-url': { type: 'string' },
   junit: { type: 'string' },
@@ -193,6 +208,8 @@ export async function runCommand(
     const swaps = (values['swap-model'] ?? []).map((text) => parseSwap(text, prepared.profile));
     // Arrays in every result of a tool, reversed before the model sees them (ADR-0043).
     const reversals = (values['reverse-items'] ?? []).map(parseReversal);
+    // Each written message as users write it (ADR-0045).
+    const transforms = (values.transform ?? []).map(parseTransform);
     const results = await runSuite({
       ...prepared.base,
       cases: [...prepared.cases],
@@ -220,6 +237,7 @@ export async function runCommand(
       ...(concurrency === undefined ? {} : { concurrency }),
       ...(swaps.length === 0 ? {} : { swaps }),
       ...(reversals.length === 0 ? {} : { reversals }),
+      ...(transforms.length === 0 ? {} : { transforms }),
       ...(maxCost === undefined ? {} : { maxCostUsd: maxCost }),
       ...(values['fresh-customer'] === true ? { freshCustomer: true } : {}),
     });

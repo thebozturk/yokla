@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import { RunCoverage } from '../explore/coverage.ts';
-import { Id, LanguageCode, Suite } from './common.ts';
+import { Id, LanguageCode, Suite, TransformKind } from './common.ts';
 import {
   ModelOutput,
   PromptMessage,
@@ -87,7 +87,10 @@ export const CheckResult = z.object({
 });
 
 export const TurnResult = z.object({
+  /** The message as sent: as the case wrote it, or as the run's transforms changed it. */
   user: z.string(),
+  /** The message as the case wrote it, when a transform changed it (ADR-0045). */
+  written: z.string().optional(),
   /** The id yokla sent with the request, when the profile asks for one. */
   requestId: z.string().optional(),
   response: z
@@ -300,6 +303,10 @@ export const Results = z
             calls: z.int().nonnegative(),
           }),
         )
+        .optional(),
+      /** The run's transforms of the cases' messages, and how many messages each changed (ADR-0045). */
+      transforms: z
+        .array(z.object({ kind: TransformKind, messages: z.int().nonnegative() }))
         .optional(),
       /** What the run reached, when asked to measure it (ADR-0044). */
       coverage: RunCoverage.optional(),

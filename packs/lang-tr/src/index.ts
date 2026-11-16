@@ -2,11 +2,20 @@
 // match at the start of a word; a trailing "$" requires the word to end there.
 
 import type { LanguagePack } from '@yokla/core';
-import { findDurations, findMoney, fold, formatMoney } from './text.ts';
+import {
+  findDurations,
+  findMoney,
+  fold,
+  formatMoney,
+  lowerCase,
+  removeDiacritics,
+} from './text.ts';
 
 export const turkish: LanguagePack = {
   language: 'tr',
   fold,
+  lowerCase,
+  removeDiacritics,
   findMoney,
   findDurations,
   formatMoney,
@@ -166,4 +175,11 @@ export const turkish: LanguagePack = {
   ],
 };
 
-export { findDurations, findMoney, fold, formatMoney } from './text.ts';
+export {
+  findDurations,
+  findMoney,
+  fold,
+  formatMoney,
+  lowerCase,
+  removeDiacritics,
+} from './text.ts';

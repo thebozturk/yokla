@@ -2,7 +2,14 @@ import { findPhrases, findQuantities } from '@yokla/core';
 import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { english } from './index.ts';
-import { findDurations, findMoney, fold, formatMoney } from './text.ts';
+import {
+  findDurations,
+  findMoney,
+  fold,
+  formatMoney,
+  lowerCase,
+  removeDiacritics,
+} from './text.ts';
 
 const amounts = (text: string) => findMoney(text).map((m) => [m.amount, m.currency]);
 
@@ -14,6 +21,29 @@ describe('fold', () => {
 
   it('is idempotent', () => {
     fc.assert(fc.property(fc.string(), (text) => fold(fold(text)) === fold(text)));
+  });
+});
+
+describe('lowerCase (ADR-0045)', () => {
+  it('lower-cases', () => {
+    expect(lowerCase("Do You Have Women's Jackets in Size M?")).toBe(
+      "do you have women's jackets in size m?",
+    );
+  });
+
+  it('folds to what the message as written folds to', () => {
+    fc.assert(fc.property(fc.string(), (text) => fold(lowerCase(text)) === fold(text)));
+  });
+});
+
+describe('removeDiacritics (ADR-0045)', () => {
+  it('removes combining marks and keeps case', () => {
+    expect(removeDiacritics('Café Naïve RÉSUMÉ')).toBe('Cafe Naive RESUME');
+    expect(removeDiacritics('Show me headlamps')).toBe('Show me headlamps');
+  });
+
+  it('folds to what the message as written folds to', () => {
+    fc.assert(fc.property(fc.string(), (text) => fold(removeDiacritics(text)) === fold(text)));
   });
 });
 

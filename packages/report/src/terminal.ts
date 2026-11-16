@@ -93,6 +93,14 @@ export function terminalSummary(results: Results): TerminalSummary {
       `yokla's own model: ${counted(own.calls, 'call')}, ${String(own.cached)} from the cache; costUsd ${own.costUsd === null ? 'unknown' : String(Math.round(own.costUsd * 1e6) / 1e6)}`,
     );
   }
+  const transforms = results.run.transforms;
+  if (transforms !== undefined && transforms.length > 0) {
+    out.push(
+      `transforms: ${transforms
+        .map((transform) => `${transform.kind} (${counted(transform.messages, 'message')})`)
+        .join(', ')}`,
+    );
+  }
   for (const issue of results.run.issues ?? []) err.push(`  run: ${issue}`);
   return { out, err };
 }
