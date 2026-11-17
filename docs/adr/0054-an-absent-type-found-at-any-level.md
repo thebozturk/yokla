@@ -1,6 +1,6 @@
 # 0054. An absent type is found at any level of a catalog type
 
-Status: Proposed · Date: 2026-11-17
+Status: Accepted · Date: 2026-11-17
 
 ## Context
 
