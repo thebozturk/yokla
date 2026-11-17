@@ -243,10 +243,19 @@ export interface Intents {
 }
 
 /** A domain pack bound to one profile: its checks, with their data already loaded. */
+/**
+ * The facts an expectation states about the pack's data that the data no
+ * longer holds, one line each; empty when it states none, or all hold
+ * (ADR-0053). An unknown is not unmet.
+ */
+export type UnmetFacts = (expect: Readonly<Record<string, unknown>>) => readonly string[];
+
 export interface PreparedPack {
   readonly checks: readonly Check[];
   /** Turns built from the target's data, for yokla explore (ADR-0044). */
   readonly intents?: Intents;
+  /** What a case's expectations state that the data no longer holds (ADR-0053). */
+  readonly unmetFacts?: UnmetFacts;
 }
 
 export interface PackIo {

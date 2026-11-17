@@ -252,6 +252,8 @@ export const CaseResult = z.object({
   samples: z.array(Sample),
   /** The samples the case planned, when it stopped early once its failure was settled (ADR-0038). */
   samplesPlanned: z.int().positive().optional(),
+  /** Why the case is fixture-missing: the facts the data no longer holds, one line each (ADR-0053). */
+  fixture: z.array(z.string().min(1)).min(1).optional(),
 });
 
 export const CheckSummary = z.object({
@@ -313,6 +315,20 @@ export const Results = z
       coverage: RunCoverage.optional(),
       /** Every candidate yokla explore ran, kept or not (ADR-0046). */
       exploration: Exploration.optional(),
+      /** The files the domain pack read: the data the run was judged on (ADR-0053). */
+      data: z
+        .array(
+          z.object({
+            /** As the profile names it, relative to the profile. */
+            path: z.string().min(1),
+            sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+            /** Its non-empty lines: one per JSON Lines row. */
+            rows: z.int().nonnegative(),
+            /** Unknown when the file was read by other means than the file system. */
+            modifiedAt: z.iso.datetime().optional(),
+          }),
+        )
+        .optional(),
       /** The run's changes to every result of a tool, and how many results each changed (ADR-0043). */
       toolChanges: z
         .array(z.object({ tool: z.string(), at: z.string(), results: z.int().nonnegative() }))

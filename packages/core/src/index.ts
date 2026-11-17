@@ -261,7 +261,9 @@ export type {
   ProxyCallView,
   SeenItem,
   TurnView,
+  UnmetFacts,
 } from './checks/types.ts';
+export { caseUnmetFacts } from './fixture/facts.ts';
 export { findPhrases, hasPhrase, type PhraseMatch } from './text/phrases.ts';
 export { findQuantities, type QuantityMention } from './text/quantities.ts';
 export {
