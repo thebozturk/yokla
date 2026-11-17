@@ -12,6 +12,7 @@ import type {
   OwnModel,
   ProbedRows,
 } from '@yokla/core';
+import { contractStep, type ContractReport } from './contract.ts';
 import { readDataFiles } from './data.ts';
 import { inventory, type Inventory } from './inventory.ts';
 import {
@@ -35,6 +36,7 @@ import { sessionMode } from '@yokla/core';
 export { inventory, MAX_FILE_BYTES, type Inventory, type InventoryFile } from './inventory.ts';
 export { MAX_ROWS, readDataFiles, rowsOf } from './data.ts';
 export { ProbeError, type Probed, type ProbeTarget, type SentProbe } from './probe.ts';
+export { contractStep, type ContractReport, type ContractStep } from './contract.ts';
 export {
   planModelStep,
   runModelStep,
@@ -87,11 +89,22 @@ export interface Analyzed {
   readonly inventory: Inventory;
   readonly probes: readonly SentProbe[];
   readonly entries: readonly ProposedEntry[];
+  /** Each contract file read, and what became of it (ADR-0057). */
+  readonly contracts: readonly ContractReport[];
   /** The model step's outcome, when it ran (ADR-0049). */
   readonly model?: ModelStep;
   readonly document: Record<string, JsonValue>;
   /** The pointers a comparison leaves out: the person's own inputs. */
   readonly exclude: readonly string[];
+}
+
+/** The path a request url calls, for finding its operation in a contract. */
+function requestPath(url: string): string {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return '/';
+  }
 }
 
 /** A data file's path as the proposed profile reads it: relative to its folder. */
@@ -212,6 +225,16 @@ export async function analyzeTarget(options: AnalyzeOptions): Promise<Analyzed> 
   options.onProbes?.(plannedMessages(target, probedRows));
   const probed = await probeTarget(target, probedRows);
   entries.unshift(...probeEntries(probed, evidenceFields));
+  // The contract a contract file states, where every probe answer keeps it (ADR-0057).
+  const contract = contractStep({
+    dir: options.dir,
+    files: prepared.listed.files,
+    request: { path: requestPath(person.url), method: 'POST' },
+    textPath: probed.inference.text.path,
+    evidencePaths: probed.collections.map((found) => found.match.items),
+    answers: probed.answers,
+  });
+  if (contract.entry !== undefined) entries.push(contract.entry);
   // The model reads last. Its fields (the limits, the cache bypass, the
   // refusals) are none the data or the probes give, so they come first by
   // construction (ADR-0049); the e2e test proposes no pointer twice.
@@ -243,6 +266,7 @@ export async function analyzeTarget(options: AnalyzeOptions): Promise<Analyzed> 
   return {
     inventory: prepared.listed,
     probes: probed.probes,
+    contracts: contract.contracts,
     ...(model === undefined ? {} : { model }),
     entries,
     document: proposalDocument(person, mode, entries),

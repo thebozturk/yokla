@@ -133,6 +133,7 @@ describe('probeEntries (ADR-0047)', () => {
         },
         sessionOpen: undefined,
         probes: [],
+        answers: [],
         collections: [
           {
             name: 'products',

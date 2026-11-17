@@ -59,6 +59,8 @@ export interface Probed {
   readonly sessionOpen: { readonly url: string; readonly from: string } | undefined;
   readonly probes: readonly SentProbe[];
   readonly collections: readonly FoundCollection[];
+  /** The 2xx answers as yokla run reads them, kept in memory to check a contract (ADR-0057). */
+  readonly answers: readonly JsonValue[];
 }
 
 /** The messages that will be sent, so they can be shown before any is. */
@@ -140,6 +142,7 @@ export async function probeTarget(
   }
 
   const probes: SentProbe[] = [];
+  const answers: JsonValue[] = [];
   const greeted = await send(request, target.greeting);
   const outcome = inferResponse({
     status: greeted.status,
@@ -159,6 +162,9 @@ export async function probeTarget(
   const { inference } = outcome;
   const record = (message: string, answer: typeof greeted): JsonValue | undefined => {
     const document = documentOf(answer.text, inference);
+    if (document !== undefined && answer.status >= 200 && answer.status <= 299) {
+      answers.push(document);
+    }
     probes.push({
       message,
       status: answer.status,
@@ -202,5 +208,5 @@ export async function probeTarget(
       take(record(next.message, await send(request, next.message)), next.collection, 3);
     }
   }
-  return { inference, sessionOpen, probes, collections };
+  return { inference, sessionOpen, probes, collections, answers };
 }

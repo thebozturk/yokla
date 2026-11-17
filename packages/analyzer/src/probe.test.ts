@@ -99,6 +99,27 @@ const target = (url: string, change: Partial<ProbeTarget> = {}): ProbeTarget => 
 });
 
 describe('probeTarget (ADR-0047)', () => {
+  it('keeps only the 2xx answers in memory, for a contract to be checked against (ADR-0057)', async () => {
+    const { url } = await shop((body, response) => {
+      const message = String(body['message']);
+      const greeting = message.startsWith('Hello');
+      const text = greeting ? `You said: ${message}. How can I help?` : 'Busy, try again later.';
+      response
+        .writeHead(greeting ? 200 : 503, { 'content-type': 'application/json' })
+        .end(JSON.stringify({ reply: { text, route: 'chat' } }));
+    });
+    const result = await probeTarget(target(url), probed);
+    expect(result.probes.map((probe) => probe.status)).toEqual([200, 503]);
+    expect(result.answers).toEqual([
+      {
+        reply: {
+          text: 'You said: Hello! What can you help me with?. How can I help?',
+          route: 'chat',
+        },
+      },
+    ]);
+  });
+
   it('greets, asks for a type, then puts the first product shown in the cart', async () => {
     const { url, heard } = await shop();
     const result = await probeTarget(target(url), probed);
@@ -116,6 +137,8 @@ describe('probeTarget (ADR-0047)', () => {
       [200, 'Plaj Çadırı sepete'],
     ]);
     expect(result.probes[1]?.shape).not.toContain('Kubbe');
+    // Kept in memory for a contract to be checked against (ADR-0057).
+    expect(result.answers).toHaveLength(3);
     expect(result.collections).toEqual([
       {
         name: 'products',

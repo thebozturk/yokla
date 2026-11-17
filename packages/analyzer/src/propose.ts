@@ -14,6 +14,7 @@ import {
 } from '@yokla/core';
 import { parse, stringify } from 'yaml';
 import type { Inventory } from './inventory.ts';
+import type { ContractReport } from './contract.ts';
 import type { ModelStep } from './model.ts';
 import type { FoundCollection, Probed } from './probe.ts';
 
@@ -216,6 +217,8 @@ export function analysisReport(input: {
   readonly proposal: JsonValue;
   readonly reference?: { readonly path: string; readonly document: JsonValue };
   readonly exclude: readonly string[];
+  /** Each contract file read, and what became of it (ADR-0057). */
+  readonly contracts?: readonly ContractReport[];
   /** The model step's outcome, when it ran (ADR-0049). */
   readonly model?: ModelStep;
 }): Analysis {
@@ -233,6 +236,14 @@ export function analysisReport(input: {
     },
     probes: input.probes.map((probe) => ({ ...probe })),
     entries: input.entries.map((entry) => ({ ...entry })),
+    ...(input.contracts === undefined || input.contracts.length === 0
+      ? {}
+      : {
+          contracts: input.contracts.map((contract) => ({
+            ...contract,
+            details: [...contract.details],
+          })),
+        }),
     ...(input.model === undefined
       ? {}
       : {

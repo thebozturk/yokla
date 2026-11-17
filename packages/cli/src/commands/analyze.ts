@@ -254,6 +254,14 @@ export async function analyzeCommand(
     for (const entry of analyzed.entries) {
       io.out(`  ${entry.pointer}  (${entry.provenance.source})`);
     }
+    // Each contract file read, and what became of it (ADR-0057).
+    for (const contract of analyzed.contracts) {
+      const what = [contract.read, contract.at === undefined ? undefined : `at ${contract.at}`]
+        .filter((part) => part !== undefined)
+        .join(' ');
+      io.out(`contract: ${contract.file}${what === '' ? '' : ` ${what}`}: ${contract.outcome}`);
+      for (const detail of contract.details) io.out(`  ${detail}`);
+    }
     const { model } = analyzed;
     if (model !== undefined) {
       const { summary } = model;
@@ -293,6 +301,7 @@ export async function analyzeCommand(
       entries: analyzed.entries,
       proposal: analyzed.document,
       exclude: personPointers(person),
+      contracts: analyzed.contracts,
       ...(reference === undefined ? {} : { reference }),
       ...(model === undefined ? {} : { model }),
     });
