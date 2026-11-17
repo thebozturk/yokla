@@ -55,7 +55,10 @@ With your assistant's repository at hand, `npx yokla analyze --dir <repo>
 --url <chat url>` proposes more of the profile: your catalog and its fields,
 your policies' sources, and where the products are in an answer, found by
 matching its values to your catalog's. Each entry says where it came from,
-and nothing runs until you approve it. It makes no model call either.
+and nothing runs until you approve it. It makes no model call either. With
+a model you configure, it also reads your docs and code for your rate
+limits, your cache bypass and your refusals, keeps only the values it can
+see in the line it quotes, and prints what that will cost first.
 
 ## What a failure looks like
 

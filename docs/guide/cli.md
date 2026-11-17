@@ -104,9 +104,48 @@ the precision, same ÷ (same + different + new), and the recall, same ÷
 (same + different + missed). Your own inputs, the request and the
 languages you named, are left out, and so are the profile's entries that
 aren't approved. On the demo-shop it proposes 30 entries, all the
-hand-written ones: precision 100 %, recall 46.9 %. What it misses, such as
-the cache bypass, the limits, the response contract and the canonical
-refusals, is what code, docs and prompts must give a later step.
+hand-written ones: precision 100 %, recall 46.9 %.
+
+**With a model (ADR-0049).** With `models.analyzer` in the configuration, a
+model also reads the docs, prompts, contracts, manifests, env examples and
+code, in that order, for three things each project writes its own way: the
+rate limits, the cache bypass header and the canonical refusals.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--config <file>` | `yokla.config.yaml`, when present | Where `models.analyzer` is. |
+| `--max-cost <usd>` | | Send no further chunk once the step's spend reaches this. Required with `models.analyzer`. |
+| `--max-tokens <n>` | 200000 | The most input tokens the model reads; files beyond it aren't sent, and the summary names them. |
+| `--chunk-tokens <n>` | 8000 | The most tokens in one call. A file larger than that is cut at line breaks. |
+| `--estimate` | | Print the files and the estimate, and send nothing: no probe, no model call. |
+| `--fresh-model` | | Ask the model anew, whatever its reply cache holds. |
+
+- **What it never reads:** data files, whose rows may hold personal data,
+  environment files, and test files: paths in a `test`, `tests` or
+  `__tests__` folder, or named like `*.test.*`, `*.spec.*`, `*_test.*` or
+  `test_*.py`.
+- **Before the first call** it prints the files it sends, the chunks and
+  their input tokens, the most output tokens, the estimated cost and twice
+  that as the upper bound, and the model's url, where the files' text goes.
+  Run with `--estimate` first, and approve that figure.
+- **Every value is checked** against the line it quotes: the file and line
+  were sent, the quote is on that line or within two lines of it, and the
+  value stands alone in the quote. What fails is listed as unverified, with
+  why, and never proposed. A limit or a cache bypass found with two values is
+  a conflict, and neither is proposed; refusals gather into their language's
+  list.
+- **The provenance** names the file's kind as the source (`doc`, `prompt`,
+  `contract`, or `code` for code, manifests and env examples), and the file,
+  line and quote as the evidence.
+- **Replies are cached** in `yokla-data/analyzer/` next to the proposal, so a
+  rerun on unchanged files costs nothing and writes the same file.
+- **The report** adds `model` (calls, cached, tokens, cost, the files sent
+  and left), `unverified` and `conflicts`.
+
+On the demo-shop, with the fake provider playing the model, it adds the two
+limits, the cache bypass and the two canonical refusals: 37 entries, all the
+hand-written ones, recall 57.8 %. The limit the fake model invents is
+dropped as unverified.
 
 It exits with `0` when the proposal was written, and with `2` for a wrong
 option, a probe that failed, or a proposal that exists without `--force`.
@@ -306,6 +345,12 @@ plan:
   - **Without a `price`,** its calls have no cost, never 0.
   - **Privacy:** a hosted model receives the conversation, the target's
     answers included.
+- **`models.analyzer`:** the model `yokla analyze` asks for values in the
+  target's docs, prompts and code (ADR-0049), in the same kinds as
+  `models.customer`. Give it a `maxTokens` its replies fit in, such as 2000,
+  and a `price`, 0 for a local model: without one, `--max-cost` couldn't be
+  kept, and `yokla analyze` refuses to run it. A hosted model receives those
+  files' text.
 - **`checks`:** check modules you wrote, relative to this file (ADR-0030).
   `yokla run` loads them, and refuses one outside the contract before any
   request. See [checks you write](checks.md#checks-you-write-adr-0030).

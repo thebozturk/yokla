@@ -78,6 +78,14 @@ hold.
   yakın seçenek", "no exact match", "closest option" and "closest match".
   An answer that offers the closest products with these words no longer
   reads as a silent relaxation; a price bound it doesn't name still fails.
+- **The analyzer reads code and docs (ADR-0049).** With `models.analyzer`,
+  `yokla analyze` sends the docs, prompts and code, never data, environment
+  or test files, in chunks to that model, under `--max-tokens` and a
+  required `--max-cost`, with an estimate first and `--estimate` to send
+  nothing. It proposes the rate limits, the cache bypass and the canonical
+  refusals, each checked against the line it quotes; what fails is listed
+  as unverified. Replies are cached, so a rerun is free. The report gains
+  `model`, `unverified` and `conflicts`.
 
 ## 0.3.0 — 2026-11-15
 

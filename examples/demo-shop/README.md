@@ -171,8 +171,9 @@ simulated customer there too.
   runs `yokla analyze` on a copy of this folder and probes the shop
   (ADR-0047). Its proposal is compared with `yokla.profile.yaml`, which it
   never reads: 30 entries, every one the hand-written profile's, from
-  `data/` and three probes. The 34 it misses are what code, docs and
-  prompts must give a later step.
+  `data/` and three probes. With the fake provider as `models.analyzer`
+  (ADR-0049), it also finds the rate limits, the cache bypass and the
+  refusals: 37 entries, and the limit the fake model invents is dropped.
 - **A coding agent's tools.** `packages/cli/src/mcp.e2e.test.ts` drives
   `yokla mcp` over stdio, as a coding agent would (ADR-0041), against a shop
   with `price-rewritten`. It finds the rewritten price, traced to the app,

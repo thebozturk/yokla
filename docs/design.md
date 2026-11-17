@@ -310,8 +310,15 @@ give, and measures the proposal against a profile, at no model cost.
 - **The measure:** each entry `same`, `different`, `new` or `missed` against
   a profile, with precision and recall. On the demo-shop: 30 entries
   proposed, all the hand-written ones; recall 46.9 %.
-- **Next:** extraction by a model from code, docs and prompts, in a later
-  ADR, judged by the same measure.
+- **With a model (ADR-0049):** `models.analyzer` reads the docs, prompts and
+  code, never data, environment or test files, under a token budget and a
+  required cost cap, with an estimate first. It proposes only what can be
+  checked word for word against the line it quotes: the rate limits, the
+  cache bypass and the canonical refusals. What fails the check is listed
+  and never proposed. On the demo-shop, with the fake provider: 37 entries,
+  recall 57.8 %.
+- **Left to the person, or later ADRs:** the response contract, the
+  capabilities, `neverFabricate` and `everyAnswer`.
 
 The plan for the whole analyzer:
 
@@ -327,8 +334,9 @@ The plan for the whole analyzer:
 1. **Inventory (deterministic, no LLM; done, ADR-0047).** Find OpenAPI files,
    prompt-like files, docs, env examples that reveal provider base URLs, and
    framework hints.
-2. **Extraction (LLM agent, budgeted).** Read the inventoried files in bounded
-   chunks and propose profile entries, each pointing to its evidence.
+2. **Extraction (LLM, budgeted; the verifiable fields done, ADR-0049).** Read
+   the inventoried files in bounded chunks and propose profile entries, each
+   pointing to its evidence, checked against it.
 3. **Probe (black-box).** Send a small fixed probe set to the live target to
    confirm the response mapping, languages, refusal style and rate limits.
    ADR-0047 sends three, for the response mapping and the evidence.
@@ -816,6 +824,11 @@ ADR-0014 sets how cost and latency are bounded.
   that may hold secrets. Its proposal and report hold paths, field names,
   answer shapes and the probes' messages, which name a type and a product of
   the catalog; never a data file's rows or an answer's values (ADR-0047).
+  With `models.analyzer`, the text of its docs, prompts and code goes to that
+  model, never its data, environment or test files; the terminal names the
+  model's url before the first call, and a local model keeps it on the
+  machine. The cache of its replies in `yokla-data/analyzer/` quotes the
+  code (ADR-0049).
 - **Coding agents.** `yokla mcp`'s tool results hold the target's answers,
   which the agent may send to its own model, hosted or local. Prompts appear
   only as `prompts.store` keeps them (ADR-0041).
@@ -1030,6 +1043,12 @@ configuration.
   `neverFabricate`.
 - **Gating:** the proposal doesn't run until its entries are approved, and
   two analyses write the same file.
+- **With a model (ADR-0049):** the fake provider plays `models.analyzer` by
+  rules. It finds the rate limits in `src/server.ts`, the cache bypass in the
+  README and the refusals in `src/model.ts`, and invents a limit the line it
+  quotes doesn't hold. The proposal gains the 7 entries, all the
+  hand-written ones, recall 57.8 %; the invented limit is listed as
+  unverified. A second analysis answers from the cache, with no call.
 
 For the intents that state what they ask (ADR-0046), `type-bound-ignored`
 drops the price bound for sleeping bags, a type no written case asks about.
