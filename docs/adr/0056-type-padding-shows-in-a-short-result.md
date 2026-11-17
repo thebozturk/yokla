@@ -1,6 +1,6 @@
 # 0056. Type padding shows in a short result, not an empty band
 
-Status: Proposed · Date: 2026-11-17
+Status: Accepted · Date: 2026-11-17
 
 ## Context
 
