@@ -73,7 +73,7 @@ old one.
 | [0058](0058-the-demo-shop-contract-is-19-entries.md) | The demo-shop's contract is 19 entries | Accepted |
 | [0059](0059-paraphrase-and-code-switching-by-a-model.md) | Paraphrase and code-switching, written by a model | Accepted; amended by 0060 |
 | [0060](0060-a-rewrite-adds-nothing-and-keeps-its-language.md) | A rewrite adds nothing, and keeps its language | Accepted |
-| [0061](0061-negated-stock-wording-and-products-only-named.md) | Negated stock wording, and products the answer only names | Proposed |
+| [0061](0061-negated-stock-wording-and-products-only-named.md) | Negated stock wording, and products the answer only names | Accepted |
 
 ## Template
 

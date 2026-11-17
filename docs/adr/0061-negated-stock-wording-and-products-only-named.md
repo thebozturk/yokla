@@ -1,6 +1,6 @@
 # 0061. Negated stock wording, and products the answer only names
 
-Status: Proposed · Date: 2026-11-17
+Status: Accepted · Date: 2026-11-17
 
 ## Context
 
