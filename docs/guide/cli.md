@@ -117,6 +117,9 @@ rate limits, the cache bypass header and the canonical refusals.
 | `--max-cost <usd>` | | Send no further chunk once the step's spend reaches this. Required with `models.analyzer`. |
 | `--max-tokens <n>` | 200000 | The most input tokens the model reads; files beyond it aren't sent, and the summary names them. |
 | `--chunk-tokens <n>` | 8000 | The most tokens in one call. A file larger than that is cut at line breaks. |
+
+Tokens are counted as one per two characters (ADR-0051): code takes about
+one per 2.5, so the estimate stays above most code's count.
 | `--estimate` | | Print the files and the estimate, and send nothing: no probe, no model call. |
 | `--fresh-model` | | Ask the model anew, whatever its reply cache holds. |
 
@@ -137,10 +140,16 @@ rate limits, the cache bypass header and the canonical refusals.
 - **The provenance** names the file's kind as the source (`doc`, `prompt`,
   `contract`, or `code` for code, manifests and env examples), and the file,
   line and quote as the evidence.
+- **A reply it can't read is named (ADR-0051).** A reply that stopped at the
+  model's `maxTokens`, or isn't the JSON asked for, gives no value. The
+  summary names its chunk's files and why, and, for a cut one, that
+  `models.analyzer.maxTokens` is the setting to raise. Its cost counts.
 - **Replies are cached** in `yokla-data/analyzer/` next to the proposal, so a
-  rerun on unchanged files costs nothing and writes the same file.
+  rerun on unchanged files costs nothing and writes the same file. Only a
+  reply that was read is cached, and `maxTokens` isn't in the key: raising
+  it asks only the cut chunks anew.
 - **The report** adds `model` (calls, cached, tokens, cost, the files sent
-  and left), `unverified` and `conflicts`.
+  and left, the unread chunks), `unverified` and `conflicts`.
 
 On the demo-shop, with the fake provider playing the model, it adds the two
 limits, the cache bypass and the two canonical refusals: 37 entries, all the
@@ -347,10 +356,12 @@ plan:
     answers included.
 - **`models.analyzer`:** the model `yokla analyze` asks for values in the
   target's docs, prompts and code (ADR-0049), in the same kinds as
-  `models.customer`. Give it a `maxTokens` its replies fit in, such as 2000,
-  and a `price`, 0 for a local model: without one, `--max-cost` couldn't be
-  kept, and `yokla analyze` refuses to run it. A hosted model receives those
-  files' text.
+  `models.customer`. Give it a `maxTokens` its replies fit in, such as 8000:
+  a model that reasons spends output tokens on it, counted against
+  `maxTokens` and billed as output (ADR-0051). Give it a `price` too, 0 for
+  a local model: without one, `--max-cost` couldn't be kept, and
+  `yokla analyze` refuses to run it. A hosted model receives those files'
+  text. `maxTokens` goes up to 64,000 for any of yokla's own models.
 - **`checks`:** check modules you wrote, relative to this file (ADR-0030).
   `yokla run` loads them, and refuses one outside the contract before any
   request. See [checks you write](checks.md#checks-you-write-adr-0030).

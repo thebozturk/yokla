@@ -317,6 +317,11 @@ give, and measures the proposal against a profile, at no model cost.
   cache bypass and the canonical refusals. What fails the check is listed
   and never proposed. On the demo-shop, with the fake provider: 37 entries,
   recall 56.1 %.
+- **Replies it can't read (ADR-0051):** a reply cut at `maxTokens`, as each
+  provider kind reports it, or not the JSON asked for, gives no value, is
+  named in the summary and the report, and is never cached. Tokens are
+  counted as one per two characters, so the estimate stays above code's
+  count.
 - **Left to the person, or later ADRs:** the response contract, the
   capabilities, `neverFabricate` and `everyAnswer`.
 
@@ -1050,6 +1055,10 @@ configuration.
   quotes doesn't hold. The proposal gains the 7 entries, all the
   hand-written ones, recall 56.1 %; the invented limit is listed as
   unverified. A second analysis answers from the cache, with no call.
+- **Cut replies (ADR-0051):** the fake provider honours `max_tokens`. With
+  20, the replies that hold entries are cut: the summary and the report name
+  their chunks, and none of their values is proposed. With 2000, only those
+  chunks are asked anew; the others come from the cache.
 
 For the intents that state what they ask (ADR-0046), `type-bound-ignored`
 drops the price bound for sleeping bags, a type no written case asks about.

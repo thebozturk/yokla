@@ -92,6 +92,13 @@ hold.
   refusals, each checked against the line it quotes; what fails is listed
   as unverified. Replies are cached, so a rerun is free. The report gains
   `model`, `unverified` and `conflicts`.
+- **Replies the analyzer couldn't read are named (ADR-0051).** A reply cut
+  at `maxTokens`, as OpenAI-compatible, Anthropic and Gemini report it, or
+  not the JSON asked for, gives no value; the summary and `model.unread`
+  name its chunk, and it is never cached. `maxTokens` leaves the cache key,
+  so raising it asks only the cut chunks anew. Tokens are counted as one per
+  two characters, not four. yokla's own models take a `maxTokens` up to
+  64,000, up from 4,000: a model that reasons spends output tokens on it.
 
 ## 0.3.0 — 2026-11-15
 
