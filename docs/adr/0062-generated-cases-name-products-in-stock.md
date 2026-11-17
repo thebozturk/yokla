@@ -1,6 +1,6 @@
 # 0062. Generated cases name products in stock
 
-Status: Proposed · Date: 2026-11-17
+Status: Accepted · Date: 2026-11-17
 
 ## Context
 

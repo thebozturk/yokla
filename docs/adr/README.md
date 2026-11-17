@@ -74,7 +74,7 @@ old one.
 | [0059](0059-paraphrase-and-code-switching-by-a-model.md) | Paraphrase and code-switching, written by a model | Accepted; amended by 0060 |
 | [0060](0060-a-rewrite-adds-nothing-and-keeps-its-language.md) | A rewrite adds nothing, and keeps its language | Accepted |
 | [0061](0061-negated-stock-wording-and-products-only-named.md) | Negated stock wording, and products the answer only names | Accepted |
-| [0062](0062-generated-cases-name-products-in-stock.md) | Generated cases name products in stock | Proposed |
+| [0062](0062-generated-cases-name-products-in-stock.md) | Generated cases name products in stock | Accepted |
 
 ## Template
 
