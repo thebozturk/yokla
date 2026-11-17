@@ -1,6 +1,6 @@
 # 0051. Replies the analyzer couldn't read, and tokens counted as code takes them
 
-Status: Proposed · Date: 2026-11-17
+Status: Accepted · Date: 2026-11-17
 
 ## Context
 
