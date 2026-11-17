@@ -225,6 +225,43 @@ describe('the model client (ADR-0028)', () => {
     ).toEqual({ input: 3, output: 4 });
   });
 
+  it('says where each kind stopped at maxTokens, and lets a cut reply be empty (ADR-0051)', async () => {
+    const { url } = await provider((s) => {
+      if (s.path === '/v1/messages') {
+        // Every token went to reasoning: no text, yet no error.
+        return [200, { content: [], stop_reason: 'max_tokens', usage: { output_tokens: 300 } }];
+      }
+      if (s.path.endsWith(':generateContent')) {
+        return [
+          200,
+          {
+            candidates: [
+              { content: { parts: [{ text: '{"entries": [' }] }, finishReason: 'MAX_TOKENS' },
+            ],
+          },
+        ];
+      }
+      const cut = s.body['model'] === 'cut';
+      return [
+        200,
+        {
+          choices: [
+            {
+              message: { content: cut ? '{"ent' : 'whole' },
+              finish_reason: cut ? 'length' : 'stop',
+            },
+          ],
+        },
+      ];
+    });
+    const ask = (change: Partial<OwnModel>) =>
+      new ModelClient(model(url, change), {}).complete(prompt, 's');
+    expect(await ask({ model: 'cut' })).toMatchObject({ text: '{"ent', cut: true });
+    expect(await ask({})).toMatchObject({ text: 'whole', cut: false });
+    expect(await ask({ kind: 'anthropic' })).toMatchObject({ text: '', cut: true });
+    expect(await ask({ kind: 'gemini' })).toMatchObject({ text: '{"entries": [', cut: true });
+  });
+
   it('fails clearly: a missing key, an error status, no text', async () => {
     const { url } = await provider((s) =>
       String(s.body['model']) === 'down'
@@ -272,6 +309,18 @@ describe('the customer player (ADR-0028)', () => {
     await player.next(customer, 'en', 'c|0', [{ customer: first.text, answer: 'Here.' }]);
     expect(seen).toHaveLength(3);
     expect(readdirSync(cacheDir)).toHaveLength(3);
+  });
+
+  it("refuses a cut reply with no text, as before: a customer's turn can't be empty (ADR-0051)", async () => {
+    const { url } = await provider(() => [
+      200,
+      { choices: [{ message: { content: '' }, finish_reason: 'length' }] },
+    ]);
+    const cacheDir = mkdtempSync(join(tmpdir(), 'yokla-customer-'));
+    await expect(
+      new CustomerPlayer({ model: model(url), env: {}, cacheDir }).next(customer, 'en', 's', []),
+    ).rejects.toThrow('the customer model answered with no text');
+    expect(readdirSync(cacheDir)).toEqual([]);
   });
 
   it('asks anew when fresh, and caches the new reply', async () => {

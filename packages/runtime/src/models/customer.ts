@@ -16,7 +16,7 @@ import {
   type OwnModel,
   type Results,
 } from '@yokla/core';
-import { ModelClient, type OwnReply } from './client.ts';
+import { ModelClient, ModelClientError, type OwnReply } from './client.ts';
 
 export type OwnCall = NonNullable<
   Results['cases'][number]['samples'][number]['customer']
@@ -79,6 +79,8 @@ export class CustomerPlayer {
       }
     }
     const reply = await this.#client.complete(customerPrompt(customer, language, exchanges), seed);
+    // A reply cut at maxTokens may be empty; a customer's turn can't be (ADR-0051).
+    if (reply.text === '') throw new ModelClientError('the customer model answered with no text');
     mkdirSync(this.#options.cacheDir, { recursive: true });
     writeFileSync(file, `${JSON.stringify(reply)}\n`);
     const costUsd = callCost(

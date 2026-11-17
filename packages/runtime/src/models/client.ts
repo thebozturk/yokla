@@ -13,6 +13,11 @@ export interface OwnReply {
   readonly model: string;
   readonly usage: { readonly input: number | null; readonly output: number | null };
   readonly durationMs: number;
+  /**
+   * True when the reply stopped at maxTokens (ADR-0051): its text may be cut
+   * short, or empty when its tokens went to the model's reasoning.
+   */
+  readonly cut?: boolean;
 }
 
 export class ModelClientError extends Error {
@@ -86,15 +91,18 @@ export class ModelClient {
       throw new ModelClientError(`the ${this.#role} model answered ${String(result.status)}`);
     }
     const read = call.read(result.json);
-    if (typeof read.text !== 'string' || read.text.trim() === '') {
+    const text = typeof read.text === 'string' ? read.text.trim() : '';
+    // A reply cut at maxTokens may hold no text; it is said, not an error (ADR-0051).
+    if (text === '' && !read.cut) {
       throw new ModelClientError(`the ${this.#role} model answered with no text`);
     }
     const model = field(result.json, 'model') ?? field(result.json, 'modelVersion');
     return {
-      text: read.text.trim(),
+      text,
       model: typeof model === 'string' && model !== '' ? model : config.model,
       usage: read.usage,
       durationMs: Math.round(result.latencyMs * 100) / 100,
+      cut: read.cut,
     };
   }
 
@@ -116,6 +124,7 @@ export class ModelClient {
       },
       read: (json) => ({
         text: field(json, 'choices', 0, 'message', 'content'),
+        cut: field(json, 'choices', 0, 'finish_reason') === 'length',
         usage: {
           input: count(field(json, 'usage', 'prompt_tokens')),
           output: count(field(json, 'usage', 'completion_tokens')),
@@ -141,6 +150,7 @@ export class ModelClient {
         const blocks: unknown[] = Array.isArray(content) ? content : [];
         const input = count(field(json, 'usage', 'input_tokens'));
         return {
+          cut: field(json, 'stop_reason') === 'max_tokens',
           text: blocks
             .map((block) => (field(block, 'type') === 'text' ? field(block, 'text') : undefined))
             .filter((piece): piece is string => typeof piece === 'string')
@@ -189,6 +199,7 @@ export class ModelClient {
         const candidates = usage('candidatesTokenCount');
         const thoughts = usage('thoughtsTokenCount');
         return {
+          cut: field(json, 'candidates', 0, 'finishReason') === 'MAX_TOKENS',
           // A thought summary is the model's thinking, not its reply.
           text: list
             .map((part) => (field(part, 'thought') === true ? undefined : field(part, 'text')))
@@ -211,5 +222,5 @@ interface Call {
   readonly path: string;
   readonly headers: Readonly<Record<string, string>>;
   readonly body: unknown;
-  readonly read: (json: unknown) => { text: unknown; usage: OwnReply['usage'] };
+  readonly read: (json: unknown) => { text: unknown; usage: OwnReply['usage']; cut: boolean };
 }
