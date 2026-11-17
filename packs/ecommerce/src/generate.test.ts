@@ -23,7 +23,7 @@ const ROWS = [
     stock: null,
     attributes: { color: 'green' },
   }),
-  row('TNT-3', 'outdoor/camping/tent', { price: 1200 }),
+  row('TNT-3', 'outdoor/camping/tent', { price: 1200, attributes: { color: 'blue' } }),
   row('JKT-1', 'outdoor/clothing/jacket', { price: 0.5, names: { en: 'Windbreaker' } }),
 ];
 
@@ -80,7 +80,7 @@ describe('yokla generate from the catalog (ADR-0055)', () => {
             expect: { evidence: { products: { includes: ['TNT-1'] } }, answerable: true },
           },
         ],
-        basis: 'catalog TNT-1: "TNT-1 name", 2499.9 TRY',
+        basis: 'catalog TNT-1: "TNT-1 name", 2499.9 TRY, stock 3',
       },
       expect.objectContaining({ key: 'JKT-1' }),
     ]);
@@ -119,14 +119,15 @@ describe('yokla generate from the catalog (ADR-0055)', () => {
     expect(rest).toEqual([]);
   });
 
-  it("asks for a type with a mapped attribute's value that one of its products has", () => {
+  it("asks for a type with a mapped attribute's value that one of its products in stock has", () => {
+    // TNT-2's green is left out: its stock is unknown (ADR-0062).
     expect(ofKind(run()?.cases, 'attribute').map((c) => c.turns)).toEqual([
       [
         {
-          user: 'Do you have any tent with color green?',
+          user: 'Do you have any tent with color blue?',
           expect: {
             productType: ['outdoor/camping/tent'],
-            filters: { attributes: { color: 'green' } },
+            filters: { attributes: { color: 'blue' } },
           },
         },
       ],
@@ -137,14 +138,14 @@ describe('yokla generate from the catalog (ADR-0055)', () => {
     );
   });
 
-  it('compares the first two named products of a type, and must show both', () => {
+  it('compares the first two named products in stock of a type, and must show both', () => {
     expect(ofKind(run()?.cases, 'comparison').map((c) => [c.key, c.turns])).toEqual([
       [
-        'TNT-1 TNT-2',
+        'TNT-1 TNT-3',
         [
           {
-            user: 'Which is better, the TNT-1 name or the TNT-2 name?',
-            expect: { evidence: { products: { includes: ['TNT-1', 'TNT-2'] } }, answerable: true },
+            user: 'Which is better, the TNT-1 name or the TNT-3 name?',
+            expect: { evidence: { products: { includes: ['TNT-1', 'TNT-3'] } }, answerable: true },
           },
         ],
       ],
@@ -207,5 +208,86 @@ describe('yokla generate from the catalog (ADR-0055)', () => {
 
   it('generates nothing without a catalog', () => {
     expect(ecommerceGenerate(data())).toBeUndefined();
+  });
+});
+
+const tent = (id: string, change: Partial<CatalogRow>) =>
+  row(id, 'outdoor/camping/tent', { price: 100, ...change });
+
+/** The products each kind that names one names, by key. */
+const picked = (rows: CatalogRow[]) => {
+  const cases = run({}, rows)?.cases;
+  return {
+    lookup: ofKind(cases, 'lookup').map((c) => c.key),
+    comparison: ofKind(cases, 'comparison').map((c) => c.key),
+    cheaper: ofKind(cases, 'cheaper').map((c) => c.key),
+    attribute: ofKind(cases, 'attribute').map((c) => c.key),
+  };
+};
+
+describe('generated cases name products in stock (ADR-0062)', () => {
+  /** The first three are out of stock, of unknown stock, or unavailable. */
+  const mixed = [
+    tent('A', { stock: 0, attributes: { color: 'red' } }),
+    tent('B', { stock: null, attributes: { color: 'grey' } }),
+    tent('C', { stock: undefined, inStock: false, attributes: { color: 'black' } }),
+    // The quantity decides over inStock (ADR-0020).
+    tent('D', { stock: 0, inStock: true, attributes: { color: 'white' } }),
+    tent('E', { stock: 5, inStock: false, attributes: { color: 'blue' } }),
+    tent('F', { stock: 2 }),
+  ];
+  it('names the first products in stock, past those out of stock or of unknown stock', () => {
+    expect(picked(mixed)).toEqual({
+      lookup: ['E'],
+      comparison: ['E F'],
+      cheaper: ['E'],
+      attribute: ['tent color blue'],
+    });
+  });
+
+  it('names nothing of a type with no product in stock, and says so', () => {
+    const none = mixed.map((r) => ({ ...r, stock: 0 }));
+    expect(picked(none)).toEqual({ lookup: [], comparison: [], cheaper: [], attribute: [] });
+    expect(run({}, none)?.notes).toEqual(
+      expect.arrayContaining([
+        'lookup (en): no product in stock has a name in the language',
+        'comparison (en): no type has two products in stock with a name in the language',
+        'cheaper (en): no product in stock has a name in the language and a price',
+        'attribute (en): no product in stock of the chosen types has a mapped attribute',
+      ]),
+    );
+    // One product in stock is a lookup, never a comparison.
+    expect(picked(mixed.slice(0, 5)).comparison).toEqual([]);
+  });
+
+  it('names the first products, as before, from a catalog without stock', () => {
+    const unmapped = mixed.map((r) => ({ ...r, stock: undefined, inStock: undefined }));
+    expect(picked(unmapped)).toEqual({
+      lookup: ['A'],
+      comparison: ['A B'],
+      cheaper: ['A'],
+      attribute: ['tent color red'],
+    });
+    expect(ofKind(run({}, unmapped)?.cases, 'lookup')[0]?.basis).toBe(
+      'catalog A: "A name", 100 TRY',
+    );
+  });
+
+  it('gives the stock each product was named by', () => {
+    const cases = run({}, mixed)?.cases;
+    expect(ofKind(cases, 'lookup')[0]?.basis).toBe('catalog E: "E name", 100 TRY, stock 5');
+    expect(ofKind(cases, 'comparison')[0]?.basis).toBe(
+      'catalog E and F, both type "tent" (1 catalog type); stock 5 and stock 2',
+    );
+    expect(ofKind(cases, 'cheaper')[0]?.basis).toBe(
+      'catalog E, 100 TRY, stock 5, then type "tent" (1 catalog type) at most its price',
+    );
+    expect(ofKind(cases, 'attribute')[0]?.basis).toBe(
+      'catalog E: color blue, stock 5, type "tent" (1 catalog type)',
+    );
+    const available = mixed.map((r) => ({ ...r, stock: undefined, inStock: r.id !== 'A' }));
+    expect(ofKind(run({}, available)?.cases, 'lookup')[0]?.basis).toBe(
+      'catalog B: "B name", 100 TRY, in stock',
+    );
   });
 });

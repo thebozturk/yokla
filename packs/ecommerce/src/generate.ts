@@ -1,8 +1,9 @@
 // The cases yokla generate writes from the catalog (ADR-0055, design §9):
 // eight kinds, each with expectations computed from the data, never from an
 // answer. Types are chosen as explore chooses its opening types (ADR-0046)
-// and named by their words (ADR-0050); products go in catalog order, at most
-// one per type; amounts are written as the language writes them (ADR-0048).
+// and named by their words (ADR-0050); products in stock go in catalog order
+// (ADR-0062), at most one per type; amounts are written as the language
+// writes them (ADR-0048).
 // The checks that read the catalog judge the rest: price-grounded the prices
 // an answer shows, stock-claim its stock claims.
 
@@ -87,6 +88,28 @@ const priced = (row: CatalogRow): string =>
     ? ''
     : `, ${String(row.price)}${row.currency === undefined ? '' : ` ${row.currency}`}`;
 
+/**
+ * In stock, as far as the catalog says (ADR-0062): the quantity decides, as in
+ * stock-claim (ADR-0020); a catalog that maps neither stock nor inStock can't
+ * tell, so its products count.
+ */
+function stocked(row: CatalogRow): boolean {
+  if (typeof row.stock === 'number') return row.stock > 0;
+  if (row.inStock !== undefined) return row.inStock === true;
+  return row.stock === undefined;
+}
+
+/** The stock a product was named by, for the case's basis (ADR-0062). */
+function stockNote(row: CatalogRow): string | undefined {
+  if (typeof row.stock === 'number') return `stock ${String(row.stock)}`;
+  return row.inStock === true ? 'in stock' : undefined;
+}
+
+const noted = (row: CatalogRow): string => {
+  const note = stockNote(row);
+  return note === undefined ? '' : `, ${note}`;
+};
+
 /** The first product of a group with a name in the language, and that name. */
 function named(
   group: WordGroup,
@@ -108,16 +131,17 @@ const types = (group: WordGroup): JsonValue[] => [...group.types];
 const KINDS: Readonly<Record<Kind, (scope: Scope) => Made>> = {
   lookup: (scope) => ({
     cases: scope.groups.flatMap((group) => {
-      const found = named(group, scope.language);
+      const found = named(group, scope.language, stocked);
       if (found === undefined) return [];
       const { row, name } = found;
       const turn: Turn = {
         user: scope.say.product(name),
         expect: { ...includes(row.id), answerable: true },
       };
-      return [{ key: row.id, turns: [turn], basis: `catalog ${row.id}: "${name}"${priced(row)}` }];
+      const basis = `catalog ${row.id}: "${name}"${priced(row)}${noted(row)}`;
+      return [{ key: row.id, turns: [turn], basis }];
     }),
-    none: 'no product has a name in the language',
+    none: 'no product in stock has a name in the language',
   }),
 
   'absent-type': (scope) => ({
@@ -157,7 +181,7 @@ const KINDS: Readonly<Record<Kind, (scope: Scope) => Made>> = {
       cases: scope.groups.flatMap((group) => {
         for (const attribute of mapped) {
           const row = group.rows.find(
-            (candidate) => candidate.attributes?.[attribute] !== undefined,
+            (candidate) => candidate.attributes?.[attribute] !== undefined && stocked(candidate),
           );
           const value = row?.attributes?.[attribute];
           if (row === undefined || value === undefined) continue;
@@ -165,7 +189,7 @@ const KINDS: Readonly<Record<Kind, (scope: Scope) => Made>> = {
             user: scope.word.attribute(group.words, attribute, value),
             expect: { productType: types(group), filters: { attributes: { [attribute]: value } } },
           };
-          const basis = `catalog ${row.id}: ${attribute} ${value}, ${group.label}`;
+          const basis = `catalog ${row.id}: ${attribute} ${value}${noted(row)}, ${group.label}`;
           return [{ key: `${group.words} ${attribute} ${value}`, turns: [turn], basis }];
         }
         return [];
@@ -173,24 +197,28 @@ const KINDS: Readonly<Record<Kind, (scope: Scope) => Made>> = {
       none:
         mapped.length === 0
           ? 'no attribute is mapped (ecommerce.catalog.fields.attributes)'
-          : 'no product of the chosen types has a mapped attribute',
+          : 'no product in stock of the chosen types has a mapped attribute',
     };
   },
 
   comparison: (scope) => ({
     cases: scope.groups.flatMap((group) => {
-      const first = named(group, scope.language);
+      const first = named(group, scope.language, stocked);
       const second =
-        first === undefined ? undefined : named(group, scope.language, (row) => row !== first.row);
+        first === undefined
+          ? undefined
+          : named(group, scope.language, (row) => row !== first.row && stocked(row));
       if (first === undefined || second === undefined) return [];
       const turn: Turn = {
         user: scope.word.compare(first.name, second.name),
         expect: { ...includes(first.row.id, second.row.id), answerable: true },
       };
-      const basis = `catalog ${first.row.id} and ${second.row.id}, both ${group.label}`;
+      const notes = [first.row, second.row].map((row) => stockNote(row));
+      const stock = notes.every((note) => note !== undefined) ? `; ${notes.join(' and ')}` : '';
+      const basis = `catalog ${first.row.id} and ${second.row.id}, both ${group.label}${stock}`;
       return [{ key: `${first.row.id} ${second.row.id}`, turns: [turn], basis }];
     }),
-    none: 'no type has two products with a name in the language',
+    none: 'no type has two products in stock with a name in the language',
   }),
 
   refine: (scope) => ({
@@ -212,7 +240,7 @@ const KINDS: Readonly<Record<Kind, (scope: Scope) => Made>> = {
 
   cheaper: (scope) => ({
     cases: scope.groups.flatMap((group) => {
-      const found = named(group, scope.language, (row) => row.price !== undefined);
+      const found = named(group, scope.language, (row) => row.price !== undefined && stocked(row));
       const price = found?.row.price;
       if (found === undefined || price === undefined) return [];
       const turns: Turn[] = [
@@ -222,10 +250,10 @@ const KINDS: Readonly<Record<Kind, (scope: Scope) => Made>> = {
           expect: { productType: types(group), filters: { maxPrice: price } },
         },
       ];
-      const basis = `catalog ${found.row.id}${priced(found.row)}, then ${group.label} at most its price`;
+      const basis = `catalog ${found.row.id}${priced(found.row)}${noted(found.row)}, then ${group.label} at most its price`;
       return [{ key: found.row.id, turns, basis }];
     }),
-    none: 'no product has a name in the language and a price',
+    none: 'no product in stock has a name in the language and a price',
   }),
 
   'unknown-stock': (scope) => ({
