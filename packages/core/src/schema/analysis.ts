@@ -67,6 +67,20 @@ export const Analysis = z
         unread: z.array(z.object({ files: z.array(z.string()), reason: z.string() })),
       })
       .optional(),
+    /** Each contract file read, and what became of it (ADR-0057). */
+    contracts: z
+      .array(
+        z.object({
+          file: z.string(),
+          /** What in it was read, such as `POST /v1/chat 200 application/json`. */
+          read: z.string().optional(),
+          at: z.string().optional(),
+          outcome: z.enum(['proposed', 'no-operation', 'unusable', 'violated']),
+          /** Why, and the keywords left out; a violation by its path and keyword, never a value. */
+          details: z.array(z.string()),
+        }),
+      )
+      .optional(),
     /** Values the model returned that failed their check, never proposed (ADR-0049). */
     unverified: z
       .array(z.object({ field: z.string(), file: z.string(), line: z.int(), reason: z.string() }))

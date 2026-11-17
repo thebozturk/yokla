@@ -295,6 +295,44 @@
       ],
       "additionalProperties": false
     },
+    "contracts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "read": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "proposed",
+              "no-operation",
+              "unusable",
+              "violated"
+            ]
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "file",
+          "outcome",
+          "details"
+        ],
+        "additionalProperties": false
+      }
+    },
     "unverified": {
       "type": "array",
       "items": {
