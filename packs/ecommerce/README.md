@@ -89,7 +89,17 @@ profile).
 - **What doesn't count as a stock claim.** A sentence like "stock not
   confirmed" or "stok durumu doğrulanamadı" doesn't claim anything.
 - **Overlapping wording.** "Not in stock" is one out-of-stock claim, not also
-  an in-stock one.
+  an in-stock one. So are "stokta mevcut değil" and "isn't in stock"
+  (ADR-0061).
+- **Negation before a claim.** In English, "not", "never", "no longer" or a
+  word ending in "n't", among the five words before a claim phrase and in
+  its clause, cancels the claim: "we don't have it in stock" claims nothing.
+  Turkish negates after the phrase, in the listed forms (ADR-0061).
+- **Products the answer only names.** With a catalog, a claim about a
+  product the answer names by its full name (two words or more, held by no
+  other catalog product) but didn't return is judged by that product's
+  catalog stock. A name several catalog products hold is not judged, and
+  its claim isn't applied to the returned products either (ADR-0061).
 - **Honest inability is not a claim.** "I can't verify shipping terms"
   makes no concrete claim, so `policy-claim` finds nothing against it.
 - **Sources in another language.** A source that exists only in another
