@@ -3,10 +3,11 @@
 {"id":"TNT-003","category_path":"outdoor/camping/tent","name_tr":"Aile Çadırı 4 Kişilik","name_en":"Family Tent, 4-Person","price":5899.9,"currency":"TRY","stock":3,"color":"blue"}
 {"id":"TNT-004","category_path":"outdoor/camping/tent","name_tr":"Plaj Çadırı","name_en":"Beach Shelter","price":899.5,"currency":"TRY","stock":0,"color":"orange"}
 {"id":"TNT-005","category_path":"outdoor/camping/tent","name_tr":"Dört Mevsim Çadır 3 Kişilik","name_en":"Four-Season Tent, 3-Person","price":12750,"currency":"TRY","stock":2,"color":"red"}
-{"id":"SLB-001","category_path":"outdoor/camping/sleeping-bag","name_tr":"Yaz Uyku Tulumu +15°C","name_en":"Summer Sleeping Bag +15°C","price":749.9,"currency":"TRY","stock":20}
-{"id":"SLB-002","category_path":"outdoor/camping/sleeping-bag","name_tr":"Üç Mevsim Uyku Tulumu 0°C","name_en":"Three-Season Sleeping Bag 0°C","price":1849,"currency":"TRY","stock":null}
-{"id":"SLB-003","category_path":"outdoor/camping/sleeping-bag","name_tr":"Kış Uyku Tulumu -10°C","name_en":"Winter Sleeping Bag -10°C","price":3299.9,"currency":"TRY","stock":4}
-{"id":"SLB-004","category_path":"outdoor/camping/sleeping-bag","name_tr":"Kaz Tüyü Uyku Tulumu -20°C","name_en":"Down Sleeping Bag -20°C","price":8990,"currency":"TRY","stock":0}
+{"id":"SLB-001","category_path":"outdoor/camping/sleeping-bag","name_tr":"Yaz Uyku Tulumu +15°C","name_en":"Summer Sleeping Bag +15°C","price":749.9,"currency":"TRY","stock":20,"type_label_tr":"uyku tulumu","type_label_en":"sleeping bag"}
+{"id":"SLB-002","category_path":"outdoor/camping/sleeping-bag","name_tr":"Üç Mevsim Uyku Tulumu 0°C","name_en":"Three-Season Sleeping Bag 0°C","price":1849,"currency":"TRY","stock":null,"type_label_tr":"uyku tulumu","type_label_en":"sleeping bag"}
+{"id":"SLB-003","category_path":"outdoor/camping/sleeping-bag","name_tr":"Kış Uyku Tulumu -10°C","name_en":"Winter Sleeping Bag -10°C","price":3299.9,"currency":"TRY","stock":4,"type_label_tr":"uyku tulumu","type_label_en":"sleeping bag"}
+{"id":"SLB-004","category_path":"outdoor/camping/sleeping-bag","name_tr":"Kaz Tüyü Uyku Tulumu -20°C","name_en":"Down Sleeping Bag -20°C","price":8990,"currency":"TRY","stock":0,"type_label_tr":"uyku tulumu","type_label_en":"sleeping bag"}
+{"id":"SLB-K01","category_path":"outdoor/camping/sleeping-bag/junior","name_tr":"Çocuk Uyku Tulumu +5°C","name_en":"Kids' Sleeping Bag +5°C","price":1299,"currency":"TRY","stock":7,"type_label_tr":"uyku tulumu","type_label_en":"sleeping bag"}
 {"id":"BPK-001","category_path":"outdoor/bags/backpack","name_tr":"Günlük Sırt Çantası 20 L","name_en":"Daypack 20 L","price":649.9,"currency":"TRY","stock":30,"color":"black"}
 {"id":"BPK-002","category_path":"outdoor/bags/backpack","name_tr":"Yürüyüş Çantası 35 L","name_en":"Hiking Pack 35 L","price":1499.9,"currency":"TRY","stock":null,"color":"blue"}
 {"id":"BPK-003","category_path":"outdoor/bags/backpack","name_tr":"Trekking Çantası 50 L","name_en":"Trekking Pack 50 L","price":2799,"currency":"TRY","stock":6,"color":"green"}

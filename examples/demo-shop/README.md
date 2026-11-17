@@ -159,7 +159,11 @@ simulated customer there too.
   sleeping bags under a price fail `filter-honoured-or-disclosed`. Every
   candidate that ran is in the results' trace. Trekking poles sit in two
   branches of the catalog, `hiking` and `kids`: a shopper asks for both by
-  the same words, and the turns state both types (ADR-0048).
+  the same words, and the turns state both types (ADR-0048). Kids' sleeping
+  bags sit under a size level, `sleeping-bag/junior`, and every sleeping bag
+  carries a type label: with the profile's `typeLabel`, the search asks for
+  "uyku tulumu" and states both types; without it, it asks "junior var mı?"
+  (ADR-0050).
 - **Messages as users write them.** `packages/cli/src/robustness.e2e.test.ts`
   runs the acceptance cases as written and with each `--transform`:
   without diacritics, in lower case, without punctuation and with a typo

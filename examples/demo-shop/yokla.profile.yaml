@@ -120,5 +120,8 @@ ecommerce:
       stock: stock
       # Names per language: yokla explore asks for products by them (ADR-0044).
       name: { tr: name_tr, en: name_en }
+      # The words a shopper uses for a type, where its last level is a facet
+      # such as a size (ADR-0050); a type without one is asked by its last level.
+      typeLabel: { tr: type_label_tr, en: type_label_en }
   # Types are category paths; a case may ask for a level, e.g. outdoor/camping.
   typeSeparator: /

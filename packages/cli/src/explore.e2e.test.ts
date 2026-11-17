@@ -8,6 +8,9 @@
 // type and price bound they ask (ADR-0046): on a shop that drops the price
 // bound for sleeping bags, a type no written case asks about, a proposed case
 // fails filter-honoured-or-disclosed. Every candidate that ran is in the trace.
+// A type is asked by its catalog label where the profile maps one (ADR-0050):
+// with it, a sleeping bag filed under a size level is asked as a sleeping
+// bag; without it, by the size.
 // Everything runs behind the network guard.
 
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -25,6 +28,8 @@ import { main } from './main.ts';
 const DEMO = new URL('../../../examples/demo-shop/', import.meta.url).pathname;
 const dir = mkdtempSync(join(tmpdir(), 'yokla-explore-e2e-'));
 const profile = join(dir, 'yokla.profile.yaml');
+// The same profile without the catalog's type labels.
+const unlabelledProfile = join(dir, 'unlabelled.profile.yaml');
 // The fake provider's calls are priced, so the cost cap can hold.
 const config = join(dir, 'yokla.config.yaml');
 
@@ -81,7 +86,16 @@ interface Explored {
   readonly results: Results;
 }
 
-async function exploreShop(name: string, url: string, ...extra: string[]): Promise<Explored> {
+function exploreShop(name: string, url: string, ...extra: string[]): Promise<Explored> {
+  return exploreWith(profile, name, url, ...extra);
+}
+
+async function exploreWith(
+  profileFile: string,
+  name: string,
+  url: string,
+  ...extra: string[]
+): Promise<Explored> {
   const out = join(dir, `${name}.yaml`);
   const resultsFile = join(dir, `${name}.json`);
   const lines: string[] = [];
@@ -90,7 +104,7 @@ async function exploreShop(name: string, url: string, ...extra: string[]): Promi
     [
       'explore',
       '--profile',
-      profile,
+      profileFile,
       '--cases',
       join(DEMO, 'cases'),
       '--target-url',
@@ -139,6 +153,10 @@ beforeAll(async () => {
         '',
       )}\nmodelProxy:\n  port: 1\n  correlation: header\n  upstreams:\n    - { id: fake, kind: openai-compatible, upstream: '${providerUrl}' }\n`,
   );
+  const labelLine = /^ {6}typeLabel: .*\n/mu;
+  const labelled = readFileSync(profile, 'utf8');
+  if (!labelLine.test(labelled)) throw new Error('the demo-shop profile maps no type label');
+  writeFileSync(unlabelledProfile, labelled.replace(labelLine, ''));
   const proxyLines: string[] = [];
   proxyDone = proxyCommand(
     ['--profile', profile, '--port', '0'],
@@ -164,6 +182,10 @@ beforeAll(async () => {
   // Round-robin over the branches, sleeping bags are the camping branch's second type: the
   // seventh (ADR-0046).
   explored.set('bound', await exploreShop('bound', bound, '--types', '7'));
+  // The kids' sleeping bags are the camping branch's fourth type: the tenth (ADR-0050).
+  const reach = ['--types', '10', '--max-runs', '50'];
+  explored.set('labelled', await exploreShop('labelled', clean, ...reach));
+  explored.set('unlabelled', await exploreWith(unlabelledProfile, 'unlabelled', clean, ...reach));
 }, 600_000);
 
 afterAll(async () => {
@@ -244,23 +266,44 @@ describe('yokla explore on the demo-shop (ADR-0044)', () => {
       /failed /u.test(c.provenance?.evidence ?? ''),
     );
     expect(failing.map((c) => [c.id, c.turns.map((turn) => turn.user)])).toEqual([
-      ['under-price-1', ['1849 TL altında sleeping bag var mı?']],
-      ['empty-band-1', ['749 TL altında sleeping bag var mı?']],
+      ['under-price-1', ['1849 TL altında uyku tulumu var mı?']],
+      ['empty-band-1', ['749 TL altında uyku tulumu var mı?']],
       ['under-price-2', ['Do you have any sleeping bag under 1849 TRY?']],
       ['empty-band-2', ['Do you have any sleeping bag under 749 TRY?']],
     ]);
     expect(failing[0]?.provenance?.evidence).toBe(
-      'yokla explore, under-price from an opening turn: failed filter-honoured-or-disclosed (filter-honesty) on turn 1; expects type "sleeping bag" (1 catalog type) at most 1849, its median price',
+      'yokla explore, under-price from an opening turn: failed filter-honoured-or-disclosed (filter-honesty) on turn 1; expects type "uyku tulumu" (2 catalog types) at most 1849, its median price',
     );
     expect(failing[0]?.turns[0]?.expect).toEqual({
-      productType: ['outdoor/camping/sleeping-bag'],
+      productType: ['outdoor/camping/sleeping-bag', 'outdoor/camping/sleeping-bag/junior'],
       filters: { maxPrice: 1849 },
     });
     // At the default six types, the search doesn't ask about sleeping bags.
     const clean = get('clean').results.run.exploration?.candidates ?? [];
-    expect(clean.some((entry) => entry.messages.some((m) => m.includes('sleeping bag')))).toBe(
-      false,
+    expect(
+      clean.some((entry) => entry.messages.some((m) => /uyku tulumu|sleeping bag/u.test(m))),
+    ).toBe(false);
+  });
+
+  it('asks for a type by its catalog label, and by its last level without one (ADR-0050)', () => {
+    const asked = (name: string) =>
+      (get(name).results.run.exploration?.candidates ?? [])
+        .filter((entry) => entry.from === null && entry.operator === 'type')
+        .map((entry) => entry.messages[0]);
+    // With the label, the kids' bags are sleeping bags: asked with the others, never by size.
+    // Fifty runs reach the Turkish openings of all ten types.
+    expect(asked('labelled')).toContain('uyku tulumu var mı?');
+    expect(asked('labelled').filter((m) => m?.includes('junior') === true)).toEqual([]);
+    const labelled = loadCases([join(dir, 'labelled.yaml')]);
+    expect(labelled.filter((c) => /failed /u.test(c.provenance?.evidence ?? ''))).toEqual([]);
+    const bagTurns = (get('labelled').results.run.exploration?.candidates ?? []).filter((entry) =>
+      /uyku tulumu|sleeping bag/u.test(entry.messages[0] ?? ''),
     );
+    expect(bagTurns.length).toBeGreaterThan(0);
+    expect(bagTurns.flatMap((entry) => entry.failed)).toEqual([]);
+    // Without it, the size is the words asked.
+    expect(asked('unlabelled')).toContain('junior var mı?');
+    expect(asked('unlabelled')).toContain('sleeping bag var mı?');
   });
 
   it('asks for trekking poles as a shopper would, which two branches of the catalog hold (ADR-0048)', () => {

@@ -186,7 +186,7 @@ describe('yokla analyze on the demo-shop (ADR-0047)', () => {
   it('writes a proposal and an analysis report', () => {
     expect(first?.code, first?.output).toBe(0);
     expect(first?.output).toContain('probing ');
-    expect(first?.output).toContain('precision 100.0%, recall 46.9%');
+    expect(first?.output).toContain('precision 100.0%, recall 45.5%');
   });
 
   it("proposes only the hand-written profile's entries", () => {
@@ -254,9 +254,12 @@ describe('yokla analyze on the demo-shop (ADR-0047)', () => {
       '/refusal/canonical/tr',
       '/refusal/canonical/en',
       '/ecommerce/neverFabricate',
+      // No step proposes a catalog's type labels yet (ADR-0050).
+      '/ecommerce/catalog/fields/typeLabel/tr',
+      '/ecommerce/catalog/fields/typeLabel/en',
     ]);
-    expect(missed).toHaveLength(34);
-    expect(report().comparison?.recall).toBeCloseTo(30 / 64, 12);
+    expect(missed).toHaveLength(36);
+    expect(report().comparison?.recall).toBeCloseTo(30 / 66, 12);
   });
 
   it("never lists the profile it is measured against, the cases or yokla's configuration", () => {

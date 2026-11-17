@@ -66,9 +66,19 @@ describe('the bundled data', () => {
     }
   });
 
-  it('only contains types the model understands', () => {
+  it('only contains types the model understands, or a facet under one', () => {
     const known = new Set(PRODUCT_TYPES.map((type) => type.key));
-    expect(catalog.filter((p) => !known.has(p.type)).map((p) => p.id)).toEqual([]);
+    const understood = (p: (typeof catalog)[number]) =>
+      known.has(p.type) ||
+      p.categoryPath
+        .split('/')
+        .slice(0, -1)
+        .some((s) => known.has(s));
+    expect(catalog.filter((p) => !understood(p)).map((p) => p.id)).toEqual([]);
+    // One facet: kids' sleeping bags, which the model doesn't search (ADR-0050).
+    expect(catalog.filter((p) => !known.has(p.type)).map((p) => p.categoryPath)).toEqual([
+      'outdoor/camping/sleeping-bag/junior',
+    ]);
   });
 
   it('mixes known, zero and unknown stock', () => {
