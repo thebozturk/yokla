@@ -1070,6 +1070,22 @@ holds an English product word.
   the code-switch answers `tents-under-500-tr` and `sleeping-pad-tr` in
   English, and they fail.
 - **A second run** sends the same messages, from the cache, at no cost.
+- **With a real model (ADR-0059, ADR-0060):** Claude Haiku 5.5 through a
+  hosted gateway, on the correct shop, each run approved with its estimate,
+  on 2026-11-17; each cost $0.0011 for both kinds.
+  - **First run, prompt version 1:** the paraphrase kept 16 verdicts, and
+    moved two cases that share a message, rewritten as "medium-sized
+    jackets": the shop doesn't read it as size M. The code-switch added
+    requests, such as a two-person tent and a question about headphones,
+    and moved "Can you recommend a stock to invest in?" half into Turkish;
+    its two moved cases moved by the rewrite. ADR-0060 came from it.
+  - **Second run, version 2 and ADR-0060's checks:** the code-switch kept
+    all 18 verdicts; four rewrites were not sent, two of more than one
+    line, one that added a sentence and one unchanged. One rewrite still
+    added a detail inside its sentence, "for a gömlek I bought last week",
+    and moved nothing. The paraphrase moved three cases, each by a gap of
+    the shop: "a medium" for size M, in the two cases that share a message,
+    and "uyku minderi" for a sleeping pad.
 - **Repeats:** two runs with typos send the same messages.
 
 For the analyzer's first step, `yokla analyze` reads a copy of the
