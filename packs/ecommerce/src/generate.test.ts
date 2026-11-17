@@ -1,0 +1,211 @@
+import type { GeneratedCase } from '@yokla/core';
+import { describe, expect, it } from 'vitest';
+import { data } from './checks/fixtures.ts';
+import type { CatalogRow } from './data.ts';
+import { ecommerceGenerate, GENERATED_KINDS } from './generate.ts';
+import { ecommerceProfile } from './schema.ts';
+
+const row = (id: string, type: string, change: Partial<CatalogRow> = {}): CatalogRow => ({
+  id,
+  type,
+  price: 100,
+  currency: 'TRY',
+  stock: 3,
+  inStock: undefined,
+  names: { en: `${id} name`, tr: `${id} adı` },
+  ...change,
+});
+
+const ROWS = [
+  row('TNT-1', 'outdoor/camping/tent', { price: 2499.9 }),
+  row('TNT-2', 'outdoor/camping/tent', {
+    price: 4250,
+    stock: null,
+    attributes: { color: 'green' },
+  }),
+  row('TNT-3', 'outdoor/camping/tent', { price: 1200 }),
+  row('JKT-1', 'outdoor/clothing/jacket', { price: 0.5, names: { en: 'Windbreaker' } }),
+];
+
+const profile = (attributes?: Record<string, string>) =>
+  ecommerceProfile.parse({
+    typeSeparator: '/',
+    catalog: {
+      kind: 'file',
+      path: 'catalog.jsonl',
+      fields: {
+        id: 'id',
+        type: 'type',
+        price: 'price',
+        ...(attributes === undefined ? {} : { attributes }),
+      },
+    },
+  });
+
+const generate = (rows = ROWS, attributes: Record<string, string> | null = { color: 'color' }) =>
+  ecommerceGenerate(
+    data({
+      config: profile(attributes ?? undefined),
+      catalog: new Map(rows.map((r) => [r.id, r])),
+    }),
+  );
+
+const run = (
+  options: { perKind?: number; absent?: Record<string, string[]>; languages?: string[] } = {},
+  rows = ROWS,
+  attributes?: Record<string, string>,
+) =>
+  generate(
+    rows,
+    attributes ?? { color: 'color' },
+  )?.({
+    languages: options.languages ?? ['en'],
+    perKind: options.perKind ?? 5,
+    absent: options.absent ?? {},
+  });
+
+const ofKind = (cases: readonly GeneratedCase[] | undefined, kind: string) =>
+  (cases ?? []).filter((c) => c.kind === kind);
+
+describe('yokla generate from the catalog (ADR-0055)', () => {
+  it('looks a product up by name: it must be shown, and its price is the catalog’s', () => {
+    expect(ofKind(run()?.cases, 'lookup')).toEqual([
+      {
+        kind: 'lookup',
+        language: 'en',
+        key: 'TNT-1',
+        turns: [
+          {
+            user: 'Do you have the TNT-1 name?',
+            expect: { evidence: { products: { includes: ['TNT-1'] } }, answerable: true },
+          },
+        ],
+        basis: 'catalog TNT-1: "TNT-1 name", 2499.9 TRY',
+      },
+      expect.objectContaining({ key: 'JKT-1' }),
+    ]);
+  });
+
+  it('asks for a type the person expects absent, only when it is', () => {
+    const labelled = [
+      ...ROWS,
+      row('HMK-1', 'outdoor/camping/x', { typeLabels: { en: 'Hammock' } }),
+    ];
+    const generated = run({ absent: { en: ['kayak', 'camping', 'hammock'] } }, labelled);
+    expect(ofKind(generated?.cases, 'absent-type').map((c) => [c.key, c.turns])).toEqual([
+      [
+        'kayak',
+        [{ user: 'Do you have any kayak?', expect: { absentType: 'kayak', answerable: true } }],
+      ],
+    ]);
+    expect(generated?.notes).toEqual(
+      expect.arrayContaining([
+        'absent-type (en): "camping" is in the catalog, as TNT-1',
+        'absent-type (en): "hammock" is in the catalog, as HMK-1',
+      ]),
+    );
+    expect(run()?.notes).toContain('absent-type (en): no --absent word was given');
+  });
+
+  it('asks for a type under the largest whole amount below its lowest price', () => {
+    const [tent, ...rest] = ofKind(run()?.cases, 'empty-band');
+    expect(tent?.turns).toEqual([
+      {
+        user: 'Do you have any tent under 1199 TRY?',
+        expect: { productType: ['outdoor/camping/tent'], filters: { maxPrice: 1199 } },
+      },
+    ]);
+    // A jacket at 0.5 leaves no whole amount of 1 or more below it.
+    expect(rest).toEqual([]);
+  });
+
+  it("asks for a type with a mapped attribute's value that one of its products has", () => {
+    expect(ofKind(run()?.cases, 'attribute').map((c) => c.turns)).toEqual([
+      [
+        {
+          user: 'Do you have any tent with color green?',
+          expect: {
+            productType: ['outdoor/camping/tent'],
+            filters: { attributes: { color: 'green' } },
+          },
+        },
+      ],
+    ]);
+    const unmapped = generate(ROWS, null)?.({ languages: ['en'], perKind: 2, absent: {} });
+    expect(unmapped?.notes).toContain(
+      'attribute (en): no attribute is mapped (ecommerce.catalog.fields.attributes)',
+    );
+  });
+
+  it('compares the first two named products of a type, and must show both', () => {
+    expect(ofKind(run()?.cases, 'comparison').map((c) => [c.key, c.turns])).toEqual([
+      [
+        'TNT-1 TNT-2',
+        [
+          {
+            user: 'Which is better, the TNT-1 name or the TNT-2 name?',
+            expect: { evidence: { products: { includes: ['TNT-1', 'TNT-2'] } }, answerable: true },
+          },
+        ],
+      ],
+    ]);
+  });
+
+  it('refines a type to its median price, and asks for something cheaper than a product', () => {
+    expect(ofKind(run()?.cases, 'refine')[0]?.turns).toEqual([
+      { user: 'Do you have any tent?', expect: { productType: ['outdoor/camping/tent'] } },
+      {
+        user: 'And under 2500 TRY?',
+        expect: { productType: ['outdoor/camping/tent'], filters: { maxPrice: 2500 } },
+      },
+    ]);
+    expect(ofKind(run()?.cases, 'cheaper')[0]?.turns).toEqual([
+      {
+        user: 'Do you have the TNT-1 name?',
+        expect: { evidence: { products: { includes: ['TNT-1'] } } },
+      },
+      {
+        user: 'Do you have anything cheaper?',
+        expect: { productType: ['outdoor/camping/tent'], filters: { maxPrice: 2499.9 } },
+      },
+    ]);
+  });
+
+  it('asks about the stock of a named product whose stock is unknown', () => {
+    expect(ofKind(run()?.cases, 'unknown-stock').map((c) => [c.key, c.turns[0]?.user])).toEqual([
+      ['TNT-2', 'Is the TNT-2 name in stock?'],
+    ]);
+    // A catalog of availability only: unknown is an inStock of null.
+    const available = ROWS.map((r) => ({
+      ...r,
+      stock: undefined,
+      inStock: r.id === 'TNT-3' ? null : true,
+    }));
+    expect(ofKind(run({}, available)?.cases, 'unknown-stock').map((c) => c.key)).toEqual(['TNT-3']);
+    const known = ROWS.map((r) => ({ ...r, stock: 1 }));
+    expect(run({}, known)?.notes).toContain(
+      'unknown-stock (en): no product with a name in the language has an unknown stock',
+    );
+  });
+
+  it('writes each language its own way, at most --per-kind of each kind, the same twice', () => {
+    const both = run({ languages: ['tr', 'en', 'de'], perKind: 1 });
+    expect(both?.notes).toContain('de: the pack has no phrasings for it');
+    for (const kind of GENERATED_KINDS) {
+      for (const language of ['tr', 'en']) {
+        expect(
+          (both?.cases ?? []).filter((c) => c.kind === kind && c.language === language).length,
+        ).toBeLessThanOrEqual(1);
+      }
+    }
+    expect(ofKind(both?.cases, 'lookup').map((c) => c.turns[0]?.user)).toEqual([
+      'TNT-1 adı var mı?',
+      'Do you have the TNT-1 name?',
+    ]);
+    expect(run({ languages: ['tr', 'en'] })).toEqual(run({ languages: ['tr', 'en'] }));
+  });
+
+  it('generates nothing without a catalog', () => {
+    expect(ecommerceGenerate(data())).toBeUndefined();
+  });
+});

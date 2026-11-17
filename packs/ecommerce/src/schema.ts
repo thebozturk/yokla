@@ -62,6 +62,10 @@ const Catalog = z.strictObject({
         description:
           'The words a shopper uses for the product\'s type, such as "sleeping bag": one field, or one per language. yokla explore asks for a type by it, in place of its last level (ADR-0050).',
       }),
+    attributes: z.record(Id, FieldPath).optional().meta({
+      description:
+        'The evidence field each attribute filter names, and the catalog field that holds it, such as { color: color }. yokla generate asks for products by them (ADR-0055).',
+    }),
   }),
 });
 

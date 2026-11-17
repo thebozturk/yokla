@@ -12,6 +12,7 @@ import { stockClaim } from './checks/stock-claim.ts';
 import { typeMatched } from './checks/type-match.ts';
 import { loadData } from './data.ts';
 import { catalogUnmetFacts } from './facts.ts';
+import { ecommerceGenerate } from './generate.ts';
 import { ecommerceIntents } from './intents.ts';
 import { ecommerceExpectations, ecommerceProfile } from './schema.ts';
 
@@ -36,6 +37,7 @@ export const ecommercePack: DomainPack = {
   prepare(profile, io) {
     const data = loadData(profile, io);
     const unmetFacts = catalogUnmetFacts(data);
+    const generate = ecommerceGenerate(data);
     return {
       checks: [
         priceGrounded(data),
@@ -51,6 +53,8 @@ export const ecommercePack: DomainPack = {
       intents: ecommerceIntents(data),
       // What a case states that the catalog no longer holds (ADR-0053).
       ...(unmetFacts === undefined ? {} : { unmetFacts }),
+      // Cases computed from the catalog, for yokla generate (ADR-0055).
+      ...(generate === undefined ? {} : { generate }),
     };
   },
 };

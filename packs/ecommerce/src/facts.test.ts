@@ -94,8 +94,22 @@ describe('catalog facts (ADR-0053, ADR-0054)', () => {
     ).toEqual([]);
   });
 
-  it('knows nothing without a catalog, or without types in it', () => {
+  it('knows nothing without a catalog, nor of types without types in it', () => {
     expect(catalogUnmetFacts(data())).toBeUndefined();
-    expect(catalogUnmetFacts(catalog([row('X-1', undefined)]))).toBeUndefined();
+    const untyped = catalogUnmetFacts(catalog([row('X-1', undefined)]));
+    expect(untyped?.({ absentType: 'x', productType: 'y' })).toEqual([]);
+  });
+
+  it('holds a product a turn expects that the catalog has, and names those it lost (ADR-0055)', () => {
+    expect(unmet({ evidence: { products: { includes: ['TNT-1', 'WB-1'] } } })).toEqual([]);
+    expect(unmet({ evidence: { products: { includes: ['TNT-1', 'GONE-1', 'GONE-2'] } } })).toEqual([
+      'the catalog holds no product GONE-1, GONE-2',
+    ]);
+    expect(unmet({ evidence: { stores: { includes: ['GONE-1'] } } })).toEqual([]);
+    // Without types, the products are still known.
+    const untyped = catalogUnmetFacts(catalog([row('X-1', undefined)]));
+    expect(untyped?.({ evidence: { products: { includes: ['X-1', 'Y-1'] } } })).toEqual([
+      'the catalog holds no product Y-1',
+    ]);
   });
 });

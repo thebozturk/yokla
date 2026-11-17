@@ -5,6 +5,7 @@ import { ANALYZE_HELP, analyzeCommand } from './commands/analyze.ts';
 import { BASELINE_HELP, baselineCommand } from './commands/baseline.ts';
 import { COMPARE_HELP, compareCommand } from './commands/compare.ts';
 import { EXPLORE_HELP, exploreCommand } from './commands/explore.ts';
+import { GENERATE_HELP, generateCommand } from './commands/generate.ts';
 import { GATE_HELP, gateCommand } from './commands/gate.ts';
 import { INIT_HELP, initCommand } from './commands/init.ts';
 import { MCP_HELP, mcpCommand } from './commands/mcp.ts';
@@ -30,6 +31,7 @@ Usage:
   yokla mcp [options]        serve yokla's tools to a coding agent over stdio (MCP)
   yokla compare [options]    set runs side by side, such as one per model, and name the cheapest that passes
   yokla explore [options]    search for paths the written cases never take, and propose cases for them
+  yokla generate [options]   propose cases whose expectations the domain pack computes from the data
   yokla schema <name>        print a JSON Schema: profile, cases, config, results, baseline, comparison,
                              analysis
   yokla --version
@@ -55,6 +57,8 @@ ${MCP_HELP}
 ${COMPARE_HELP}
 
 ${EXPLORE_HELP}
+
+${GENERATE_HELP}
 
 ${ANALYZE_HELP}`;
 
@@ -105,6 +109,8 @@ export async function main(argv: readonly string[], io: Output): Promise<number>
       return compareCommand(rest, io);
     case 'explore':
       return exploreCommand(rest, io, version());
+    case 'generate':
+      return generateCommand(rest, io);
     case 'analyze':
       return analyzeCommand(rest, io, version());
     case 'schema': {

@@ -1904,7 +1904,8 @@
                       "import",
                       "template",
                       "shrink",
-                      "explore"
+                      "explore",
+                      "generator"
                     ]
                   },
                   "evidence": {
@@ -2310,7 +2311,8 @@
                   "import",
                   "template",
                   "shrink",
-                  "explore"
+                  "explore",
+                  "generator"
                 ]
               },
               "evidence": {
@@ -2510,6 +2512,18 @@
                       }
                     }
                   ]
+                },
+                "attributes": {
+                  "description": "The evidence field each attribute filter names, and the catalog field that holds it, such as { color: color }. yokla generate asks for products by them (ADR-0055).",
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+                  },
+                  "additionalProperties": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                  }
                 }
               },
               "required": [
@@ -2594,7 +2608,8 @@
                           "import",
                           "template",
                           "shrink",
-                          "explore"
+                          "explore",
+                          "generator"
                         ]
                       },
                       "evidence": {

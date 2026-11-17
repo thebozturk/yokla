@@ -21,7 +21,7 @@ import type { EvidenceItem, ExploredTurn, Intents, IntentTurn } from '@yokla/cor
 import { PRODUCTS } from './checks/common.ts';
 import type { CatalogRow, EcommerceData } from './data.ts';
 
-interface Phrasings {
+export interface Phrasings {
   product(name: string): string;
   type(type: string): string;
   underPrice(type: string, amount: string): string;
@@ -73,7 +73,7 @@ export const PHRASINGS: Readonly<Record<string, Phrasings>> = {
   },
 };
 
-function nameIn(row: CatalogRow, language: string): string | undefined {
+export function nameIn(row: CatalogRow, language: string): string | undefined {
   return row.names?.[language] ?? row.names?.['*'];
 }
 
@@ -87,7 +87,7 @@ function typeWords(type: string, separator: string | undefined): string {
 export type WordsOf = (type: string) => string;
 
 /** Words compared as one: the same in lower case, with runs of spaces as one. */
-function wordKey(words: string, language: string): string {
+export function wordKey(words: string, language: string): string {
   return words.toLocaleLowerCase(language).replaceAll(/\s+/gu, ' ').trim();
 }
 
@@ -120,14 +120,14 @@ export function typeWordsIn(
 }
 
 /** The prices of a type's products, lowest first. */
-function pricesOf(rows: readonly CatalogRow[]): number[] {
+export function pricesOf(rows: readonly CatalogRow[]): number[] {
   return rows
     .flatMap((row) => (row.price === undefined ? [] : [row.price]))
     .toSorted((a, b) => a - b);
 }
 
 /** The middle price of a type's products, rounded up to a whole amount. */
-function medianPrice(prices: readonly number[]): number | undefined {
+export function medianPrice(prices: readonly number[]): number | undefined {
   const middle = prices[Math.floor((prices.length - 1) / 2)];
   return middle === undefined ? undefined : Math.ceil(middle);
 }
@@ -146,7 +146,7 @@ function lowerQuartile(prices: readonly number[]): number | undefined {
  * The largest whole amount below a type's lowest price: a bound no product of
  * the type meets, since a bound is inclusive. Undefined below 1.
  */
-function emptyBand(prices: readonly number[]): number | undefined {
+export function emptyBand(prices: readonly number[]): number | undefined {
   const lowest = prices[0];
   if (lowest === undefined) return undefined;
   const bound = Math.ceil(lowest) - 1;
@@ -234,7 +234,7 @@ function namedProduct(rows: readonly CatalogRow[], language: string): string | u
 }
 
 /** The types a shopper's words for a type name: every catalog type with the same words. */
-interface WordGroup {
+export interface WordGroup {
   readonly words: string;
   /** The types, in the order the catalog first lists them. */
   readonly types: readonly string[];
@@ -243,7 +243,12 @@ interface WordGroup {
   readonly label: string;
 }
 
-function wordGroup(type: string, rows: readonly CatalogRow[], wordsOf: WordsOf, language: string) {
+export function wordGroup(
+  type: string,
+  rows: readonly CatalogRow[],
+  wordsOf: WordsOf,
+  language: string,
+) {
   const words = wordsOf(type);
   const key = wordKey(words, language);
   const members = rows.filter(
@@ -272,7 +277,7 @@ function underTurn(
 }
 
 /** The currency of a group's first product that has one. */
-function currencyOf(group: WordGroup): string | undefined {
+export function currencyOf(group: WordGroup): string | undefined {
   return group.rows.find((row) => row.currency !== undefined)?.currency;
 }
 

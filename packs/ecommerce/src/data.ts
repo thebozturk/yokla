@@ -26,6 +26,8 @@ export interface CatalogRow {
   readonly names?: Readonly<Record<string, string>>;
   /** The words for its type per language, or under `*` from a single field; undefined when not mapped (ADR-0050). */
   readonly typeLabels?: Readonly<Record<string, string>>;
+  /** Its attributes by the evidence field a filter names; undefined when none is mapped (ADR-0055). */
+  readonly attributes?: Readonly<Record<string, string>>;
 }
 
 export interface PolicySource {
@@ -70,6 +72,21 @@ function perLanguage(
   return values;
 }
 
+/** A row's mapped attributes that have a value, as text. */
+function attributesOf(
+  row: unknown,
+  fields: Readonly<Record<string, string>>,
+): Record<string, string> {
+  const attributes: Record<string, string> = {};
+  for (const [name, path] of Object.entries(fields)) {
+    const value = getFieldPath(row, path);
+    if ((typeof value === 'string' && value.trim() !== '') || typeof value === 'number') {
+      attributes[name] = String(value);
+    }
+  }
+  return attributes;
+}
+
 function asBoolean(value: unknown): boolean | undefined {
   if (typeof value === 'boolean') return value;
   if (value === 'true' || value === 'false') return value === 'true';
@@ -109,6 +126,9 @@ export function loadData(profile: Profile, io: PackIo): EcommerceData {
         ...(fields.typeLabel === undefined
           ? {}
           : { typeLabels: perLanguage(row, fields.typeLabel) }),
+        ...(fields.attributes === undefined
+          ? {}
+          : { attributes: attributesOf(row, fields.attributes) }),
       });
     }
   }
