@@ -391,7 +391,7 @@ computed, not guessed.
   language the pack has phrasings for. The products they name are in stock,
   except `unknown-stock`'s (ADR-0062), each by a name no other product
   holds, and `cheaper` names one with a cheaper product in stock of its type
-  (ADR-0063).
+  (ADR-0063) and asks for something cheaper than it (ADR-0064).
 
 **Spec-grounded, from policies, FAQ and docs:**
 - answerable FAQ questions, checked for faithfulness to the source,
