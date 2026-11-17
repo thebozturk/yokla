@@ -60,11 +60,11 @@ old one.
 | [0045](0045-robustness-transforms-of-a-cases-messages.md) | Robustness transforms of a case's messages | Accepted |
 | [0046](0046-intents-that-state-what-they-ask.md) | Intents that state what they ask, across the catalog's types | Accepted; amended by 0048 |
 | [0047](0047-the-analyzer-deterministic-first.md) | The analyzer, deterministic first: inventory, data and probes | Accepted |
-| [0048](0048-intents-ask-as-a-shopper-names-things.md) | Intents ask as a shopper names things | Accepted; amended by 0050 |
+| [0048](0048-intents-ask-as-a-shopper-names-things.md) | Intents ask as a shopper names things | Accepted; amended by 0050, 0052 |
 | [0049](0049-the-analyzer-reads-code-and-docs.md) | The analyzer reads code and docs: values a model finds, verified in their source | Accepted; amended by 0051 |
 | [0050](0050-a-type-asked-by-its-catalog-label.md) | A type asked by its catalog label | Accepted |
 | [0051](0051-replies-the-analyzer-could-not-read.md) | Replies the analyzer couldn't read, and tokens counted as code takes them | Accepted |
-| [0052](0052-the-currency-code-turn-where-a-dropped-bound-shows.md) | The currency-code turn where a dropped bound shows | Proposed |
+| [0052](0052-the-currency-code-turn-where-a-dropped-bound-shows.md) | The currency-code turn where a dropped bound shows | Accepted |
 | [0053](0053-cases-the-data-no-longer-holds.md) | Cases the data no longer holds: fixture-missing | Accepted; amended by 0054 |
 | [0054](0054-an-absent-type-found-at-any-level.md) | An absent type is found at any level of a catalog type | Accepted |
 

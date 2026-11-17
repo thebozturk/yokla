@@ -1,6 +1,6 @@
 # 0052. The currency-code turn where a dropped bound shows
 
-Status: Proposed · Date: 2026-11-17
+Status: Accepted · Date: 2026-11-17
 
 ## Context
 
