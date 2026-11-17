@@ -1,6 +1,6 @@
 # 0053. Cases the data no longer holds: fixture-missing
 
-Status: Proposed · Date: 2026-11-17
+Status: Accepted · Date: 2026-11-17
 
 ## Context
 
