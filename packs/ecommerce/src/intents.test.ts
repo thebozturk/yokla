@@ -172,13 +172,14 @@ describe('the ecommerce intents (ADR-0044)', () => {
       { intent: 'policy', user: 'İade koşullarınız neler?' },
       { intent: 'policy', user: 'Garanti koşullarınız neler?' },
       { intent: 'policy', user: 'gift-cards koşullarınız neler?' },
-      // Last, the first type's median once more, with the currency code (ADR-0048).
+      // Last, the first type once more, with the currency code (ADR-0048), at its
+      // lower quartile (ADR-0052).
       {
         intent: 'currency-code',
-        user: '1501 TRY altında sleeping bag var mı?',
-        expect: { productType: [bag], filters: { maxPrice: 1501 } },
+        user: '900 TRY altında sleeping bag var mı?',
+        expect: { productType: [bag], filters: { maxPrice: 900 } },
         basis:
-          'type "sleeping bag" (1 catalog type) at most 1501, its median price, with the currency code TRY',
+          'type "sleeping bag" (1 catalog type) at most 900, its lower quartile price, with the currency code TRY',
       },
     ]);
     // A blank name is no name: the first bag named in English is T1. English shoppers
@@ -417,10 +418,10 @@ describe('the ecommerce intents (ADR-0044)', () => {
       },
       {
         intent: 'currency-code',
-        user: '50 TRY altında general var mı?',
-        expect: { productType: both, filters: { maxPrice: 50 } },
+        user: '40 TRY altında general var mı?',
+        expect: { productType: both, filters: { maxPrice: 40 } },
         basis:
-          'type "general" (2 catalog types) at most 50, its median price, with the currency code TRY',
+          'type "general" (2 catalog types) at most 40, its lower quartile price, with the currency code TRY',
       },
     ]);
   });
@@ -527,10 +528,10 @@ describe('a type asked by its catalog label (ADR-0050)', () => {
       },
       {
         intent: 'currency-code',
-        user: '50 TRY altında uyku  tulumu var mı?',
-        expect: { productType: both, filters: { maxPrice: 50 } },
+        user: '40 TRY altında uyku  tulumu var mı?',
+        expect: { productType: both, filters: { maxPrice: 40 } },
         basis:
-          'type "uyku  tulumu" (2 catalog types) at most 50, its median price, with the currency code TRY',
+          'type "uyku  tulumu" (2 catalog types) at most 40, its lower quartile price, with the currency code TRY',
       },
     ]);
   });
@@ -584,5 +585,37 @@ describe('a type asked by its catalog label (ADR-0050)', () => {
       .opening('tr', 1)
       .filter((asked) => asked.intent === 'type');
     expect(type?.expect).toEqual({ productType: ['p/light/a', 'q/light/b'] });
+  });
+});
+
+/** The bound of the code asked over one type at these prices. */
+const codeBound = (prices: readonly number[]) =>
+  ecommerceIntents(
+    loadData(profileWith({ currency: 'cur' }), {
+      readText: (path: string) =>
+        path === 'catalog.jsonl'
+          ? prices
+              .map((amount, i) =>
+                JSON.stringify({ sku: `P${String(i)}`, path: 'a/b', amount, cur: 'TRY' }),
+              )
+              .join('\n')
+          : '',
+    }),
+  )
+    .opening('tr', 1)
+    .filter((asked) => asked.intent === 'currency-code')
+    .map((asked) => asked.expect);
+
+describe('the currency-code turn (ADR-0052)', () => {
+  it('asks at the lower quartile, rounded up, where most products cost more', () => {
+    // Nine prices: a quarter of the way up is the third, 30.5, above the lowest
+    // and below the median.
+    const nine = [90, 10, 30.5, 70, 50, 20, 80, 40, 60];
+    expect(codeBound(nine)).toEqual([{ productType: ['a/b'], filters: { maxPrice: 31 } }]);
+    // Between two prices, the lower: of five, the second.
+    expect(codeBound([500, 100, 400, 200, 300])).toEqual([
+      { productType: ['a/b'], filters: { maxPrice: 200 } },
+    ]);
+    expect(codeBound([7.2])).toEqual([{ productType: ['a/b'], filters: { maxPrice: 8 } }]);
   });
 });

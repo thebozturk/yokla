@@ -10,7 +10,8 @@
 //   same catalog data its words came from (ADR-0004). A type is asked by its
 //   words, so the expectation and the prices cover every type with the same
 //   words; amounts are written in the language's usual unit, and one turn
-//   per language writes the currency code (ADR-0048). A type's words are its
+//   per language writes the currency code, at the type's lower quartile
+//   price (ADR-0048, ADR-0052). A type's words are its
 //   catalog label where the profile maps one, else its last level (ADR-0050).
 // - After an answer that showed products: adding the first of them to the
 //   cart (then the next, while the conversation only adds to the cart), and
@@ -129,6 +130,16 @@ function pricesOf(rows: readonly CatalogRow[]): number[] {
 function medianPrice(prices: readonly number[]): number | undefined {
   const middle = prices[Math.floor((prices.length - 1) / 2)];
   return middle === undefined ? undefined : Math.ceil(middle);
+}
+
+/**
+ * The price a quarter of the way up a type's products' prices, the lower one
+ * between two, rounded up to a whole amount (ADR-0052): about three quarters
+ * of its products cost more, and at least one doesn't.
+ */
+function lowerQuartile(prices: readonly number[]): number | undefined {
+  const quarter = prices[Math.floor((prices.length - 1) / 4)];
+  return quarter === undefined ? undefined : Math.ceil(quarter);
 }
 
 /**
@@ -293,18 +304,20 @@ function aboutGroup(group: WordGroup, language: string, say: Phrasings): IntentT
 }
 
 /**
- * The turn that writes the first group's median with the currency code, where
- * shoppers of the language write it otherwise (ADR-0048); undefined if not.
+ * The turn that writes the first group's lower quartile with the currency
+ * code, where shoppers of the language write it otherwise (ADR-0048); at the
+ * lower quartile, a target that drops the bound shows a product over it
+ * (ADR-0052). Undefined if not.
  */
 function codeTurn(group: WordGroup | undefined, say: Phrasings): IntentTurn | undefined {
   if (group === undefined) return undefined;
   const currency = currencyOf(group);
-  const median = medianPrice(pricesOf(group.rows));
-  if (currency === undefined || median === undefined) return undefined;
-  const coded = `${String(median)} ${currency}`;
-  if (say.money(String(median), currency) === coded) return undefined;
-  const why = `its median price, with the currency code ${currency}`;
-  return underTurn(group, 'currency-code', median, coded, why, say);
+  const bound = lowerQuartile(pricesOf(group.rows));
+  if (currency === undefined || bound === undefined) return undefined;
+  const coded = `${String(bound)} ${currency}`;
+  if (say.money(String(bound), currency) === coded) return undefined;
+  const why = `its lower quartile price, with the currency code ${currency}`;
+  return underTurn(group, 'currency-code', bound, coded, why, say);
 }
 
 function opening(data: EcommerceData, language: string, count: number): IntentTurn[] {
