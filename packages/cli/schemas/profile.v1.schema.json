@@ -2490,6 +2490,26 @@
                       }
                     }
                   ]
+                },
+                "typeLabel": {
+                  "description": "The words a shopper uses for the product's type, such as \"sleeping bag\": one field, or one per language. yokla explore asks for a type by it, in place of its last level (ADR-0050).",
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                    },
+                    {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "pattern": "^[a-z]{2}$"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z_][\\w-]*(?:\\.[A-Za-z_][\\w-]*)*$"
+                      }
+                    }
+                  ]
                 }
               },
               "required": [

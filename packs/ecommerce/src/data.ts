@@ -24,6 +24,8 @@ export interface CatalogRow {
   readonly inStock: boolean | null | undefined;
   /** Its name per language, or under `*` from a single name field; undefined when not mapped (ADR-0044). */
   readonly names?: Readonly<Record<string, string>>;
+  /** The words for its type per language, or under `*` from a single field; undefined when not mapped (ADR-0050). */
+  readonly typeLabels?: Readonly<Record<string, string>>;
 }
 
 export interface PolicySource {
@@ -54,6 +56,20 @@ function jsonLines(text: string, path: string): unknown[] {
     });
 }
 
+/** A field mapped once or per language, as its non-empty strings by language (`*` for once). */
+function perLanguage(
+  row: unknown,
+  field: string | Readonly<Record<string, string>>,
+): Record<string, string> {
+  const fields = typeof field === 'string' ? { '*': field } : field;
+  const values: Record<string, string> = {};
+  for (const [language, path] of Object.entries(fields)) {
+    const value = getFieldPath(row, path);
+    if (typeof value === 'string' && value.trim() !== '') values[language] = value;
+  }
+  return values;
+}
+
 function asBoolean(value: unknown): boolean | undefined {
   if (typeof value === 'boolean') return value;
   if (value === 'true' || value === 'false') return value === 'true';
@@ -82,17 +98,6 @@ export function loadData(profile: Profile, io: PackIo): EcommerceData {
       const stockValue = fields.stock === undefined ? undefined : getFieldPath(row, fields.stock);
       const inStockValue =
         fields.inStock === undefined ? undefined : getFieldPath(row, fields.inStock);
-      const nameFields =
-        fields.name === undefined
-          ? {}
-          : typeof fields.name === 'string'
-            ? { '*': fields.name }
-            : fields.name;
-      const names: Record<string, string> = {};
-      for (const [language, field] of Object.entries(nameFields)) {
-        const name = getFieldPath(row, field);
-        if (typeof name === 'string' && name.trim() !== '') names[language] = name;
-      }
       catalog.set(String(id), {
         id: String(id),
         type: typeof type === 'string' ? type : undefined,
@@ -100,7 +105,10 @@ export function loadData(profile: Profile, io: PackIo): EcommerceData {
         currency: typeof currency === 'string' ? currency : undefined,
         stock: fields.stock === undefined ? undefined : (asNumber(stockValue) ?? null),
         inStock: fields.inStock === undefined ? undefined : (asBoolean(inStockValue) ?? null),
-        ...(fields.name === undefined ? {} : { names }),
+        ...(fields.name === undefined ? {} : { names: perLanguage(row, fields.name) }),
+        ...(fields.typeLabel === undefined
+          ? {}
+          : { typeLabels: perLanguage(row, fields.typeLabel) }),
       });
     }
   }

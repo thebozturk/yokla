@@ -10,7 +10,8 @@
 //   same catalog data its words came from (ADR-0004). A type is asked by its
 //   words, so the expectation and the prices cover every type with the same
 //   words; amounts are written in the language's usual unit, and one turn
-//   per language writes the currency code (ADR-0048).
+//   per language writes the currency code (ADR-0048). A type's words are its
+//   catalog label where the profile maps one, else its last level (ADR-0050).
 // - After an answer that showed products: adding the first of them to the
 //   cart (then the next, while the conversation only adds to the cart), and
 //   asking for a cheaper one.
@@ -81,6 +82,42 @@ function typeWords(type: string, separator: string | undefined): string {
   return last.replaceAll(/[-_]+/gu, ' ').trim();
 }
 
+/** How a type is asked for: words by type, the same for every type with the same words. */
+export type WordsOf = (type: string) => string;
+
+/** Words compared as one: the same in lower case, with runs of spaces as one. */
+function wordKey(words: string, language: string): string {
+  return words.toLocaleLowerCase(language).replaceAll(/\s+/gu, ' ').trim();
+}
+
+/**
+ * The words of each type in a language (ADR-0050): the label its rows carry
+ * most often, ties to the first by name, or its last level's words where no
+ * row has a label in the language.
+ */
+export function typeWordsIn(
+  rows: readonly CatalogRow[],
+  separator: string | undefined,
+  language: string,
+): WordsOf {
+  const labels = new Map<string, Map<string, number>>();
+  for (const row of rows) {
+    const label = row.typeLabels?.[language] ?? row.typeLabels?.['*'];
+    if (row.type === undefined || label === undefined) continue;
+    const counts = labels.get(row.type) ?? new Map<string, number>();
+    counts.set(label.trim(), (counts.get(label.trim()) ?? 0) + 1);
+    labels.set(row.type, counts);
+  }
+  const chosen = new Map<string, string>();
+  for (const [type, counts] of labels) {
+    const [label] = [...counts.entries()].toSorted(
+      ([a, m], [b, n]) => n - m || (a < b ? -1 : a > b ? 1 : 0),
+    );
+    if (label !== undefined) chosen.set(type, label[0]);
+  }
+  return (type) => chosen.get(type) ?? typeWords(type, separator);
+}
+
 /** The prices of a type's products, lowest first. */
 function pricesOf(rows: readonly CatalogRow[]): number[] {
   return rows
@@ -120,12 +157,14 @@ function sharedLevels(levels: readonly (readonly string[])[]): number {
  * turn from each branch of the type tree. A branch is the first level below
  * the levels all types share; within one, types go by product count, then by
  * name, and the branches go by name. Without a separator, the types with the
- * most products. The same catalog gives the same types.
+ * most products. The same catalog gives the same types. Types with the same
+ * `keyOf`, the words they are asked by, count once (ADR-0048, ADR-0050).
  */
 export function spreadTypes(
   rows: readonly CatalogRow[],
   separator: string | undefined,
   count: number,
+  keyOf: (type: string) => string = (type) => typeWords(type, separator),
 ): string[] {
   const counts = new Map<string, number>();
   for (const row of rows) {
@@ -137,7 +176,7 @@ export function spreadTypes(
   // Types asked by the same words are one type to a shopper: the first taken stands for them.
   const asked = new Set<string>();
   const fresh = (type: string): boolean => {
-    const words = typeWords(type, separator);
+    const words = keyOf(type);
     if (asked.has(words)) return false;
     asked.add(words);
     return true;
@@ -193,10 +232,11 @@ interface WordGroup {
   readonly label: string;
 }
 
-function wordGroup(type: string, rows: readonly CatalogRow[], separator: string | undefined) {
-  const words = typeWords(type, separator);
+function wordGroup(type: string, rows: readonly CatalogRow[], wordsOf: WordsOf, language: string) {
+  const words = wordsOf(type);
+  const key = wordKey(words, language);
   const members = rows.filter(
-    (row) => row.type !== undefined && typeWords(row.type, separator) === words,
+    (row) => row.type !== undefined && wordKey(wordsOf(row.type), language) === key,
   );
   const types = [...new Set(members.map((row) => row.type ?? ''))];
   const label = `type "${words}" (${String(types.length)} catalog type${types.length === 1 ? '' : 's'})`;
@@ -272,8 +312,10 @@ function opening(data: EcommerceData, language: string, count: number): IntentTu
   if (say === undefined) return [];
   const rows = [...(data.catalog?.values() ?? [])];
   const separator = data.config.typeSeparator;
-  const groups = spreadTypes(rows, separator, count).map((type) =>
-    wordGroup(type, rows, separator),
+  const wordsOf = typeWordsIn(rows, separator, language);
+  const keyOf = (type: string) => wordKey(wordsOf(type), language);
+  const groups = spreadTypes(rows, separator, count, keyOf).map((type) =>
+    wordGroup(type, rows, wordsOf, language),
   );
   const turns = groups.flatMap((group) => aboutGroup(group, language, say));
   // A catalog without types: a product by its name, as before.

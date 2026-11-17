@@ -463,3 +463,126 @@ describe('the ecommerce intents (ADR-0044)', () => {
     expect(emptyBandAt(0.5)).toEqual([]);
   });
 });
+
+/** The intents over a catalog of rows, with the profile's fields besides id, type and price. */
+function labelled(rows: readonly Record<string, unknown>[], fields: Record<string, unknown>) {
+  return ecommerceIntents(
+    loadData(profileWith(fields), {
+      readText: (path: string) =>
+        path === 'catalog.jsonl' ? rows.map((row) => JSON.stringify(row)).join('\n') : '',
+    }),
+  );
+}
+
+/** The words each `type` asked asks by. */
+const typeTurns = (turns: readonly { intent: string; user: string }[]) =>
+  turns.filter((asked) => asked.intent === 'type').map((asked) => asked.user);
+
+describe('a type asked by its catalog label (ADR-0050)', () => {
+  it('reads labels from one field or one per language, and none when not mapped', () => {
+    const rows = [
+      { sku: 'A', path: 'p/bag/junior', amount: 5, lt: 'Uyku Tulumu', le: 'sleeping bag' },
+      { sku: 'B', path: 'p/bag/adult', amount: 6, lt: ' ' },
+    ];
+    const read = (fields: Record<string, unknown>) =>
+      loadData(profileWith(fields), {
+        readText: (path: string) =>
+          path === 'catalog.jsonl' ? rows.map((row) => JSON.stringify(row)).join('\n') : '',
+      }).catalog;
+    const perLanguage = read({ typeLabel: { tr: 'lt', en: 'le' } });
+    expect(perLanguage?.get('A')?.typeLabels).toEqual({ tr: 'Uyku Tulumu', en: 'sleeping bag' });
+    expect(perLanguage?.get('B')?.typeLabels).toEqual({});
+    expect(read({ typeLabel: 'lt' })?.get('A')?.typeLabels).toEqual({ '*': 'Uyku Tulumu' });
+    expect(read({})?.get('A')?.typeLabels).toBeUndefined();
+  });
+
+  it('asks by the label as the catalog writes it, for every type with it, with prices from all', () => {
+    const rows = [
+      { sku: 'A', path: 'p/bag/junior', amount: 50, cur: 'TRY', lt: 'Uyku Tulumu' },
+      { sku: 'B', path: 'p/bag/adult', amount: 40, cur: 'TRY', lt: 'uyku  tulumu' },
+      { sku: 'C', path: 'p/bag/adult', amount: 90, cur: 'TRY', lt: 'uyku  tulumu' },
+    ];
+    const turns = labelled(rows, { currency: 'cur', typeLabel: { tr: 'lt' } }).opening('tr', 6);
+    const both = ['p/bag/junior', 'p/bag/adult'];
+    // The adult bags come first by count, so their label is the words asked;
+    // the types are listed in catalog order.
+    expect(turns.filter((asked) => asked.intent !== 'product')).toEqual([
+      {
+        intent: 'type',
+        user: 'uyku  tulumu var mı?',
+        expect: { productType: both },
+        basis: 'type "uyku  tulumu" (2 catalog types) from the catalog',
+      },
+      {
+        intent: 'under-price',
+        user: '50 TL altında uyku  tulumu var mı?',
+        expect: { productType: both, filters: { maxPrice: 50 } },
+        basis: 'type "uyku  tulumu" (2 catalog types) at most 50, its median price',
+      },
+      {
+        intent: 'empty-band',
+        user: '39 TL altında uyku  tulumu var mı?',
+        expect: { productType: both, filters: { maxPrice: 39 } },
+        basis: 'type "uyku  tulumu" (2 catalog types) at most 39, below its lowest price 40',
+      },
+      {
+        intent: 'currency-code',
+        user: '50 TRY altında uyku  tulumu var mı?',
+        expect: { productType: both, filters: { maxPrice: 50 } },
+        basis:
+          'type "uyku  tulumu" (2 catalog types) at most 50, its median price, with the currency code TRY',
+      },
+    ]);
+  });
+
+  it("takes a type's most common label, ties to the first by name", () => {
+    const rows = [
+      { sku: 'A', path: 'p/x', amount: 1, l: 'beta' },
+      { sku: 'B', path: 'p/x', amount: 1, l: 'alpha' },
+      { sku: 'C', path: 'p/x', amount: 1, l: 'beta' },
+      // A label is asked without the spaces around it.
+      { sku: 'D', path: 'q/y', amount: 1, l: ' delta ' },
+      { sku: 'E', path: 'q/y', amount: 1, l: 'gamma' },
+    ];
+    expect(typeTurns(labelled(rows, { typeLabel: 'l' }).opening('en', 6))).toEqual([
+      'Do you have any beta?',
+      'Do you have any delta?',
+    ]);
+  });
+
+  it('falls back to the last level for a type with no label in the language', () => {
+    const rows = [
+      { sku: 'A', path: 'p/bag/junior', amount: 5, lt: 'Uyku Tulumu' },
+      { sku: 'B', path: 'q/lamp/head', amount: 6 },
+    ];
+    const say = labelled(rows, { typeLabel: { tr: 'lt' } });
+    expect(typeTurns(say.opening('tr', 6))).toEqual(['Uyku Tulumu var mı?', 'head var mı?']);
+    expect(typeTurns(say.opening('en', 6))).toEqual([
+      'Do you have any junior?',
+      'Do you have any head?',
+    ]);
+    // One label field serves every language.
+    expect(typeTurns(labelled(rows, { typeLabel: 'lt' }).opening('en', 6))).toEqual([
+      'Do you have any Uyku Tulumu?',
+      'Do you have any head?',
+    ]);
+  });
+
+  it('counts types with the same label once, by the language’s lower case', () => {
+    const rows = [
+      { sku: 'A', path: 'p/light/a', amount: 5, l: 'IŞIK' },
+      { sku: 'B', path: 'q/light/b', amount: 6, l: 'ışık' },
+      { sku: 'C', path: 'r/x/c', amount: 7, l: 'Isik' },
+    ];
+    // In Turkish, "I" lowers to "ı": IŞIK and ışık are one label, Isik another.
+    expect(typeTurns(labelled(rows, { typeLabel: 'l' }).opening('tr', 6))).toEqual([
+      'IŞIK var mı?',
+      'Isik var mı?',
+    ]);
+    // Asked for one type, the label still covers both.
+    const [type] = labelled(rows, { typeLabel: 'l' })
+      .opening('tr', 1)
+      .filter((asked) => asked.intent === 'type');
+    expect(type?.expect).toEqual({ productType: ['p/light/a', 'q/light/b'] });
+  });
+});

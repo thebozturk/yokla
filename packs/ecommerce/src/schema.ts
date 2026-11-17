@@ -55,6 +55,13 @@ const Catalog = z.strictObject({
         description:
           "The product's name: one field, or one per language such as { tr: name_tr, en: name_en }. yokla explore asks for products by it (ADR-0044).",
       }),
+    typeLabel: z
+      .union([FieldPath, z.record(LanguageCode, FieldPath)])
+      .optional()
+      .meta({
+        description:
+          'The words a shopper uses for the product\'s type, such as "sleeping bag": one field, or one per language. yokla explore asks for a type by it, in place of its last level (ADR-0050).',
+      }),
   }),
 });
 
