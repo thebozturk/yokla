@@ -1,6 +1,6 @@
 # 0059. Paraphrase and code-switching, written by a model
 
-Status: Proposed · Date: 2026-11-17
+Status: Accepted · Date: 2026-11-17
 
 ## Context
 
