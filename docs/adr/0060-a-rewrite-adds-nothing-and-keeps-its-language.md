@@ -1,6 +1,6 @@
 # 0060. A rewrite adds nothing, and keeps its language
 
-Status: Proposed · Date: 2026-11-17
+Status: Accepted · Date: 2026-11-17
 
 ## Context
 
