@@ -99,6 +99,10 @@ export const YoklaConfig = z.strictObject({
         description:
           'The model that plays a simulated customer (ADR-0028). A hosted model receives the conversation, the target answers included.',
       }),
+      analyzer: OwnModel.optional().meta({
+        description:
+          "The model yokla analyze asks for values in the target's docs, prompts and code (ADR-0049). A hosted model receives those files' text. It needs a price, 0 for a local model, so --max-cost can be enforced.",
+      }),
     })
     .default({}),
   checks: z

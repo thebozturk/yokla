@@ -282,6 +282,31 @@ export {
   type ProfileEntry,
 } from './profile/entries.ts';
 export { matchRows, type KnownRows, type MatchedCollection } from './analyze/match.ts';
+export {
+  ANALYZER_MARK,
+  ANALYZER_PROMPT_VERSION,
+  analyzerPrompt,
+  chunkFiles,
+  estimateExtraction,
+  estimateTokens,
+  EXTRACT_FIELDS,
+  extractSource,
+  isTestPath,
+  mergeExtracted,
+  READ_KINDS,
+  readableFiles,
+  readReply,
+  verifyEntry,
+  type Chunk,
+  type ChunkPart,
+  type ExtractedEntry,
+  type ExtractField,
+  type ExtractionEstimate,
+  type ReturnedEntry,
+  type SourceFile,
+  type UnverifiedEntry,
+  type VerifiedEntry,
+} from './analyze/extract.ts';
 export type {
   DataAnalysis,
   DataAnalyzer,

@@ -49,6 +49,28 @@ export const Analysis = z
     ),
     /** The proposed entries, each with where it came from. */
     entries: z.array(Entry.extend({ provenance: Provenance })),
+    /** The model step (ADR-0049): what it read, what it cost, and whether the cap stopped it. */
+    model: z
+      .object({
+        model: z.string(),
+        calls: z.int().nonnegative(),
+        /** Replies the cache gave, which cost nothing. */
+        cached: z.int().nonnegative(),
+        inputTokens: z.int().nonnegative().nullable(),
+        outputTokens: z.int().nonnegative().nullable(),
+        /** null when a call had no cost. */
+        costUsd: z.number().nonnegative().nullable(),
+        sent: z.array(z.string()),
+        left: z.array(z.string()),
+        partial: z.boolean(),
+      })
+      .optional(),
+    /** Values the model returned that failed their check, never proposed (ADR-0049). */
+    unverified: z
+      .array(z.object({ field: z.string(), file: z.string(), line: z.int(), reason: z.string() }))
+      .optional(),
+    /** Pointers whose verified values disagree; none is proposed (ADR-0049). */
+    conflicts: z.array(z.object({ pointer: z.string(), evidence: z.array(z.string()) })).optional(),
     /** The proposal compared with a profile, entry by entry. */
     comparison: z
       .object({
