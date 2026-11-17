@@ -67,6 +67,7 @@ old one.
 | [0052](0052-the-currency-code-turn-where-a-dropped-bound-shows.md) | The currency-code turn where a dropped bound shows | Accepted |
 | [0053](0053-cases-the-data-no-longer-holds.md) | Cases the data no longer holds: fixture-missing | Accepted; amended by 0054 |
 | [0054](0054-an-absent-type-found-at-any-level.md) | An absent type is found at any level of a catalog type | Accepted |
+| [0055](0055-cases-generated-from-the-catalog.md) | Cases generated from the catalog: yokla generate | Proposed |
 
 ## Template
 
