@@ -85,7 +85,7 @@ function json(response: ServerResponse, body: unknown, status = 200): void {
 
 const { profile: profileSchema, caseFile } = buildSchemas({
   languages: ['tr', 'en'],
-  domainPacks: [{ id: 'shop', expectations: { answerable: z.boolean() } }],
+  domainPacks: [{ id: 'shop', expectations: { answerable: z.boolean(), absentType: z.string() } }],
 });
 
 function profile(url: string, targetChange: Record<string, unknown> = {}): Profile {
@@ -456,6 +456,19 @@ function dirWithWord(word: string): string {
   return dir;
 }
 
+/** Three cases: none, one and another absent type (ADR-0053). */
+const factCases = () =>
+  cases(
+    { turns: [{ user: 'first' }] },
+    {
+      turns: [
+        { user: 'second', expect: { absentType: 'tent' } },
+        { user: 'again', expect: { absentType: 'tent' } },
+      ],
+    },
+    { turns: [{ user: 'third', expect: { absentType: 'boot' } }] },
+  );
+
 describe('runSuite with packs', () => {
   const seen: { history: number; lang: string | undefined; expect: unknown }[] = [];
 
@@ -494,6 +507,68 @@ describe('runSuite with packs', () => {
       },
     };
   }
+
+  /** A pack whose data, word.txt, names a type its cases expect absent (ADR-0053). */
+  const factPack: DomainPack = {
+    id: 'shop',
+    dimensions: {},
+    prepare: (_profile, io) => {
+      const held = io.readText('word.txt').split('\n')[0] ?? '';
+      return {
+        checks: [],
+        unmetFacts: (expectation) =>
+          expectation['absentType'] === held ? [`the data now holds ${held}`] : [],
+      };
+    },
+  };
+
+  it('sends nothing for a case the data no longer holds, and keeps the order (ADR-0053)', async () => {
+    const t = await target((received, _i, response) => {
+      json(response, answer({ answer: String(received.body['message']) }));
+    });
+    const text = 'tent\n\nboot\n';
+    const results = await runSuite(
+      options(profile(t.url), factCases(), { packs: [factPack], profileDir: dirWithWord(text) }),
+    );
+    expect(results.cases.map((c) => [c.id, c.status])).toEqual([
+      ['c0', 'unmeasured'],
+      ['c1', 'fixture-missing'],
+      ['c2', 'unmeasured'],
+    ]);
+    expect(results.cases[1]).toMatchObject({
+      fixture: ['the data now holds tent'],
+      samples: [],
+      dimensions: [],
+      unstable: false,
+    });
+    expect(t.received.map((r) => r.body['message'])).toEqual(['first', 'third']);
+    expect(results.summary.statuses).toEqual({ unmeasured: 2, 'fixture-missing': 1 });
+    // The data the run was judged on: its hash, its non-empty lines, and when it changed.
+    expect(results.run.data).toMatchObject([
+      { path: 'word.txt', sha256: createHash('sha256').update(text).digest('hex'), rows: 2 },
+    ]);
+    expect(results.run.data?.[0]?.modifiedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/u);
+    expect(Results.parse(results)).toBeDefined();
+  });
+
+  it('knows no modification time for data read by other means, and runs every case it holds (ADR-0053)', async () => {
+    const t = await target((received, _i, response) => {
+      json(response, answer({ answer: String(received.body['message']) }));
+    });
+    const results = await runSuite(
+      options(profile(t.url), factCases(), {
+        packs: [factPack],
+        // A word.txt is there, but the pack read another one.
+        profileDir: dirWithWord('tent'),
+        readText: () => 'hammock',
+      }),
+    );
+    expect(results.cases.map((c) => c.status)).not.toContain('fixture-missing');
+    expect(t.received).toHaveLength(4);
+    expect(results.run.data).toEqual([
+      { path: 'word.txt', sha256: createHash('sha256').update('hammock').digest('hex'), rows: 1 },
+    ]);
+  });
 
   it('runs the pack checks, aggregates per dimension and summarises', async () => {
     const t = await target((received, _i, response) => {

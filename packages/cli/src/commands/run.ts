@@ -249,7 +249,10 @@ export async function runCommand(
     if (values.junit !== undefined)
       io.out(`junit: ${writeReport(values.junit, junitXml(results))}`);
     if (values.html !== undefined) io.out(`html: ${writeReport(values.html, htmlReport(results))}`);
-    return results.cases.some((c) => c.status === 'error') ? 2 : 0;
+    // A case that ended in error, or that the data no longer holds, didn't run (ADR-0053).
+    return results.cases.some((c) => c.status === 'error' || c.status === 'fixture-missing')
+      ? 2
+      : 0;
   } catch (error) {
     if (error instanceof LoadError || error instanceof ConfigError) {
       io.err(error.message);

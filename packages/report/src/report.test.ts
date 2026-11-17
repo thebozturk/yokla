@@ -365,6 +365,23 @@ describe('junitXml', () => {
     );
   });
 
+  it('gives the facts the data no longer holds as the reason (ADR-0053)', () => {
+    const stale = results([
+      kase('hammock-en', 'fixture-missing', {
+        samples: [],
+        fixture: [
+          'the catalog now holds hammock: 1 product, such as HMK-1',
+          'the catalog holds no outdoor/x',
+        ],
+      }),
+    ]);
+    const reason =
+      'fixture missing: the catalog now holds hammock: 1 product, such as HMK-1; the catalog holds no outdoor/x';
+    expect(junitXml(stale)).toContain(`<error type="fixture-missing" message="${reason}"></error>`);
+    expect(terminalSummary(stale).out.join('\n')).toContain(`hammock-en  ${reason}`);
+    expect(htmlReport(stale)).toContain(reason);
+  });
+
   it('escapes what XML cannot carry as is', () => {
     expect(xmlText('a < b && c > "d"')).toBe('a &lt; b &amp;&amp; c &gt; "d"');
     expect(xmlAttribute('say "hi"\nnext\ttab')).toBe('say &quot;hi&quot;&#10;next&#9;tab');

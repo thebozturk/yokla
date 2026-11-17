@@ -4,7 +4,7 @@
 // passes in (P7). A case where no check applied is `unmeasured`, never `pass`.
 
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   aggregateCase,
@@ -14,6 +14,7 @@ import {
   buildRequest,
   callCost,
   caseDefinition,
+  caseUnmetFacts,
   checkTemplates,
   eventName,
   extractResponse,
@@ -46,6 +47,7 @@ import {
   type CaseCustomer,
   type CaseTurn,
   type Check,
+  type UnmetFacts,
   type Exchanged,
   type DomainPack,
   type LanguagePack,
@@ -179,6 +181,30 @@ interface Prepared {
   readonly checks: readonly Check[];
   readonly policies: Readonly<Record<string, AggregationPolicy>>;
   readonly languages: ReadonlyMap<string, LanguagePack>;
+  /** What a case states that the pack's data no longer holds (ADR-0053). */
+  readonly unmetFacts: UnmetFacts | undefined;
+  /** The files the pack read, in the order it read them (ADR-0053). */
+  readonly data: readonly DataFile[];
+}
+
+type DataFile = NonNullable<Results['run']['data']>[number];
+
+/** A file a pack read: its hash, its rows and, from the file system, when it changed (ADR-0053). */
+function dataFile(options: RunOptions, path: string, text: string): DataFile {
+  let modifiedAt: string | undefined;
+  if (options.readText === undefined) {
+    try {
+      modifiedAt = statSync(resolve(options.profileDir, path)).mtime.toISOString();
+    } catch {
+      modifiedAt = undefined;
+    }
+  }
+  return {
+    path,
+    sha256: createHash('sha256').update(text).digest('hex'),
+    rows: text.split('\n').filter((line) => line.trim() !== '').length,
+    ...(modifiedAt === undefined ? {} : { modifiedAt }),
+  };
 }
 
 function prepare(options: RunOptions): Prepared {
@@ -188,12 +214,21 @@ function prepare(options: RunOptions): Prepared {
   if (packs.length > 0 && pack === undefined) {
     throw new ConfigError(`no domain pack "${profile.domain}" is loaded`);
   }
-  const readText =
+  const read =
     options.readText ?? ((path: string) => readFileSync(resolve(options.profileDir, path), 'utf8'));
+  const data = new Map<string, DataFile>();
+  const readText = (path: string): string => {
+    const text = read(path);
+    if (!data.has(path)) data.set(path, dataFile(options, path, text));
+    return text;
+  };
   let packChecks: readonly Check[] = [];
+  let unmetFacts: UnmetFacts | undefined;
   if (pack !== undefined) {
     try {
-      packChecks = pack.prepare(profile, { readText }).checks;
+      const preparedPack = pack.prepare(profile, { readText });
+      packChecks = preparedPack.checks;
+      unmetFacts = preparedPack.unmetFacts;
     } catch (error) {
       throw new ConfigError(
         `pack "${pack.id}": ${error instanceof Error ? error.message : String(error)}`,
@@ -208,6 +243,25 @@ function prepare(options: RunOptions): Prepared {
     checks,
     policies: { ...options.policies, ...pack?.dimensions },
     languages: new Map((options.languages ?? []).map((lang) => [lang.language, lang])),
+    unmetFacts,
+    data: [...data.values()],
+  };
+}
+
+/** A case the data no longer holds: it sent nothing, and says which facts changed (ADR-0053). */
+function fixtureMissing(testCase: Case, unmet: readonly string[]): CaseResult {
+  return {
+    id: testCase.id,
+    suite: testCase.suite,
+    language: testCase.language,
+    definitionSha256: definitionSha256(testCase),
+    status: 'fixture-missing',
+    unstable: false,
+    ...(testCase.knownGap === undefined ? {} : { knownGap: testCase.knownGap }),
+    ...(reviewStatus(testCase) === 'proposed' ? { review: 'proposed' as const } : {}),
+    fixture: [...unmet],
+    dimensions: [],
+    samples: [],
   };
 }
 
@@ -1546,9 +1600,16 @@ function withEnv(text: string, env: RunOptions['env']): string {
 
 export async function runSuite(input: RunOptions): Promise<Results> {
   // ADR-0004: a rejected case doesn't run; a proposed one runs, and doesn't gate.
-  const options = { ...input, cases: input.cases.filter((c) => reviewStatus(c) !== 'rejected') };
-  preflight(options);
-  const prepared = prepare(options);
+  const accepted = { ...input, cases: input.cases.filter((c) => reviewStatus(c) !== 'rejected') };
+  preflight(accepted);
+  const prepared = prepare(accepted);
+  // A case whose facts the data no longer holds sends nothing (ADR-0053).
+  const stale = new Map<Case, readonly string[]>();
+  for (const c of accepted.cases) {
+    const unmet = caseUnmetFacts(c, prepared.unmetFacts);
+    if (unmet.length > 0) stale.set(c, unmet);
+  }
+  const options = { ...accepted, cases: accepted.cases.filter((c) => !stale.has(c)) };
   const target = options.profile.target;
   // The transforms of the written messages, in the order they apply (ADR-0045).
   const transformed = orderedTransforms(options.transforms);
@@ -1798,10 +1859,24 @@ export async function runSuite(input: RunOptions): Promise<Results> {
       "no span carried a turn's trace id: the app may not pass the incoming traceparent on to its model calls",
     );
   }
-  const cases = exchanged.map((c) => ({
+  const judged = exchanged.map((c) => ({
     ...judgeCase(options, prepared, c, observation, calls, spanned?.byTurn),
     ...(c.stoppedEarly ? { samplesPlanned: c.planned } : {}),
   }));
+  // The cases in the order they were given, with those the data no longer holds in
+  // their places: the cases that ran keep their own order (ADR-0053).
+  const cases: CaseResult[] = [];
+  let next = 0;
+  for (const c of accepted.cases) {
+    const unmet = stale.get(c);
+    const ran = judged[next];
+    if (unmet !== undefined) cases.push(fixtureMissing(c, unmet));
+    else if (ran !== undefined) {
+      cases.push(ran);
+      next += 1;
+    }
+  }
+  cases.push(...judged.slice(next));
   const coverage =
     options.coverage === true
       ? measureCoverage(
@@ -1930,6 +2005,7 @@ export async function runSuite(input: RunOptions): Promise<Results> {
       ...(reversed.length === 0 ? {} : { toolChanges: reversed }),
       ...(transformCounts.length === 0 ? {} : { transforms: transformCounts }),
       ...(coverage === undefined ? {} : { coverage }),
+      ...(prepared.data.length === 0 ? {} : { data: prepared.data.map((file) => ({ ...file })) }),
       ...(replay === undefined
         ? {}
         : { replay: { cassetteSha256: replay.sha256, loose: replay.loose === true, diverged } }),

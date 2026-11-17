@@ -90,8 +90,10 @@ export function caseReason(c: CaseResult, problems: CaseProblems): string | unde
     case 'fail':
       return dimensionSummary(c, problems.deciding, false);
     case 'error':
-    case 'fixture-missing':
       return problems.errors[0] ?? c.status;
+    case 'fixture-missing':
+      // The facts the data no longer holds; the case sent nothing (ADR-0053).
+      return c.fixture === undefined ? c.status : `fixture missing: ${c.fixture.join('; ')}`;
     case 'unmeasured':
       return problems.unmeasured.length > 0
         ? `unmeasured ${problems.unmeasured.join('; ')}`
