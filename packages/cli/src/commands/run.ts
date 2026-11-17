@@ -16,7 +16,7 @@ import {
   type ToolReversal,
 } from '@yokla/core';
 import { htmlReport, junitXml, terminalSummary } from '@yokla/report';
-import { ConfigError, runSuite } from '@yokla/runtime';
+import { ConfigError, runSuite, type RewritePlan } from '@yokla/runtime';
 import { LoadError } from '../load.ts';
 import { prepareRun, readCassette } from '../prepare.ts';
 
@@ -45,7 +45,8 @@ Options:
                         model sees it, to check that verdicts don't move; repeatable
   --transform <kind>    send each written message as users write it, to check that verdicts
                         don't move: no-diacritics, lowercase, no-punctuation or typos (one,
-                        seeded by case, sample and turn); repeatable
+                        seeded by case, sample and turn); paraphrase or code-switch, written
+                        by models.transform before the run (ADR-0059); repeatable
   --concurrency <n>     cases run in parallel (default: 1)
   --target-url <url>    use this url instead of the profile's request url
   --junit <file>        also write a JUnit XML report
@@ -238,6 +239,15 @@ export async function runCommand(
       ...(swaps.length === 0 ? {} : { swaps }),
       ...(reversals.length === 0 ? {} : { reversals }),
       ...(transforms.length === 0 ? {} : { transforms }),
+      // What the model's transforms will take, before any is asked (ADR-0059).
+      onTransformPlan: (plan: RewritePlan) => {
+        io.out(
+          `transform: ${String(plan.messages)} message(s) to rewrite with ${plan.model} at ${plan.url}; their text goes there`,
+        );
+        io.out(
+          `  ${String(plan.calls)} call(s) at most, ${String(plan.cached)} from the cache; at most ${plan.upperUsd === null ? 'an unknown cost' : `$${plan.upperUsd.toFixed(4)}`}`,
+        );
+      },
       ...(maxCost === undefined ? {} : { maxCostUsd: maxCost }),
       ...(values['fresh-customer'] === true ? { freshCustomer: true } : {}),
     });

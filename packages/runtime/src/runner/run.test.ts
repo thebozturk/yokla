@@ -469,6 +469,56 @@ const factCases = () =>
     { turns: [{ user: 'third', expect: { absentType: 'boot' } }] },
   );
 
+describe("runSuite with a model's transforms (ADR-0059)", () => {
+  const transformModel = {
+    kind: 'openai-compatible' as const,
+    auth: 'api-key' as const,
+    url: 'http://127.0.0.1:1/v1',
+    model: 't',
+    temperature: 0,
+    maxTokens: 50,
+    timeoutMs: 1_000,
+  };
+
+  it('refuses to start without models.transform, its price, or --max-cost while a rewrite costs', async () => {
+    const t = await target((_r, _i, response) => {
+      json(response, answer());
+    });
+    const ask = (change: Partial<RunOptions>) =>
+      runSuite(
+        options(profile(t.url), cases({ turns: [{ user: 'a tent' }] }), {
+          transforms: ['paraphrase'],
+          languages: [stubLanguagePack('tr')],
+          profileDir: mkdtempSync(join(tmpdir(), 'yokla-transform-')),
+          ...change,
+        }),
+      );
+    await expect(ask({})).rejects.toThrow(
+      '--transform paraphrase needs models.transform in the configuration (ADR-0059)',
+    );
+    await expect(ask({ models: { transform: transformModel } })).rejects.toThrow(
+      'models.transform has no price, so --max-cost could not be enforced',
+    );
+    const planned: number[] = [];
+    await expect(
+      ask({
+        models: { transform: { ...transformModel, price: { input: 1, output: 1 } } },
+        onTransformPlan: (plan) => planned.push(plan.calls),
+      }),
+    ).rejects.toThrow('--max-cost <usd> caps it, and is required');
+    expect(planned).toEqual([1]);
+    await expect(
+      ask({
+        models: {
+          transform: { ...transformModel, apiKeyEnv: 'NONE', price: { input: 0, output: 0 } },
+        },
+      }),
+    ).rejects.toThrow('models.transform: environment variable NONE is not set');
+    // Nothing reached the target.
+    expect(t.received).toEqual([]);
+  });
+});
+
 describe('runSuite with packs', () => {
   const seen: { history: number; lang: string | undefined; expect: unknown }[] = [];
 

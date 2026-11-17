@@ -20,6 +20,8 @@ import {
   extractResponse,
   goalReached,
   maskDeep,
+  keptTexts,
+  MODEL_TRANSFORMS,
   quotedValues,
   Results as ResultsSchema,
   messageEvents,
@@ -43,6 +45,7 @@ import {
   type ModelSwap,
   type ToolInjection,
   type ToolReversal,
+  type ModelTransform,
   type TransformKind,
   type CaseCustomer,
   type CaseTurn,
@@ -75,6 +78,7 @@ import { correlate, observedFields, parseLogLines, readLogText } from '../observ
 import { ProxyControl, ProxyControlError } from '../proxy/control.ts';
 import { ModelClientError } from '../models/client.ts';
 import { CustomerPlayer, type OwnCall } from '../models/customer.ts';
+import { Rewriter, type RewritePlan, type RewriteResult } from '../models/rewrite.ts';
 import {
   closeText,
   openWebSocket,
@@ -150,6 +154,8 @@ export interface RunOptions {
   readonly models?: YoklaConfig['models'];
   /** Ask the customer model anew, whatever its reply cache holds (ADR-0028). */
   readonly freshCustomer?: boolean;
+  /** Told what the model's transforms will take, before any is asked (ADR-0059). */
+  readonly onTransformPlan?: (plan: RewritePlan) => void;
   /** Where yokla keeps generated and cached data. Default: yokla-data next to the profile. */
   readonly dataDir?: string;
   /** The model proxy's address. Default: 127.0.0.1 on the profile's modelProxy.port. */
@@ -398,11 +404,11 @@ export function preflight(options: RunOptions): void {
     problems.push('modelProxy correlates serially, which needs a concurrency of 1');
   }
   const simulated = options.cases.filter((c) => c.customer !== undefined);
-  if (
-    options.maxCostUsd !== undefined &&
-    options.profile.modelProxy === undefined &&
-    simulated.length === 0
-  ) {
+  // Without a proxy, the cap holds yokla's own spend: the customer's and the model's
+  // transforms (ADR-0028, ADR-0059).
+  const ownSpends =
+    simulated.length > 0 || orderedTransforms(options.transforms).some(isModelTransform);
+  if (options.maxCostUsd !== undefined && options.profile.modelProxy === undefined && !ownSpends) {
     problems.push('a cost cap needs a modelProxy in the profile: without one, spend is unknown');
   }
   // A simulated customer needs yokla's own model, and a prompt in the case's language (ADR-0028).
@@ -527,25 +533,119 @@ function transformsText(kinds: readonly TransformKind[]): string {
  * with the values its expectations quote left as written.
  */
 function transformTurn(
-  options: RunOptions,
+  options: Running,
   testCase: Case,
   sampleIndex: number,
   turnIndex: number,
   turn: CaseTurn,
 ): { readonly turn: CaseTurn; readonly sent?: Sent } {
   const kinds = orderedTransforms(options.transforms);
+  if (kinds.length === 0) return { turn };
+  // The model's rewrite comes first, the same for every sample (ADR-0059).
+  const rewrite = options.rewrites?.get(`${testCase.id}|${String(turnIndex)}`);
   const lang = options.languages?.find((pack) => pack.language === testCase.language);
-  if (kinds.length === 0 || lang === undefined) return { turn };
-  const result = transformMessage(turn.user, kinds, {
-    lang,
-    seed: `${testCase.id}|${String(sampleIndex)}|${String(turnIndex)}`,
-    keep: quotedValues(turn.expect),
-  });
-  if (result.changedBy.length === 0) return { turn };
+  const written = rewrite?.text ?? turn.user;
+  // The model's kinds change nothing here: their rewrite is the message already.
+  const result =
+    lang === undefined
+      ? { text: written, changedBy: [] }
+      : transformMessage(written, kinds, {
+          lang,
+          seed: `${testCase.id}|${String(sampleIndex)}|${String(turnIndex)}`,
+          keep: quotedValues(turn.expect),
+        });
+  const changedBy = [...(rewrite?.changedBy ?? []), ...result.changedBy];
+  if (changedBy.length === 0) return { turn };
   return {
     turn: { ...turn, user: result.text },
-    sent: { written: turn.user, changedBy: result.changedBy },
+    sent: { written: turn.user, changedBy },
   };
+}
+
+/** The run's options, with the model's rewrites runSuite made before the first request. */
+type Running = RunOptions & { readonly rewrites?: ReadonlyMap<string, RewriteResult> };
+
+const isModelTransform = (kind: TransformKind): kind is ModelTransform =>
+  MODEL_TRANSFORMS.some((model) => model === kind);
+
+/**
+ * The model's rewrites of every written message (ADR-0059), made before the
+ * first request, under the run's cost cap. Undefined without a model's kind.
+ */
+async function rewriteMessages(
+  options: RunOptions,
+  own: OwnSpend,
+): Promise<ReadonlyMap<string, RewriteResult> | undefined> {
+  const kinds = orderedTransforms(options.transforms).filter(isModelTransform);
+  if (kinds.length === 0) return undefined;
+  const model = options.models?.transform;
+  if (model === undefined) {
+    throw new ConfigError(
+      `--transform ${kinds.join(', ')} needs models.transform in the configuration (ADR-0059)`,
+    );
+  }
+  const { price } = model;
+  if (price === undefined) {
+    throw new ConfigError(
+      'models.transform has no price, so --max-cost could not be enforced: give it one, 0 for a local model',
+    );
+  }
+  const languages = options.profile.languages;
+  const jobs = options.cases.flatMap((testCase) => {
+    // preflight makes sure a transformed case's language has its pack.
+    const lang = options.languages?.find((pack) => pack.language === testCase.language);
+    if (testCase.customer !== undefined || lang === undefined) return [];
+    return testCase.turns.map((turn, index) => ({
+      key: `${testCase.id}|${String(index)}`,
+      message: turn.user,
+      language: testCase.language,
+      other: languages.find((language) => language !== testCase.language),
+      keep: keptTexts(turn.user, { lang, keep: quotedValues(turn.expect) }),
+      kinds,
+    }));
+  });
+  try {
+    const rewriter = new Rewriter({
+      model,
+      env: options.env,
+      cacheDir: resolve(options.dataDir ?? resolve(options.profileDir, 'yokla-data'), 'transform'),
+    });
+    const plan = rewriter.plan(jobs);
+    options.onTransformPlan?.(plan);
+    if (
+      plan.calls > 0 &&
+      (price.input > 0 || price.output > 0) &&
+      options.maxCostUsd === undefined
+    ) {
+      throw new ConfigError(
+        "models.transform can spend: --max-cost <usd> caps it, and is required while a rewrite isn't cached (ADR-0059)",
+      );
+    }
+    return await rewriter.run(jobs, own, options.maxCostUsd);
+  } catch (error) {
+    if (error instanceof ModelClientError)
+      throw new ConfigError(`models.transform: ${error.message}`);
+    throw error;
+  }
+}
+
+/** For each model's kind, the messages it left as written, and why (ADR-0059). */
+function rewriteIssues(rewrites: ReadonlyMap<string, RewriteResult> | undefined): string[] {
+  const byKind = new Map<ModelTransform, Map<string, number>>();
+  for (const result of rewrites?.values() ?? []) {
+    for (const { kind, why } of result.refused) {
+      const whys = byKind.get(kind) ?? new Map<string, number>();
+      whys.set(why, (whys.get(why) ?? 0) + 1);
+      byKind.set(kind, whys);
+    }
+  }
+  return [...byKind].map(([kind, whys]) => {
+    const total = [...whys.values()].reduce((sum, count) => sum + count, 0);
+    const reasons = [...whys].map(([why, count]) =>
+      count === 1 ? why : `${why} (${String(count)})`,
+    );
+    return `--transform ${kind} left ${counted(total, 'message')} as written: ${reasons.join('; ')}`;
+  });
 }
 
 /** Whether the model proxy forwards the target's calls: without upstreams, only spans show them (ADR-0029). */
@@ -1609,7 +1709,11 @@ export async function runSuite(input: RunOptions): Promise<Results> {
     const unmet = caseUnmetFacts(c, prepared.unmetFacts);
     if (unmet.length > 0) stale.set(c, unmet);
   }
-  const options = { ...accepted, cases: accepted.cases.filter((c) => !stale.has(c)) };
+  const running = { ...accepted, cases: accepted.cases.filter((c) => !stale.has(c)) };
+  // yokla's own spend: the model's rewrites, then the customer's calls (ADR-0028, ADR-0059).
+  const ownSpend: OwnSpend = { calls: 0, cached: 0, costUsd: 0, unknown: false };
+  const rewrites = await rewriteMessages(running, ownSpend);
+  const options: Running = { ...running, ...(rewrites === undefined ? {} : { rewrites }) };
   const target = options.profile.target;
   // The transforms of the written messages, in the order they apply (ADR-0045).
   const transformed = orderedTransforms(options.transforms);
@@ -1683,13 +1787,13 @@ export async function runSuite(input: RunOptions): Promise<Results> {
             ),
             ...(options.freshCustomer === true ? { fresh: true } : {}),
           }),
-          spend: { calls: 0, cached: 0, costUsd: 0, unknown: false },
+          spend: ownSpend,
           languages: prepared.languages,
         };
   const cap =
     recording === undefined && simulation === undefined
       ? undefined
-      : costCap(options, recording, simulation?.spend);
+      : costCap(options, recording, ownSpend);
   const arm: Arm | undefined =
     recording === undefined
       ? undefined
@@ -1966,6 +2070,7 @@ export async function runSuite(input: RunOptions): Promise<Results> {
       : [
           `--transform left ${counted(simulatedLeft, 'case')} with a simulated customer as ${simulatedLeft === 1 ? 'it is' : 'they are'}: the customer model writes their messages`,
         ]),
+    ...rewriteIssues(rewrites),
   ];
   const issues = [
     ...observation.issues,
@@ -1977,7 +2082,7 @@ export async function runSuite(input: RunOptions): Promise<Results> {
     ...capIssues,
     ...(stop === undefined ? [] : [stop]),
   ];
-  const own = simulation?.spend;
+  const own = simulation === undefined && rewrites === undefined ? undefined : ownSpend;
   const statuses: Partial<Record<CaseResult['status'], number>> = {};
   for (const c of cases) statuses[c.status] = (statuses[c.status] ?? 0) + 1;
   const finishedAt = new Date();

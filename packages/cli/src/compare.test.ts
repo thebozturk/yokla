@@ -209,14 +209,27 @@ describe('parseReversal (ADR-0043)', () => {
   });
 });
 
-describe('parseTransform (ADR-0045)', () => {
+describe('parseTransform (ADR-0045, ADR-0059)', () => {
   it('reads each kind, and refuses anything else', () => {
-    for (const kind of ['no-diacritics', 'lowercase', 'no-punctuation', 'typos'] as const) {
-      expect(parseTransform(kind)).toBe(kind);
-    }
-    for (const text of ['', 'typo', 'Lowercase', 'uppercase', 'no-diacritics,typos']) {
+    const kinds = [
+      'paraphrase',
+      'code-switch',
+      'no-diacritics',
+      'lowercase',
+      'no-punctuation',
+      'typos',
+    ] as const;
+    for (const kind of kinds) expect(parseTransform(kind)).toBe(kind);
+    for (const text of [
+      '',
+      'typo',
+      'Lowercase',
+      'uppercase',
+      'no-diacritics,typos',
+      'codeswitch',
+    ]) {
       expect(() => parseTransform(text), text).toThrow(
-        '--transform must be one of no-diacritics, lowercase, no-punctuation, typos',
+        '--transform must be one of paraphrase, code-switch, no-diacritics, lowercase, no-punctuation, typos',
       );
     }
   });

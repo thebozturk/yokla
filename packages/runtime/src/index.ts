@@ -28,6 +28,13 @@ export { correlate, parseLogLines, readField, stripAnsi } from './observe/logs.t
 export { ProxyControl, ProxyControlError } from './proxy/control.ts';
 export { ModelClient, ModelClientError, type OwnReply } from './models/client.ts';
 export {
+  Rewriter,
+  type RewriteCaller,
+  type RewriteJob,
+  type RewritePlan,
+  type RewriteResult,
+} from './models/rewrite.ts';
+export {
   openWebSocket,
   WebSocketConnection,
   WebSocketError,
