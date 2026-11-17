@@ -31,6 +31,8 @@ interface Wording {
   stock(name: string): string;
   attribute(type: string, attribute: string, value: string): string;
   refine(amount: string): string;
+  /** Cheaper than the product asked about first, without naming it again (ADR-0064). */
+  readonly cheaper: string;
 }
 
 const WORDINGS: Readonly<Record<string, Wording>> = {
@@ -39,12 +41,14 @@ const WORDINGS: Readonly<Record<string, Wording>> = {
     stock: (name) => `${name} stokta var mı?`,
     attribute: (type, attribute, value) => `${attribute} ${value} olan ${type} var mı?`,
     refine: (amount) => `Peki ${amount} altında olan var mı?`,
+    cheaper: 'İlk sorduğum üründen daha ucuz bir seçenek var mı?',
   },
   en: {
     compare: (a, b) => `Which is better, the ${a} or the ${b}?`,
     stock: (name) => `Is the ${name} in stock?`,
     attribute: (type, attribute, value) => `Do you have any ${type} with ${attribute} ${value}?`,
     refine: (amount) => `And under ${amount}?`,
+    cheaper: 'Do you have anything cheaper than the one I asked about first?',
   },
 };
 
@@ -285,7 +289,7 @@ const KINDS: Readonly<Record<Kind, (scope: Scope) => Made>> = {
       const turns: Turn[] = [
         { user: scope.say.product(found.name), expect: includes(found.row.id) },
         {
-          user: scope.say.cheaper,
+          user: scope.word.cheaper,
           // The catalog holds a cheaper product in stock, so one must be shown (ADR-0063).
           expect: {
             productType: types(group),

@@ -166,7 +166,8 @@ describe('yokla generate from the catalog (ADR-0055)', () => {
         expect: { evidence: { products: { includes: ['TNT-1'] } } },
       },
       {
-        user: 'Do you have anything cheaper?',
+        // It says what it is cheaper than (ADR-0064).
+        user: 'Do you have anything cheaper than the one I asked about first?',
         // TNT-3 is cheaper and in stock, so one must be shown (ADR-0063).
         expect: {
           productType: ['outdoor/camping/tent'],
@@ -192,6 +193,14 @@ describe('yokla generate from the catalog (ADR-0055)', () => {
     expect(run({}, known)?.notes).toContain(
       'unknown-stock (en): no product with a name of its own in the language has an unknown stock',
     );
+  });
+
+  it('asks for something cheaper than the product asked about first, in each language', () => {
+    const both = run({ languages: ['tr', 'en'] });
+    expect(ofKind(both?.cases, 'cheaper').map((c) => [c.language, c.turns[1]?.user])).toEqual([
+      ['tr', 'İlk sorduğum üründen daha ucuz bir seçenek var mı?'],
+      ['en', 'Do you have anything cheaper than the one I asked about first?'],
+    ]);
   });
 
   it('writes each language its own way, at most --per-kind of each kind, the same twice', () => {
