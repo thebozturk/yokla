@@ -801,7 +801,7 @@ explore` chooses its opening types, and names them by their words.
 | `attribute` | "Do you have any {type} with {attribute} {value}?" | `productType`, `filters.attributes` |
 | `comparison` | "Which is better, the {a} or the {b}?" | both products among the answer's |
 | `refine` | the type, then "And under {amount}?", its median price | the second turn: `productType`, `filters.maxPrice` |
-| `cheaper` | a product by name, then "Do you have anything cheaper?" | the second turn: `productType`, at most its price |
+| `cheaper` | a product by name, then "Do you have anything cheaper?" | the second turn: `productType`, at most its price, and a product shown |
 | `unknown-stock` | "Is the {name} in stock?", a product whose stock is unknown | the product among the answer's |
 
 - **The checks that read the catalog judge the rest:** `price-grounded` the
@@ -818,6 +818,14 @@ explore` chooses its opening types, and names them by their words.
   catalog that maps neither `stock` nor `inStock` can't tell, so its first
   products are named. The evidence gives the stock each was named by
   (ADR-0062).
+- **A name of its own.** `lookup`, `comparison`, `cheaper` and
+  `unknown-stock` name a product whose name, in the case's language, no
+  other product holds, compared in lower case with runs of spaces as one. A
+  name that starts a longer one still counts as its own (ADR-0063).
+- **`cheaper`** names a product with a cheaper one in stock of the same
+  catalog type, so its second turn has something to show and expects at
+  least one product (`evidence.products.min: 1`). The evidence names the
+  cheaper product (ADR-0063).
 - **`attribute`** needs `ecommerce.catalog.fields.attributes` in the
   profile. The attribute and its value are written as the catalog writes
   them; reword them when you approve the case.
