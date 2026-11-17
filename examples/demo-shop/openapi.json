@@ -1,0 +1,84 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "demo-shop",
+    "version": "0.0.0",
+    "description": "The demo-shop's chat API: what its clients send and read (ADR-0057)."
+  },
+  "servers": [{ "url": "/" }],
+  "paths": {
+    "/v1/chat": {
+      "post": {
+        "summary": "Answer one message of a session.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["message"],
+                "properties": {
+                  "message": { "type": "string" },
+                  "sessionId": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer, its products and its route.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["data"],
+                  "properties": { "data": { "$ref": "#/components/schemas/ChatAnswer" } }
+                }
+              }
+            }
+          },
+          "429": { "description": "Too many requests: wait for Retry-After." }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ChatAnswer": {
+        "type": "object",
+        "required": ["answer", "products", "metadata"],
+        "properties": {
+          "answer": { "type": "string" },
+          "products": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "name", "price"],
+              "properties": {
+                "id": { "type": "string" },
+                "name": { "type": "string" },
+                "price": {
+                  "type": "object",
+                  "required": ["amount", "currency"],
+                  "properties": {
+                    "amount": { "type": "number", "minimum": 0 },
+                    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+                  }
+                }
+              }
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "required": ["route", "language"],
+            "properties": {
+              "route": { "type": "string" },
+              "language": { "enum": ["tr", "en"] }
+            }
+          }
+        }
+      }
+    }
+  }
+}

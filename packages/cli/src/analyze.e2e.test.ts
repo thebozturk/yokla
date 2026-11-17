@@ -80,11 +80,15 @@ async function cli(...args: string[]): Promise<Ran> {
   return { code, output: lines.join('\n') };
 }
 
-const analyze = (out: string, json: string, ...more: string[]) =>
+// A copy whose contract requires a field the answers lack (ADR-0057).
+const staleRepo = join(work, 'stale-shop');
+let stale: Ran | undefined;
+
+const analyzeIn = (dir: string, out: string, json: string, ...more: string[]) =>
   cli(
     'analyze',
     '--dir',
-    repo,
+    dir,
     '--url',
     `${shopUrl}/v1/chat`,
     '--body',
@@ -97,6 +101,9 @@ const analyze = (out: string, json: string, ...more: string[]) =>
     json,
     ...more,
   );
+
+const analyze = (out: string, json: string, ...more: string[]) =>
+  analyzeIn(repo, out, json, ...more);
 
 let first: Ran | undefined;
 let second: Ran | undefined;
@@ -134,6 +141,21 @@ beforeAll(async () => {
   first = await analyze(proposal, join(work, 'analysis.json'));
   firstText = readFileSync(proposal, 'utf8');
   second = await analyze(proposal, join(work, 'again.json'), '--force');
+  cpSync(repo, staleRepo, { recursive: true });
+  const contractPath = join(staleRepo, 'openapi.json');
+  writeFileSync(
+    contractPath,
+    readFileSync(contractPath, 'utf8').replace(
+      '"required": ["answer", "products", "metadata"]',
+      '"required": ["answer", "products", "metadata", "currencyCode"]',
+    ),
+  );
+  stale = await analyzeIn(
+    staleRepo,
+    join(staleRepo, 'yokla.profile.proposed.yaml'),
+    join(work, 'stale.json'),
+    '--force',
+  );
 
   const configText = (maxTokens: number) =>
     [
@@ -203,14 +225,19 @@ describe('yokla analyze on the demo-shop (ADR-0047)', () => {
   it('writes a proposal and an analysis report', () => {
     expect(first?.code, first?.output).toBe(0);
     expect(first?.output).toContain('probing ');
-    expect(first?.output).toContain('precision 100.0%, recall 43.5%');
+    expect(first?.output).toContain('precision 100.0%, recall 71.0%');
   });
 
   it("proposes only the hand-written profile's entries", () => {
     const { comparison } = report();
     expect(comparison?.different).toEqual([]);
     expect(comparison?.new).toEqual([]);
-    expect(pointers(comparison?.same ?? [])).toEqual([
+    const same = pointers(comparison?.same ?? []);
+    // The contract, from openapi.json and kept by every answer (ADR-0057, ADR-0058).
+    const contract = same.filter((pointer) => pointer.startsWith('/target/response/schema/'));
+    expect(contract).toHaveLength(19);
+    expect(contract).toContain('/target/response/schema/at');
+    expect(same.filter((pointer) => !contract.includes(pointer))).toEqual([
       '/target/response/text',
       '/target/response/route',
       '/target/response/evidence/products/items',
@@ -257,7 +284,6 @@ describe('yokla analyze on the demo-shop (ADR-0047)', () => {
     expect(groups).toEqual([
       '/target/response/evidence/products/fields/size',
       '/target/response/evidence/products/fields/gender',
-      '/target/response/schema',
       '/target/limits/burstPerSecond',
       '/target/limits/perMinute',
       '/target/cacheBypass/kind',
@@ -279,8 +305,8 @@ describe('yokla analyze on the demo-shop (ADR-0047)', () => {
       '/ecommerce/catalog/fields/attributes/color',
       '/ecommerce/catalog/fields/attributes/gender',
     ]);
-    expect(missed).toHaveLength(39);
-    expect(report().comparison?.recall).toBeCloseTo(30 / 69, 12);
+    expect(missed).toHaveLength(20);
+    expect(report().comparison?.recall).toBeCloseTo(49 / 69, 12);
   });
 
   it("never lists the profile it is measured against, the cases or yokla's configuration", () => {
@@ -325,6 +351,37 @@ const cutReport = () => Analysis.parse(JSON.parse(readFileSync(join(work, 'cut.j
 const modelReport = () =>
   Analysis.parse(JSON.parse(readFileSync(join(work, 'model.json'), 'utf8')));
 
+describe('the response contract from a contract file (ADR-0057, ADR-0058)', () => {
+  it('reads openapi.json at the answer, verified by every probe answer', () => {
+    expect(report().contracts).toEqual([
+      {
+        file: 'openapi.json',
+        read: 'POST /v1/chat 200 application/json',
+        at: '$.data',
+        outcome: 'proposed',
+        details: [],
+      },
+    ]);
+    const entry = report().entries.find((found) => found.pointer === '/target/response/schema');
+    expect(entry?.provenance).toEqual({
+      source: 'contract',
+      evidence: 'openapi.json: POST /v1/chat 200 application/json',
+      status: 'proposed',
+    });
+    expect(first?.output).toContain(
+      'contract: openapi.json POST /v1/chat 200 application/json at $.data: proposed',
+    );
+  });
+
+  it("proposes no contract the answers don't keep, and names the violation by its path", () => {
+    expect(stale?.code, stale?.output).toBe(0);
+    const analysis = Analysis.parse(JSON.parse(readFileSync(join(work, 'stale.json'), 'utf8')));
+    expect(analysis.contracts?.[0]).toMatchObject({ file: 'openapi.json', outcome: 'violated' });
+    expect(analysis.contracts?.[0]?.details.join('\n')).toMatch(/^\$\.data required: /mu);
+    expect(pointers(analysis.entries)).not.toContain('/target/response/schema');
+  });
+});
+
 describe('yokla analyze with a model on the demo-shop (ADR-0049)', () => {
   it('prints the files and the estimate with --estimate, and sends nothing', () => {
     expect(estimated?.code, estimated?.output).toBe(0);
@@ -360,9 +417,9 @@ describe('yokla analyze with a model on the demo-shop (ADR-0049)', () => {
       '/refusal/canonical/tr',
       '/refusal/canonical/en',
     ]);
-    expect(comparison?.same).toHaveLength(37);
-    expect(comparison?.recall).toBeCloseTo(37 / 69, 12);
-    expect(modelled?.output).toContain('precision 100.0%, recall 53.6%');
+    expect(comparison?.same).toHaveLength(56);
+    expect(comparison?.recall).toBeCloseTo(56 / 69, 12);
+    expect(modelled?.output).toContain('precision 100.0%, recall 81.2%');
     const cache = entries.find((entry) => entry.pointer === '/target/cacheBypass');
     expect(cache?.provenance).toMatchObject({ source: 'doc', status: 'proposed' });
     expect(cache?.provenance.evidence).toMatch(/^README\.md:\d+: ".*x-cache-bypass: 1/u);
