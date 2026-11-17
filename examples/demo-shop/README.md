@@ -163,7 +163,9 @@ simulated customer there too.
   bags sit under a size level, `sleeping-bag/junior`, and every sleeping bag
   carries a type label: with the profile's `typeLabel`, the search asks for
   "uyku tulumu" and states both types; without it, it asks "junior var mı?"
-  (ADR-0050).
+  (ADR-0050). With `currency-code-ignored`, the Turkish turn that asks for
+  backpacks under their lower quartile price in `TRY` fails, as the turn at
+  their median would not (ADR-0052).
 - **Messages as users write them.** `packages/cli/src/robustness.e2e.test.ts`
   runs the acceptance cases as written and with each `--transform`:
   without diacritics, in lower case, without punctuation and with a typo
@@ -442,6 +444,7 @@ them (ADR-0029).
 | `cart-total-off` | A cart of two products or more is totalled 10% below the sum of their prices. | `price-grounded`, on a case `yokla explore` proposes: no written case puts two products in a cart (ADR-0044) |
 | `language-by-letters` | The model tells Turkish from English by Turkish letters alone, so a Turkish message typed without them is answered in English. | `yokla run --transform no-diacritics` and `yokla compare --expect-same`: three Turkish cases fail `filter-honoured-or-disclosed`, `absence-correct` and `answer-similarity` (ADR-0045) |
 | `type-bound-ignored` | The price bound is dropped for sleeping bags, which are still presented as matching it. | `filter-honoured-or-disclosed`, on a case `yokla explore --types 7` proposes: no written case asks for sleeping bags (ADR-0046) |
+| `currency-code-ignored` | A price bound written with a currency code, such as "900 TRY", is dropped without a word. | `filter-honoured-or-disclosed`, on the `currency-code` case `yokla explore` proposes: no written case writes the code (ADR-0052) |
 
 `src/assistant.test.ts` holds a fixed set of probe questions. For each defect,
 it asserts that the defect changes exactly the listed probes and nothing else.

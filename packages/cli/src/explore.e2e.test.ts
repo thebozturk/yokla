@@ -169,10 +169,11 @@ beforeAll(async () => {
   }
   if (proxyUrl === '') throw new Error(`yokla proxy didn't start:\n${proxyLines.join('\n')}`);
   ports.add(Number(new URL(proxyUrl).port));
-  const [clean, defective, bound] = await Promise.all([
+  const [clean, defective, bound, coded] = await Promise.all([
     shop(),
     shop('--defect', 'cart-total-off'),
     shop('--defect', 'type-bound-ignored'),
+    shop('--defect', 'currency-code-ignored'),
   ]);
 
   // One recording at a time: the explorations go one after the other.
@@ -186,6 +187,7 @@ beforeAll(async () => {
   const reach = ['--types', '10', '--max-runs', '50'];
   explored.set('labelled', await exploreShop('labelled', clean, ...reach));
   explored.set('unlabelled', await exploreWith(unlabelledProfile, 'unlabelled', clean, ...reach));
+  explored.set('coded', await exploreShop('coded', coded));
 }, 600_000);
 
 afterAll(async () => {
@@ -321,7 +323,25 @@ describe('yokla explore on the demo-shop (ADR-0044)', () => {
     // One Turkish turn writes the currency code; English has no other word for the lira.
     expect(
       trace.filter((entry) => entry.operator === 'currency-code').map((entry) => entry.messages),
-    ).toEqual([['1500 TRY altında backpack var mı?']]);
+    ).toEqual([['900 TRY altında backpack var mı?']]);
+  });
+
+  it('finds a bound dropped when written with the currency code, at the lower quartile (ADR-0052)', () => {
+    const { code, output } = get('coded');
+    expect(code, output).toBe(0);
+    const failing = loadCases([join(dir, 'coded.yaml')]).filter((c) =>
+      /failed /u.test(c.provenance?.evidence ?? ''),
+    );
+    const messages = failing.map((c) => c.turns[0]?.user ?? '');
+    // The Turkish code turn fails; at the median it would pass, the shop's three
+    // cheapest backpacks costing less.
+    expect(messages).toContain('900 TRY altında backpack var mı?');
+    expect(failing.find((c) => c.id.startsWith('currency-code'))?.provenance?.evidence).toMatch(
+      /failed filter-honoured-or-disclosed .* at most 900, its lower quartile price, with the currency code TRY$/u,
+    );
+    // English has no other word for the lira: its bounds are written with the code too.
+    // Every failure is a bound written with the code.
+    expect(messages.filter((m) => !m.includes(' TRY'))).toEqual([]);
   });
 
   it('traces every candidate it ran, the same way twice', () => {

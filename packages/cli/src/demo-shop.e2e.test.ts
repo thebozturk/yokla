@@ -112,6 +112,9 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
   // No written case asks for sleeping bags under a price; yokla explore finds the defect
   // in explore.e2e.test.ts (ADR-0046).
   'type-bound-ignored': {},
+  // No written case writes an amount with a currency code; yokla explore finds the
+  // defect in explore.e2e.test.ts (ADR-0052).
+  'currency-code-ignored': {},
   // The generic checks (ADR-0030): the profile's everyAnswer patterns, its
   // response contract, and the check the demo-shop's team wrote.
   'unfilled-template': { 'answer-text': ['greeting-tr'] },

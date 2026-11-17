@@ -117,6 +117,8 @@ const EXPECTED_CHANGES: Record<Defect, Probe[]> = {
   'language-by-letters': ['greeting-tr'],
   // No probe asks for sleeping bags under a price: tested on its own below (ADR-0046).
   'type-bound-ignored': [],
+  // No probe writes an amount with a currency code: tested on its own below (ADR-0052).
+  'currency-code-ignored': [],
   // No probe carries personal data, and masking changes nothing else.
   'unmasked-pii': [],
   // The generic checks' defects (ADR-0030).
@@ -276,6 +278,34 @@ describe('defect switchboard', () => {
     const tents = '1000 TL altında çadır var mı?';
     expect(await ask(assistant('type-bound-ignored'), tents)).toEqual(
       await ask(assistant(), tents),
+    );
+  });
+
+  it('currency-code-ignored drops a bound written with a currency code, in either language', async () => {
+    const coded = '900 TRY altında sırt çantası var mı?';
+    const right = await ask(assistant(), coded);
+    const wrong = await ask(assistant('currency-code-ignored'), coded);
+    expect(shownIds(right)).toEqual(['BPK-001', 'BPK-005']);
+    expect(shownIds(wrong)).toEqual(['BPK-001', 'BPK-005', 'BPK-002']);
+    // The answer says nothing of the bound it dropped.
+    expect(wrong.answer.split('\n')[0]).toBe('Sırt çantası seçeneklerimiz:');
+    const english = 'Do you have any backpacks under 900 TRY?';
+    expect(shownIds(await ask(assistant('currency-code-ignored'), english))).toEqual([
+      'BPK-001',
+      'BPK-005',
+      'BPK-002',
+    ]);
+    // At the backpacks' median, the three cheapest are under the bound anyway:
+    // there the defect doesn't show (ADR-0052).
+    const median = await ask(
+      assistant('currency-code-ignored'),
+      '1500 TRY altında sırt çantası var mı?',
+    );
+    expect(median.products.every((p) => p.price.amount <= 1500)).toBe(true);
+    // The same bound in the usual unit is kept.
+    const usual = '900 TL altında sırt çantası var mı?';
+    expect(await ask(assistant('currency-code-ignored'), usual)).toEqual(
+      await ask(assistant(), usual),
     );
   });
 

@@ -169,7 +169,7 @@ export class Assistant {
     let next: ConversationContext;
     let answer: string;
     try {
-      interpretation = await this.#model.interpret(sent, context, call);
+      interpretation = this.#codeRead(await this.#model.interpret(sent, context, call), sent);
       ({ draft, next } = this.#plan(interpretation, context, sessionId));
       answer = await this.#model.write(draft, call);
     } catch (error) {
@@ -340,6 +340,19 @@ export class Assistant {
       draft: { kind: relaxed ? 'relaxed' : 'products', language, productType, filters, products },
       next: { productType, filters, products },
     };
+  }
+
+  /**
+   * The currency-code-ignored defect (ADR-0052): a price bound written with a
+   * currency code, such as "900 TRY", is dropped, in either language.
+   */
+  #codeRead(interpretation: Interpretation, message: string): Interpretation {
+    if (this.#defect !== 'currency-code-ignored' || interpretation.route !== 'product-search') {
+      return interpretation;
+    }
+    if (!/\b(?:TRY|USD|EUR|GBP)\b/iu.test(message)) return interpretation;
+    const { priceMax: _max, priceMin: _min, ...rest } = interpretation.filters;
+    return { ...interpretation, filters: rest };
   }
 
   /**
