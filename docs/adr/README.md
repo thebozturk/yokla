@@ -72,6 +72,7 @@ old one.
 | [0057](0057-the-response-contract-from-a-contract-file.md) | The response contract from a contract file, verified against the answers | Accepted; amended by 0058 |
 | [0058](0058-the-demo-shop-contract-is-19-entries.md) | The demo-shop's contract is 19 entries | Accepted |
 | [0059](0059-paraphrase-and-code-switching-by-a-model.md) | Paraphrase and code-switching, written by a model | Accepted |
+| [0060](0060-a-rewrite-adds-nothing-and-keeps-its-language.md) | A rewrite adds nothing, and keeps its language | Proposed |
 
 ## Template
 
