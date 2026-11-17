@@ -167,7 +167,12 @@ describe('yokla generate from the catalog (ADR-0055)', () => {
       },
       {
         user: 'Do you have anything cheaper?',
-        expect: { productType: ['outdoor/camping/tent'], filters: { maxPrice: 2499.9 } },
+        // TNT-3 is cheaper and in stock, so one must be shown (ADR-0063).
+        expect: {
+          productType: ['outdoor/camping/tent'],
+          filters: { maxPrice: 2499.9 },
+          evidence: { products: { min: 1 } },
+        },
       },
     ]);
   });
@@ -185,7 +190,7 @@ describe('yokla generate from the catalog (ADR-0055)', () => {
     expect(ofKind(run({}, available)?.cases, 'unknown-stock').map((c) => c.key)).toEqual(['TNT-3']);
     const known = ROWS.map((r) => ({ ...r, stock: 1 }));
     expect(run({}, known)?.notes).toContain(
-      'unknown-stock (en): no product with a name in the language has an unknown stock',
+      'unknown-stock (en): no product with a name of its own in the language has an unknown stock',
     );
   });
 
@@ -234,7 +239,7 @@ describe('generated cases name products in stock (ADR-0062)', () => {
     // The quantity decides over inStock (ADR-0020).
     tent('D', { stock: 0, inStock: true, attributes: { color: 'white' } }),
     tent('E', { stock: 5, inStock: false, attributes: { color: 'blue' } }),
-    tent('F', { stock: 2 }),
+    tent('F', { stock: 2, price: 50 }),
   ];
   it('names the first products in stock, past those out of stock or of unknown stock', () => {
     expect(picked(mixed)).toEqual({
@@ -250,9 +255,9 @@ describe('generated cases name products in stock (ADR-0062)', () => {
     expect(picked(none)).toEqual({ lookup: [], comparison: [], cheaper: [], attribute: [] });
     expect(run({}, none)?.notes).toEqual(
       expect.arrayContaining([
-        'lookup (en): no product in stock has a name in the language',
-        'comparison (en): no type has two products in stock with a name in the language',
-        'cheaper (en): no product in stock has a name in the language and a price',
+        'lookup (en): no product in stock has a name in the language that no other product holds',
+        'comparison (en): no type has two products in stock with names in the language that no other product holds',
+        'cheaper (en): no product in stock with a name of its own has a cheaper one in stock of its type',
         'attribute (en): no product in stock of the chosen types has a mapped attribute',
       ]),
     );
@@ -280,7 +285,7 @@ describe('generated cases name products in stock (ADR-0062)', () => {
       'catalog E and F, both type "tent" (1 catalog type); stock 5 and stock 2',
     );
     expect(ofKind(cases, 'cheaper')[0]?.basis).toBe(
-      'catalog E, 100 TRY, stock 5, then type "tent" (1 catalog type) at most its price',
+      'catalog E, 100 TRY, stock 5, then type "tent" (1 catalog type) at most its price; F is cheaper and in stock',
     );
     expect(ofKind(cases, 'attribute')[0]?.basis).toBe(
       'catalog E: color blue, stock 5, type "tent" (1 catalog type)',
@@ -289,5 +294,63 @@ describe('generated cases name products in stock (ADR-0062)', () => {
     expect(ofKind(run({}, available)?.cases, 'lookup')[0]?.basis).toBe(
       'catalog B: "B name", 100 TRY, in stock',
     );
+  });
+});
+
+/** A tent with this English name. */
+const namedTent = (id: string, en: string, change: Partial<CatalogRow> = {}) =>
+  tent(id, { names: { en, tr: `${id} adı` }, ...change });
+/** The products unknown-stock names, by key. */
+const unknownStock = (rows: CatalogRow[]) =>
+  ofKind(run({}, rows)?.cases, 'unknown-stock').map((c) => c.key);
+
+describe('a generated name names one product, and "cheaper" has an answer (ADR-0063)', () => {
+  it('skips a name another product holds, whatever its case or spacing', () => {
+    const rows = [
+      namedTent('A', 'Camp Stove', { price: 300 }),
+      namedTent('B', 'camp  STOVE', { price: 200 }),
+      namedTent('C', 'Camp Stove XL', { price: 150 }),
+      namedTent('D', 'Trail Lamp', { price: 100 }),
+      namedTent('E', 'Folding Chair', { stock: null }),
+      namedTent('F', 'folding chair', { stock: null }),
+    ];
+    expect(picked(rows)).toEqual({
+      // "Camp Stove XL" starts with a shared name and is its own.
+      lookup: ['C'],
+      comparison: ['C D'],
+      cheaper: ['C'],
+      attribute: [],
+    });
+    expect(unknownStock(rows)).toEqual([]);
+    expect(unknownStock(rows.slice(0, 5))).toEqual(['E']);
+  });
+
+  it('counts a name shared in another language only there', () => {
+    const rows = [
+      tent('A', { price: 200, names: { en: 'Stove A', tr: 'Ocak' } }),
+      tent('B', { price: 100, names: { en: 'Stove B', tr: 'Ocak' } }),
+    ];
+    const keys = (language: string) =>
+      ofKind(run({ languages: [language] }, rows)?.cases, 'lookup').map((c) => c.key);
+    expect(keys('en')).toEqual(['A']);
+    expect(keys('tr')).toEqual([]);
+  });
+
+  it('asks for something cheaper only after a product with a cheaper one in stock of its type', () => {
+    const rows = [
+      // The cheapest in stock: nothing cheaper to show.
+      tent('A', { price: 100 }),
+      // Its cheaper one is out of stock.
+      tent('B', { price: 300 }),
+      tent('C', { price: 50, stock: 0 }),
+      // A cheaper one of another catalog type, in the same word group "tent", doesn't count.
+      row('X', 'outdoor/beach/tent', { price: 10 }),
+    ];
+    // B's cheaper ones: A is in stock.
+    expect(picked(rows).cheaper).toEqual(['B']);
+    expect(picked([rows[0], rows[2], rows[3]].filter((r) => r !== undefined)).cheaper).toEqual([]);
+    const [cheaper] = ofKind(run({}, rows)?.cases, 'cheaper');
+    expect(cheaper?.turns[1]?.expect).toMatchObject({ evidence: { products: { min: 1 } } });
+    expect(cheaper?.basis).toMatch(/; A is cheaper and in stock$/u);
   });
 });

@@ -149,6 +149,21 @@ describe('yokla generate on the demo-shop (ADR-0055, ADR-0056)', () => {
     expect(failing.map((c) => [c.id, c.status])).toEqual([]);
   });
 
+  it('asks for something cheaper only where the shop has it, and is shown it (ADR-0063)', () => {
+    const cheaper = results('none').cases.filter((c) => c.id.startsWith('cheaper-'));
+    // TNT-001 and BPK-001 are the cheapest in stock of their types.
+    expect(cheaper.map((c) => c.id).toSorted((a, b) => a.localeCompare(b))).toEqual([
+      'cheaper-en-bpk-003',
+      'cheaper-en-tnt-003',
+      'cheaper-tr-bpk-003',
+      'cheaper-tr-tnt-003',
+    ]);
+    for (const c of cheaper) {
+      const shown = c.samples[0]?.turns[1]?.checks.find((x) => x.check === 'evidence-count');
+      expect(shown?.applicable && shown.findings.map((f) => f.verdict), c.id).toEqual(['pass']);
+    }
+  });
+
   it.each([
     ['fabricated-price', 'lookup'],
     ['unknown-stock-claim', 'unknown-stock'],
