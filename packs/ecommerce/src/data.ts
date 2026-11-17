@@ -30,6 +30,11 @@ export interface CatalogRow {
   readonly attributes?: Readonly<Record<string, string>>;
 }
 
+/** A catalog row's name in a language, or its single name; undefined when not mapped. */
+export function nameIn(row: CatalogRow, language: string): string | undefined {
+  return row.names?.[language] ?? row.names?.['*'];
+}
+
 export interface PolicySource {
   readonly topic: string;
   /** Answers per language; `none` policies have no entry. */

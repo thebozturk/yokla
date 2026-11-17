@@ -19,7 +19,7 @@
 
 import type { EvidenceItem, ExploredTurn, Intents, IntentTurn } from '@yokla/core';
 import { PRODUCTS } from './checks/common.ts';
-import type { CatalogRow, EcommerceData } from './data.ts';
+import { nameIn, type CatalogRow, type EcommerceData } from './data.ts';
 
 export interface Phrasings {
   product(name: string): string;
@@ -72,10 +72,6 @@ export const PHRASINGS: Readonly<Record<string, Phrasings>> = {
     topics: { returns: 'return', shipping: 'shipping', warranty: 'warranty' },
   },
 };
-
-export function nameIn(row: CatalogRow, language: string): string | undefined {
-  return row.names?.[language] ?? row.names?.['*'];
-}
 
 /** A type as words: its last level, with dashes and underscores as spaces. */
 function typeWords(type: string, separator: string | undefined): string {

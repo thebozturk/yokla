@@ -329,6 +329,234 @@ describe('stock-claim', () => {
   });
 });
 
+describe('stock-claim: negated wording (ADR-0061)', () => {
+  const check = stockClaim(data());
+  const run = (text: string, stock: number, lang: LanguagePack) =>
+    verdicts(
+      check.run(
+        checkContext(
+          answer(text, [
+            { id: 'K', name: lang === fakeTurkish ? 'Kubbe Çadır' : 'Headlamp', stock },
+          ]),
+          { lang },
+        ),
+      ),
+    );
+  const message = (text: string, stock: number, lang: LanguagePack) => {
+    const outcome = check.run(
+      checkContext(answer(text, [{ id: 'K', name: 'Headlamp', stock }]), { lang }),
+    );
+    return outcome.applicable ? outcome.findings.map((f) => f.message) : [outcome.reason];
+  };
+
+  it.each([
+    'stokta değil',
+    'stokta bulunmuyor',
+    'stokta bulunmamaktadır',
+    'stokta mevcut değil',
+    'stoklarımızda mevcut değil',
+    'stoklarımızda bulunmuyor',
+    'stoklarımızda yok',
+  ])('reads "%s" as out of stock', (form) => {
+    expect(run(`Kubbe Çadır ${form}.`, 0, fakeTurkish)).toEqual(['pass']);
+    expect(run(`Kubbe Çadır ${form}.`, 5, fakeTurkish)).toEqual(['fail']);
+  });
+
+  it.each([
+    "isn't in stock",
+    'isn’t in stock',
+    "aren't in stock",
+    'no longer in stock',
+    'not available now',
+    "isn't available now",
+    'not ready to ship',
+    "isn't ready to ship",
+  ])('reads "%s" as out of stock', (form) => {
+    expect(run(`The Headlamp ${form}.`, 0, fakeEnglish)).toEqual(['pass']);
+    expect(run(`The Headlamp ${form}.`, 5, fakeEnglish)).toEqual(['fail']);
+  });
+
+  it.each(['stokta var', 'stokta mevcut', 'stoklarımızda mevcut', 'stoklarımızda var'])(
+    'still reads "%s" alone as in stock',
+    (form) => {
+      expect(run(`Kubbe Çadır ${form}.`, 5, fakeTurkish)).toEqual(['pass']);
+      expect(run(`Kubbe Çadır ${form}.`, 0, fakeTurkish)).toEqual(['fail']);
+    },
+  );
+
+  it.each(['in stock', 'available now', 'ready to ship'])(
+    'still reads "is %s" alone as in stock',
+    (form) => {
+      expect(run(`The Headlamp is ${form}.`, 5, fakeEnglish)).toEqual(['pass']);
+      expect(run(`The Headlamp is ${form}.`, 0, fakeEnglish)).toEqual(['fail']);
+    },
+  );
+
+  it('no longer reads "hemen teslim" as a claim', () => {
+    expect(run('Kubbe Çadır hemen teslim edilir.', 0, fakeTurkish)).toEqual(['pass']);
+    expect(run('Kubbe Çadır hemen teslim edilemiyor.', 5, fakeTurkish)).toEqual(['pass']);
+  });
+
+  it.each([
+    "We don't have the Headlamp in stock.",
+    'The Headlamp is not currently in stock.',
+    'The Headlamp was never in stock.',
+    'The Headlamp is no longer kept in stock.',
+    'We do not have the red Headlamp in stock.',
+    "The Headlamp isn't sold out.",
+  ])('cancels a claim with a negation just before it: "%s"', (text) => {
+    expect(message(text, 0, fakeEnglish)).toEqual(['no stock claims']);
+    expect(message(text, 5, fakeEnglish)).toEqual(['no stock claims']);
+  });
+
+  it('reads a claim whose negation is six words back, or in another clause', () => {
+    // Each clause break alone keeps "not" out: without it, "not" is within five words.
+    for (const text of [
+      'We do not have the bright red Headlamp in stock.',
+      'Not sure about the size, but the Headlamp is in stock.',
+      'Not that, the Headlamp is in stock.',
+      'Not that; the Headlamp is in stock.',
+      'Not this: the Headlamp is in stock.',
+      'Not that but this is in stock.',
+      'Not that and this is in stock.',
+    ]) {
+      expect(run(text, 5, fakeEnglish), text).toEqual(['pass']);
+      expect(run(text, 0, fakeEnglish), text).toEqual(['fail']);
+    }
+  });
+
+  it('counts words, not punctuation, in the window', () => {
+    expect(message('We do not have the red Headlamp - in stock.', 0, fakeEnglish)).toEqual([
+      'no stock claims',
+    ]);
+  });
+
+  it('has no Turkish negations: Turkish negates after the phrase', () => {
+    expect(run('Değil mi Kubbe Çadır stokta var.', 0, fakeTurkish)).toEqual(['fail']);
+  });
+
+  it('catches a negation dropped from the answer', () => {
+    const base = answer("We don't have the Headlamp in stock.", [
+      { id: 'K', name: 'Headlamp', stock: 0 },
+    ]);
+    const dropped = mutate(base, (view) => ({
+      ...view,
+      response: { ...view.response, text: view.response.text.replace("don't ", '') },
+    }));
+    expect(verdicts(check.run(checkContext(base, { lang: fakeEnglish })))).toEqual(['pass']);
+    expect(verdicts(check.run(checkContext(dropped, { lang: fakeEnglish })))).toEqual(['fail']);
+  });
+});
+
+/** A catalog row with a name for every language. */
+const row = (id: string, name: string, stock: number | null) => ({
+  id,
+  type: 'kamp',
+  price: 1,
+  currency: 'TRY',
+  stock,
+  inStock: undefined,
+  names: { '*': name },
+});
+const catalogOf = (...rows: ReturnType<typeof row>[]) =>
+  new Map(rows.map((entry) => [entry.id, entry]));
+/** stock-claim on a Turkish answer, with this catalog. */
+const judgeStock = (
+  text: string,
+  catalog: EcommerceData['catalog'],
+  products: EvidenceItem[] = tents,
+) => stockClaim(data({ catalog })).run(checkContext(answer(text, products), { lang: fakeTurkish }));
+
+describe('stock-claim: a product the answer only names (ADR-0061)', () => {
+  const said = 'Kamp Sandalyesi Katlanır şu an stokta değil. Size benzer ürünler önerebilirim.';
+
+  it('binds the claim to the catalog product named, and judges it by the catalog', () => {
+    const outcome = judgeStock(said, catalogOf(row('K9', 'Kamp Sandalyesi Katlanır', 0)));
+    expect(outcome.applicable && outcome.findings).toEqual([
+      expect.objectContaining({
+        verdict: 'pass',
+        message:
+          'Kamp Sandalyesi Katlanır (named, not returned): the out-of-stock claim matches stock 0',
+        evidence: { product: 'K9', claim: 'out', stock: 0, namedOnly: true },
+      }),
+    ]);
+    const wrong = judgeStock(said, catalogOf(row('K9', 'Kamp Sandalyesi Katlanır', 5)));
+    expect(wrong.applicable && wrong.findings.map((f) => f.message)).toEqual([
+      'claims Kamp Sandalyesi Katlanır (named, not returned) is out of stock, but stock is 5',
+    ]);
+  });
+
+  it('judges it when the answer returned nothing', () => {
+    expect(
+      verdicts(judgeStock(said, catalogOf(row('K9', 'Kamp Sandalyesi Katlanır', 0)), [])),
+    ).toEqual(['pass']);
+    expect(verdicts(judgeStock(said, undefined, []))).toEqual([
+      'n/a: no products returned or seen',
+    ]);
+  });
+
+  it('spreads the claim over the returned products without a catalog, as before', () => {
+    expect(verdicts(judgeStock(said, undefined))).toEqual(['pass', 'fail', 'fail']);
+  });
+
+  it('judges nothing, and spreads nothing, for a name several catalog products hold', () => {
+    const shared = catalogOf(
+      row('K9', 'Kamp Sandalyesi Katlanır', 0),
+      row('K8', 'Kamp Sandalyesi Katlanır', 4),
+    );
+    expect(verdicts(judgeStock(said, shared))[0]).toMatch(/several catalog products/u);
+  });
+
+  it('finds a quoted catalog name', () => {
+    const quoted = '"Kamp Sandalyesi Katlanır" şu an stokta değil.';
+    expect(
+      verdicts(judgeStock(quoted, catalogOf(row('K9', 'Kamp Sandalyesi Katlanır', 0)))),
+    ).toEqual(['pass']);
+  });
+
+  it('names no catalog product by a name of one word', () => {
+    const one = catalogOf(row('S1', 'Sandalye', 0));
+    expect(verdicts(judgeStock('Sandalye şu an stokta değil.', one))).toEqual([
+      'pass',
+      'fail',
+      'fail',
+    ]);
+  });
+
+  it("puts the turn's products first", () => {
+    // The same name in the catalog under another id: the returned product is meant.
+    const same = catalogOf(row('X2', 'Kubbe Çadır', 0));
+    expect(verdicts(judgeStock('Kubbe Çadır stokta var.', same))).toEqual(['pass']);
+    // A returned product's full name beats a shorter catalog name inside it.
+    const shorter = catalogOf(row('K1', 'Kamp Sandalyesi', 0));
+    const returned = [{ id: 'R1', name: 'Kamp Sandalyesi Katlanır', stock: 3 }];
+    expect(verdicts(judgeStock('Kamp Sandalyesi Katlanır stokta var.', shorter, returned))).toEqual(
+      ['pass'],
+    );
+    // A catalog name of a returned product is that product, not one only named.
+    const own = catalogOf(row('T2', 'Kubbe Çadır Dört Mevsim', 12));
+    const outcome = judgeStock('Kubbe Çadır Dört Mevsim stokta var.', own);
+    expect(outcome.applicable && outcome.findings.map((f) => f.message)).toEqual([
+      'Kubbe Çadır: the in-stock claim matches stock 12',
+    ]);
+  });
+
+  it('catches a true claim turned false', () => {
+    const catalog = catalogOf(row('K9', 'Kamp Sandalyesi Katlanır', 0));
+    const base = answer(said, tents);
+    const flipped = mutate(base, (view) => ({
+      ...view,
+      response: {
+        ...view.response,
+        text: view.response.text.replace('stokta değil', 'stokta var'),
+      },
+    }));
+    const check = stockClaim(data({ catalog }));
+    expect(verdicts(check.run(checkContext(base, { lang: fakeTurkish })))).toEqual(['pass']);
+    expect(verdicts(check.run(checkContext(flipped, { lang: fakeTurkish })))).toEqual(['fail']);
+  });
+});
+
 describe('loadData', () => {
   const files: Record<string, string> = {
     'catalog.jsonl': [

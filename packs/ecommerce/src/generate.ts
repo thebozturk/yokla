@@ -8,13 +8,12 @@
 
 import type { GenerateOptions, Generated, GeneratedCase, JsonValue } from '@yokla/core';
 import { PRODUCTS } from './checks/common.ts';
-import type { CatalogRow, EcommerceData } from './data.ts';
+import { nameIn, type CatalogRow, type EcommerceData } from './data.ts';
 import { holdsAbsent } from './facts.ts';
 import {
   currencyOf,
   emptyBand,
   medianPrice,
-  nameIn,
   PHRASINGS,
   pricesOf,
   spreadTypes,
