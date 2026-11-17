@@ -210,6 +210,8 @@ describe('phrases', () => {
     ['absence', '500 TL altı çadır bulamadım.'],
     ['absence', 'Bu ürün yok.'],
     ['alternative', 'Bunun yerine şu seçeneklere bakabilirsiniz'],
+    ['absence', 'Bu bütçeye tam uyan ürün olmadığı için en yakın seçenekleri sunuyorum.'],
+    ['alternative', 'Bu bütçeye tam uyan ürün olmadığı için en yakın seçenekleri sunuyorum.'],
     ['free', 'Kargo ücretsizdir.'],
     ['deflection', 'Bu konuda müşteri hizmetlerimize başvurabilirsiniz.'],
     ['deflection', 'Canlı destek ve yardım merkezi: https://example.test'],
@@ -222,6 +224,8 @@ describe('phrases', () => {
     ['refusal', 'Yardımcı olabildiğim konular şunlar: ürünler ve siparişler.'],
     ['absence', 'Yoksa başka bir şey mi istersiniz?'],
     ['absence', 'Bulunduğu ürünler şunlar'],
+    ['absence', 'Aramanıza tam uyan ürünleri buldum.'],
+    ['alternative', 'Size en yakın mağazamız Kadıköy’de.'],
     ['free', 'Ücret 50 TL.'],
   ] as const)('not %s: %s', (kind, text) => {
     expect(hits(kind, text)).toBe(false);

@@ -59,6 +59,7 @@ export const english: LanguagePack = {
       'do not sell',
       'no results',
       'not available',
+      'no exact match',
     ],
     alternative: [
       'instead',
@@ -66,6 +67,8 @@ export const english: LanguagePack = {
       'alternatively',
       'similar',
       'as a different product',
+      'closest option',
+      'closest match',
     ],
     free: ['free of charge', 'free$', 'no charge', 'at no cost', 'without charge', 'complimentary'],
     deflection: [

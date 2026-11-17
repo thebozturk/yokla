@@ -54,8 +54,17 @@ export const turkish: LanguagePack = {
       'yoktur',
       'satmiyoruz',
       'kalmadi',
+      // "No exact match", said before offering the closest products.
+      'tam uyan urun olmadigi',
     ],
-    alternative: ['bunun yerine', 'onun yerine', 'alternatif', 'farkli bir urun', 'benzer'],
+    alternative: [
+      'bunun yerine',
+      'onun yerine',
+      'alternatif',
+      'farkli bir urun',
+      'benzer',
+      'en yakin secenek',
+    ],
     free: ['ucretsiz', 'bedava', 'ucret alinmaz', 'ucret odemeden'],
     deflection: [
       'musteri hizmetlerimize',

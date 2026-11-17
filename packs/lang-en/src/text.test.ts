@@ -163,6 +163,9 @@ describe('phrases', () => {
     ['absence', "We don't carry hammocks."],
     ['absence', "I couldn't find any tents"],
     ['alternative', 'Here are other tents instead'],
+    ['absence', 'There is no exact match, so here are the closest options.'],
+    ['alternative', 'There is no exact match, so here are the closest options.'],
+    ['alternative', 'These are the closest matches to your budget.'],
     ['free', 'Returns are free of charge'],
     ['free', 'Shipping is free.'],
     ['deflection', 'Please contact customer service.'],
@@ -177,6 +180,8 @@ describe('phrases', () => {
     ['refusal', "I can't recommend one tent over the other without your budget."],
     ['free', 'Feel freely to ask'],
     ['absence', 'We have these.'],
+    ['absence', 'This tent is an exact match.'],
+    ['alternative', 'Our closest store is downtown.'],
   ] as const)('not %s: %s', (kind, text) => {
     expect(hits(kind, text)).toBe(false);
   });

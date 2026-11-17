@@ -73,6 +73,11 @@ hold.
   same words, and `--types` counts distinct words. Amounts are written in
   the language's usual unit ("300 TL", "$300"); one turn per language asks
   with the currency code, where shoppers write it otherwise.
+- **"No exact match" counts as a disclosure.** The Turkish and English
+  absence and alternative markers now hold "tam uyan ürün olmadığı", "en
+  yakın seçenek", "no exact match", "closest option" and "closest match".
+  An answer that offers the closest products with these words no longer
+  reads as a silent relaxation; a price bound it doesn't name still fails.
 
 ## 0.3.0 — 2026-11-15
 
