@@ -152,6 +152,11 @@ answer, or only in your app's code after the model call.
   fault states your cases never reach. It writes the conversations that reach
   one, or fail a check, as proposed cases, such as a cart of two products
   whose total is wrong.
+- **`yokla generate`** writes cases from your catalog before anything is
+  sent: a lookup that must show the catalog's price, a type you don't sell,
+  an empty price band, an attribute filter, a comparison, a refinement, a
+  cheaper follow-up and a product whose stock is unknown. Every one is
+  proposed, for you to approve.
 
 **Cost and CI**
 - Per-turn and per-suite budgets for cost and latency. `yokla plan`

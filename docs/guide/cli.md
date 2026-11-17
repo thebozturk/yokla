@@ -104,7 +104,7 @@ the precision, same ÷ (same + different + new), and the recall, same ÷
 (same + different + missed). Your own inputs, the request and the
 languages you named, are left out, and so are the profile's entries that
 aren't approved. On the demo-shop it proposes 30 entries, all the
-hand-written ones: precision 100 %, recall 45.5 %.
+hand-written ones: precision 100 %, recall 43.5 %.
 
 **With a model (ADR-0049).** With `models.analyzer` in the configuration, a
 model also reads the docs, prompts, contracts, manifests, env examples and
@@ -153,7 +153,7 @@ one per 2.5, so the estimate stays above most code's count.
 
 On the demo-shop, with the fake provider playing the model, it adds the two
 limits, the cache bypass and the two canonical refusals: 37 entries, all the
-hand-written ones, recall 56.1 %. The limit the fake model invents is
+hand-written ones, recall 53.6 %. The limit the fake model invents is
 dropped as unverified.
 
 It exits with `0` when the proposal was written, and with `2` for a wrong
@@ -717,3 +717,61 @@ It stops at either cap, and says so.
 
 It exits with `0` when the search ran, whatever it found, and with `2` on a
 configuration problem, before any request.
+
+## `yokla generate`
+
+```sh
+yokla generate --profile yokla.profile.yaml --absent en:hammock --absent tr:hamak
+```
+
+It writes cases whose expectations the domain pack computes from the
+profile's data, as proposed cases (ADR-0055). It sends nothing and calls no
+model, and the same data and options write the same file.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--profile <file>` | `yokla.profile.yaml` | The profile, and through it the data. |
+| `--out <file>` | `cases/generated.yaml` next to the profile | Where the cases go. |
+| `--per-kind <n>` | 2 | The most cases of each kind, in each language. |
+| `--absent <lang>:<words>` | | Types a shopper may ask for that you expect absent, comma-separated, such as `en:hammock,kayak`. Repeatable. |
+| `--force` | | Overwrite `--out`. |
+
+**The kinds.** The e-commerce pack writes eight, in each of the profile's
+languages it has phrasings for, `tr` and `en`. It chooses types as `yokla
+explore` chooses its opening types, and names them by their words.
+
+| Kind | Turns | Expectation |
+|---|---|---|
+| `lookup` | "Do you have the {name}?" | the product among the answer's products |
+| `absent-type` | "Do you have any {word}?" | `absentType` |
+| `empty-band` | the type under the largest whole amount below its lowest price | `productType`, `filters.maxPrice` |
+| `attribute` | "Do you have any {type} with {attribute} {value}?" | `productType`, `filters.attributes` |
+| `comparison` | "Which is better, the {a} or the {b}?" | both products among the answer's |
+| `refine` | the type, then "And under {amount}?", its median price | the second turn: `productType`, `filters.maxPrice` |
+| `cheaper` | a product by name, then "Do you have anything cheaper?" | the second turn: `productType`, at most its price |
+| `unknown-stock` | "Is the {name} in stock?", a product whose stock is unknown | the product among the answer's |
+
+- **The checks that read the catalog judge the rest:** `price-grounded` the
+  prices shown, `stock-claim` any stock claim, which for an unknown stock is
+  a finding.
+- **`absent-type`** writes a word only when no catalog type has it as a
+  level and no type label in its language is it. Without type labels in a
+  language (ADR-0050), a word of that language is checked against the
+  levels only, so "çadır" passes for a catalog of English paths: give the
+  labels, or check the words you give.
+- **`attribute`** needs `ecommerce.catalog.fields.attributes` in the
+  profile. The attribute and its value are written as the catalog writes
+  them; reword them when you approve the case.
+- **What it writes:** each case named `<kind>-<language>-<key>`, such as
+  `lookup-en-tnt-001`, with status `proposed`, the provenance source
+  `generator` and, as evidence, the data its expectations came from. The
+  terminal counts the cases by kind and language, and names each kind that
+  wrote none, with why. A proposed case runs, but gates only once a person
+  approves it (ADR-0004).
+- **When the catalog changes,** a generated case is `fixture-missing` like
+  any other (ADR-0053): a product it expects that left the catalog is a fact
+  that no longer holds.
+
+It exits with `0` when the file was written, and with `2` on a wrong option,
+an existing `--out` without `--force`, a profile whose pack has no data to
+generate from, or no case generated.

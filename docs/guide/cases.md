@@ -142,7 +142,9 @@ no product's type is one of them, or under one. Such a case sends nothing:
 its status is `fixture-missing`, with the facts that changed in `fixture`,
 and the run can't be judged until you update the case or remove it. Without
 a catalog, or without types in it, nothing is checked. The other keys state
-no fact: a filter holds whether or not a product matches it.
+no fact: a filter holds whether or not a product matches it. A product id a
+turn expects among the `products` evidence no longer holds once it leaves the
+catalog (ADR-0055).
 
 ## Provider faults
 

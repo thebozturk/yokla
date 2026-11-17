@@ -318,6 +318,9 @@ pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml \
 - **`available`.** The same stock as a boolean, as shops without quantities
   give it; `null` when the stock is unknown. yokla's evidence end-to-end test
   reads stock through it (ADR-0020).
+- **Named products.** A message that names catalog products searches their
+  type and shows them first, as a shop's search ranks an exact name: a
+  comparison or a stock question shows what it asks about (ADR-0055).
 - **Routes.** `metadata.route` is one of `product-search`, `policy`,
   `follow-up-cheapest`, `refusal` and `fallback`. `fallback` answers a model
   failure, a message the shop doesn't understand, such as a greeting, and a

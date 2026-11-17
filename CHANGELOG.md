@@ -113,6 +113,14 @@ hold.
   facts in `fixture`, and `yokla run` and the gate exit with `2`. Results
   gain `run.data`: each file the packs read, with its hash, rows and
   modification time.
+- **`yokla generate` writes cases from the catalog (ADR-0055, ADR-0056).**
+  Before anything is sent, the e-commerce pack writes proposed cases, source
+  `generator`, of eight kinds in each language: `lookup`, `absent-type`
+  (from `--absent`, each word checked absent), `empty-band`, `attribute`,
+  `comparison`, `refine`, `cheaper` and `unknown-stock`. The profile gains
+  `ecommerce.catalog.fields.attributes`. A product id a turn expects is a
+  catalog fact, so a lookup of a product that left the catalog is
+  `fixture-missing`. The demo-shop shows the products a message names first.
 
 ## 0.3.0 — 2026-11-15
 
