@@ -133,6 +133,17 @@ check does and when it doesn't apply.
 | `answerable` | `true`: the request can be answered, so a refusal is over-refusal. `false`: it must be refused. | `over-refusal`, `deflection` |
 | `policyTopic` | The turn asks about this policy, so every concrete claim in the answer is about it. | `policy-claim` |
 
+**When the catalog changes (ADR-0053, ADR-0054).** `absentType` and
+`productType` state facts about the catalog, and yokla checks them before a
+case runs. `absentType: T` no longer holds once a product's type is `T`, is
+under it, or has `T` as one of its levels by `typeSeparator`, such as
+`hammock` in `outdoor/camping/hammock`. `productType` no longer holds once
+no product's type is one of them, or under one. Such a case sends nothing:
+its status is `fixture-missing`, with the facts that changed in `fixture`,
+and the run can't be judged until you update the case or remove it. Without
+a catalog, or without types in it, nothing is checked. The other keys state
+no fact: a filter holds whether or not a product matches it.
+
 ## Provider faults
 
 With the model proxy, a turn can make the target's provider fail on purpose

@@ -419,6 +419,13 @@ noise. The expectation is the same verdict as the source case.
 run time, or pinned to the data facts they depend on. If the snapshot no longer
 satisfies a case's precondition, the case is `fixture-missing`, not `fail`.
 Snapshot provenance (time, row count, hash) is written to the results.
+- **Done (ADR-0053, ADR-0054):** the domain pack derives the facts from the
+  expectations. The e-commerce pack checks `absentType` (no product's type
+  is it, under it, or has it as a level) and `productType` (a product's
+  type is one of them, or under one). A case with an unmet fact sends
+  nothing, and its result names the facts in `fixture`. `run.data` lists
+  each file the packs read, with its hash, rows and modification time.
+  Explore's own turns are re-derived from the catalog of each run.
 
 **Approval.** Every generated case is written as a file with `status: proposed`.
 Only `approved` cases count towards the gate.
@@ -737,8 +744,9 @@ hash, the text with patterns redacted, or the full text (ADR-0015).
 - **Status precedence:** `error` (a turn couldn't be run or read) → `fail`,
   or `known-gap` for a case marked as a known gap → `unmeasured` → `pass`, or
   `gap-closed` for a case marked as a known gap. A case where no deciding
-  dimension applied is `unmeasured`. `fixture-missing` comes with the data
-  generators (v0.4).
+  dimension applied is `unmeasured`. `fixture-missing` is a case whose
+  expectations state a fact the data no longer holds; it sends nothing
+  (ADR-0053).
 - **Approval (ADR-0004, ADR-0018).** A case yokla writes, such as a starter
   case of `yokla init`, is `proposed`: it runs and is reported, but the gate
   and the baseline leave it out until a person sets it to `approved`. A
@@ -1074,6 +1082,14 @@ configuration.
     profile having grown by then, ADR-0050): the entries the fake provider
     finds, the cache bypass included.
 
+For cases the data no longer holds (ADR-0053, ADR-0054), the acceptance
+cases run on a copy of the demo-shop whose catalog gained a hammock, as
+`outdoor/camping/hammock`, and lost its water bottles. `hammock-en` and
+`water-bottle-en` are `fixture-missing`, each with the fact that changed, and
+the shop receives no request for them. The other 16 cases pass, as on the
+unchanged catalog. The run and the gate exit with `2` and name both, and
+`run.data` names the copy's catalog by its hash.
+
 For the intents that state what they ask (ADR-0046), `type-bound-ignored`
 drops the price bound for sleeping bags, a type no written case asks about.
 - **Reach:** at the default six types, the round-robin over the type tree's
@@ -1169,7 +1185,7 @@ Each version is usable on its own. A version ships when its exit criteria hold.
 | **0.1 — core** | core schemas (profile, case, results); HTTP adapter; runner with rate limiting and cache bypass; observation from the target's logs (ADR-0009); e-commerce checks (price, stock, policy, filter, type, duplicates, absence, over-refusal); `lang-tr`, `lang-en`; aggregation policies; JSON, terminal and JUnit reports; gate; demo-shop | every demo-shop defect detected; a real assistant tested with a hand-written profile |
 | **0.2 — proxy** | OpenAI-compatible and Anthropic proxy; `serial` and `header` correlation; cost and latency per request; fault plans; inspection checks; perf, cost and resilience suites; `yokla plan`; streaming targets, session setup, and model calls the target makes after its answer | cost on demo-shop and on one real target reconciles with the provider's usage records; resilience defects detected |
 | **0.3 — reach and conversations** | a first run in five minutes: `yokla init` sends the target one message, works out where the answer is in its JSON or event stream, writes a profile for review, and adds starter cases that suit any assistant (greeting, out of scope, a basic injection, personal data, an empty or very long message, a switch of language, a deadline), all at no model cost; a static HTML report; publishing to npm; WebSocket targets; authentication (OAuth2 and the like); richer evidence mapping, which the first real target needed: one collection read from several paths, stock given only as in or out of stock, amounts quoted from data other than the shown products (such as an order history), and the text of an answer given only as a component; a Gemini protocol adapter (AI Studio and Vertex); model calls read from OpenTelemetry GenAI spans, for targets the proxy can't see; tool-call and trajectory checks on what the proxy records; a simulated customer: a model plays a customer with a goal, and the deterministic checks judge every turn; generic checks (patterns, JSON Schema, similarity, checks the user writes) | on the demo-shop and on the open-source target, `yokla init` writes a profile that needs no edit for the starter cases, which then run and gate; the demo-shop's tool-call defects detected; the simulated customer reaches each demo-shop purchase goal, and a run repeats from its seed; on the demo-shop, calls read from OpenTelemetry spans match the proxy's records |
-| **0.4 — analyzer** | inventory, LLM extraction with evidence, probe mode, profile review and diff (the deterministic step done, ADR-0047; the extraction of the fields a quote can verify done, ADR-0049, ADR-0051); e-commerce data generators; freshness and `fixture-missing`; robustness transforms of approved cases (§9): typos, removed diacritics, casing and punctuation at no model cost (done, ADR-0045), and paraphrase and Turkish–English code-switching only with a configured, budgeted model | on demo-shop the analyzer reproduces the approved entries of the hand-written profile (precision and recall reported); on the private target it rediscovers the known issue classes; on the demo-shop, a transform catches a seeded defect that shows only in a message without diacritics, and the transforms of every other approved case keep its verdict |
+| **0.4 — analyzer** | inventory, LLM extraction with evidence, probe mode, profile review and diff (the deterministic step done, ADR-0047; the extraction of the fields a quote can verify done, ADR-0049, ADR-0051); e-commerce data generators; freshness and `fixture-missing` (done, ADR-0053, ADR-0054); robustness transforms of approved cases (§9): typos, removed diacritics, casing and punctuation at no model cost (done, ADR-0045), and paraphrase and Turkish–English code-switching only with a configured, budgeted model | on demo-shop the analyzer reproduces the approved entries of the hand-written profile (precision and recall reported); on the private target it rediscovers the known issue classes; on the demo-shop, a transform catches a seeded defect that shows only in a message without diacritics, and the transforms of every other approved case keep its verdict |
 | **0.5 — red team** | local attack generation (templates plus attacker model), native TR and EN; e-commerce attacks: price and discount manipulation, order fraud, card data, age and region restrictions, unauthorised commitments, competitor steering, hijacking, excessive agency, another customer's data, injection through product content and through tool descriptions, including a description that changes mid-conversation, unsafe advice; canary-based deterministic detection; multi-turn and encoding strategies; findings mapped to OWASP LLM Top 10, OWASP Agentic, GDPR and KVKK, and the EU AI Act; calibrated judge | demo-shop injection, leakage and BOLA defects detected deterministically; the egress test passes |
 | **0.6 — ecosystem** | import and export for other evaluation tools; CI recipes and a GitHub Action; a library API; two runs compared side by side; documentation site | |
 

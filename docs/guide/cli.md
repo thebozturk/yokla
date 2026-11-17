@@ -185,8 +185,9 @@ option, a probe that failed, or a proposal that exists without `--force`.
 
 It exits with `0` when every case ran, whatever the verdicts: the gate judges
 them. It exits with `2` for a configuration problem, when `target.auth` can't
-get the run's first token, when a cassette can't be read, or when a case ended
-in `error`.
+get the run's first token, when a cassette can't be read, when a case ended
+in `error`, or when a case is `fixture-missing`: the data no longer holds a
+fact it states, and it sent nothing (ADR-0053).
 
 **`--stop-early`** judges each sample during the run, as the final judging
 would, and stops a case's samples when:

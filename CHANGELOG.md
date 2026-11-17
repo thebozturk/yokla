@@ -105,6 +105,14 @@ hold.
   so raising it asks only the cut chunks anew. Tokens are counted as one per
   two characters, not four. yokla's own models take a `maxTokens` up to
   64,000, up from 4,000: a model that reasons spends output tokens on it.
+- **Cases the data no longer holds are `fixture-missing` (ADR-0053,
+  ADR-0054).** Before a case runs, the domain pack checks the facts its
+  expectations state: for the e-commerce pack, that an `absentType` is in no
+  product's type, at any level, and that a `productType` is still in the
+  catalog. A case with an unmet fact sends nothing; its result names the
+  facts in `fixture`, and `yokla run` and the gate exit with `2`. Results
+  gain `run.data`: each file the packs read, with its hash, rows and
+  modification time.
 
 ## 0.3.0 — 2026-11-15
 
