@@ -69,8 +69,8 @@ old one.
 | [0054](0054-an-absent-type-found-at-any-level.md) | An absent type is found at any level of a catalog type | Accepted |
 | [0055](0055-cases-generated-from-the-catalog.md) | Cases generated from the catalog: yokla generate | Accepted; amended by 0056 |
 | [0056](0056-type-padding-shows-in-a-short-result.md) | Type padding shows in a short result, not an empty band | Accepted |
-| [0057](0057-the-response-contract-from-a-contract-file.md) | The response contract from a contract file, verified against the answers | Accepted |
-| [0058](0058-the-demo-shop-contract-is-19-entries.md) | The demo-shop's contract is 19 entries | Proposed |
+| [0057](0057-the-response-contract-from-a-contract-file.md) | The response contract from a contract file, verified against the answers | Accepted; amended by 0058 |
+| [0058](0058-the-demo-shop-contract-is-19-entries.md) | The demo-shop's contract is 19 entries | Accepted |
 
 ## Template
 

@@ -1,6 +1,6 @@
 # 0058. The demo-shop's contract is 19 entries
 
-Status: Proposed · Date: 2026-11-17
+Status: Accepted · Date: 2026-11-17
 
 ## Context
 
