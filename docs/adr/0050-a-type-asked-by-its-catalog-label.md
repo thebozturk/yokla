@@ -1,6 +1,6 @@
 # 0050. A type asked by its catalog label
 
-Status: Proposed · Date: 2026-11-17
+Status: Accepted · Date: 2026-11-17
 
 ## Context
 
