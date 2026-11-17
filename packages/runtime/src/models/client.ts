@@ -41,9 +41,16 @@ export class ModelClient {
   readonly #config: OwnModel;
   readonly #key: string | undefined;
   readonly #http: HttpClient;
+  /** What the model is for, as errors name it: the customer, the analyzer. */
+  readonly #role: string;
 
-  constructor(config: OwnModel, env: Readonly<Record<string, string | undefined>>) {
+  constructor(
+    config: OwnModel,
+    env: Readonly<Record<string, string | undefined>>,
+    role = 'customer',
+  ) {
     this.#config = config;
+    this.#role = role;
     this.#key = config.apiKeyEnv === undefined ? undefined : env[config.apiKeyEnv];
     if (config.apiKeyEnv !== undefined && this.#key === undefined) {
       throw new ModelClientError(`environment variable ${config.apiKeyEnv} is not set`);
@@ -76,11 +83,11 @@ export class ModelClient {
       );
     }
     if (result.status < 200 || result.status > 299) {
-      throw new ModelClientError(`the customer model answered ${String(result.status)}`);
+      throw new ModelClientError(`the ${this.#role} model answered ${String(result.status)}`);
     }
     const read = call.read(result.json);
     if (typeof read.text !== 'string' || read.text.trim() === '') {
-      throw new ModelClientError('the customer model answered with no text');
+      throw new ModelClientError(`the ${this.#role} model answered with no text`);
     }
     const model = field(result.json, 'model') ?? field(result.json, 'modelVersion');
     return {

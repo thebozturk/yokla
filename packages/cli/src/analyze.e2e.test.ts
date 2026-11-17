@@ -4,11 +4,15 @@
 // compared with that profile, which it never reads: every entry it proposes
 // is the hand-written one, and what it misses is what code, docs and prompts
 // must give a later step. A proposed profile doesn't run; an approved one
-// loads. Two analyses write the same file. No model call, behind the network
-// guard.
+// loads. Two analyses write the same file. Behind the network guard.
+//
+// With models.analyzer on the fake provider (ADR-0049), a model also reads the
+// docs and code: it adds the rate limits, the cache bypass and the canonical
+// refusals, each checked against the line it quotes, and the limit it invents
+// is dropped. A second analysis answers from the cache. At no model cost.
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Analysis, toJson, unapprovedEntries } from '@yokla/core';
@@ -26,12 +30,15 @@ const ports = new Set<number>();
 let guard: NetworkGuard | undefined;
 let shopUrl = '';
 
-function startShop(): Promise<string> {
-  const child = spawn(
-    process.execPath,
-    [join(DEMO, 'src/main.ts'), '--port', '0', '--rate-limit', 'off'],
-    { stdio: ['ignore', 'pipe', 'pipe'] },
-  );
+const KEY_ENV = 'YOKLA_ANALYZE_E2E_KEY';
+const usageLog = join(work, 'provider-usage.jsonl');
+const config = join(work, 'yokla.config.yaml');
+
+/** Starts a demo-shop script and resolves with the first URL it prints, without /v1. */
+function start(script: string, args: string[]): Promise<string> {
+  const child = spawn(process.execPath, [join(DEMO, script), ...args], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
   children.push(child);
   return new Promise((resolve, reject) => {
     let output = '';
@@ -44,10 +51,18 @@ function startShop(): Promise<string> {
       }
     });
     child.on('exit', (code) => {
-      reject(new Error(`demo-shop exited early with ${String(code)}`));
+      reject(new Error(`${script} exited early with ${String(code)}`));
     });
   });
 }
+
+const startShop = () => start('src/main.ts', ['--port', '0', '--rate-limit', 'off']);
+
+/** The model calls the fake provider answered. */
+const providerCalls = () =>
+  readFileSync(usageLog, 'utf8')
+    .split('\n')
+    .filter((line) => line !== '').length;
 
 interface Ran {
   readonly code: number;
@@ -85,6 +100,14 @@ let first: Ran | undefined;
 let second: Ran | undefined;
 let firstText = '';
 const proposal = join(repo, 'yokla.profile.proposed.yaml');
+// The model step's runs (ADR-0049).
+const withModel = join(repo, 'yokla.profile.model.yaml');
+let estimated: Ran | undefined;
+let uncapped: Ran | undefined;
+let modelled: Ran | undefined;
+let callsAfterFirst = 0;
+let cachedRun: Ran | undefined;
+let modelText = '';
 
 beforeAll(async () => {
   // A copy of the repository, so the proposal can be written next to its data.
@@ -95,13 +118,63 @@ beforeAll(async () => {
   guard = installNetworkGuard(
     (host, port) => host === '127.0.0.1' && port !== undefined && ports.has(port),
   );
-  shopUrl = await startShop();
+  writeFileSync(usageLog, '');
+  const [shop, provider] = await Promise.all([
+    startShop(),
+    start('src/provider-main.ts', ['--port', '0', '--usage-log', usageLog]),
+  ]);
+  shopUrl = shop;
   first = await analyze(proposal, join(work, 'analysis.json'));
   firstText = readFileSync(proposal, 'utf8');
   second = await analyze(proposal, join(work, 'again.json'), '--force');
+
+  writeFileSync(
+    config,
+    [
+      'version: 1',
+      'models:',
+      '  analyzer:',
+      '    kind: openai-compatible',
+      `    url: ${provider}/v1`,
+      '    model: demo-analyzer-1',
+      `    apiKeyEnv: ${KEY_ENV}`,
+      '    maxTokens: 2000',
+      '    price: { input: 0.1, output: 0.5 }',
+      '',
+    ].join('\n'),
+  );
+  process.env[KEY_ENV] = 'demo-key';
+  estimated = await analyze(
+    withModel,
+    join(work, 'estimate.json'),
+    '--config',
+    config,
+    '--estimate',
+  );
+  uncapped = await analyze(withModel, join(work, 'uncapped.json'), '--config', config);
+  modelled = await analyze(
+    withModel,
+    join(work, 'model.json'),
+    '--config',
+    config,
+    '--max-cost',
+    '1',
+  );
+  callsAfterFirst = providerCalls();
+  modelText = readFileSync(withModel, 'utf8');
+  cachedRun = await analyze(
+    withModel,
+    join(work, 'cached.json'),
+    '--config',
+    config,
+    '--max-cost',
+    '1',
+    '--force',
+  );
 }, 120_000);
 
 afterAll(() => {
+  Reflect.deleteProperty(process.env, KEY_ENV);
   guard?.uninstall();
   for (const child of children) child.kill();
 });
@@ -221,9 +294,95 @@ describe('yokla analyze on the demo-shop (ADR-0047)', () => {
     expect(second?.code, second?.output).toBe(0);
     expect(readFileSync(proposal, 'utf8')).toBe(firstText);
   });
+});
+
+const modelReport = () =>
+  Analysis.parse(JSON.parse(readFileSync(join(work, 'model.json'), 'utf8')));
+
+describe('yokla analyze with a model on the demo-shop (ADR-0049)', () => {
+  it('prints the files and the estimate with --estimate, and sends nothing', () => {
+    expect(estimated?.code, estimated?.output).toBe(0);
+    expect(estimated?.output).toMatch(/model step: \d+ file\(s\) to demo-analyzer-1 at http/u);
+    expect(estimated?.output).toMatch(/estimated cost \$\d+\.\d{4}, at most \$\d+\.\d{4}/u);
+    expect(estimated?.output).toContain('--estimate: nothing was sent');
+    expect(estimated?.output).not.toContain('probing');
+    expect(existsSync(join(work, 'estimate.json'))).toBe(false);
+  });
+
+  it('refuses to spend without --max-cost', () => {
+    expect(uncapped?.code).toBe(2);
+    expect(uncapped?.output).toContain('--max-cost <usd> caps it, and is required');
+  });
+
+  it("adds the limits, the cache bypass and the refusals, every one the hand-written profile's", () => {
+    expect(modelled?.code, modelled?.output).toBe(0);
+    const { comparison, entries } = modelReport();
+    // The model's fields are none the data or the probes give: they come first by construction.
+    expect(new Set(pointers(entries)).size).toBe(entries.length);
+    expect(comparison?.different).toEqual([]);
+    expect(comparison?.new).toEqual([]);
+    const added = pointers(comparison?.same ?? []).filter(
+      (pointer) => !pointers(report().comparison?.same ?? []).includes(pointer),
+    );
+    // In the order they were read: the README before the code.
+    expect(added).toEqual([
+      '/target/cacheBypass/kind',
+      '/target/cacheBypass/name',
+      '/target/cacheBypass/value',
+      '/target/limits/burstPerSecond',
+      '/target/limits/perMinute',
+      '/refusal/canonical/tr',
+      '/refusal/canonical/en',
+    ]);
+    expect(comparison?.same).toHaveLength(37);
+    expect(comparison?.recall).toBeCloseTo(37 / 64, 12);
+    expect(modelled?.output).toContain('precision 100.0%, recall 57.8%');
+    const cache = entries.find((entry) => entry.pointer === '/target/cacheBypass');
+    expect(cache?.provenance).toMatchObject({ source: 'doc', status: 'proposed' });
+    expect(cache?.provenance.evidence).toMatch(/^README\.md:\d+: ".*x-cache-bypass: 1/u);
+    const limit = entries.find((entry) => entry.pointer === '/target/limits/perMinute');
+    expect(limit?.provenance).toMatchObject({ source: 'code' });
+    expect(limit?.provenance.evidence).toMatch(
+      /^src\/server\.ts:\d+: "export const DEFAULT_RATE_LIMIT/u,
+    );
+  });
+
+  it('drops the limit the model invented, and never proposes it', () => {
+    const { unverified, entries } = modelReport();
+    expect(unverified).toEqual([
+      expect.objectContaining({
+        field: 'limits.perHour',
+        file: 'src/server.ts',
+        reason: 'the value is not in the quote',
+      }),
+    ]);
+    expect(pointers(entries)).not.toContain('/target/limits/perHour');
+    expect(modelled?.output).toContain('unverified: limits.perHour at src/server.ts:');
+  });
+
+  it('reads docs and code, never data, environment or test files', () => {
+    const sent = modelReport().model?.sent ?? [];
+    expect(sent[0]).toBe('README.md');
+    expect(sent).toContain('src/server.ts');
+    expect(sent.filter((path) => /\.test\.|^data\/|\.env/u.test(path))).toEqual([]);
+    expect(modelReport().model).toMatchObject({
+      model: 'demo-analyzer-1',
+      cached: 0,
+      partial: false,
+    });
+    expect(modelReport().model?.calls).toBe(callsAfterFirst);
+  });
+
+  it('answers a second analysis from the cache: no model call, the same file', () => {
+    expect(cachedRun?.code, cachedRun?.output).toBe(0);
+    expect(providerCalls()).toBe(callsAfterFirst);
+    expect(readFileSync(withModel, 'utf8')).toBe(modelText);
+    const again = Analysis.parse(JSON.parse(readFileSync(join(work, 'cached.json'), 'utf8')));
+    expect(again.model).toMatchObject({ calls: 0, cached: callsAfterFirst, costUsd: 0 });
+  });
 
   // Last, so it sees the traffic of everything above.
-  it('contacts nothing but the demo-shop (ADR-0003)', () => {
+  it('contacts nothing but the demo-shop and the fake provider (ADR-0003)', () => {
     const attempts = guard?.attempts ?? [];
     expect(attempts.filter((attempt) => !attempt.allowed)).toEqual([]);
     expect(new Set(attempts.map((attempt) => attempt.port))).toEqual(ports);

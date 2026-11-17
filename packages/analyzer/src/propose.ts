@@ -14,6 +14,7 @@ import {
 } from '@yokla/core';
 import { parse, stringify } from 'yaml';
 import type { Inventory } from './inventory.ts';
+import type { ModelStep } from './model.ts';
 import type { FoundCollection, Probed } from './probe.ts';
 
 export interface ProposedEntry {
@@ -215,6 +216,8 @@ export function analysisReport(input: {
   readonly proposal: JsonValue;
   readonly reference?: { readonly path: string; readonly document: JsonValue };
   readonly exclude: readonly string[];
+  /** The model step's outcome, when it ran (ADR-0049). */
+  readonly model?: ModelStep;
 }): Analysis {
   const comparison =
     input.reference === undefined
@@ -230,6 +233,20 @@ export function analysisReport(input: {
     },
     probes: input.probes.map((probe) => ({ ...probe })),
     entries: input.entries.map((entry) => ({ ...entry })),
+    ...(input.model === undefined
+      ? {}
+      : {
+          model: {
+            ...input.model.summary,
+            sent: [...input.model.summary.sent],
+            left: [...input.model.summary.left],
+          },
+          unverified: input.model.unverified.map((entry) => ({ ...entry })),
+          conflicts: input.model.conflicts.map((conflict) => ({
+            pointer: conflict.pointer,
+            evidence: [...conflict.evidence],
+          })),
+        }),
     ...(comparison === undefined || input.reference === undefined
       ? {}
       : {

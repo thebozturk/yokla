@@ -274,7 +274,6 @@ describe('the proposal (ADR-0047)', () => {
     });
     expect(
       analysisReport({
-        ...report,
         version: '9.9.9',
         inventory: { files: [], skipped: 0, capped: false },
         probes: [],

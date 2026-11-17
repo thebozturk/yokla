@@ -2,10 +2,25 @@
 // repository's inventory, the entries its data gives through the domain
 // pack, and the response mapping a few probes give. It makes no model call.
 
-import { relative, sep } from 'node:path';
-import type { DataFile, DomainPack, JsonValue, LanguagePack } from '@yokla/core';
+import { readFileSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
+import type {
+  DataFile,
+  DomainPack,
+  JsonValue,
+  LanguagePack,
+  OwnModel,
+  ProbedRows,
+} from '@yokla/core';
 import { readDataFiles } from './data.ts';
 import { inventory, type Inventory } from './inventory.ts';
+import {
+  planModelStep,
+  runModelStep,
+  type ModelCaller,
+  type ModelPlan,
+  type ModelStep,
+} from './model.ts';
 import { plannedMessages, probeTarget, type ProbeTarget, type SentProbe } from './probe.ts';
 import {
   dataEntries,
@@ -20,6 +35,13 @@ import { sessionMode } from '@yokla/core';
 export { inventory, MAX_FILE_BYTES, type Inventory, type InventoryFile } from './inventory.ts';
 export { MAX_ROWS, readDataFiles, rowsOf } from './data.ts';
 export { ProbeError, type Probed, type ProbeTarget, type SentProbe } from './probe.ts';
+export {
+  planModelStep,
+  runModelStep,
+  type ModelCaller,
+  type ModelPlan,
+  type ModelStep,
+} from './model.ts';
 export {
   analysisReport,
   personPointers,
@@ -41,15 +63,29 @@ export interface AnalyzeOptions {
   readonly maxFiles: number;
   readonly domainPacks: readonly DomainPack[];
   readonly languages: readonly LanguagePack[];
-  /** Hears what is about to happen: the inventory, then the messages before they are sent. */
+  /** The model step (ADR-0049); without it, the analysis uses no model. */
+  readonly model?: {
+    readonly config: OwnModel;
+    readonly caller: ModelCaller;
+    readonly maxCostUsd: number;
+    readonly chunkTokens: number;
+    readonly maxTokens: number;
+    readonly fresh: boolean;
+    /** Where replies are cached. */
+    readonly cacheDir: string;
+  };
+  /** Hears what is about to happen: the inventory, the messages, the model's plan. */
   readonly onInventory?: (listed: Inventory) => void;
   readonly onProbes?: (messages: readonly string[]) => void;
+  readonly onModelPlan?: (plan: ModelPlan) => void;
 }
 
 export interface Analyzed {
   readonly inventory: Inventory;
   readonly probes: readonly SentProbe[];
   readonly entries: readonly ProposedEntry[];
+  /** The model step's outcome, when it ran (ADR-0049). */
+  readonly model?: ModelStep;
   readonly document: Record<string, JsonValue>;
   /** The pointers a comparison leaves out: the person's own inputs. */
   readonly exclude: readonly string[];
@@ -65,8 +101,17 @@ function pathFrom(outDir: string, dir: string): (inRepo: string) => string {
   };
 }
 
-/** Inventories, reads the data, probes the target, and puts the proposal together. */
-export async function analyzeTarget(options: AnalyzeOptions): Promise<Analyzed> {
+interface Prepared {
+  readonly listed: Inventory;
+  readonly entries: ProposedEntry[];
+  readonly probedRows: ProbedRows | undefined;
+  readonly evidenceFields: Readonly<Record<string, string>>;
+  /** The profile's languages: the person's, the data's, or else English. */
+  readonly languages: readonly string[];
+}
+
+/** The inventory, the data's entries, and the profile's languages: nothing sent yet. */
+function prepare(options: AnalyzeOptions): Prepared {
   const listed = inventory(options.dir, options.maxFiles);
   options.onInventory?.(listed);
   const files: DataFile[] = readDataFiles(
@@ -76,7 +121,7 @@ export async function analyzeTarget(options: AnalyzeOptions): Promise<Analyzed> 
   );
   const { person } = options;
   const entries: ProposedEntry[] = [];
-  let probedRows;
+  let probedRows: ProbedRows | undefined;
   let evidenceFields: Readonly<Record<string, string>> = {};
   for (const pack of options.domainPacks) {
     const analysis = pack.analyzer?.analyze(files, {
@@ -106,7 +151,8 @@ export async function analyzeTarget(options: AnalyzeOptions): Promise<Analyzed> 
       },
     });
   }
-  const first = person.languages[0] ?? found[0] ?? 'en';
+  const languages =
+    person.languages.length > 0 ? person.languages : found.length > 0 ? found : ['en'];
   // A profile names its domain; with no pack's data found, the only pack is a guess.
   const [onlyPack] = options.domainPacks;
   if (!entries.some((entry) => entry.pointer === '/domain') && onlyPack !== undefined) {
@@ -120,6 +166,39 @@ export async function analyzeTarget(options: AnalyzeOptions): Promise<Analyzed> 
       },
     });
   }
+  return { listed, entries, probedRows, evidenceFields, languages };
+}
+
+/** The model's plan for the analysis: what it would read, and what that costs at most. */
+function modelPlan(options: AnalyzeOptions, prepared: Prepared): ModelPlan | undefined {
+  const { model } = options;
+  return model === undefined
+    ? undefined
+    : planModelStep(
+        options.dir,
+        prepared.listed.files,
+        model.config,
+        prepared.languages,
+        model.chunkTokens,
+        model.maxTokens,
+      );
+}
+
+/** What an analysis would read and cost, sending nothing: no probe, no model call (ADR-0049). */
+export function planAnalysis(options: AnalyzeOptions): {
+  readonly inventory: Inventory;
+  readonly model: ModelPlan | undefined;
+} {
+  const prepared = prepare(options);
+  return { inventory: prepared.listed, model: modelPlan(options, prepared) };
+}
+
+/** Inventories, reads the data, probes the target, asks the model, and puts the proposal together. */
+export async function analyzeTarget(options: AnalyzeOptions): Promise<Analyzed> {
+  const prepared = prepare(options);
+  const { person } = options;
+  const { entries, probedRows, evidenceFields, languages } = prepared;
+  const [first = 'en'] = languages;
   const target: ProbeTarget = {
     ...options.probe,
     greeting: options.greetings[first] ?? options.greetings['en'] ?? 'Hello!',
@@ -130,10 +209,38 @@ export async function analyzeTarget(options: AnalyzeOptions): Promise<Analyzed> 
   options.onProbes?.(plannedMessages(target, probedRows));
   const probed = await probeTarget(target, probedRows);
   entries.unshift(...probeEntries(probed, evidenceFields));
+  // The model reads last. Its fields (the limits, the cache bypass, the
+  // refusals) are none the data or the probes give, so they come first by
+  // construction (ADR-0049); the e2e test proposes no pointer twice.
+  const plan = modelPlan(options, prepared);
+  let model: ModelStep | undefined;
+  if (plan !== undefined && options.model !== undefined) {
+    options.onModelPlan?.(plan);
+    const texts = new Map<string, readonly string[]>();
+    const lines = (path: string): readonly string[] => {
+      const known = texts.get(path);
+      if (known !== undefined) return known;
+      const read = readFileSync(join(options.dir, path), 'utf8').split(/\r?\n/u);
+      texts.set(path, read);
+      return read;
+    };
+    model = await runModelStep({
+      plan,
+      model: options.model.config,
+      caller: options.model.caller,
+      languages,
+      lines,
+      maxCostUsd: options.model.maxCostUsd,
+      cacheDir: options.model.cacheDir,
+      fresh: options.model.fresh,
+    });
+    entries.push(...model.entries);
+  }
   const mode = sessionMode({ url: person.url, headers: person.headers, body: person.body });
   return {
-    inventory: listed,
+    inventory: prepared.listed,
     probes: probed.probes,
+    ...(model === undefined ? {} : { model }),
     entries,
     document: proposalDocument(person, mode, entries),
     exclude: personPointers(person),

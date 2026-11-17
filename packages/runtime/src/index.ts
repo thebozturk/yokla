@@ -26,6 +26,7 @@ export {
 } from './runner/run.ts';
 export { correlate, parseLogLines, readField, stripAnsi } from './observe/logs.ts';
 export { ProxyControl, ProxyControlError } from './proxy/control.ts';
+export { ModelClient, ModelClientError, type OwnReply } from './models/client.ts';
 export {
   openWebSocket,
   WebSocketConnection,

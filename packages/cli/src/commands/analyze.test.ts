@@ -36,6 +36,94 @@ describe('yokla analyze options (ADR-0047)', () => {
     expect(output.lines.join('\n')).toContain(message);
   });
 
+  it.each([
+    [['--max-tokens', '0'], '--max-tokens must be a positive integer'],
+    [['--chunk-tokens', 'many'], '--chunk-tokens must be a positive integer'],
+  ])('refuses %j before it sends anything', async (args, message) => {
+    const output = io();
+    const code = await analyzeCommand(
+      ['--url', 'http://127.0.0.1:1/chat', ...args],
+      output,
+      '0.0.0',
+      tmpdir(),
+      {},
+    );
+    expect(code).toBe(2);
+    expect(output.lines.join('\n')).toContain(message);
+  });
+
+  it('estimates with a model whose key is not set yet, and sends nothing (ADR-0049)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'yokla-analyze-'));
+    writeFileSync(join(dir, 'README.md'), 'Send `x-cache-bypass: 1` to skip the cache.\n');
+    writeFileSync(
+      join(dir, 'yokla.config.yaml'),
+      [
+        'version: 1',
+        'models:',
+        '  analyzer:',
+        '    kind: anthropic',
+        '    url: http://127.0.0.1:1/v1',
+        '    model: m',
+        '    apiKeyEnv: YOKLA_UNSET_ANALYZER_KEY',
+        '    maxTokens: 1000',
+        '    price: { input: 1, output: 2 }',
+        '',
+      ].join('\n'),
+    );
+    const output = io();
+    const code = await analyzeCommand(
+      ['--url', 'http://127.0.0.1:1/chat', '--dir', dir, '--estimate'],
+      output,
+      '0.0.0',
+      dir,
+      {},
+    );
+    const text = output.lines.join('\n');
+    expect(code, text).toBe(0);
+    expect(text).toContain('model step: 1 file(s) to m at http://127.0.0.1:1/v1');
+    expect(text).toMatch(/estimated cost \$\d+\.\d{4}, at most \$\d+\.\d{4}/u);
+    expect(text).toContain('--estimate: nothing was sent');
+  });
+
+  it('refuses a model with no price, since --max-cost could not be kept (ADR-0049)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'yokla-analyze-'));
+    writeFileSync(
+      join(dir, 'yokla.config.yaml'),
+      'version: 1\nmodels:\n  analyzer: { kind: openai-compatible, url: http://127.0.0.1:1/v1, model: m }\n',
+    );
+    const output = io();
+    const code = await analyzeCommand(
+      ['--url', 'http://127.0.0.1:1/chat', '--dir', dir, '--max-cost', '1'],
+      output,
+      '0.0.0',
+      dir,
+      {},
+    );
+    expect(code).toBe(2);
+    expect(output.lines.join('\n')).toContain(
+      'models.analyzer has no price, so --max-cost could not be enforced',
+    );
+  });
+
+  it('estimates without a model too, and sends nothing (ADR-0049)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'yokla-analyze-'));
+    const output = io();
+    // The target isn't there: anything sent would fail.
+    const code = await analyzeCommand(
+      ['--url', 'http://127.0.0.1:1/chat', '--dir', dir, '--estimate'],
+      output,
+      '0.0.0',
+      dir,
+      {},
+    );
+    expect(code, output.lines.join('\n')).toBe(0);
+    expect(output.lines).toContain(
+      'no models.analyzer in the configuration: the analysis would use no model',
+    );
+    expect(output.lines).toContain('--estimate: nothing was sent');
+    expect(existsSync(join(dir, 'yokla.profile.proposed.yaml'))).toBe(false);
+  });
+
   it('never overwrites a proposal without --force', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'yokla-analyze-'));
     writeFileSync(join(dir, 'yokla.profile.proposed.yaml'), 'version: 1\n');

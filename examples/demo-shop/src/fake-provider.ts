@@ -62,6 +62,60 @@ interface ChatRequest {
 /** yokla marks the first line of its customer prompt so (ADR-0028). */
 export const CUSTOMER_MARK = 'yokla: simulated customer';
 
+/** yokla marks the first line of its analyzer prompt so (ADR-0049). */
+export const ANALYZER_MARK = 'yokla: analyzer';
+
+interface Found {
+  readonly field: string;
+  readonly value: unknown;
+  readonly file: string;
+  readonly line: number;
+  readonly quote: string;
+}
+
+/**
+ * The analyzer model's answer, by simple rules over the chunk yokla sends:
+ * an object with burstPerSecond and perMinute, a header sent to bypass a
+ * cache, and lines that set a refusal sentence. Like a model that invents, it
+ * also gives a limit the line it quotes doesn't hold, for yokla to drop.
+ */
+function analyzerReply(request: ChatRequest): string {
+  const chunk = request.messages.find((message) => message.role === 'user')?.content ?? '';
+  const languages = (/^The profile's languages: (.*)$/mu.exec(chunk)?.[1] ?? '').split(', ');
+  const entries: Found[] = [];
+  let file = '';
+  for (const line of chunk.split('\n')) {
+    const header = /^=== (.+)$/u.exec(line);
+    if (header !== null) {
+      file = header[1] ?? '';
+      continue;
+    }
+    const numbered = /^(\d+)\| (.*)$/u.exec(line);
+    if (numbered === null) continue;
+    const at = Number(numbered[1]);
+    const text = numbered[2] ?? '';
+    const found = (name: string, value: unknown) => {
+      entries.push({ field: name, value, file, line: at, quote: text.trim() });
+    };
+    const burst = /burstPerSecond:\s*(\d+)/u.exec(text);
+    const minute = /perMinute:\s*(\d+)/u.exec(text);
+    if (burst !== null && minute !== null) {
+      found('limits.burstPerSecond', Number(burst[1]));
+      found('limits.perMinute', Number(minute[1]));
+      found('limits.perHour', 999);
+    }
+    const bypass = /`?(x-[\w-]*bypass[\w-]*)`?\s*:\s*`?([\w-]+)/iu.exec(text);
+    if (bypass !== null) found('cacheBypass.header', { name: bypass[1], value: bypass[2] });
+    const refusal = /^\s*refusal:\s*(['"])(.+)\1,?\s*$/u.exec(text);
+    const sentence = refusal?.[2];
+    if (sentence !== undefined) {
+      const language = /[çğıöşüÇĞİÖŞÜ]/u.test(sentence) ? 'tr' : 'en';
+      if (languages.includes(language)) found('refusal', { language, sentence });
+    }
+  }
+  return JSON.stringify({ entries });
+}
+
 /** The first number of a text, read whatever its thousands separator: "3.000" or "1,500". */
 function firstAmount(text: string): number | undefined {
   const raw = /\d[\d.,]*/u.exec(text)?.[0];
@@ -273,6 +327,7 @@ async function answer(
   catalog: readonly Product[],
 ): Promise<Answer | undefined> {
   if (request.role === CUSTOMER_MARK) return text(customerReply(request, catalog));
+  if (request.role === ANALYZER_MARK) return text(analyzerReply(request));
   const payload: unknown = JSON.parse(request.payload);
   if (typeof payload !== 'object' || payload === null) return undefined;
   if (request.role === ROLES.interpret) {
