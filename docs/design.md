@@ -308,22 +308,26 @@ give, and measures the proposal against a profile, at no model cost.
 - **The proposal:** `yokla.profile.proposed.yaml`, with a `provenance` map
   (§7). It never overwrites `yokla.profile.yaml`.
 - **The measure:** each entry `same`, `different`, `new` or `missed` against
-  a profile, with precision and recall. On the demo-shop: 30 entries
-  proposed, all the hand-written ones; recall 43.5 %.
+  a profile, with precision and recall. On the demo-shop: 49 entries
+  proposed, all the hand-written ones; recall 71.0 %.
+- **The response contract (ADR-0057, ADR-0058):** from an OpenAPI 3
+  operation or a JSON Schema document, at the deepest object the answer's
+  text and evidence share, proposed only when every probe answer matches
+  it. A contract the target breaks is named, never proposed. No model.
 - **With a model (ADR-0049):** `models.analyzer` reads the docs, prompts and
   code, never data, environment or test files, under a token budget and a
   required cost cap, with an estimate first. It proposes only what can be
   checked word for word against the line it quotes: the rate limits, the
   cache bypass and the canonical refusals. What fails the check is listed
-  and never proposed. On the demo-shop, with the fake provider: 37 entries,
-  recall 53.6 %.
+  and never proposed. On the demo-shop, with the fake provider: 56 entries,
+  recall 81.2 %.
 - **Replies it can't read (ADR-0051):** a reply cut at `maxTokens`, as each
   provider kind reports it, or not the JSON asked for, gives no value, is
   named in the summary and the report, and is never cached. Tokens are
   counted as one per two characters, so the estimate stays above code's
   count.
-- **Left to the person, or later ADRs:** the response contract, the
-  capabilities, `neverFabricate` and `everyAnswer`.
+- **Left to the person, or later ADRs:** the capabilities, `neverFabricate`
+  and `everyAnswer`.
 
 The plan for the whole analyzer:
 
@@ -1050,13 +1054,16 @@ For the analyzer's first step, `yokla analyze` reads a copy of the
 demo-shop's repository and probes the shop in process, with its hand-written
 profile's request (ADR-0047). It never lists that profile, the cases or the
 configuration.
-- **What it proposes:** 30 entries, every one the hand-written profile's:
+- **What it proposes:** 49 entries, every one the hand-written profile's:
   the response's text and route, the session mode, the product and cart
   evidence, the catalog and its type separator, the languages, the domain,
-  and the three policies' sources.
-- **What it misses:** 39 entries, recall 43.5 %: the size and gender of
+  the three policies' sources, and the 19 of the response contract from
+  `openapi.json`, which every probe answer keeps (ADR-0057, ADR-0058). On a
+  copy whose contract requires a field the answers lack, the contract is
+  not proposed, and the report names the violation by its path.
+- **What it misses:** 20 entries, recall 71.0 %: the size and gender of
   products, which the probed tents don't have, and what code, docs and
-  prompts must give: the limits, the cache bypass, the response contract,
+  prompts must give: the limits, the cache bypass,
   the capabilities, the canonical refusals, `everyAnswer` and
   `neverFabricate`; and the catalog's type labels (ADR-0050) and attributes
   (ADR-0055), which no step proposes yet.
@@ -1066,7 +1073,7 @@ configuration.
   rules. It finds the rate limits in `src/server.ts`, the cache bypass in the
   README and the refusals in `src/model.ts`, and invents a limit the line it
   quotes doesn't hold. The proposal gains the 7 entries, all the
-  hand-written ones, recall 53.6 %; the invented limit is listed as
+  hand-written ones, recall 81.2 %; the invented limit is listed as
   unverified. A second analysis answers from the cache, with no call.
 - **Cut replies (ADR-0051):** the fake provider honours `max_tokens`. With
   20, the replies that hold entries are cut: the summary and the report name
@@ -1200,7 +1207,7 @@ Each version is usable on its own. A version ships when its exit criteria hold.
 | **0.1 — core** | core schemas (profile, case, results); HTTP adapter; runner with rate limiting and cache bypass; observation from the target's logs (ADR-0009); e-commerce checks (price, stock, policy, filter, type, duplicates, absence, over-refusal); `lang-tr`, `lang-en`; aggregation policies; JSON, terminal and JUnit reports; gate; demo-shop | every demo-shop defect detected; a real assistant tested with a hand-written profile |
 | **0.2 — proxy** | OpenAI-compatible and Anthropic proxy; `serial` and `header` correlation; cost and latency per request; fault plans; inspection checks; perf, cost and resilience suites; `yokla plan`; streaming targets, session setup, and model calls the target makes after its answer | cost on demo-shop and on one real target reconciles with the provider's usage records; resilience defects detected |
 | **0.3 — reach and conversations** | a first run in five minutes: `yokla init` sends the target one message, works out where the answer is in its JSON or event stream, writes a profile for review, and adds starter cases that suit any assistant (greeting, out of scope, a basic injection, personal data, an empty or very long message, a switch of language, a deadline), all at no model cost; a static HTML report; publishing to npm; WebSocket targets; authentication (OAuth2 and the like); richer evidence mapping, which the first real target needed: one collection read from several paths, stock given only as in or out of stock, amounts quoted from data other than the shown products (such as an order history), and the text of an answer given only as a component; a Gemini protocol adapter (AI Studio and Vertex); model calls read from OpenTelemetry GenAI spans, for targets the proxy can't see; tool-call and trajectory checks on what the proxy records; a simulated customer: a model plays a customer with a goal, and the deterministic checks judge every turn; generic checks (patterns, JSON Schema, similarity, checks the user writes) | on the demo-shop and on the open-source target, `yokla init` writes a profile that needs no edit for the starter cases, which then run and gate; the demo-shop's tool-call defects detected; the simulated customer reaches each demo-shop purchase goal, and a run repeats from its seed; on the demo-shop, calls read from OpenTelemetry spans match the proxy's records |
-| **0.4 — analyzer** | inventory, LLM extraction with evidence, probe mode, profile review and diff (the deterministic step done, ADR-0047; the extraction of the fields a quote can verify done, ADR-0049, ADR-0051); e-commerce data generators (done, ADR-0055, ADR-0056); freshness and `fixture-missing` (done, ADR-0053, ADR-0054); robustness transforms of approved cases (§9): typos, removed diacritics, casing and punctuation at no model cost (done, ADR-0045), and paraphrase and Turkish–English code-switching only with a configured, budgeted model | on demo-shop the analyzer reproduces the approved entries of the hand-written profile (precision and recall reported); on the private target it rediscovers the known issue classes; on the demo-shop, a transform catches a seeded defect that shows only in a message without diacritics, and the transforms of every other approved case keep its verdict |
+| **0.4 — analyzer** | inventory, LLM extraction with evidence, probe mode, profile review and diff (the deterministic step done, ADR-0047; the extraction of the fields a quote can verify done, ADR-0049, ADR-0051; the response contract from a contract file done, ADR-0057, ADR-0058); e-commerce data generators (done, ADR-0055, ADR-0056); freshness and `fixture-missing` (done, ADR-0053, ADR-0054); robustness transforms of approved cases (§9): typos, removed diacritics, casing and punctuation at no model cost (done, ADR-0045), and paraphrase and Turkish–English code-switching only with a configured, budgeted model | on demo-shop the analyzer reproduces the approved entries of the hand-written profile (precision and recall reported); on the private target it rediscovers the known issue classes; on the demo-shop, a transform catches a seeded defect that shows only in a message without diacritics, and the transforms of every other approved case keep its verdict |
 | **0.5 — red team** | local attack generation (templates plus attacker model), native TR and EN; e-commerce attacks: price and discount manipulation, order fraud, card data, age and region restrictions, unauthorised commitments, competitor steering, hijacking, excessive agency, another customer's data, injection through product content and through tool descriptions, including a description that changes mid-conversation, unsafe advice; canary-based deterministic detection; multi-turn and encoding strategies; findings mapped to OWASP LLM Top 10, OWASP Agentic, GDPR and KVKK, and the EU AI Act; calibrated judge | demo-shop injection, leakage and BOLA defects detected deterministically; the egress test passes |
 | **0.6 — ecosystem** | import and export for other evaluation tools; CI recipes and a GitHub Action; a library API; two runs compared side by side; documentation site | |
 

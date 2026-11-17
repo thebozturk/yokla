@@ -121,6 +121,13 @@ hold.
   `ecommerce.catalog.fields.attributes`. A product id a turn expects is a
   catalog fact, so a lookup of a product that left the catalog is
   `fixture-missing`. The demo-shop shows the products a message names first.
+- **The analyzer reads the response contract from a contract file
+  (ADR-0057, ADR-0058).** From an OpenAPI 3 operation or a JSON Schema
+  document, `yokla analyze` proposes `target.response.schema` at the
+  deepest object the answer's text and evidence share, only when every
+  probe answer matches it; a contract the target breaks is named by path
+  and keyword. The report gains `contracts`. The demo-shop gains
+  `openapi.json`, and its analysis rises to recall 71.0 % without a model.
 
 ## 0.3.0 — 2026-11-15
 

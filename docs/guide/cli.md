@@ -103,8 +103,26 @@ scalar or a list of scalars by its pointer, into `same`, `different`, `new`
 the precision, same ÷ (same + different + new), and the recall, same ÷
 (same + different + missed). Your own inputs, the request and the
 languages you named, are left out, and so are the profile's entries that
-aren't approved. On the demo-shop it proposes 30 entries, all the
-hand-written ones: precision 100 %, recall 43.5 %.
+aren't approved. On the demo-shop it proposes 49 entries, all the
+hand-written ones: 30 from the data and the probes, and the 19 of the
+response contract from `openapi.json`. Precision 100 %, recall 71.0 %.
+
+**The response contract (ADR-0057).** From the repository's contract files,
+it proposes `target.response.schema`, with no model:
+- **What it reads:** from an OpenAPI 3 document, the operation your request
+  calls, after any path its `servers` hold, and its lowest 2xx JSON response;
+  from a JSON Schema document, the whole of it. Swagger 2 is left out.
+- **What it makes of it:** references move into `$defs`, OpenAPI 3.0's
+  `nullable` becomes a `null` type, and `example` and `x-` extensions are
+  left out and listed. A schema `json-schema` can't check is not proposed.
+- **Where it applies:** at the deepest object your answer's text and its
+  evidence collections share, such as `$.data`, else at `$`.
+- **Verified first:** every probe answer must match it. A contract your
+  target doesn't keep is not proposed, and the summary names each violation
+  by its path and keyword, never a value.
+- **One contract:** the first verified, OpenAPI documents before JSON
+  Schemas, each by path. The report's `contracts` says what became of each
+  file.
 
 **With a model (ADR-0049).** With `models.analyzer` in the configuration, a
 model also reads the docs, prompts, contracts, manifests, env examples and
@@ -152,8 +170,8 @@ one per 2.5, so the estimate stays above most code's count.
   and left, the unread chunks), `unverified` and `conflicts`.
 
 On the demo-shop, with the fake provider playing the model, it adds the two
-limits, the cache bypass and the two canonical refusals: 37 entries, all the
-hand-written ones, recall 53.6 %. The limit the fake model invents is
+limits, the cache bypass and the two canonical refusals: 56 entries, all the
+hand-written ones, recall 81.2 %. The limit the fake model invents is
 dropped as unverified.
 
 It exits with `0` when the proposal was written, and with `2` for a wrong
