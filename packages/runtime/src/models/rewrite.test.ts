@@ -2,6 +2,7 @@ import { mkdtempSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { estimateTokens, transformPrompt, type CustomerPrompt, type OwnModel } from '@yokla/core';
+import { stubLanguagePack } from '@yokla/core/testing';
 import { describe, expect, it } from 'vitest';
 import type { OwnReply } from './client.ts';
 import { Rewriter, type OwnSpendCount, type RewriteCaller, type RewriteJob } from './rewrite.ts';
@@ -54,6 +55,12 @@ const rewriter = (fake: RewriteCaller, cacheDir = mkdtempSync(join(tmpdir(), 'yo
   new Rewriter({ model, env: {}, cacheDir, caller: fake });
 
 const polite = (message: string) => `Merhaba, ${message}`;
+
+/** A language pack with a few common words, as language-match counts them. */
+const pack = (language: string, commonWords: string[]) => ({
+  ...stubLanguagePack(language),
+  commonWords,
+});
 
 describe('the rewriter (ADR-0059)', () => {
   it('rewrites a message by each kind in turn, the second on the first one’s text', async () => {
@@ -178,6 +185,28 @@ describe('the rewriter (ADR-0059)', () => {
       { kind: 'paraphrase', why: 'the reply stopped at maxTokens' },
     ]);
     expect(readdirSync(cacheDir)).toEqual([]);
+  });
+
+  it('refuses a code-switch that left its language, by the packs it is given (ADR-0060)', async () => {
+    const languages = new Map([
+      ['tr', pack('tr', ['bir', 'var', 'mı'])],
+      ['en', pack('en', ['do', 'you', 'have', 'any'])],
+    ]);
+    const fake = caller(() => 'Do you have any tent, do you have any?');
+    const results = await new Rewriter({
+      model,
+      env: {},
+      cacheDir: mkdtempSync(join(tmpdir(), 'yokla-rw-')),
+      caller: fake,
+      languages,
+    }).run(
+      [job({ kinds: ['code-switch'], message: 'Bir çadır var mı?', keep: [] })],
+      spend(),
+      undefined,
+    );
+    expect(results.get('tents|0')?.refused).toEqual([
+      { kind: 'code-switch', why: 'the reply is no longer in tr' },
+    ]);
   });
 
   it('leaves code-switch out with one language, asking nothing', async () => {

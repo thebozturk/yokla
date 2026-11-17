@@ -3,6 +3,7 @@
 // rewrite is sent only when it keeps exactly every text no transform
 // changes (ADR-0045). Pure: the runtime makes the calls.
 
+import type { LanguagePack } from '../checks/types.ts';
 import type { CustomerPrompt } from '../customer/customer.ts';
 import type { ModelTransform } from '../schema/common.ts';
 
@@ -10,7 +11,7 @@ import type { ModelTransform } from '../schema/common.ts';
 export const TRANSFORM_MARK = 'yokla: transform';
 
 /** Changes whenever the prompt does, so a cached rewrite of an old prompt isn't used. */
-export const TRANSFORM_PROMPT_VERSION = 1;
+export const TRANSFORM_PROMPT_VERSION = 2;
 
 /** One rewrite to ask for. */
 export interface RewriteAsk {
@@ -24,11 +25,14 @@ export interface RewriteAsk {
   readonly keep: readonly string[];
 }
 
+const KEEP_THE_REQUEST =
+  'Keep the same requests and facts: add none and drop none; change only how they are written.';
+
 const ASKS: Readonly<Record<ModelTransform, (ask: RewriteAsk) => string>> = {
   paraphrase: (ask) =>
-    `Write the same request in other words, in the same language (${ask.language}), with the same facts, as another shopper would write it.`,
+    `Write the same request in other words, in the same language (${ask.language}), as another shopper would write it. ${KEEP_THE_REQUEST}`,
   'code-switch': (ask) =>
-    `Write the same message as a bilingual shopper would: in ${ask.language}, with some words, such as product words, in ${ask.other ?? ask.language}.`,
+    `Write the same message as a bilingual shopper would: keep ${ask.language} as its language, replace a few words, such as product words, with their ${ask.other ?? ask.language} words, and write nothing else in ${ask.other ?? ask.language}. ${KEEP_THE_REQUEST}`,
 };
 
 /** The prompt for one rewrite. */
@@ -53,11 +57,35 @@ export function transformPrompt(ask: RewriteAsk): CustomerPrompt {
 export type CheckedRewrite =
   { readonly ok: true; readonly text: string } | { readonly ok: false; readonly why: string };
 
-/** Checks a model's reply: one line, not the message as written, every kept text exactly. */
+/** How many sentences a text holds: ends before a space or the end, never a point between digits. */
+function sentences(text: string): number {
+  return Math.max(1, (text.match(/[.?!…]+(?=\s|$)/gu) ?? []).length);
+}
+
+/** How many of a text's words are common words of a language, as language-match counts them. */
+function commonCount(text: string, pack: LanguagePack): number {
+  const common = new Set(pack.commonWords);
+  return text.split(/[^\p{L}]+/u).filter((word) => word !== '' && common.has(pack.fold(word)))
+    .length;
+}
+
+/** The case's language and the one a code-switch mixes in, to tell which one a rewrite is in. */
+export interface SwitchedLanguages {
+  readonly own: LanguagePack;
+  readonly mixed: LanguagePack;
+}
+
+/**
+ * Checks a model's reply: one line, not the message as written, every kept
+ * text exactly, no sentence more than the message, and, for a code-switch,
+ * no more common words of the mixed-in language than of its own (ADR-0059,
+ * ADR-0060).
+ */
 export function checkRewrite(
   message: string,
   reply: string,
   keep: readonly string[],
+  switched?: SwitchedLanguages,
 ): CheckedRewrite {
   const trimmed = reply.trim();
   // A reply in quotes is the message inside them.
@@ -67,5 +95,12 @@ export function checkRewrite(
   if (text === message.trim()) return { ok: false, why: 'the reply is the message as written' };
   const lost = keep.find((kept) => !text.includes(kept));
   if (lost !== undefined) return { ok: false, why: `"${lost}" was lost` };
+  if (sentences(text) > sentences(message)) return { ok: false, why: 'the reply adds a sentence' };
+  if (
+    switched !== undefined &&
+    commonCount(text, switched.mixed) > commonCount(text, switched.own)
+  ) {
+    return { ok: false, why: `the reply is no longer in ${switched.own.language}` };
+  }
   return { ok: true, text };
 }

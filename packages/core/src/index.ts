@@ -276,6 +276,7 @@ export {
   TRANSFORM_PROMPT_VERSION,
   type CheckedRewrite,
   type RewriteAsk,
+  type SwitchedLanguages,
 } from './transform/model.ts';
 export {
   contractAt,

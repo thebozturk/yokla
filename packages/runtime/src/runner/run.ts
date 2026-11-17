@@ -609,6 +609,7 @@ async function rewriteMessages(
       model,
       env: options.env,
       cacheDir: resolve(options.dataDir ?? resolve(options.profileDir, 'yokla-data'), 'transform'),
+      languages: new Map((options.languages ?? []).map((pack) => [pack.language, pack])),
     });
     const plan = rewriter.plan(jobs);
     options.onTransformPlan?.(plan);

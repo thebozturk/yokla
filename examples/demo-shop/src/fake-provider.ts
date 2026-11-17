@@ -103,7 +103,8 @@ function swap(text: string, from: string, to: string, locale: string): string {
  */
 function transformReply(request: ChatRequest): string {
   const message = request.messages.find((entry) => entry.role === 'user')?.content ?? '';
-  const turkish = /\(tr\)|in tr,/u.test(request.system);
+  // The prompt names the case's language: "(tr)" for a paraphrase, "keep tr as" for a code-switch.
+  const turkish = /\(tr\)|keep tr as/u.test(request.system);
   if (request.system.includes('Transform: code-switch.')) {
     let switched = message;
     for (const [tr, en] of SWITCHED) {

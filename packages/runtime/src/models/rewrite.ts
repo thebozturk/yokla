@@ -13,6 +13,7 @@ import {
   transformPrompt,
   TRANSFORM_PROMPT_VERSION,
   type CustomerPrompt,
+  type LanguagePack,
   type ModelTransform,
   type OwnModel,
   type RewriteAsk,
@@ -82,15 +83,19 @@ export class Rewriter {
   readonly #model: OwnModel;
   readonly #cacheDir: string;
   readonly #caller: RewriteCaller;
+  readonly #languages: ReadonlyMap<string, LanguagePack>;
 
   constructor(options: {
     readonly model: OwnModel;
     readonly env: Readonly<Record<string, string | undefined>>;
     readonly cacheDir: string;
     readonly caller?: RewriteCaller;
+    /** The language packs, by language, to tell which language a code-switch is in (ADR-0060). */
+    readonly languages?: ReadonlyMap<string, LanguagePack>;
   }) {
     this.#model = options.model;
     this.#cacheDir = options.cacheDir;
+    this.#languages = options.languages ?? new Map();
     this.#caller = options.caller ?? new ModelClient(options.model, options.env, 'transform');
   }
 
@@ -118,6 +123,17 @@ export class Rewriter {
     } catch {
       return undefined;
     }
+  }
+
+  /** A rewrite of one kind, checked: for a code-switch, by both languages' packs (ADR-0060). */
+  #check(job: RewriteJob, kind: ModelTransform, message: string, reply: string) {
+    const own = this.#languages.get(job.language);
+    const mixed = job.other === undefined ? undefined : this.#languages.get(job.other);
+    const switched =
+      kind === 'code-switch' && own !== undefined && mixed !== undefined
+        ? { own, mixed }
+        : undefined;
+    return checkRewrite(message, reply, job.keep, switched);
   }
 
   static #ask(job: RewriteJob, kind: ModelTransform, message: string): RewriteAsk {
@@ -152,7 +168,7 @@ export class Rewriter {
           continue;
         }
         cached += 1;
-        const checked = checkRewrite(message, hit.text, job.keep);
+        const checked = this.#check(job, kind, message, hit.text);
         if (checked.ok) message = checked.text;
       }
     }
@@ -217,7 +233,7 @@ export class Rewriter {
           spend.calls += 1;
           spend.cached += 1;
         }
-        const checked = checkRewrite(text, reply, job.keep);
+        const checked = this.#check(job, kind, text, reply);
         if (checked.ok) {
           text = checked.text;
           changedBy.push(kind);

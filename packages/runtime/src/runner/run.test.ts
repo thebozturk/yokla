@@ -517,6 +517,44 @@ describe("runSuite with a model's transforms (ADR-0059)", () => {
     // Nothing reached the target.
     expect(t.received).toEqual([]);
   });
+
+  it("refuses a code-switch that left the case's language, by the run's packs (ADR-0060)", async () => {
+    const store = await target((received, _i, response) => {
+      json(response, answer({ answer: String(received.body['message']) }));
+    });
+    // A model that answers in the mixed-in language, whatever it is asked.
+    const modelServer = await target((_r, _i, response) => {
+      json(response, {
+        choices: [{ message: { content: 'Bir çadır var mı, bir de mat var mı?' } }],
+        usage: { prompt_tokens: 10, completion_tokens: 5 },
+      });
+    });
+    const results = await runSuite(
+      options(
+        { ...profile(store.url), languages: ['en', 'tr'] },
+        cases({ language: 'en', turns: [{ user: 'Do you have a tent?' }] }),
+        {
+          transforms: ['code-switch'],
+          languages: [
+            commonPack('en', ['do', 'you', 'have', 'a']),
+            commonPack('tr', ['bir', 'var', 'mı']),
+          ],
+          profileDir: mkdtempSync(join(tmpdir(), 'yokla-transform-')),
+          models: {
+            transform: {
+              ...transformModel,
+              url: modelServer.url.replace(/\/chat$/u, ''),
+              price: { input: 0, output: 0 },
+            },
+          },
+        },
+      ),
+    );
+    expect(results.run.issues).toContain(
+      '--transform code-switch left 1 message as written: the reply is no longer in en',
+    );
+    expect(store.received.map((r) => r.body['message'])).toEqual(['Do you have a tent?']);
+  });
 });
 
 describe('runSuite with packs', () => {
@@ -3829,6 +3867,12 @@ describe('runSuite with a cassette (ADR-0040)', () => {
     );
     expect(t.received).toHaveLength(0);
   });
+});
+
+/** A language pack with a few common words, as language-match counts them. */
+const commonPack = (language: string, commonWords: string[]) => ({
+  ...stubLanguagePack(language),
+  commonWords,
 });
 
 describe('runSuite with a model swap (ADR-0042)', () => {
