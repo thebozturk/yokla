@@ -2,7 +2,7 @@
 
 import type { Product, ShopData } from './catalog.ts';
 import type { Defect } from './defects.ts';
-import { detectLanguage, formatMoney, type Language } from './language.ts';
+import { detectLanguage, fold, formatMoney, type Language } from './language.ts';
 import {
   hasFilters,
   type AnswerDraft,
@@ -170,7 +170,7 @@ export class Assistant {
     let answer: string;
     try {
       interpretation = this.#codeRead(await this.#model.interpret(sent, context, call), sent);
-      ({ draft, next } = this.#plan(interpretation, context, sessionId));
+      ({ draft, next } = this.#plan(interpretation, context, sessionId, sent));
       answer = await this.#model.write(draft, call);
     } catch (error) {
       if (this.#defect === 'no-model-fallback') throw error;
@@ -257,6 +257,7 @@ export class Assistant {
     interpretation: Interpretation,
     context: ConversationContext | undefined,
     sessionId: string,
+    message: string,
   ): { draft: AnswerDraft; next: ConversationContext } {
     const { language } = interpretation;
     switch (interpretation.route) {
@@ -278,7 +279,7 @@ export class Assistant {
         };
       }
       case 'product-search':
-        return this.#search(interpretation.productType, interpretation.filters, language);
+        return this.#search(interpretation.productType, interpretation.filters, language, message);
       case 'policy': {
         const source =
           interpretation.topic === 'returns'
@@ -299,9 +300,17 @@ export class Assistant {
           next: { ...(context ?? EMPTY_CONTEXT), products: [cheapest] },
         };
       }
+      case 'fallback': {
+        // A message the model didn't read, that names a product, searches for it (ADR-0055).
+        const said = fold(message);
+        const named = this.#data.catalog.find(
+          (product) => said.includes(fold(product.name.tr)) || said.includes(fold(product.name.en)),
+        );
+        if (named !== undefined) return this.#search(named.type, {}, language, message);
+        return { draft: { kind: 'fallback', language }, next: context ?? EMPTY_CONTEXT };
+      }
       case 'refusal':
-      case 'fallback':
-        return { draft: { kind: interpretation.route, language }, next: context ?? EMPTY_CONTEXT };
+        return { draft: { kind: 'refusal', language }, next: context ?? EMPTY_CONTEXT };
     }
   }
 
@@ -309,9 +318,15 @@ export class Assistant {
     productType: string,
     filters: Filters,
     language: Language,
+    message: string,
   ): { draft: AnswerDraft; next: ConversationContext } {
     const ofType = (type: string): Product[] =>
       this.#data.catalog.filter((product) => product.type === type).toSorted(byPriceThenId);
+    // The products a message names come first, as a shop's search ranks an exact
+    // name: a comparison or a stock question shows the products it asks about (ADR-0055).
+    const said = fold(message);
+    const named = (product: Product): boolean =>
+      said.includes(fold(product.name.tr)) || said.includes(fold(product.name.en));
 
     const absent = ABSENT_TYPES.find((type) => type.key === productType);
     if (absent !== undefined) {
@@ -334,7 +349,9 @@ export class Assistant {
         ? all
         : all.filter((product) => satisfies(product, this.#boundsKept(productType, filters)));
     const relaxed = matching.length === 0 && hasFilters(filters);
-    const shown = (relaxed ? all : matching).slice(0, RESULT_LIMIT);
+    const shown = (relaxed ? all : matching)
+      .toSorted((a, b) => Number(named(b)) - Number(named(a)))
+      .slice(0, RESULT_LIMIT);
     const products = this.#duplicate(relaxed ? shown : this.#pad(shown, productType, filters));
     return {
       draft: { kind: relaxed ? 'relaxed' : 'products', language, productType, filters, products },

@@ -123,5 +123,8 @@ ecommerce:
       # The words a shopper uses for a type, where its last level is a facet
       # such as a size (ADR-0050); a type without one is asked by its last level.
       typeLabel: { tr: type_label_tr, en: type_label_en }
+      # The evidence field each filter names, and the catalog field that holds it:
+      # yokla generate asks for products by them (ADR-0055).
+      attributes: { size: size, color: color, gender: gender }
   # Types are category paths; a case may ask for a level, e.g. outdoor/camping.
   typeSeparator: /

@@ -203,7 +203,7 @@ describe('yokla analyze on the demo-shop (ADR-0047)', () => {
   it('writes a proposal and an analysis report', () => {
     expect(first?.code, first?.output).toBe(0);
     expect(first?.output).toContain('probing ');
-    expect(first?.output).toContain('precision 100.0%, recall 45.5%');
+    expect(first?.output).toContain('precision 100.0%, recall 43.5%');
   });
 
   it("proposes only the hand-written profile's entries", () => {
@@ -274,9 +274,13 @@ describe('yokla analyze on the demo-shop (ADR-0047)', () => {
       // No step proposes a catalog's type labels yet (ADR-0050).
       '/ecommerce/catalog/fields/typeLabel/tr',
       '/ecommerce/catalog/fields/typeLabel/en',
+      // Nor the catalog's attributes, which yokla generate asks by (ADR-0055).
+      '/ecommerce/catalog/fields/attributes/size',
+      '/ecommerce/catalog/fields/attributes/color',
+      '/ecommerce/catalog/fields/attributes/gender',
     ]);
-    expect(missed).toHaveLength(36);
-    expect(report().comparison?.recall).toBeCloseTo(30 / 66, 12);
+    expect(missed).toHaveLength(39);
+    expect(report().comparison?.recall).toBeCloseTo(30 / 69, 12);
   });
 
   it("never lists the profile it is measured against, the cases or yokla's configuration", () => {
@@ -357,8 +361,8 @@ describe('yokla analyze with a model on the demo-shop (ADR-0049)', () => {
       '/refusal/canonical/en',
     ]);
     expect(comparison?.same).toHaveLength(37);
-    expect(comparison?.recall).toBeCloseTo(37 / 66, 12);
-    expect(modelled?.output).toContain('precision 100.0%, recall 56.1%');
+    expect(comparison?.recall).toBeCloseTo(37 / 69, 12);
+    expect(modelled?.output).toContain('precision 100.0%, recall 53.6%');
     const cache = entries.find((entry) => entry.pointer === '/target/cacheBypass');
     expect(cache?.provenance).toMatchObject({ source: 'doc', status: 'proposed' });
     expect(cache?.provenance.evidence).toMatch(/^README\.md:\d+: ".*x-cache-bypass: 1/u);

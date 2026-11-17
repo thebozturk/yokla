@@ -221,6 +221,21 @@ describe('correct behaviour (no defect)', () => {
     for (const reply of replies.values()) expect(new Set(ids(reply)).size).toBe(ids(reply).length);
   });
 
+  it('shows the products a message names first, searching their type (ADR-0055)', async () => {
+    const shop = assistant();
+    // The model reads "hiking" as trekking poles, and nothing in "Hiking Pack" as a backpack.
+    const stock = await ask(shop, 'Is the Hiking Pack 35 L in stock?');
+    expect(shownIds(stock)[0]).toBe('BPK-002');
+    const compared = await ask(
+      shop,
+      'Which is better, the Dome Tent, 2-Person or the Ultralight Tent, 1-Person?',
+      'compare',
+    );
+    expect(shownIds(compared).slice(0, 2).toSorted()).toEqual(['TNT-001', 'TNT-002']);
+    // A message that names nothing is answered as before.
+    expect((await ask(shop, 'Merhaba', 'hello')).metadata.route).toBe('fallback');
+  });
+
   it('carries context across turns', async () => {
     const shop = assistant();
     await ask(shop, "Do you have women's jackets in size M?", 's');
