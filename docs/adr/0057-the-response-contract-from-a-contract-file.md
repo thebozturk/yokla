@@ -1,6 +1,6 @@
 # 0057. The response contract from a contract file, verified against the answers
 
-Status: Proposed · Date: 2026-11-17
+Status: Accepted · Date: 2026-11-17
 
 ## Context
 
