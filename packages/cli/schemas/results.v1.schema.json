@@ -180,6 +180,8 @@
               "kind": {
                 "type": "string",
                 "enum": [
+                  "paraphrase",
+                  "code-switch",
                   "no-diacritics",
                   "lowercase",
                   "no-punctuation",

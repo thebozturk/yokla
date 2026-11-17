@@ -233,6 +233,96 @@
           ],
           "additionalProperties": false
         },
+        "transform": {
+          "description": "The model that writes yokla run's paraphrase and code-switch transforms (ADR-0059). A hosted model receives the cases' messages. It needs a price, 0 for a local model, so --max-cost can be enforced.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "openai-compatible",
+                "anthropic",
+                "gemini"
+              ]
+            },
+            "auth": {
+              "default": "api-key",
+              "description": "For gemini: the key in x-goog-api-key, or as an Authorization bearer token, as Vertex AI takes it (ADR-0032). The other kinds send it in their own header.",
+              "type": "string",
+              "enum": [
+                "api-key",
+                "bearer"
+              ]
+            },
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "description": "The base url, e.g. http://127.0.0.1:11434/v1 for a local model."
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "apiKeyEnv": {
+              "description": "The environment variable that holds the API key, if one is needed.",
+              "type": "string",
+              "minLength": 1
+            },
+            "temperature": {
+              "default": 0,
+              "type": "number",
+              "minimum": 0,
+              "maximum": 2
+            },
+            "maxTokens": {
+              "default": 400,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64000
+            },
+            "timeoutMs": {
+              "default": 60000,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "price": {
+              "description": "USD per million tokens. Without it, the calls have no cost, never 0.",
+              "type": "object",
+              "properties": {
+                "input": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "output": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "cachedInput": {
+                  "description": "Defaults to the input price, so cost is never understated.",
+                  "type": "number",
+                  "minimum": 0
+                },
+                "cacheWrite": {
+                  "description": "Defaults to the input price, so cost is never understated.",
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "input",
+                "output"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "kind",
+            "url",
+            "model"
+          ],
+          "additionalProperties": false
+        },
         "analyzer": {
           "description": "The model yokla analyze asks for values in the target's docs, prompts and code (ADR-0049). A hosted model receives those files' text. It needs a price, 0 for a local model, so --max-cost can be enforced.",
           "type": "object",

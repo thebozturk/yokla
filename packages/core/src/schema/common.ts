@@ -6,7 +6,18 @@ export const ID_PATTERN = /^[a-z0-9]+(?:[-.][a-z0-9]+)*$/u;
 export const Id = z.string().regex(ID_PATTERN, 'use lowercase letters, digits, "-" and "."');
 
 /** Robustness transforms of a case's messages (ADR-0045), in the order they apply. */
-export const TRANSFORM_KINDS = ['no-diacritics', 'lowercase', 'no-punctuation', 'typos'] as const;
+export const TRANSFORM_KINDS = [
+  // Written by models.transform before the run (ADR-0059); they apply first.
+  'paraphrase',
+  'code-switch',
+  'no-diacritics',
+  'lowercase',
+  'no-punctuation',
+  'typos',
+] as const;
+/** The transforms a model writes (ADR-0059). */
+export const MODEL_TRANSFORMS = ['paraphrase', 'code-switch'] as const;
+export type ModelTransform = (typeof MODEL_TRANSFORMS)[number];
 export const TransformKind = z.enum(TRANSFORM_KINDS);
 export type TransformKind = z.output<typeof TransformKind>;
 

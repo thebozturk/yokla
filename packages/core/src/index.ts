@@ -105,6 +105,8 @@ export {
   SUITES,
   TRANSFORM_KINDS,
   TransformKind,
+  MODEL_TRANSFORMS,
+  type ModelTransform,
 } from './schema/common.ts';
 export {
   FieldSpec,
@@ -268,6 +270,14 @@ export type {
 } from './checks/types.ts';
 export { generatedCaseYaml, generatedId } from './generate/write.ts';
 export {
+  checkRewrite,
+  transformPrompt,
+  TRANSFORM_MARK,
+  TRANSFORM_PROMPT_VERSION,
+  type CheckedRewrite,
+  type RewriteAsk,
+} from './transform/model.ts';
+export {
   contractAt,
   contractKind,
   readJsonSchema,
@@ -279,6 +289,7 @@ export { caseUnmetFacts } from './fixture/facts.ts';
 export { findPhrases, hasPhrase, type PhraseMatch } from './text/phrases.ts';
 export { findQuantities, type QuantityMention } from './text/quantities.ts';
 export {
+  keptTexts,
   quotedValues,
   transformMessage,
   type TransformContext,

@@ -2,7 +2,7 @@ import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { TRANSFORM_KINDS, type TransformKind } from '../schema/common.ts';
 import { stubLanguagePack } from '../testing.ts';
-import { quotedValues, transformMessage } from './transform.ts';
+import { keptTexts, quotedValues, transformMessage } from './transform.ts';
 
 // A language with Turkish casing and letters, as lang-tr has them, and "<digits> TL" as
 // money; core knows no language.
@@ -191,6 +191,25 @@ describe('transformMessage (ADR-0045)', () => {
           : changed.length === 0;
       }),
     );
+  });
+});
+
+describe('the text a model must keep (ADR-0059)', () => {
+  it('leaves the messages to the model: its kinds change nothing here', () => {
+    expect(transformed('Çadır önerir misin?', ['paraphrase', 'code-switch'])).toEqual({
+      text: 'Çadır önerir misin?',
+      changedBy: [],
+    });
+  });
+
+  it('names each kept text once: words with a digit, @ or /, amounts and quoted values', () => {
+    expect(
+      keptTexts('1.500 TL altı M beden, a@b.co ve CANARY-7 ve 1.500 TL', {
+        lang: turkishLike,
+        keep: ['CANARY-7', 'absent'],
+      }),
+    ).toEqual(['1.500 TL', 'a@b.co', 'CANARY-7']);
+    expect(keptTexts('Çadır önerir misin?', { lang: turkishLike, keep: [] })).toEqual([]);
   });
 });
 

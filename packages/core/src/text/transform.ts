@@ -65,6 +65,19 @@ function keptSpans(message: string, context: TransformContext): [number, number]
   return merged;
 }
 
+/**
+ * The text of a message no transform changes, each once: words that hold a
+ * digit, "@" or "/", money amounts, and the values in `keep` (ADR-0045). A
+ * model's rewrite must hold every one exactly (ADR-0059).
+ */
+export function keptTexts(message: string, context: Omit<TransformContext, 'seed'>): string[] {
+  return [
+    ...new Set(
+      keptSpans(message, { ...context, seed: '' }).map(([start, end]) => message.slice(start, end)),
+    ),
+  ];
+}
+
 function segmentsOf(message: string, context: TransformContext): Segment[] {
   const segments: Segment[] = [];
   let at = 0;
@@ -155,6 +168,11 @@ function apply(
     }
     case 'typos': {
       return withTypo(segments, context.seed);
+    }
+    // A model writes these before the run, and the runner sends its rewrite (ADR-0059).
+    case 'paraphrase':
+    case 'code-switch': {
+      return [...segments];
     }
   }
 }
