@@ -135,6 +135,11 @@ hold.
   why. The run prints an estimate first, `--max-cost` is required while a
   rewrite isn't cached, and the cache makes a rerun free. The demo-shop
   gains a `language-by-words` defect that only code-switching shows.
+- **A rewrite adds nothing, and keeps its language (ADR-0060).** The prompt
+  asks for the same requests and facts, nothing added or dropped, and a
+  code-switch that keeps the case's language. A rewrite with more sentences
+  than the message, or a code-switch whose mixed-in language's common
+  words outnumber its own, is not sent.
 
 ## 0.3.0 — 2026-11-15
 

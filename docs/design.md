@@ -423,8 +423,9 @@ noise. The expectation is the same verdict as the source case.
   --expect-same` and the gate set it beside the run as written.
 - **With a model (ADR-0059):** `--transform paraphrase` and `code-switch`,
   written by `models.transform` before the run, one rewrite per message,
-  cached and capped. A rewrite that loses a text no transform changes is
-  not sent: the message goes as written, and the run says why.
+  cached and capped. A rewrite that loses a text no transform changes, adds
+  a sentence, or, for a code-switch, leaves its language is not sent: the
+  message goes as written, and the run says why (ADR-0060).
 
 **Freshness.** Data-grounded cases are either re-derived from the snapshot at
 run time, or pinned to the data facts they depend on. If the snapshot no longer

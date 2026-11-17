@@ -310,9 +310,13 @@ in the configuration:
 - **One rewrite per message,** the same in every sample and every run, made
   before the first request.
 - **Checked before it is sent:** a rewrite must keep exactly every text no
-  transform changes, differ from the message and be one line. One that
-  doesn't is not sent: the message goes as written, and the run's issues
-  say why, such as `"500 TL" was lost`.
+  transform changes, differ from the message, be one line and hold no more
+  sentences than the message (ADR-0060); a code-switch must also keep its
+  language, with no more common words of the mixed-in language than of its
+  own, counted as `language-match` counts. The prompt asks for the same
+  requests and facts, nothing added or dropped. A rewrite that fails a
+  check is not sent: the message goes as written, and the run's issues say
+  why, such as `"500 TL" was lost` or `the reply adds a sentence`.
 - **`code-switch`** mixes in the first of the profile's languages that isn't
   the case's; with one language it leaves the messages as written.
 - **Cost.** Before the first call, the run prints how many messages the
