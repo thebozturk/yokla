@@ -128,6 +128,13 @@ hold.
   probe answer matches it; a contract the target breaks is named by path
   and keyword. The report gains `contracts`. The demo-shop gains
   `openapi.json`, and its analysis rises to recall 71.0 % without a model.
+- **Paraphrase and code-switching, written by a model (ADR-0059).**
+  `yokla run --transform paraphrase` and `code-switch` ask `models.transform`
+  for one rewrite per message before the first request. A rewrite that
+  loses a text no transform changes is not sent, and the run's issues say
+  why. The run prints an estimate first, `--max-cost` is required while a
+  rewrite isn't cached, and the cache makes a rerun free. The demo-shop
+  gains a `language-by-words` defect that only code-switching shows.
 
 ## 0.3.0 — 2026-11-15
 

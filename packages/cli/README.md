@@ -122,7 +122,9 @@ answer, or only in your app's code after the model call.
 - **Messages as users write them.** `yokla run --transform` sends your cases
   without diacritics, in lower case, without punctuation, or with a typo
   that repeats from run to run, and `yokla compare --expect-same` shows any
-  verdict that moved.
+  verdict that moved. With a model you configure, it also paraphrases them,
+  or mixes Turkish and English as shoppers do, keeping every amount and
+  value your checks look for.
 
 **Your own rules**
 - Regular expressions on the answer, a JSON Schema on the response, and

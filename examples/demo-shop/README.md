@@ -172,7 +172,10 @@ simulated customer there too.
   (ADR-0045). The correct shop keeps every verdict. On a shop with
   `language-by-letters`, the written cases pass, and without diacritics
   `tents-under-500-tr`, `sleeping-pad-tr` and `returns-tr` are answered in
-  English and fail.
+  English and fail. `packages/cli/src/model-transforms.e2e.test.ts` does the
+  same with the fake provider writing paraphrases and code-switched
+  messages (ADR-0059): on a shop with `language-by-words`, only the
+  code-switched run moves verdicts.
 - **A profile proposed from the repository.** `packages/cli/src/analyze.e2e.test.ts`
   runs `yokla analyze` on a copy of this folder and probes the shop
   (ADR-0047). Its proposal is compared with `yokla.profile.yaml`, which it
@@ -448,6 +451,7 @@ them (ADR-0029).
 | `internal-ids` | Each product the answer names is followed by its catalog id. | `no-internal-ids`, the shop's own check (v0.3) |
 | `cart-total-off` | A cart of two products or more is totalled 10% below the sum of their prices. | `price-grounded`, on a case `yokla explore` proposes: no written case puts two products in a cart (ADR-0044) |
 | `language-by-letters` | The model tells Turkish from English by Turkish letters alone, so a Turkish message typed without them is answered in English. | `yokla run --transform no-diacritics` and `yokla compare --expect-same`: three Turkish cases fail `filter-honoured-or-disclosed`, `absence-correct` and `answer-similarity` (ADR-0045) |
+| `language-by-words` | The model answers in English a Turkish message that holds an English product word. | `yokla run --transform code-switch` and `yokla compare --expect-same`: `tents-under-500-tr` and `sleeping-pad-tr` fail (ADR-0059) |
 | `type-bound-ignored` | The price bound is dropped for sleeping bags, which are still presented as matching it. | `filter-honoured-or-disclosed`, on a case `yokla explore --types 7` proposes: no written case asks for sleeping bags (ADR-0046) |
 | `currency-code-ignored` | A price bound written with a currency code, such as "900 TRY", is dropped without a word. | `filter-honoured-or-disclosed`, on the `currency-code` case `yokla explore` proposes: no written case writes the code (ADR-0052) |
 

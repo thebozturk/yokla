@@ -191,7 +191,7 @@ option, a probe that failed, or a proposal that exists without `--force`.
 | `--replay-loose` | | With `--replay`, answer a call the cassette has no match for with the recorded call at the same position. |
 | `--reverse-items <tool>=<jsonpath>` | | Reverse the arrays the path selects in every result of a tool before the model sees it, through the model proxy (ADR-0043). Repeatable; not with a cassette. |
 | `--swap-model <swap>` | | `<upstream>:<asked model>=<model>`: send the calls that ask for a model to another, through the model proxy (ADR-0042). `=<upstream>/<model>` sends them to another upstream of the same kind. Repeatable; not with a cassette. |
-| `--transform <kind>` | | Send each written message as users write it: `no-diacritics`, `lowercase`, `no-punctuation` or `typos` (ADR-0045). Repeatable. |
+| `--transform <kind>` | | Send each written message as users write it: `no-diacritics`, `lowercase`, `no-punctuation` or `typos` (ADR-0045), or `paraphrase` or `code-switch`, which `models.transform` writes (ADR-0059). Repeatable. |
 | `--concurrency <n>` | 1 | Cases run in parallel. Serial correlation needs 1, unless spans alone show the model calls. |
 | `--target-url <url>` | the profile's | Use this url instead of `target.request.url`. |
 | `--junit <file>` | | Also write a JUnit XML report. |
@@ -297,6 +297,33 @@ pnpm yokla compare --results runs/written.json --results runs/no-diacritics.json
   (ADR-0040).
 - **Each transform is a run.** On a paid target, plan and cap it as any run.
 
+**Written by a model (ADR-0059).** Two more kinds need `models.transform`
+in the configuration:
+
+| Kind | What the model writes | Example |
+|---|---|---|
+| `paraphrase` | the same request in other words, in the case's language, as another shopper would write it | "Çadır önerir misin?" → "Bana bir çadır tavsiye eder misiniz?" |
+| `code-switch` | the same message with some words, such as product words, in the profile's other language | "Siyah kadın mont arıyorum" → "Siyah kadın jacket arıyorum" |
+
+- **They apply first,** before the kinds above, and everything above holds
+  for them.
+- **One rewrite per message,** the same in every sample and every run, made
+  before the first request.
+- **Checked before it is sent:** a rewrite must keep exactly every text no
+  transform changes, differ from the message and be one line. One that
+  doesn't is not sent: the message goes as written, and the run's issues
+  say why, such as `"500 TL" was lost`.
+- **`code-switch`** mixes in the first of the profile's languages that isn't
+  the case's; with one language it leaves the messages as written.
+- **Cost.** Before the first call, the run prints how many messages the
+  model rewrites, how many the cache holds, the model's url and an upper
+  bound. `--max-cost` is required while a rewrite isn't cached and the
+  price isn't 0; it holds these calls with the customer's, and no proxy is
+  needed for it. Once the spend reaches it, the messages left are sent as
+  written. `run.own` counts the calls.
+- **The cache** in `yokla-data/transform/` makes a rerun free, and sends the
+  same messages.
+
 ## `yokla report`
 
 ```sh
@@ -381,6 +408,10 @@ plan:
   a local model: without one, `--max-cost` couldn't be kept, and
   `yokla analyze` refuses to run it. A hosted model receives those files'
   text. `maxTokens` goes up to 64,000 for any of yokla's own models.
+- **`models.transform`:** the model that writes `yokla run --transform
+  paraphrase` and `code-switch` (ADR-0059), in the same kinds as
+  `models.customer`, with a `price`, 0 for a local model. A hosted model
+  receives the cases' messages.
 - **`checks`:** check modules you wrote, relative to this file (ADR-0030).
   `yokla run` loads them, and refuses one outside the contract before any
   request. See [checks you write](checks.md#checks-you-write-adr-0030).
