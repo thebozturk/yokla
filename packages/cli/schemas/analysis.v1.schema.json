@@ -157,7 +157,8 @@
                       "import",
                       "template",
                       "shrink",
-                      "explore"
+                      "explore",
+                      "generator"
                     ]
                   },
                   "evidence": {

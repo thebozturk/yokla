@@ -141,6 +141,8 @@ export const MACHINE_SOURCES = [
   'shrink',
   // Found by yokla explore on a path no written case took (ADR-0044).
   'explore',
+  // Generated from the domain pack's data by yokla generate (ADR-0055).
+  'generator',
 ] as const;
 
 /**

@@ -262,7 +262,11 @@ export type {
   SeenItem,
   TurnView,
   UnmetFacts,
+  GenerateOptions,
+  Generated,
+  GeneratedCase,
 } from './checks/types.ts';
+export { generatedCaseYaml, generatedId } from './generate/write.ts';
 export { caseUnmetFacts } from './fixture/facts.ts';
 export { findPhrases, hasPhrase, type PhraseMatch } from './text/phrases.ts';
 export { findQuantities, type QuantityMention } from './text/quantities.ts';

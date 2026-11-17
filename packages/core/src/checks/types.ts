@@ -250,12 +250,44 @@ export interface Intents {
  */
 export type UnmetFacts = (expect: Readonly<Record<string, unknown>>) => readonly string[];
 
+/** What yokla generate asks a pack for (ADR-0055). */
+export interface GenerateOptions {
+  /** The profile's languages. */
+  readonly languages: readonly string[];
+  /** The most cases of each kind, in each language. */
+  readonly perKind: number;
+  /** Per language, the types a shopper may ask for that the person expects absent. */
+  readonly absent: Readonly<Record<string, readonly string[]>>;
+}
+
+/** A case a pack generated: its turns, and the data its expectations came from (ADR-0055). */
+export interface GeneratedCase {
+  readonly kind: string;
+  readonly language: string;
+  /** Unique within its kind and language, such as a product id: part of the case's id. */
+  readonly key: string;
+  readonly turns: readonly {
+    readonly user: string;
+    readonly expect?: Readonly<Record<string, JsonValue>>;
+  }[];
+  /** The data its expectations came from, such as `catalog JKT-001: color blue`. */
+  readonly basis: string;
+}
+
+export interface Generated {
+  readonly cases: readonly GeneratedCase[];
+  /** Each kind that wrote nothing in a language, and each word left out, with why. */
+  readonly notes: readonly string[];
+}
+
 export interface PreparedPack {
   readonly checks: readonly Check[];
   /** Turns built from the target's data, for yokla explore (ADR-0044). */
   readonly intents?: Intents;
   /** What a case's expectations state that the data no longer holds (ADR-0053). */
   readonly unmetFacts?: UnmetFacts;
+  /** Cases with expectations computed from the pack's data, for yokla generate (ADR-0055). */
+  readonly generate?: (options: GenerateOptions) => Generated;
 }
 
 export interface PackIo {
