@@ -68,6 +68,7 @@ old one.
 | [0053](0053-cases-the-data-no-longer-holds.md) | Cases the data no longer holds: fixture-missing | Accepted; amended by 0054, 0055 |
 | [0054](0054-an-absent-type-found-at-any-level.md) | An absent type is found at any level of a catalog type | Accepted |
 | [0055](0055-cases-generated-from-the-catalog.md) | Cases generated from the catalog: yokla generate | Accepted |
+| [0056](0056-type-padding-shows-in-a-short-result.md) | Type padding shows in a short result, not an empty band | Proposed |
 
 ## Template
 
