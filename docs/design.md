@@ -388,7 +388,8 @@ computed, not guessed.
   cases, from the catalog, before anything is sent: `lookup`,
   `absent-type` (words the person gives, each checked absent), `empty-band`,
   `attribute`, `comparison`, `refine`, `cheaper` and `unknown-stock`, in each
-  language the pack has phrasings for.
+  language the pack has phrasings for. The products they name are in stock,
+  except `unknown-stock`'s (ADR-0062).
 
 **Spec-grounded, from policies, FAQ and docs:**
 - answerable FAQ questions, checked for faithfulness to the source,

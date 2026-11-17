@@ -812,6 +812,12 @@ explore` chooses its opening types, and names them by their words.
   language (ADR-0050), a word of that language is checked against the
   levels only, so "çadır" passes for a catalog of English paths: give the
   labels, or check the words you give.
+- **Products in stock.** `lookup`, `comparison`, `cheaper` and `attribute`
+  name products in stock, in catalog order: stock above 0, or `inStock`
+  true without a quantity. A type with none writes no case of that kind. A
+  catalog that maps neither `stock` nor `inStock` can't tell, so its first
+  products are named. The evidence gives the stock each was named by
+  (ADR-0062).
 - **`attribute`** needs `ecommerce.catalog.fields.attributes` in the
   profile. The attribute and its value are written as the catalog writes
   them; reword them when you approve the case.
