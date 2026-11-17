@@ -659,8 +659,9 @@ mapped route, it refuses.
     same words are one to a shopper: they count once, and the turn's
     expectation and prices cover them all (ADR-0048). Amounts are written as shoppers of the
     language write them, such as `300 TL` or `$300`; one last turn per
-    language asks the first type under its median with the currency code,
-    such as `300 TRY`, where that differs;
+    language asks the first type with the currency code, such as `300 TRY`,
+    where that differs, at its lower quartile price, so that a target that
+    drops the bound shows a product over it (ADR-0052);
   - **the pack's turns after an answer that showed products:** adding the
     first of them to the cart, then the next while the conversation only adds
     to the cart, and asking for a cheaper one;

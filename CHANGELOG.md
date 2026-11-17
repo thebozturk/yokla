@@ -79,6 +79,12 @@ hold.
   for a type by its most common label, as the catalog writes it, in place of
   its last level, which may be a facet such as a size. Types with the same
   label are one group, as types with the same words were (ADR-0048).
+- **The currency-code turn where a dropped bound shows (ADR-0052).** `yokla
+  explore`'s turn that writes an amount with the currency code asks at the
+  first type's lower quartile price, not its median, so a target that drops
+  the bound shows a product over it. A new demo-shop defect,
+  `currency-code-ignored`, drops such a bound. Near types stay a finding:
+  the profile's guide says to give them one catalog label.
 - **"No exact match" counts as a disclosure.** The Turkish and English
   absence and alternative markers now hold "tam uyan ürün olmadığı", "en
   yakın seçenek", "no exact match", "closest option" and "closest match".

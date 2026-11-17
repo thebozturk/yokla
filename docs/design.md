@@ -1101,6 +1101,16 @@ every sleeping bag carries the label "uyku tulumu" and "sleeping bag".
   under the median and under the lowest price fail, now asked as "uyku
   tulumu".
 
+For the currency-code turn where a dropped bound shows (ADR-0052),
+`currency-code-ignored` drops a price bound written with the code.
+- **The Turkish code turn,** "900 TRY altında backpack var mı?", at the
+  backpacks' lower quartile, fails `filter-honoured-or-disclosed`. At their
+  median, 1500, it would pass: the shop shows the three cheapest, all under
+  1500.
+- **English writes the lira with its code,** so its under-price and
+  empty-band turns meet the defect too; the median turns of three types
+  pass it, as the Turkish one would have. Every failing turn writes `TRY`.
+
 **Spans.** With `--otel-url` and the model over HTTP, the demo-shop exports a
 GenAI span for each model call, in the trace of the incoming `traceparent`,
 as OTLP/HTTP JSON or protobuf (ADR-0029). Its exporter has no dependency and
