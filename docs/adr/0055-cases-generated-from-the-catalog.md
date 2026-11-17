@@ -1,6 +1,6 @@
 # 0055. Cases generated from the catalog: yokla generate
 
-Status: Proposed · Date: 2026-11-17
+Status: Accepted · Date: 2026-11-17
 
 ## Context
 
