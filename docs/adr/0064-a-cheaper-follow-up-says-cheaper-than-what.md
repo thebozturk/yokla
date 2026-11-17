@@ -1,6 +1,6 @@
 # 0064. A cheaper follow-up says cheaper than what
 
-Status: Proposed · Date: 2026-11-18
+Status: Accepted · Date: 2026-11-18
 
 ## Context
 
