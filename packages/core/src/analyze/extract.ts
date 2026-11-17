@@ -41,13 +41,17 @@ export interface Chunk {
   readonly parts: readonly ChunkPart[];
   /** The text sent: each part under its path, each line with its number. */
   readonly text: string;
-  /** Estimated: one token per four characters. */
+  /** Estimated: one token per two characters (ADR-0051). */
   readonly tokens: number;
 }
 
-/** Tokens, estimated: one per four characters, as the budget counts them. */
+/**
+ * Tokens, estimated: one per two characters, as the budget counts them. Code
+ * took one per about 2.5 on the demo-shop, so this stays above most code's
+ * count, and well above prose's (ADR-0051).
+ */
 export function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
+  return Math.ceil(text.length / 2);
 }
 
 /** A test file: in a test folder, or named as one. Its values are fixtures. */
@@ -218,12 +222,16 @@ function shaped(field: ExtractField, value: unknown): boolean {
   return isObject(value) && isText(value['language']) && isText(value['sentence']);
 }
 
-/** The entries of a reply: JSON, whole or from its first { to its last }, of the right shapes. */
-export function readReply(text: string): ReturnedEntry[] {
+/**
+ * The entries of a reply: JSON, whole or from its first { to its last }, of
+ * the right shapes. null when it holds no entries list: the reply isn't the
+ * JSON asked for, and is unread (ADR-0051).
+ */
+export function readReply(text: string): ReturnedEntry[] | null {
   const whole =
     parseJson(text) ?? parseJson(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
   const entries = isObject(whole) ? whole['entries'] : undefined;
-  if (!Array.isArray(entries)) return [];
+  if (!Array.isArray(entries)) return null;
   return entries.flatMap((entry: unknown): ReturnedEntry[] => {
     if (!isObject(entry)) return [];
     const { field, value, file, line, quote } = entry;

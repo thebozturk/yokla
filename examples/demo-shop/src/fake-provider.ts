@@ -57,6 +57,8 @@ interface ChatRequest {
   readonly offered: readonly string[];
   /** Every message, as role and text. */
   readonly messages: readonly { readonly role: string; readonly content: string }[];
+  /** The most tokens the reply may take, when the request says. */
+  readonly maxTokens?: number;
 }
 
 /** yokla marks the first line of its customer prompt so (ADR-0028). */
@@ -189,6 +191,7 @@ function parse(body: string): ChatRequest | undefined {
   });
   const options: unknown = Reflect.get(value, 'stream_options');
   const tools: unknown = Reflect.get(value, 'tools');
+  const maxTokens: unknown = Reflect.get(value, 'max_tokens');
   const offered = (Array.isArray(tools) ? tools : []).flatMap((tool: unknown) => {
     const fn: unknown =
       typeof tool === 'object' && tool !== null ? Reflect.get(tool, 'function') : undefined;
@@ -209,7 +212,16 @@ function parse(body: string): ChatRequest | undefined {
       typeof options === 'object' &&
       options !== null &&
       Reflect.get(options, 'include_usage') === true,
+    ...(typeof maxTokens === 'number' ? { maxTokens } : {}),
   };
+}
+
+/** A reply cut at max_tokens, as providers cut one; undefined when it fits (ADR-0051). */
+function cutAt(text: string, maxTokens: number | undefined): string | undefined {
+  if (maxTokens === undefined || tokenCount(text) <= maxTokens) return undefined;
+  let kept = text.slice(0, maxTokens * 4);
+  while (tokenCount(kept) > maxTokens) kept = kept.slice(0, -1);
+  return kept;
 }
 
 function field(value: unknown, ...path: (string | number)[]): unknown {
@@ -512,7 +524,9 @@ export function createFakeProvider(options: FakeProviderOptions): Server {
       send(response, 400, { error: { message: 'invalid request' } });
       return;
     }
-    const { content, toolCalls } = answered;
+    const { toolCalls } = answered;
+    const cut = answered.content === null ? undefined : cutAt(answered.content, chat.maxTokens);
+    const content = cut ?? answered.content;
     const id = `chatcmpl-${randomUUID()}`;
     const usage = {
       prompt_tokens: tokenCount(chat.prompt),
@@ -540,7 +554,7 @@ export function createFakeProvider(options: FakeProviderOptions): Server {
               content,
               ...(toolCalls.length === 0 ? {} : { tool_calls: wireCalls(toolCalls, id, false) }),
             },
-            finish_reason: content === null ? 'tool_calls' : 'stop',
+            finish_reason: content === null ? 'tool_calls' : cut === undefined ? 'stop' : 'length',
           },
         ],
         usage: { ...usage, total_tokens: usage.prompt_tokens + usage.completion_tokens },

@@ -63,6 +63,8 @@ export const Analysis = z
         sent: z.array(z.string()),
         left: z.array(z.string()),
         partial: z.boolean(),
+        /** The chunks whose reply couldn't be read: cut at maxTokens, or not JSON (ADR-0051). */
+        unread: z.array(z.object({ files: z.array(z.string()), reason: z.string() })),
       })
       .optional(),
     /** Values the model returned that failed their check, never proposed (ADR-0049). */

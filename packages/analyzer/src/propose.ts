@@ -240,6 +240,10 @@ export function analysisReport(input: {
             ...input.model.summary,
             sent: [...input.model.summary.sent],
             left: [...input.model.summary.left],
+            unread: input.model.summary.unread.map((chunk) => ({
+              files: [...chunk.files],
+              reason: chunk.reason,
+            })),
           },
           unverified: input.model.unverified.map((entry) => ({ ...entry })),
           conflicts: input.model.conflicts.map((conflict) => ({

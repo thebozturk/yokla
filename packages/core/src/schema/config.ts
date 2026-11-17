@@ -75,7 +75,8 @@ const OwnModel = z.strictObject({
     .optional()
     .meta({ description: 'The environment variable that holds the API key, if one is needed.' }),
   temperature: z.number().min(0).max(2).default(0),
-  maxTokens: z.int().min(1).max(4_000).default(400),
+  // A model that reasons spends output tokens on it (ADR-0051).
+  maxTokens: z.int().min(1).max(64_000).default(400),
   timeoutMs: z.int().min(1).max(600_000).default(60_000),
   price: Price.optional().meta({
     description: 'USD per million tokens. Without it, the calls have no cost, never 0.',

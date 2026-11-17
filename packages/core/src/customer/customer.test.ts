@@ -10,6 +10,15 @@ import {
   goalReachedCheck,
 } from './customer.ts';
 
+/** Whether the configuration takes an own model with this maxTokens. */
+const takesMaxTokens = (maxTokens: number) =>
+  YoklaConfig.safeParse({
+    version: 1,
+    models: {
+      analyzer: { kind: 'anthropic', url: 'https://example.test/v1', model: 'm', maxTokens },
+    },
+  }).success;
+
 const customer = {
   persona: 'Two people, a 1,500 TL budget.',
   goal: 'Put a tent under 1,500 TL in the cart.',
@@ -211,5 +220,13 @@ describe('the customer case and model (ADR-0028)', () => {
         models: { customer: { kind: 'openai-compatible', url: 'file:///tmp/x', model: 'm' } },
       }).success,
     ).toBe(false);
+  });
+
+  it('takes a maxTokens up to 64,000, for a model that reasons (ADR-0051)', () => {
+    expect([takesMaxTokens(8_000), takesMaxTokens(64_000), takesMaxTokens(64_001)]).toEqual([
+      true,
+      true,
+      false,
+    ]);
   });
 });

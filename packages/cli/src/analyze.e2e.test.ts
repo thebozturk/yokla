@@ -12,7 +12,7 @@
 // is dropped. A second analysis answers from the cache. At no model cost.
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { cpSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Analysis, toJson, unapprovedEntries } from '@yokla/core';
@@ -33,6 +33,8 @@ let shopUrl = '';
 const KEY_ENV = 'YOKLA_ANALYZE_E2E_KEY';
 const usageLog = join(work, 'provider-usage.jsonl');
 const config = join(work, 'yokla.config.yaml');
+// A maxTokens too small for a reply that holds entries (ADR-0051).
+const smallConfig = join(work, 'yokla.config.small.yaml');
 
 /** Starts a demo-shop script and resolves with the first URL it prints, without /v1. */
 function start(script: string, args: string[]): Promise<string> {
@@ -108,6 +110,11 @@ let modelled: Ran | undefined;
 let callsAfterFirst = 0;
 let cachedRun: Ran | undefined;
 let modelText = '';
+// The run whose maxTokens cuts the replies that hold entries (ADR-0051).
+const cutOut = join(repo, 'yokla.profile.cut.yaml');
+let cutRun: Ran | undefined;
+let callsAfterCut = 0;
+let cachedAfterCut = 0;
 
 beforeAll(async () => {
   // A copy of the repository, so the proposal can be written next to its data.
@@ -128,8 +135,7 @@ beforeAll(async () => {
   firstText = readFileSync(proposal, 'utf8');
   second = await analyze(proposal, join(work, 'again.json'), '--force');
 
-  writeFileSync(
-    config,
+  const configText = (maxTokens: number) =>
     [
       'version: 1',
       'models:',
@@ -138,11 +144,12 @@ beforeAll(async () => {
       `    url: ${provider}/v1`,
       '    model: demo-analyzer-1',
       `    apiKeyEnv: ${KEY_ENV}`,
-      '    maxTokens: 2000',
+      `    maxTokens: ${String(maxTokens)}`,
       '    price: { input: 0.1, output: 0.5 }',
       '',
-    ].join('\n'),
-  );
+    ].join('\n');
+  writeFileSync(config, configText(2000));
+  writeFileSync(smallConfig, configText(20));
   process.env[KEY_ENV] = 'demo-key';
   estimated = await analyze(
     withModel,
@@ -152,6 +159,16 @@ beforeAll(async () => {
     '--estimate',
   );
   uncapped = await analyze(withModel, join(work, 'uncapped.json'), '--config', config);
+  cutRun = await analyze(
+    cutOut,
+    join(work, 'cut.json'),
+    '--config',
+    smallConfig,
+    '--max-cost',
+    '1',
+  );
+  callsAfterCut = providerCalls();
+  cachedAfterCut = readdirSync(join(repo, 'yokla-data', 'analyzer')).length;
   modelled = await analyze(
     withModel,
     join(work, 'model.json'),
@@ -299,6 +316,8 @@ describe('yokla analyze on the demo-shop (ADR-0047)', () => {
   });
 });
 
+const cutReport = () => Analysis.parse(JSON.parse(readFileSync(join(work, 'cut.json'), 'utf8')));
+
 const modelReport = () =>
   Analysis.parse(JSON.parse(readFileSync(join(work, 'model.json'), 'utf8')));
 
@@ -370,10 +389,40 @@ describe('yokla analyze with a model on the demo-shop (ADR-0049)', () => {
     expect(sent.filter((path) => /\.test\.|^data\/|\.env/u.test(path))).toEqual([]);
     expect(modelReport().model).toMatchObject({
       model: 'demo-analyzer-1',
-      cached: 0,
       partial: false,
+      unread: [],
     });
-    expect(modelReport().model?.calls).toBe(callsAfterFirst);
+  });
+
+  it('names the chunks a too small maxTokens cut, proposes none of their values, and caches none (ADR-0051)', () => {
+    expect(cutRun?.code, cutRun?.output).toBe(0);
+    const { model, entries, unverified } = cutReport();
+    const unread = model?.unread ?? [];
+    expect(unread.length).toBeGreaterThan(0);
+    expect(new Set(unread.map((chunk) => chunk.reason))).toEqual(
+      new Set(['the reply stopped at maxTokens']),
+    );
+    expect(unread.flatMap((chunk) => chunk.files)).toEqual(
+      expect.arrayContaining(['README.md', 'src/server.ts', 'src/model.ts']),
+    );
+    expect(
+      pointers(entries).filter((pointer) =>
+        /^\/target\/(?:limits|cacheBypass)|^\/refusal\/canonical/u.test(pointer),
+      ),
+    ).toEqual([]);
+    expect(unverified).toEqual([]);
+    expect(cutRun?.output).toContain(
+      'the reply stopped at maxTokens; raise models.analyzer.maxTokens, now 20',
+    );
+    // Every chunk was asked, and only the replies read were cached.
+    expect(model?.calls).toBe(callsAfterCut);
+    expect(cachedAfterCut).toBe(callsAfterCut - unread.length);
+  });
+
+  it('asks anew only the cut chunks once maxTokens is raised; the rest come from the cache (ADR-0051)', () => {
+    const unread = cutReport().model?.unread.length ?? 0;
+    expect(modelReport().model).toMatchObject({ calls: unread, cached: callsAfterCut - unread });
+    expect(callsAfterFirst).toBe(callsAfterCut + unread);
   });
 
   it('answers a second analysis from the cache: no model call, the same file', () => {
@@ -381,7 +430,8 @@ describe('yokla analyze with a model on the demo-shop (ADR-0049)', () => {
     expect(providerCalls()).toBe(callsAfterFirst);
     expect(readFileSync(withModel, 'utf8')).toBe(modelText);
     const again = Analysis.parse(JSON.parse(readFileSync(join(work, 'cached.json'), 'utf8')));
-    expect(again.model).toMatchObject({ calls: 0, cached: callsAfterFirst, costUsd: 0 });
+    // Every chunk, now: the cut run asked each one.
+    expect(again.model).toMatchObject({ calls: 0, cached: callsAfterCut, costUsd: 0 });
   });
 
   // Last, so it sees the traffic of everything above.

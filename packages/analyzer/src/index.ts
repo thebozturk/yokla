@@ -38,9 +38,12 @@ export { ProbeError, type Probed, type ProbeTarget, type SentProbe } from './pro
 export {
   planModelStep,
   runModelStep,
+  UNREAD_CUT,
+  UNREAD_NOT_JSON,
   type ModelCaller,
   type ModelPlan,
   type ModelStep,
+  type UnreadChunk,
 } from './model.ts';
 export {
   analysisReport,

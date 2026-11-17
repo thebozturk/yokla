@@ -256,6 +256,28 @@
         },
         "partial": {
           "type": "boolean"
+        },
+        "unread": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "files",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
@@ -267,7 +289,8 @@
         "costUsd",
         "sent",
         "left",
-        "partial"
+        "partial",
+        "unread"
       ],
       "additionalProperties": false
     },

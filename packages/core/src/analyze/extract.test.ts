@@ -196,7 +196,7 @@ describe('chunkFiles (ADR-0049)', () => {
   });
 
   it('stops at the budget, and names the files not sent', () => {
-    const { chunks, left } = chunkFiles(readableFiles(files), 8_000, 60);
+    const { chunks, left } = chunkFiles(readableFiles(files), 8_000, 120);
     expect(left).toEqual(['src/model.ts', 'src/server.ts']);
     expect(chunks.flatMap((piece) => piece.parts.map((part) => part.path))).toEqual(['README.md']);
   });
@@ -230,8 +230,13 @@ describe('readReply (ADR-0049)', () => {
     expect(readReply(`Here you go:\n${JSON.stringify({ entries: [good] })}\nDone.`)).toEqual([
       good,
     ]);
-    expect(readReply('no JSON')).toEqual([]);
-    expect(readReply('{"entries": "none"}')).toEqual([]);
+    expect(readReply('{"entries": []}')).toEqual([]);
+  });
+
+  it('reads nothing from a reply that is not the JSON asked for, such as a cut one (ADR-0051)', () => {
+    expect(readReply('no JSON')).toBeNull();
+    expect(readReply('{"entries": "none"}')).toBeNull();
+    expect(readReply(JSON.stringify({ entries: [good] }).slice(0, 60))).toBeNull();
   });
 
   it('drops entries of an unknown field or the wrong shape', () => {
@@ -406,6 +411,12 @@ describe('extractSource (ADR-0049)', () => {
     expect(
       ['doc', 'prompt', 'contract', 'code', 'manifest', 'env-example'].map(extractSource),
     ).toEqual(['doc', 'prompt', 'contract', 'code', 'code', 'code']);
+  });
+});
+
+describe('estimateTokens (ADR-0051)', () => {
+  it('counts one token per two characters, started', () => {
+    expect([estimateTokens(''), estimateTokens('ab'), estimateTokens('abc')]).toEqual([0, 1, 2]);
   });
 });
 

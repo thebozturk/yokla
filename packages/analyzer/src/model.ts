@@ -71,8 +71,19 @@ export interface ModelStep {
     readonly sent: readonly string[];
     readonly left: readonly string[];
     readonly partial: boolean;
+    /** The chunks whose reply couldn't be read, with why (ADR-0051). */
+    readonly unread: readonly UnreadChunk[];
   };
 }
+
+export interface UnreadChunk {
+  readonly files: readonly string[];
+  readonly reason: string;
+}
+
+/** Why a reply is unread (ADR-0051). */
+export const UNREAD_CUT = 'the reply stopped at maxTokens';
+export const UNREAD_NOT_JSON = 'the reply is not the JSON asked for';
 
 interface Cached {
   readonly text: string;
@@ -90,14 +101,17 @@ function isCached(value: unknown): value is Cached {
   );
 }
 
-/** A reply's key: the model's settings, the prompt's version, the languages and the chunk. */
+/**
+ * A reply's key: the model's settings, the prompt's version, the languages
+ * and the chunk. Not maxTokens: a reply read whole doesn't depend on it, so
+ * raising it asks only the cut chunks anew (ADR-0051).
+ */
 function cacheKey(model: OwnModel, languages: readonly string[], chunk: Chunk): string {
   const settings = {
     kind: model.kind,
     url: model.url,
     model: model.model,
     temperature: model.temperature,
-    maxTokens: model.maxTokens,
   };
   return createHash('sha256')
     .update(JSON.stringify([settings, ANALYZER_PROMPT_VERSION, languages, chunk.text]))
@@ -128,6 +142,7 @@ export async function runModelStep(input: {
 }): Promise<ModelStep> {
   const verified: VerifiedEntry[] = [];
   const unverified: UnverifiedEntry[] = [];
+  const unread: UnreadChunk[] = [];
   let calls = 0;
   let cached = 0;
   let inputTokens: number | null = 0;
@@ -141,16 +156,13 @@ export async function runModelStep(input: {
     }
     const key = cacheKey(input.model, input.languages, chunk);
     const path = join(input.cacheDir, `${key}.json`);
-    let text: string;
     const stored: unknown =
       !input.fresh && existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : undefined;
-    if (isCached(stored)) {
-      text = stored.text;
-      cached += 1;
-    } else {
+    // A cached reply that can't be read is a miss (ADR-0051).
+    let entries = isCached(stored) ? readReply(stored.text) : null;
+    if (entries === null) {
       const reply = await input.caller.complete(analyzerPrompt(chunk, input.languages), key);
       calls += 1;
-      text = reply.text;
       const cost = costOf(input.model, reply);
       costUsd = cost === null || costUsd === null ? null : costUsd + cost;
       inputTokens =
@@ -159,10 +171,22 @@ export async function runModelStep(input: {
         reply.usage.output === null || outputTokens === null
           ? null
           : outputTokens + reply.usage.output;
+      entries = reply.cut === true ? null : readReply(reply.text);
+      if (entries === null) {
+        // Unread: it gives no entry, is never cached, and is said (ADR-0051).
+        unread.push({
+          // A file is in a chunk once: a chunk closes where a file goes on.
+          files: chunk.parts.map((part) => part.path),
+          reason: reply.cut === true ? UNREAD_CUT : UNREAD_NOT_JSON,
+        });
+        continue;
+      }
       mkdirSync(input.cacheDir, { recursive: true });
-      writeFileSync(path, `${JSON.stringify({ text, model: reply.model })}\n`);
+      writeFileSync(path, `${JSON.stringify({ text: reply.text, model: reply.model })}\n`);
+    } else {
+      cached += 1;
     }
-    for (const entry of readReply(text)) {
+    for (const entry of entries) {
       const checked = verifyEntry(entry, chunk, input.lines, input.languages);
       if (checked.ok) verified.push(checked.entry);
       else unverified.push(checked.problem);
@@ -192,6 +216,7 @@ export async function runModelStep(input: {
       sent: input.plan.sent,
       left: input.plan.left,
       partial,
+      unread,
     },
   };
 }

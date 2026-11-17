@@ -1,11 +1,17 @@
-import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { CustomerPrompt, OwnModel } from '@yokla/core';
 import type { OwnReply } from '@yokla/runtime';
 import { describe, expect, it } from 'vitest';
 import type { InventoryFile } from './inventory.ts';
-import { planModelStep, runModelStep, type ModelCaller } from './model.ts';
+import {
+  planModelStep,
+  runModelStep,
+  UNREAD_CUT,
+  UNREAD_NOT_JSON,
+  type ModelCaller,
+} from './model.ts';
 
 const model: OwnModel = {
   kind: 'openai-compatible',
@@ -44,6 +50,7 @@ function repository(): { dir: string; files: InventoryFile[] } {
 function caller(
   answer: (chunk: string) => object[],
   usage: OwnReply['usage'] = { input: 1_000, output: 100 },
+  shape: (text: string) => Pick<OwnReply, 'text' | 'cut'> = (text) => ({ text }),
 ): ModelCaller & { calls: number } {
   const fake = {
     calls: 0,
@@ -51,7 +58,7 @@ function caller(
       fake.calls += 1;
       const entries = answer(prompt.messages[0]?.content ?? '');
       return Promise.resolve({
-        text: JSON.stringify({ entries }),
+        ...shape(JSON.stringify({ entries })),
         model: 'analyzer-1',
         usage,
         durationMs: 1,
@@ -92,6 +99,10 @@ const finds = (chunk: string): object[] => [
       ]
     : []),
 ];
+
+const usage = { input: 1_000, output: 100 };
+/** Replies cut at maxTokens: the first 40 characters, and the flag. */
+const cutting = caller(finds, usage, (text) => ({ text: text.slice(0, 40), cut: true }));
 
 function run(
   options: {
@@ -153,6 +164,7 @@ describe('the model step (ADR-0049)', () => {
       sent: ['README.md', 'src/limits.ts'],
       left: [],
       partial: false,
+      unread: [],
     });
   });
 
@@ -167,6 +179,55 @@ describe('the model step (ADR-0049)', () => {
     expect(cached.entries).toHaveLength(2);
     const fresh = run({ cacheDir, fresh: true });
     expect((await fresh.result).summary.calls).toBe(1);
+  });
+
+  it('names a chunk whose reply was cut, proposes none of it, and never caches it (ADR-0051)', async () => {
+    const { cacheDir, result } = run({}, model, cutting);
+    const step = await result;
+    expect(step.entries).toEqual([]);
+    expect(step.summary.unread).toEqual([
+      { files: ['README.md', 'src/limits.ts'], reason: UNREAD_CUT },
+    ]);
+    // The spend counts all the same.
+    expect(step.summary).toMatchObject({ calls: 1, costUsd: (1_000 * 1 + 100 * 2) / 1_000_000 });
+    expect(existsSync(cacheDir) ? readdirSync(cacheDir) : []).toEqual([]);
+    // The next run asks anew, and caches what it reads.
+    const again = run({ cacheDir });
+    expect((await again.result).summary).toMatchObject({ calls: 1, cached: 0, unread: [] });
+    expect(readdirSync(cacheDir)).toHaveLength(1);
+  });
+
+  it('names a reply that is not the JSON asked for, even whole (ADR-0051)', async () => {
+    const prose = caller(finds, usage, () => ({ text: 'I found nothing worth noting.' }));
+    const step = await run({}, model, prose).result;
+    expect(step.summary.unread).toEqual([
+      { files: ['README.md', 'src/limits.ts'], reason: UNREAD_NOT_JSON },
+    ]);
+    // Cut but whole JSON is unread too: the flag decides.
+    const flagged = caller(finds, usage, (text) => ({ text, cut: true }));
+    expect((await run({}, model, flagged).result).summary.unread).toHaveLength(1);
+  });
+
+  it('takes a cached reply that cannot be read as a miss (ADR-0051)', async () => {
+    const { cacheDir, result } = run();
+    await result;
+    const [file] = readdirSync(cacheDir);
+    writeFileSync(
+      join(cacheDir, file ?? ''),
+      JSON.stringify({ text: '{"entries": [', model: 'm' }),
+    );
+    const again = run({ cacheDir });
+    expect((await again.result).summary).toMatchObject({ calls: 1, cached: 0 });
+  });
+
+  it("keys the cache without maxTokens: raising it doesn't ask read chunks anew (ADR-0051)", async () => {
+    const { cacheDir, result } = run();
+    await result;
+    const raised = run({ cacheDir }, { ...model, maxTokens: 8_000 });
+    expect((await raised.result).summary).toMatchObject({ calls: 0, cached: 1 });
+    expect(raised.fake.calls).toBe(0);
+    const other = run({ cacheDir }, { ...model, temperature: 0.5 });
+    expect((await other.result).summary).toMatchObject({ calls: 1, cached: 0 });
   });
 
   it('sends no chunk once the spend reaches the cap, and says the step stopped', async () => {

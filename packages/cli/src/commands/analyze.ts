@@ -17,6 +17,7 @@ import {
   type ModelCaller,
   type ModelPlan,
   ProbeError,
+  UNREAD_CUT,
   profileDocument,
   proposalYaml,
 } from '@yokla/analyzer';
@@ -263,6 +264,13 @@ export async function analyzeCommand(
         io.out(
           `  unverified: ${entry.field} at ${entry.file}:${String(entry.line)}: ${entry.reason}`,
         );
+      }
+      for (const chunk of summary.unread) {
+        const raise =
+          chunk.reason === UNREAD_CUT && modelConfig !== undefined
+            ? `; raise models.analyzer.maxTokens, now ${String(modelConfig.maxTokens)}`
+            : '';
+        io.out(`  unread: ${chunk.files.join(', ')}: ${chunk.reason}${raise}`);
       }
       for (const conflict of model.conflicts) {
         io.out(`  conflict: ${conflict.pointer}: ${conflict.evidence.join('; ')}`);
