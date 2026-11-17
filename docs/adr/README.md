@@ -76,6 +76,7 @@ old one.
 | [0061](0061-negated-stock-wording-and-products-only-named.md) | Negated stock wording, and products the answer only names | Accepted |
 | [0062](0062-generated-cases-name-products-in-stock.md) | Generated cases name products in stock | Accepted |
 | [0063](0063-a-generated-name-names-one-product.md) | A generated name names one product, and "cheaper" has an answer | Accepted |
+| [0064](0064-a-cheaper-follow-up-says-cheaper-than-what.md) | A cheaper follow-up says cheaper than what | Proposed |
 
 ## Template
 
