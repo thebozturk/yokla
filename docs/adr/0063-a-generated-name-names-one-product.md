@@ -1,6 +1,6 @@
 # 0063. A generated name names one product, and "cheaper" has an answer
 
-Status: Proposed · Date: 2026-11-18
+Status: Accepted · Date: 2026-11-18
 
 ## Context
 
