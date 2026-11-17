@@ -64,6 +64,7 @@ old one.
 | [0049](0049-the-analyzer-reads-code-and-docs.md) | The analyzer reads code and docs: values a model finds, verified in their source | Accepted; amended by 0051 |
 | [0050](0050-a-type-asked-by-its-catalog-label.md) | A type asked by its catalog label | Accepted |
 | [0051](0051-replies-the-analyzer-could-not-read.md) | Replies the analyzer couldn't read, and tokens counted as code takes them | Accepted |
+| [0052](0052-the-currency-code-turn-where-a-dropped-bound-shows.md) | The currency-code turn where a dropped bound shows | Proposed |
 | [0053](0053-cases-the-data-no-longer-holds.md) | Cases the data no longer holds: fixture-missing | Accepted; amended by 0054 |
 | [0054](0054-an-absent-type-found-at-any-level.md) | An absent type is found at any level of a catalog type | Accepted |
 
