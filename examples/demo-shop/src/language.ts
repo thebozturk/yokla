@@ -160,6 +160,15 @@ export function detectLanguage(message: string, lettersOnly = false): Language {
   return english > turkish ? 'en' : 'tr';
 }
 
+/** English product words, for the language-by-words defect (ADR-0059). */
+const ENGLISH_PRODUCT_WORDS =
+  /\b(?:tent|jacket|backpack|sleeping (?:bag|pad)|camping stove|headlamp|water bottle|trekking pole)s?\b/iu;
+
+/** Whether a message holds an English product word: the language-by-words defect reads it as English. */
+export function hasEnglishProductWord(message: string): boolean {
+  return ENGLISH_PRODUCT_WORDS.test(message);
+}
+
 /** Formats an amount in Turkish lira: "2.499,90 TL" (tr) or "TRY 2,499.90" (en). */
 export function formatMoney(amount: number, language: Language): string {
   const [whole = '0', fraction = '00'] = amount.toFixed(2).split('.');

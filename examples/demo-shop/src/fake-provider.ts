@@ -67,6 +67,60 @@ export const CUSTOMER_MARK = 'yokla: simulated customer';
 /** yokla marks the first line of its analyzer prompt so (ADR-0049). */
 export const ANALYZER_MARK = 'yokla: analyzer';
 
+/** yokla marks the first line of its transform prompt so (ADR-0059). */
+export const TRANSFORM_MARK = 'yokla: transform';
+
+/** The shop's product words, Turkish to English, for code-switching. */
+const SWITCHED: readonly (readonly [string, string])[] = [
+  ['sırt çantası', 'backpack'],
+  ['uyku tulumu', 'sleeping bag'],
+  ['uyku matı', 'sleeping pad'],
+  ['kamp ocağı', 'camping stove'],
+  ['kafa lambası', 'headlamp'],
+  ['matara', 'water bottle'],
+  ['çadır', 'tent'],
+  ['mont', 'jacket'],
+];
+
+/** Each occurrence of a word, in any case, as another word; the language decides the case rules. */
+function swap(text: string, from: string, to: string, locale: string): string {
+  const lower = text.toLocaleLowerCase(locale);
+  let out = '';
+  let at = 0;
+  for (let found = lower.indexOf(from); found !== -1; found = lower.indexOf(from, at)) {
+    out += text.slice(at, found) + to;
+    at = found + from.length;
+  }
+  return out + text.slice(at);
+}
+
+/**
+ * The transform model's rewrite, by rules (ADR-0059). Paraphrase: "X var mı?"
+ * becomes "X bulunuyor mu?", "Do you have X?" becomes "Is there X?", and
+ * other messages gain a polite opening; it writes 500 as "beş yüz", so one
+ * rewrite loses a value for yokla to refuse. Code-switch: the shop's product
+ * words in one language become the other's.
+ */
+function transformReply(request: ChatRequest): string {
+  const message = request.messages.find((entry) => entry.role === 'user')?.content ?? '';
+  const turkish = /\(tr\)|in tr,/u.test(request.system);
+  if (request.system.includes('Transform: code-switch.')) {
+    let switched = message;
+    for (const [tr, en] of SWITCHED) {
+      switched = turkish ? swap(switched, tr, en, 'tr-TR') : swap(switched, en, tr, 'en-US');
+    }
+    return switched;
+  }
+  const asked = turkish ? /^(.+) var mı\?$/u.exec(message) : /^Do you have (.+)\?$/iu.exec(message);
+  const rewritten =
+    asked?.[1] === undefined
+      ? `${turkish ? 'Merhaba' : 'Hi'}, ${message.charAt(0).toLocaleLowerCase(turkish ? 'tr-TR' : 'en-US')}${message.slice(1)}`
+      : turkish
+        ? `${asked[1]} bulunuyor mu?`
+        : `Is there ${asked[1]}?`;
+  return rewritten.replaceAll(/(?<!\d)500(?!\d)/gu, 'beş yüz');
+}
+
 interface Found {
   readonly field: string;
   readonly value: unknown;
@@ -340,6 +394,7 @@ async function answer(
 ): Promise<Answer | undefined> {
   if (request.role === CUSTOMER_MARK) return text(customerReply(request, catalog));
   if (request.role === ANALYZER_MARK) return text(analyzerReply(request));
+  if (request.role === TRANSFORM_MARK) return text(transformReply(request));
   const payload: unknown = JSON.parse(request.payload);
   if (typeof payload !== 'object' || payload === null) return undefined;
   if (request.role === ROLES.interpret) {

@@ -115,6 +115,8 @@ const EXPECTED_CHANGES: Record<Defect, Probe[]> = {
   // Only the greeting is written without Turkish letters; the others show the defect only
   // once their letters are gone, as yokla's no-diacritics transform sends them (ADR-0045).
   'language-by-letters': ['greeting-tr'],
+  // No probe mixes an English product word into Turkish: tested by code-switching (ADR-0059).
+  'language-by-words': [],
   // No probe asks for sleeping bags under a price: tested on its own below (ADR-0046).
   'type-bound-ignored': [],
   // No probe writes an amount with a currency code: tested on its own below (ADR-0052).

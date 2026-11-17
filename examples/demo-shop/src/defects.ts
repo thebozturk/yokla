@@ -29,6 +29,7 @@ export const DEFECTS = [
   'unfenced-tool-results',
   'cart-total-off',
   'language-by-letters',
+  'language-by-words',
   'type-bound-ignored',
   'currency-code-ignored',
 ] as const;
@@ -78,6 +79,8 @@ export const DEFECT_DESCRIPTIONS: Readonly<Record<Defect, string>> = {
   'cart-total-off': 'a cart of two products or more is totalled 10% below the sum of their prices',
   'language-by-letters':
     'the model tells Turkish from English by its letters alone, so a Turkish message typed without them is answered in English',
+  'language-by-words':
+    'the model answers in English a Turkish message that holds an English product word, as a code-switched one does (ADR-0059)',
   'type-bound-ignored':
     'the price bound is dropped for sleeping bags, while the products are presented as matching it',
   'currency-code-ignored':

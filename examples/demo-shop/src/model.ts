@@ -5,7 +5,14 @@
 
 import type { Product } from './catalog.ts';
 import type { Defect } from './defects.ts';
-import { detectLanguage, fold, formatMoney, parseAmount, type Language } from './language.ts';
+import {
+  detectLanguage,
+  fold,
+  formatMoney,
+  hasEnglishProductWord,
+  parseAmount,
+  type Language,
+} from './language.ts';
 import { correctTypos } from './typos.ts';
 import {
   ABSENT_TYPES,
@@ -308,7 +315,11 @@ export class ScriptedModel implements ChatModel {
   }
 
   #interpret(message: string, context: ConversationContext | undefined): Interpretation {
-    const language = detectLanguage(message, this.#defect === 'language-by-letters');
+    // The language-by-words defect (ADR-0059): an English product word makes the message English.
+    const language =
+      this.#defect === 'language-by-words' && hasEnglishProductWord(message)
+        ? 'en'
+        : detectLanguage(message, this.#defect === 'language-by-letters');
     // A typo of a word the shop knows is read past (ADR-0045).
     const text = correctTypos(fold(message));
 

@@ -13,10 +13,13 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Results, TRANSFORM_KINDS, type TransformKind } from '@yokla/core';
+import { MODEL_TRANSFORMS, Results, TRANSFORM_KINDS, type TransformKind } from '@yokla/core';
 import { installNetworkGuard, type NetworkGuard } from '@yokla/runtime/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { main } from './main.ts';
+
+/** ADR-0045's transforms, which need no model; ADR-0059's have their own test. */
+const KINDS = TRANSFORM_KINDS.filter((kind) => !MODEL_TRANSFORMS.some((model) => model === kind));
 
 const DEMO = new URL('../../../examples/demo-shop/', import.meta.url).pathname;
 const dir = mkdtempSync(join(tmpdir(), 'yokla-robustness-e2e-'));
@@ -121,7 +124,7 @@ beforeAll(async () => {
   ] as const) {
     const written = await run(`${shopName}-written`, url);
     runs.set(`${shopName}-written`, written);
-    for (const kind of TRANSFORM_KINDS) {
+    for (const kind of KINDS) {
       const transformed = await run(`${shopName}-${kind}`, url, '--transform', kind);
       runs.set(`${shopName}-${kind}`, transformed);
       comparisons.set(`${shopName}-${kind}`, await compare(written, transformed));
@@ -183,7 +186,7 @@ describe('robustness transforms on the demo-shop (ADR-0045)', () => {
     }
   });
 
-  it.each(TRANSFORM_KINDS)(
+  it.each(KINDS)(
     'the correct shop keeps every verdict under %s, and the transform changed messages',
     (kind: TransformKind) => {
       const { code, output, results } = ran(`correct-${kind}`);
@@ -227,7 +230,7 @@ describe('robustness transforms on the demo-shop (ADR-0045)', () => {
     expect(comparison.output).toContain(
       '--expect-same: the status of 3 cases differs: tents-under-500-tr, sleeping-pad-tr, returns-tr',
     );
-    for (const kind of TRANSFORM_KINDS.filter((other) => other !== 'no-diacritics')) {
+    for (const kind of KINDS.filter((other) => other !== 'no-diacritics')) {
       const other = compared(`by-letters-${kind}`);
       expect(other.code, `${kind}: ${other.output}`).toBe(0);
     }
