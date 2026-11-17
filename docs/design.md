@@ -309,14 +309,14 @@ give, and measures the proposal against a profile, at no model cost.
   (§7). It never overwrites `yokla.profile.yaml`.
 - **The measure:** each entry `same`, `different`, `new` or `missed` against
   a profile, with precision and recall. On the demo-shop: 30 entries
-  proposed, all the hand-written ones; recall 46.9 %.
+  proposed, all the hand-written ones; recall 45.5 %.
 - **With a model (ADR-0049):** `models.analyzer` reads the docs, prompts and
   code, never data, environment or test files, under a token budget and a
   required cost cap, with an estimate first. It proposes only what can be
   checked word for word against the line it quotes: the rate limits, the
   cache bypass and the canonical refusals. What fails the check is listed
   and never proposed. On the demo-shop, with the fake provider: 37 entries,
-  recall 57.8 %.
+  recall 56.1 %.
 - **Left to the person, or later ADRs:** the response contract, the
   capabilities, `neverFabricate` and `everyAnswer`.
 
@@ -1036,18 +1036,19 @@ configuration.
   the response's text and route, the session mode, the product and cart
   evidence, the catalog and its type separator, the languages, the domain,
   and the three policies' sources.
-- **What it misses:** 34 entries, recall 46.9 %: the size and gender of
+- **What it misses:** 36 entries, recall 45.5 %: the size and gender of
   products, which the probed tents don't have, and what code, docs and
   prompts must give: the limits, the cache bypass, the response contract,
   the capabilities, the canonical refusals, `everyAnswer` and
-  `neverFabricate`.
+  `neverFabricate`; and the catalog's type labels (ADR-0050), which no
+  step proposes yet.
 - **Gating:** the proposal doesn't run until its entries are approved, and
   two analyses write the same file.
 - **With a model (ADR-0049):** the fake provider plays `models.analyzer` by
   rules. It finds the rate limits in `src/server.ts`, the cache bypass in the
   README and the refusals in `src/model.ts`, and invents a limit the line it
   quotes doesn't hold. The proposal gains the 7 entries, all the
-  hand-written ones, recall 57.8 %; the invented limit is listed as
+  hand-written ones, recall 56.1 %; the invented limit is listed as
   unverified. A second analysis answers from the cache, with no call.
 
 For the intents that state what they ask (ADR-0046), `type-bound-ignored`
@@ -1066,6 +1067,16 @@ trekking poles under two branches, `hiking` and `kids`. The search asks for
 them once per intent and language, each turn states both types, and on the
 correct shop none fails. Turkish amounts are written in `TL`, and one Turkish
 turn asks with `TRY`.
+
+For a type asked by its catalog label (ADR-0050), the catalog holds kids'
+sleeping bags under a size level, `outdoor/camping/sleeping-bag/junior`, and
+every sleeping bag carries the label "uyku tulumu" and "sleeping bag".
+- **With the label,** the search asks for "uyku tulumu", never "junior", and
+  each turn states both types; on the correct shop none fails.
+- **Without it,** the same search asks "junior var mı?".
+- **ADR-0046's criteria still hold:** with `type-bound-ignored`, the turns
+  under the median and under the lowest price fail, now asked as "uyku
+  tulumu".
 
 **Spans.** With `--otel-url` and the model over HTTP, the demo-shop exports a
 GenAI span for each model call, in the trace of the incoming `traceparent`,

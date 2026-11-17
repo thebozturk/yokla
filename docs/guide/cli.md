@@ -104,7 +104,7 @@ the precision, same ÷ (same + different + new), and the recall, same ÷
 (same + different + missed). Your own inputs, the request and the
 languages you named, are left out, and so are the profile's entries that
 aren't approved. On the demo-shop it proposes 30 entries, all the
-hand-written ones: precision 100 %, recall 46.9 %.
+hand-written ones: precision 100 %, recall 45.5 %.
 
 **With a model (ADR-0049).** With `models.analyzer` in the configuration, a
 model also reads the docs, prompts, contracts, manifests, env examples and
@@ -144,7 +144,7 @@ rate limits, the cache bypass header and the canonical refusals.
 
 On the demo-shop, with the fake provider playing the model, it adds the two
 limits, the cache bypass and the two canonical refusals: 37 entries, all the
-hand-written ones, recall 57.8 %. The limit the fake model invents is
+hand-written ones, recall 56.1 %. The limit the fake model invents is
 dropped as unverified.
 
 It exits with `0` when the proposal was written, and with `2` for a wrong
@@ -643,9 +643,10 @@ mapped route, it refuses.
     for the type, for the type under its median price, and for the type
     under the largest whole amount below its lowest price, where nothing can
     match. Then it asks about each policy the profile declares. A type is
-    asked by the words of its last level, and types with the same words are
-    one to a shopper: they count once, and the turn's expectation and prices
-    cover them all (ADR-0048). Amounts are written as shoppers of the
+    asked by the words of its last level, or by its catalog label where the
+    profile maps `catalog.fields.typeLabel` (ADR-0050), and types with the
+    same words are one to a shopper: they count once, and the turn's
+    expectation and prices cover them all (ADR-0048). Amounts are written as shoppers of the
     language write them, such as `300 TL` or `$300`; one last turn per
     language asks the first type under its median with the currency code,
     such as `300 TRY`, where that differs;

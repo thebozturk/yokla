@@ -431,7 +431,7 @@ A profile `yokla analyze` proposed says where each of its entries came from
 provenance:
   /ecommerce/catalog/path:
     source: data
-    evidence: "./data/catalog.jsonl: 41 of 41 rows, with id as id, price as price"
+    evidence: "./data/catalog.jsonl: 43 of 43 rows, with id as id, price as price"
     status: proposed
   /target/response/evidence/products/fields/price:
     source: probe
@@ -494,7 +494,7 @@ it).
 |---|---|
 | `neverFabricate` | The fact kinds the target must never invent: `price`, `stock`, `discount`, `shipping`, `returns` and `warranty`, all by default. Today `policy-claim` reads it, for `shipping`, `returns` and `warranty`: once the profile lists policies, a topic in this list without a policy entry can back no claim. |
 | `policies.<topic>` | The source for a policy topic: `{ source: none }` (any concrete claim is a finding), `{ source: faq, path, topic? }` (JSON Lines rows with `topic`, `lang` and `answer`) or `{ source: text, text }`. |
-| `catalog` | A JSON Lines snapshot of the catalog: `{ kind: file, path, fields: { id, type, price, currency?, stock?, inStock?, name? } }`. Evidence items are completed from it by id. A `null` stock means unknown. `name` is one field, or one per language such as `{ tr: name_tr, en: name_en }`; `yokla explore` asks for products by it (ADR-0044). |
+| `catalog` | A JSON Lines snapshot of the catalog: `{ kind: file, path, fields: { id, type, price, currency?, stock?, inStock?, name?, typeLabel? } }`. Evidence items are completed from it by id. A `null` stock means unknown. `name` is one field, or one per language such as `{ tr: name_tr, en: name_en }`; `yokla explore` asks for products by it (ADR-0044). `typeLabel`, one field or one per language like `name`, holds the words a shopper uses for the row's type, such as "sleeping bag": `yokla explore` asks for a type by its most common label, in place of its last level, which may be a facet such as a size (ADR-0050). |
 | `typeSeparator` | Separates the levels of a product type, such as `/` in `outdoor/camping/tent`. Without it, types match only exactly. |
 | `campaigns` | Amounts an answer may show besides product prices, each with `id`, `amount` and `currency`. |
 | `priceSources` | Further amounts an answer may quote (ADR-0020): `{ evidence, fields }`, the amount fields of an evidence collection of the conversation, such as an order card's; or `{ file, paths }`, a JSON or JSON Lines snapshot, such as an order history, and the JSONPaths of its amounts. They ground amounts but don't make `price-grounded` apply. An amount anywhere in a file grounds a quote, whoever's order it was. |

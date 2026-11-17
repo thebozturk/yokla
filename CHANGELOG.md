@@ -73,6 +73,12 @@ hold.
   same words, and `--types` counts distinct words. Amounts are written in
   the language's usual unit ("300 TL", "$300"); one turn per language asks
   with the currency code, where shoppers write it otherwise.
+- **A type asked by its catalog label (ADR-0050).** A profile may map
+  `catalog.fields.typeLabel`, one field or one per language, to the words a
+  shopper uses for a row's type. `yokla explore`'s opening turns then ask
+  for a type by its most common label, as the catalog writes it, in place of
+  its last level, which may be a facet such as a size. Types with the same
+  label are one group, as types with the same words were (ADR-0048).
 - **"No exact match" counts as a disclosure.** The Turkish and English
   absence and alternative markers now hold "tam uyan ürün olmadığı", "en
   yakın seçenek", "no exact match", "closest option" and "closest match".

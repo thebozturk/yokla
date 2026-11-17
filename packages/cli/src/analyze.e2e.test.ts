@@ -338,8 +338,8 @@ describe('yokla analyze with a model on the demo-shop (ADR-0049)', () => {
       '/refusal/canonical/en',
     ]);
     expect(comparison?.same).toHaveLength(37);
-    expect(comparison?.recall).toBeCloseTo(37 / 64, 12);
-    expect(modelled?.output).toContain('precision 100.0%, recall 57.8%');
+    expect(comparison?.recall).toBeCloseTo(37 / 66, 12);
+    expect(modelled?.output).toContain('precision 100.0%, recall 56.1%');
     const cache = entries.find((entry) => entry.pointer === '/target/cacheBypass');
     expect(cache?.provenance).toMatchObject({ source: 'doc', status: 'proposed' });
     expect(cache?.provenance.evidence).toMatch(/^README\.md:\d+: ".*x-cache-bypass: 1/u);
