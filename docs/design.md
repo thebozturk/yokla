@@ -306,7 +306,8 @@ give, and measures the proposal against a profile, at no model cost.
 - **From probes:** a greeting, read by `yokla init`'s rules, then a type
   question and a cart request. Where the products are in an answer is found
   by matching its values to the catalog's, read as the profile reads a
-  field: as a number, or from a fallback of two paths (ADR-0067).
+  field: as a number, or from a fallback of two paths (ADR-0067). A field
+  that fits two ways is left undecided, its ways named (ADR-0068).
 - **The proposal:** `yokla.profile.proposed.yaml`, with a `provenance` map
   (§7). It never overwrites `yokla.profile.yaml`.
 - **The measure:** each entry `same`, `different`, `new` or `missed` against
@@ -1249,8 +1250,8 @@ the guard with `--import`.
     given by `--data`, gave a precision of 81.0 % and a recall of 34.7 %.
     Matching prices sent as text (ADR-0067) left both unchanged: two of
     its fields hold the same price in every product shown, and values
-    can't tell them apart.
-  - **What yokla learnt:** these runs led to ADR-0061 to ADR-0067.
+    can't tell them apart. The summary now names both (ADR-0068).
+  - **What yokla learnt:** these runs led to ADR-0061 to ADR-0068.
 - **A public open-source retail assistant,** to prove that yokla generalises.
   It streams its answers, opens its own sessions and calls its model after
   answering. In v0.2 its model cost reconciled with the provider's records,

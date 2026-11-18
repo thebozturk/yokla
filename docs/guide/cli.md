@@ -100,7 +100,9 @@ target may make its own, and the analyzer contacts only its urls.
    as a decimal string is matched as a number and proposed with
    `as: number`; one that a path holds in some products and another path
    in the rest is proposed as a fallback, `from: [first, second]`, when an
-   answer shows both. Two paths that fit equally give no path (ADR-0067).
+   answer shows both. Two paths that fit equally give no path (ADR-0067):
+   the summary names them on an `undecided:` line, and the report under
+   `undecided`, for you to pick one (ADR-0068).
 
 **The proposal** is a profile with a [`provenance`](profile.md#provenance)
 map at its top: each machine-made entry with its source, its evidence and
