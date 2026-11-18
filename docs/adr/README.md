@@ -81,6 +81,7 @@ old one.
 | [0066](0066-a-large-catalog-read-whole.md) | A large catalog read whole, and a contract that is a schema | Accepted |
 | [0067](0067-an-evidence-field-read-as-a-number-or-from-a-fallback.md) | An evidence field read as a number, or from a fallback | Accepted |
 | [0068](0068-an-evidence-field-left-undecided-names-its-candidates.md) | An evidence field left undecided names its candidates | Accepted |
+| [0069](0069-the-model-proxy-reads-an-ai-sdk-gateway.md) | The model proxy reads an AI SDK gateway | Proposed |
 
 ## Template
 
