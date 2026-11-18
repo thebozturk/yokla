@@ -96,7 +96,11 @@ target may make its own, and the analyzer contacts only its urls.
    `yokla init`'s rules for the answer's text, route and session. With a
    catalog, it then asks for a type and puts the first product shown in the
    cart, in the same session. Where the products and the cart are in the
-   answers is found by matching their values to the catalog's.
+   answers is found by matching their values to the catalog's. A value sent
+   as a decimal string is matched as a number and proposed with
+   `as: number`; one that a path holds in some products and another path
+   in the rest is proposed as a fallback, `from: [first, second]`, when an
+   answer shows both. Two paths that fit equally give no path (ADR-0067).
 
 **The proposal** is a profile with a [`provenance`](profile.md#provenance)
 map at its top: each machine-made entry with its source, its evidence and
