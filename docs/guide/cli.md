@@ -55,7 +55,7 @@ pnpm yokla analyze --dir . --url http://127.0.0.1:3000/v1/chat \
   --body '{"message": "{{message}}", "sessionId": "{{session}}"}' \
   [--header <name: value>]... [--session-url <url>] [--language <tr|en>]... \
   [--out yokla.profile.proposed.yaml] [--profile yokla.profile.yaml] \
-  [--json analysis.json] [--max-files 5000] [--force]
+  [--json analysis.json] [--max-files 5000] [--data <file>]... [--force]
 ```
 
 Proposes a profile from the target's repository, its data and up to three
@@ -71,6 +71,7 @@ target may make its own, and the analyzer contacts only its urls.
 | `--profile <file>` | `<dir>/yokla.profile.yaml`, when present | A profile to compare the proposal with. |
 | `--json <file>` | | Also write the analysis report, by the schema `yokla schema analysis` prints. |
 | `--max-files <n>` | 5000 | List at most this many files. |
+| `--data <file>` | | A data file from outside the repository, such as a catalog exported from a database; repeatable. It is read as the repository's data files are, and its path in the proposal is relative to it (ADR-0065). |
 | `--force` | | Overwrite the proposal. |
 
 **What it does, in order:**
@@ -106,6 +107,10 @@ languages you named, are left out, and so are the profile's entries that
 aren't approved. On the demo-shop it proposes 49 entries, all the
 hand-written ones: 30 from the data and the probes, and the 19 of the
 response contract from `openapi.json`. Precision 100 %, recall 71.0 %.
+
+A response contract counts leaf by leaf, so when either side has one, a
+second line gives the precision and the recall without
+`target.response.schema` (ADR-0065): on the demo-shop, 100 % and 60.0 %.
 
 **The response contract (ADR-0057).** From the repository's contract files,
 it proposes `target.response.schema`, with no model:

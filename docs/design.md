@@ -301,7 +301,8 @@ inventories the repository, proposes what the target's data and a few probes
 give, and measures the proposal against a profile, at no model cost.
 - **From data:** the domain pack's data analyzer. The e-commerce pack finds
   the catalog and its fields, its type separator, the languages of its
-  names, and the policies' sources.
+  names, and the policies' sources. Data kept outside the repository, such
+  as a database export, is given with `--data` (ADR-0065).
 - **From probes:** a greeting, read by `yokla init`'s rules, then a type
   question and a cart request. Where the products are in an answer is found
   by matching its values to the catalog's.
@@ -309,7 +310,9 @@ give, and measures the proposal against a profile, at no model cost.
   (§7). It never overwrites `yokla.profile.yaml`.
 - **The measure:** each entry `same`, `different`, `new` or `missed` against
   a profile, with precision and recall. On the demo-shop: 49 entries
-  proposed, all the hand-written ones; recall 71.0 %.
+  proposed, all the hand-written ones; recall 71.0 %. A response contract
+  counts leaf by leaf, so both are also given without it: recall 60.0 %
+  (ADR-0065).
 - **The response contract (ADR-0057, ADR-0058):** from an OpenAPI 3
   operation or a JSON Schema document, at the deepest object the answer's
   text and evidence share, proposed only when every probe answer matches
