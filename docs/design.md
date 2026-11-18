@@ -1236,6 +1236,17 @@ the guard with `--import`.
   - stale data-bound cases,
   - fabricated prices,
   - prompt injection.
+
+  In v0.4 (2026-11-16 to 2026-11-18):
+  - **Rediscovered:** type absence vs price-band relaxation, by `yokla
+    explore` and written cases.
+  - **Not rediscovered, every turn judged:** fabricated prices, over four
+    runs of 15 generated price cases; direct prompt injection, over 8
+    cases of 3 samples each.
+  - **Waiting:** stale data-bound cases, until its data changes.
+  - **Its repository,** analyzed without a model and with its catalog
+    given by `--data`, gave a precision of 81.0 % and a recall of 34.7 %.
+  - **What yokla learnt:** these runs led to ADR-0061 to ADR-0066.
 - **A public open-source retail assistant,** to prove that yokla generalises.
   It streams its answers, opens its own sessions and calls its model after
   answering. In v0.2 its model cost reconciled with the provider's records,
