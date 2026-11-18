@@ -59,7 +59,7 @@ old one.
 | [0044](0044-a-search-for-untried-paths.md) | A search for untried paths | Accepted; amended by 0046 |
 | [0045](0045-robustness-transforms-of-a-cases-messages.md) | Robustness transforms of a case's messages | Accepted |
 | [0046](0046-intents-that-state-what-they-ask.md) | Intents that state what they ask, across the catalog's types | Accepted; amended by 0048 |
-| [0047](0047-the-analyzer-deterministic-first.md) | The analyzer, deterministic first: inventory, data and probes | Accepted |
+| [0047](0047-the-analyzer-deterministic-first.md) | The analyzer, deterministic first: inventory, data and probes | Accepted; amended by 0066 |
 | [0048](0048-intents-ask-as-a-shopper-names-things.md) | Intents ask as a shopper names things | Accepted; amended by 0050, 0052 |
 | [0049](0049-the-analyzer-reads-code-and-docs.md) | The analyzer reads code and docs: values a model finds, verified in their source | Accepted; amended by 0051 |
 | [0050](0050-a-type-asked-by-its-catalog-label.md) | A type asked by its catalog label | Accepted |
@@ -77,8 +77,8 @@ old one.
 | [0062](0062-generated-cases-name-products-in-stock.md) | Generated cases name products in stock | Accepted |
 | [0063](0063-a-generated-name-names-one-product.md) | A generated name names one product, and "cheaper" has an answer | Accepted; amended by 0064 |
 | [0064](0064-a-cheaper-follow-up-says-cheaper-than-what.md) | A cheaper follow-up says cheaper than what | Accepted |
-| [0065](0065-data-from-outside-the-repository.md) | Data from outside the repository, and a comparison without the contract | Accepted |
-| [0066](0066-a-large-catalog-read-whole.md) | A large catalog read whole, and a contract that is a schema | Proposed |
+| [0065](0065-data-from-outside-the-repository.md) | Data from outside the repository, and a comparison without the contract | Accepted; amended by 0066 |
+| [0066](0066-a-large-catalog-read-whole.md) | A large catalog read whole, and a contract that is a schema | Accepted |
 
 ## Template
 

@@ -1,6 +1,6 @@
 # 0066. A large catalog read whole, and a contract that is a schema
 
-Status: Proposed · Date: 2026-11-18
+Status: Accepted · Date: 2026-11-18
 
 ## Context
 
