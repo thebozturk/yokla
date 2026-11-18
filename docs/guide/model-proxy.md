@@ -88,6 +88,41 @@ modelProxy:
 - **An app on Gemini's OpenAI-compatible endpoint** needs no `gemini` upstream:
   `openai-compatible` reads it.
 
+### The AI SDK's gateway
+
+An app on the Vercel AI SDK's gateway provider speaks the SDK's own
+protocol to the gateway. An upstream of kind `ai-gateway` reads it
+(ADR-0069):
+
+```yaml
+modelProxy:
+  upstreams:
+    - id: gateway
+      kind: ai-gateway
+      upstream: https://ai-gateway.vercel.sh/v4/ai
+```
+
+- **Point the provider at the proxy** through its `baseURL` option, at
+  `http://127.0.0.1:8787/gateway`. An app that builds its provider without
+  one can't be pointed anywhere: give it that setting first. Its key and
+  the gateway's own headers pass through, never recorded.
+- **What the proxy reads,** from `POST …/language-model` calls of
+  specification version 4:
+  - the model from the `ai-language-model-id` header, or the answer's
+    model when it names one; streaming from `ai-language-model-streaming`;
+  - the prompts: `system`, `user`, `assistant` and `tool` messages, a
+    `tool-result` part as a tool message that names its tool;
+  - the tools a call offers, and the `tool-call` parts an answer asks for;
+  - the answer's text: its `text` parts, or a stream's `text-delta`s.
+- **How it counts tokens,** from `usage`: input is its total input, with
+  cache reads and writes within it; output is its total output, with
+  reasoning apart. A count it leaves out is null.
+- **Other calls,** such as `/config`, embeddings, or a call of another
+  specification version, are forwarded and recorded with nothing read.
+- **What it changes:** a fault takes the gateway's error shape; a model
+  swap rewrites the model header; a tool result change applies to a
+  `text` output as text, and to a `json` output only by a path.
+
 ## Tie calls to turns
 
 | `correlation` | How | Use it when |

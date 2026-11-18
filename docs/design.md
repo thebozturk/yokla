@@ -621,6 +621,8 @@ The proxy has three jobs:
   `…/models/{model}:generateContent` and `:streamGenerateContent`, the model
   read from the url. Thinking tokens count as output, as Google bills them,
   and show apart as reasoning.
+- The AI SDK's gateway protocol (ADR-0069): `…/language-model`, the model
+  and streaming read from its headers, specification version 4 only.
 - Streaming (SSE) passes through.
 
 **Setup (ADR-0012).** `yokla proxy` runs as its own process, started before the
