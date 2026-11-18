@@ -164,6 +164,68 @@ describe('probeEntries (ADR-0047)', () => {
       ['/target/response/evidence/products/fields/name', 'ad'],
     ]);
   });
+
+  it('proposes a field read as a number or from a fallback, and says how it is read (ADR-0067)', () => {
+    const entries = probeEntries(
+      {
+        inference: {
+          response: { text: '$.a' },
+          text: { path: '$.a', sample: 'x', rule: 'r' },
+          alternatives: [],
+          route: undefined,
+          carry: [],
+          replayed: 'x',
+        },
+        sessionOpen: undefined,
+        probes: [],
+        answers: [],
+        collections: [
+          {
+            name: 'products',
+            probe: 2,
+            match: {
+              items: '$.p[*]',
+              fields: {
+                id: 'id',
+                price: { from: ['p.sale', 'p.list'], as: 'number' },
+                stock: { from: 'qty', as: 'number' },
+                currency: { from: ['p.cur', 'cur'] },
+              },
+              matched: 3,
+              ids: ['A', 'B', 'C'],
+            },
+          },
+        ],
+      },
+      { id: 'id', price: 'price', stock: 'stock', currency: 'currency' },
+    );
+    expect(
+      entries
+        .filter((entry) => entry.pointer.includes('/fields/'))
+        .map((entry) => [entry.pointer, entry.value, entry.provenance.evidence]),
+    ).toEqual([
+      [
+        '/target/response/evidence/products/fields/id',
+        'id',
+        "probe 2: id equals the catalog's id in 3 of 3 items",
+      ],
+      [
+        '/target/response/evidence/products/fields/price',
+        { from: ['p.sale', 'p.list'], as: 'number' },
+        "probe 2: p.sale, else p.list, read as a number, equals the catalog's price in 3 of 3 items",
+      ],
+      [
+        '/target/response/evidence/products/fields/stock',
+        { from: 'qty', as: 'number' },
+        "probe 2: qty, read as a number, equals the catalog's stock in 3 of 3 items",
+      ],
+      [
+        '/target/response/evidence/products/fields/currency',
+        { from: ['p.cur', 'cur'] },
+        "probe 2: p.cur, else cur, equals the catalog's currency in 3 of 3 items",
+      ],
+    ]);
+  });
 });
 
 describe('data from outside the repository (ADR-0065)', () => {

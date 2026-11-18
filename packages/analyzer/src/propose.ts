@@ -10,6 +10,7 @@ import {
   type Analysis,
   type DataEntry,
   type JsonValue,
+  type MatchedCollection,
   type Provenance,
 } from '@yokla/core';
 import { parse, stringify } from 'yaml';
@@ -47,6 +48,13 @@ export function personPointers(person: PersonInputs): string[] {
 const proposed = (source: Provenance['source'], evidence: string): Provenance =>
   source === 'human' ? { source, status: 'approved' } : { source, evidence, status: 'proposed' };
 
+/** How a matched field is read, for its evidence: "a", "a, read as a number,", "a, else b,". */
+function howRead(spec: MatchedCollection['fields'][string]): string {
+  if (typeof spec === 'string') return spec;
+  const paths = typeof spec.from === 'string' ? [spec.from] : spec.from;
+  return `${paths.join(', else ')}${spec.as === undefined ? '' : `, read as a ${spec.as}`},`;
+}
+
 function collectionEntries(
   found: FoundCollection,
   evidenceFields: Readonly<Record<string, string>>,
@@ -65,16 +73,16 @@ function collectionEntries(
     },
   ];
   const named = new Set<string>();
-  for (const [column, path] of Object.entries(match.fields)) {
+  for (const [column, spec] of Object.entries(match.fields)) {
     const field = evidenceFields[column];
     if (field === undefined || named.has(field)) continue;
     named.add(field);
     entries.push({
       pointer: `${base}/fields/${field}`,
-      value: path,
+      value: toJson(spec),
       provenance: proposed(
         'probe',
-        `${at}: ${path} equals the catalog's ${column} in ${String(match.matched)} of ${String(match.matched)} items`,
+        `${at}: ${howRead(spec)} equals the catalog's ${column} in ${String(match.matched)} of ${String(match.matched)} items`,
       ),
     });
   }
