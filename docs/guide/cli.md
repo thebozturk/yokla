@@ -80,12 +80,18 @@ target may make its own, and the analyzer contacts only its urls.
    `code` or `other`. It doesn't enter hidden, dependency or build folders,
    and leaves out binary files, files over 5 MB, environment files that may
    hold secrets, and yokla's own files: profiles, the configuration, the
-   baseline, case files, `runs/` and `yokla-data/`.
+   baseline, case files, `runs/` and `yokla-data/`. A `contract` is an
+   OpenAPI document, or a JSON Schema whose `$schema` is on
+   `json-schema.org`; a settings file that names the schema it follows is
+   not one (ADR-0066).
 2. **The data.** The domain pack reads the data files. The e-commerce pack
    proposes the catalog (a JSON Lines file with a unique id-like column and
    a positive price-like one) and its fields, its type separator, the
    languages of its names, and for each policy topic a FAQ in JSON Lines
-   (rows with `topic` and `answer`) or `{ source: none }`.
+   (rows with `topic` and `answer`) or `{ source: none }`. A data file is
+   read up to 1,000,000 rows; one cut there is named before anything is
+   sent, since the probes' match may then miss a product they show
+   (ADR-0066).
 3. **The probes.** It prints the messages, then sends a greeting, read by
    `yokla init`'s rules for the answer's text, route and session. With a
    catalog, it then asks for a type and puts the first product shown in the
