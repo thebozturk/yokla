@@ -80,6 +80,7 @@ old one.
 | [0065](0065-data-from-outside-the-repository.md) | Data from outside the repository, and a comparison without the contract | Accepted; amended by 0066 |
 | [0066](0066-a-large-catalog-read-whole.md) | A large catalog read whole, and a contract that is a schema | Accepted |
 | [0067](0067-an-evidence-field-read-as-a-number-or-from-a-fallback.md) | An evidence field read as a number, or from a fallback | Accepted |
+| [0068](0068-an-evidence-field-left-undecided-names-its-candidates.md) | An evidence field left undecided names its candidates | Proposed |
 
 ## Template
 
