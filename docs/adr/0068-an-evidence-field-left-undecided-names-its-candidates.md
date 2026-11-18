@@ -1,6 +1,6 @@
 # 0068. An evidence field left undecided names its candidates
 
-Status: Proposed · Date: 2026-11-18
+Status: Accepted · Date: 2026-11-18
 
 ## Context
 
