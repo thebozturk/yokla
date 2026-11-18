@@ -23,6 +23,11 @@ export interface MatchedCollection {
    * profile field read as a number or from a fallback (ADR-0067).
    */
   readonly fields: Readonly<Record<string, FieldSpec>>;
+  /**
+   * Per row field that a rule fit two or more ways, the ways it fit, in the
+   * order found; present only when there is one (ADR-0068).
+   */
+  readonly undecided?: Readonly<Record<string, readonly FieldSpec[]>>;
   /** The items, each matched to a row by its id. */
   readonly matched: number;
   /** The ids of the rows the items matched, in the items' order. */
@@ -82,11 +87,6 @@ const same = (a: JsonValue | undefined, b: JsonValue | undefined): boolean =>
 
 const absent = (value: JsonValue | undefined): boolean => value === undefined || value === null;
 
-/** The one answer a rule gave; none when it gave two or more, or none at all. */
-function onlyOne<T>(answers: readonly T[]): T | undefined {
-  return answers.length === 1 ? answers[0] : undefined;
-}
-
 const idKey = (value: JsonValue | undefined): string | undefined =>
   typeof value === 'string' || typeof value === 'number' ? JSON.stringify(value) : undefined;
 
@@ -95,7 +95,8 @@ const idKey = (value: JsonValue | undefined): string | undefined =>
  * same path in each item. For each row field, the item path whose value
  * equals the row's in every item, when exactly one path does. Failing any
  * such path, the one path that does when read as a number, then the one pair
- * of paths that does as a fallback (ADR-0067). A field matched only by null,
+ * of paths that does as a fallback (ADR-0067). A field two or more ways fit
+ * gets no path; the ways are kept as undecided (ADR-0068). A field matched only by null,
  * or one whose value another field shares in every item, gets no path.
  */
 export function matchRows(document: JsonValue, known: KnownRows): MatchedCollection[] {
@@ -119,6 +120,7 @@ export function matchRows(document: JsonValue, known: KnownRows): MatchedCollect
     const rows = leaves.map((item) => byId.get(idKey(item.get(idPath)) ?? '') ?? {});
     const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))];
     const fields: Record<string, FieldSpec> = { [known.id]: idPath };
+    const undecided: Record<string, FieldSpec[]> = {};
     const firstPaths = [...(leaves[0]?.keys() ?? [])];
     const allPaths = [...new Set(leaves.flatMap((item) => [...item.keys()]))];
     for (const column of columns) {
@@ -130,11 +132,13 @@ export function matchRows(document: JsonValue, known: KnownRows): MatchedCollect
       );
       if (twin) continue;
       const found = fieldFor(column, items, leaves, rows, firstPaths, allPaths);
-      if (found !== undefined) fields[column] = found;
+      if (found.length === 1 && found[0] !== undefined) fields[column] = found[0];
+      if (found.length > 1) undecided[column] = found;
     }
     collections.push({
       items: `${path}[*]`,
       fields,
+      ...(Object.keys(undecided).length === 0 ? {} : { undecided }),
       matched: items.length,
       ids: leaves.map((item) => item.get(idPath) ?? null),
     });
@@ -143,9 +147,10 @@ export function matchRows(document: JsonValue, known: KnownRows): MatchedCollect
 }
 
 /**
- * Where a row field is in the items, by ADR-0067's rules in order: the first
- * rule with an answer decides, and two answers at it give none. Every answer
- * is read back by the profile's own field reader.
+ * The ways a row field fits the items, by ADR-0067's rules in order: the
+ * answers of the first rule that has any. One answer is the field's path;
+ * two or more leave it undecided (ADR-0068). Every answer is read back by the
+ * profile's own field reader.
  */
 function fieldFor(
   column: string,
@@ -154,7 +159,7 @@ function fieldFor(
   rows: readonly Readonly<Record<string, JsonValue>>[],
   firstPaths: readonly string[],
   allPaths: readonly string[],
-): FieldSpec | undefined {
+): FieldSpec[] {
   const readsBack = (spec: FieldSpec): boolean =>
     items.every((item, index) => {
       const issues: string[] = [];
@@ -166,7 +171,7 @@ function fieldFor(
   const asIs = firstPaths.filter((leaf) =>
     leaves.every((item, index) => same(item.get(leaf), rows[index]?.[column])),
   );
-  if (asIs.length > 0) return onlyOne(asIs);
+  if (asIs.length > 0) return asIs;
 
   // 2. A path read as a number: a string in at least one item.
   const asNumber = firstPaths.filter(
@@ -174,10 +179,7 @@ function fieldFor(
       leaves.some((item) => typeof item.get(leaf) === 'string') &&
       readsBack({ from: leaf, as: 'number' }),
   );
-  if (asNumber.length > 0) {
-    const leaf = onlyOne(asNumber);
-    return leaf === undefined ? undefined : { from: leaf, as: 'number' };
-  }
+  if (asNumber.length > 0) return asNumber.map((leaf) => ({ from: leaf, as: 'number' }));
 
   // 3. A fallback of two paths: the first absent in one item, present in
   // another; the second holding a value in an item where the first is absent.
@@ -193,5 +195,5 @@ function fieldFor(
       else if (readsBack(numeric)) fallbacks.push(numeric);
     }
   }
-  return onlyOne(fallbacks);
+  return fallbacks;
 }

@@ -89,6 +89,21 @@ export const Analysis = z
     conflicts: z.array(z.object({ pointer: z.string(), evidence: z.array(z.string()) })).optional(),
     /** The data files read only to their first rows, by their path in the proposal (ADR-0066). */
     cut: z.array(z.string()).optional(),
+    /**
+     * The evidence fields the probes' match fit two or more ways, so none was
+     * proposed: the first ways, as profile fields, and how many more (ADR-0068).
+     */
+    undecided: z
+      .array(
+        z.object({
+          pointer: z.string(),
+          probe: z.int().positive(),
+          items: z.int().nonnegative(),
+          candidates: z.array(z.json()).min(2),
+          more: z.int().nonnegative(),
+        }),
+      )
+      .optional(),
     /** The proposal compared with a profile, entry by entry. */
     comparison: z
       .object({

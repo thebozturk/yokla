@@ -22,6 +22,7 @@ import {
   UNREAD_CUT,
   profileDocument,
   proposalYaml,
+  undecidedLine,
 } from '@yokla/analyzer';
 import type { OwnModel } from '@yokla/core';
 import { ModelClient, ModelClientError } from '@yokla/runtime';
@@ -284,6 +285,8 @@ export async function analyzeCommand(
     for (const entry of analyzed.entries) {
       io.out(`  ${entry.pointer}  (${entry.provenance.source})`);
     }
+    // A field the probes' match fit two or more ways: none proposed, the person picks (ADR-0068).
+    for (const field of analyzed.undecided) io.out(undecidedLine(field));
     // Each contract file read, and what became of it (ADR-0057).
     for (const contract of analyzed.contracts) {
       const what = [contract.read, contract.at === undefined ? undefined : `at ${contract.at}`]
@@ -333,6 +336,7 @@ export async function analyzeCommand(
       exclude: personPointers(person),
       contracts: analyzed.contracts,
       cut: analyzed.cut,
+      undecided: analyzed.undecided,
       ...(reference === undefined ? {} : { reference }),
       ...(model === undefined ? {} : { model }),
     });

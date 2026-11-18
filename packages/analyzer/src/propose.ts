@@ -48,11 +48,63 @@ export function personPointers(person: PersonInputs): string[] {
 const proposed = (source: Provenance['source'], evidence: string): Provenance =>
   source === 'human' ? { source, status: 'approved' } : { source, evidence, status: 'proposed' };
 
-/** How a matched field is read, for its evidence: "a", "a, read as a number,", "a, else b,". */
-function howRead(spec: MatchedCollection['fields'][string]): string {
+type MatchedField = MatchedCollection['fields'][string];
+
+/** How a matched field is read: "a", "a, read as a number", "a, else b". */
+export function readingOf(spec: MatchedField): string {
   if (typeof spec === 'string') return spec;
   const paths = typeof spec.from === 'string' ? [spec.from] : spec.from;
-  return `${paths.join(', else ')}${spec.as === undefined ? '' : `, read as a ${spec.as}`},`;
+  return `${paths.join(', else ')}${spec.as === undefined ? '' : `, read as a ${spec.as}`}`;
+}
+
+/** At most this many ways are named for an undecided field (ADR-0068). */
+export const MAX_CANDIDATES = 5;
+
+/** An evidence field the probes' match fit two or more ways, none proposed (ADR-0068). */
+export interface UndecidedField {
+  readonly pointer: string;
+  /** Which probe showed it, from 1. */
+  readonly probe: number;
+  /** How many items it fit in. */
+  readonly items: number;
+  /** The first MAX_CANDIDATES ways, in the order found. */
+  readonly candidates: readonly MatchedField[];
+  /** How many more ways fit. */
+  readonly more: number;
+}
+
+/** The summary's line for an undecided field: its ways, and how many more. */
+export function undecidedLine(field: UndecidedField): string {
+  const ways = field.candidates.map(readingOf);
+  if (field.more > 0) ways.push(`${String(field.more)} more`);
+  return `undecided: ${field.pointer}: ${ways.join(' | ')}; none proposed, pick one`;
+}
+
+/** The evidence fields the match left undecided: only those a column names, once each. */
+export function undecidedFields(
+  probed: Pick<Probed, 'collections'>,
+  evidenceFields: Readonly<Record<string, string>>,
+): UndecidedField[] {
+  const undecided: UndecidedField[] = [];
+  for (const found of probed.collections) {
+    const { match } = found;
+    const named = new Set(
+      Object.keys(match.fields).flatMap((column) => evidenceFields[column] ?? []),
+    );
+    for (const [column, ways] of Object.entries(match.undecided ?? {})) {
+      const field = evidenceFields[column];
+      if (field === undefined || named.has(field)) continue;
+      named.add(field);
+      undecided.push({
+        pointer: `/target/response/evidence/${found.name}/fields/${field}`,
+        probe: found.probe,
+        items: match.matched,
+        candidates: ways.slice(0, MAX_CANDIDATES),
+        more: Math.max(0, ways.length - MAX_CANDIDATES),
+      });
+    }
+  }
+  return undecided;
 }
 
 function collectionEntries(
@@ -82,7 +134,7 @@ function collectionEntries(
       value: toJson(spec),
       provenance: proposed(
         'probe',
-        `${at}: ${howRead(spec)} equals the catalog's ${column} in ${String(match.matched)} of ${String(match.matched)} items`,
+        `${at}: ${readingOf(spec)}${typeof spec === 'string' ? '' : ','} equals the catalog's ${column} in ${String(match.matched)} of ${String(match.matched)} items`,
       ),
     });
   }
@@ -231,6 +283,8 @@ export function analysisReport(input: {
   readonly model?: ModelStep;
   /** The data files read only to the row bound (ADR-0066). */
   readonly cut?: readonly string[];
+  /** The evidence fields fit two or more ways (ADR-0068). */
+  readonly undecided?: readonly UndecidedField[];
 }): Analysis {
   const comparison =
     input.reference === undefined
@@ -265,6 +319,14 @@ export function analysisReport(input: {
           })),
         }),
     ...(input.cut === undefined || input.cut.length === 0 ? {} : { cut: [...input.cut] }),
+    ...(input.undecided === undefined || input.undecided.length === 0
+      ? {}
+      : {
+          undecided: input.undecided.map((field) => ({
+            ...field,
+            candidates: field.candidates.map((spec) => toJson(spec)),
+          })),
+        }),
     ...(input.model === undefined
       ? {}
       : {

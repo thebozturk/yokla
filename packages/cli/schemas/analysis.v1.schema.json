@@ -390,6 +390,47 @@
         "type": "string"
       }
     },
+    "undecided": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "pointer": {
+            "type": "string"
+          },
+          "probe": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "candidates": {
+            "minItems": 2,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema1"
+            }
+          },
+          "more": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "pointer",
+          "probe",
+          "items",
+          "candidates",
+          "more"
+        ],
+        "additionalProperties": false
+      }
+    },
     "comparison": {
       "type": "object",
       "properties": {
@@ -427,7 +468,7 @@
                 "$ref": "#/$defs/__schema0"
               },
               "reference": {
-                "$ref": "#/$defs/__schema1"
+                "$ref": "#/$defs/__schema2"
               }
             },
             "required": [
@@ -639,6 +680,37 @@
           },
           "additionalProperties": {
             "$ref": "#/$defs/__schema1"
+          }
+        }
+      ]
+    },
+    "__schema2": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema2"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema2"
           }
         }
       ]

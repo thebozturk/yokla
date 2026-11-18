@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startTestServer } from '@yokla/runtime/testing';
@@ -240,6 +240,84 @@ describe("a request that can't be sent (ADR-0047)", () => {
         "the request can't be sent: {{auth.token}} has no token",
       );
       expect(existsSync(join(dir, 'yokla.profile.proposed.yaml'))).toBe(false);
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+/** A product that carries its price twice, as the same decimal string. */
+const card = (sku: string, title: string, price: string) => ({
+  sku,
+  title,
+  sale: price,
+  page: price,
+});
+
+describe('an evidence field fit two ways (ADR-0068)', () => {
+  it('names the ways in the summary and the report, and proposes none', async () => {
+    const server = await startTestServer({
+      onHttp: (_request, response) => {
+        response.writeHead(200, { 'content-type': 'application/json' }).end(
+          JSON.stringify({
+            answer: 'Here are the tents we have for you today.',
+            products: [card('TNT-1', 'Dome Tent', '2499.90'), card('TNT-2', 'Light Tent', '4250')],
+          }),
+        );
+      },
+    });
+    try {
+      const dir = mkdtempSync(join(tmpdir(), 'yokla-analyze-'));
+      mkdirSync(join(dir, 'data'));
+      writeFileSync(
+        join(dir, 'data', 'catalog.jsonl'),
+        [
+          { id: 'TNT-1', name: 'Dome Tent', type: 'outdoor/tent', price: 2499.9, stock: 3 },
+          { id: 'TNT-2', name: 'Light Tent', type: 'outdoor/tent', price: 4250, stock: 1 },
+        ]
+          .map((row) => JSON.stringify(row))
+          .join('\n'),
+      );
+      const output = io();
+      const report = join(dir, 'analysis.json');
+      const code = await analyzeCommand(
+        [
+          '--url',
+          `${server.url.replace(/^ws/u, 'http')}/chat`,
+          '--dir',
+          dir,
+          '--language',
+          'en',
+          '--json',
+          report,
+        ],
+        output,
+        '0.0.0',
+        dir,
+        {},
+      );
+      expect(code, output.lines.join('\n')).toBe(0);
+      expect(output.lines).toContain(
+        'undecided: /target/response/evidence/products/fields/price: sale, read as a number | page, read as a number; none proposed, pick one',
+      );
+      const written: unknown = JSON.parse(readFileSync(report, 'utf8'));
+      expect(written).toMatchObject({
+        undecided: [
+          {
+            pointer: '/target/response/evidence/products/fields/price',
+            probe: 2,
+            items: 2,
+            candidates: [
+              { from: 'sale', as: 'number' },
+              { from: 'page', as: 'number' },
+            ],
+            more: 0,
+          },
+        ],
+      });
+      const proposal = readFileSync(join(dir, 'yokla.profile.proposed.yaml'), 'utf8');
+      expect(proposal).toContain('evidence/products/fields/name');
+      expect(proposal).not.toContain('evidence/products/fields/price');
     } finally {
       await server.close();
     }

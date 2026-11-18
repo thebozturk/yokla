@@ -28,8 +28,10 @@ import {
   personPointers,
   probeEntries,
   proposalDocument,
+  undecidedFields,
   type PersonInputs,
   type ProposedEntry,
+  type UndecidedField,
 } from './propose.ts';
 import { sessionMode } from '@yokla/core';
 
@@ -57,11 +59,16 @@ export {
 } from './model.ts';
 export {
   analysisReport,
+  MAX_CANDIDATES,
   personPointers,
   profileDocument,
   proposalYaml,
+  readingOf,
+  undecidedFields,
+  undecidedLine,
   type PersonInputs,
   type ProposedEntry,
+  type UndecidedField,
 } from './propose.ts';
 
 export interface AnalyzeOptions {
@@ -110,6 +117,8 @@ export interface Analyzed {
   readonly exclude: readonly string[];
   /** The data files read only to MAX_ROWS rows, by their path in the proposal (ADR-0066). */
   readonly cut: readonly string[];
+  /** The evidence fields the probes' match fit two or more ways, none proposed (ADR-0068). */
+  readonly undecided: readonly UndecidedField[];
 }
 
 /** The path a request url calls, for finding its operation in a contract. */
@@ -294,5 +303,6 @@ export async function analyzeTarget(options: AnalyzeOptions): Promise<Analyzed> 
     document: proposalDocument(person, mode, entries),
     exclude: personPointers(person),
     cut: prepared.cut,
+    undecided: undecidedFields(probed, evidenceFields),
   };
 }

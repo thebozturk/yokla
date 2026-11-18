@@ -124,7 +124,13 @@ describe('matchRows (ADR-0047)', () => {
       ],
     };
     expect(matchRows(items, rows)).toEqual([
-      { items: '$.list[*]', fields: { id: 'id' }, matched: 2, ids: ['A', 'B'] },
+      {
+        items: '$.list[*]',
+        fields: { id: 'id' },
+        undecided: { size: ['size', 'fit'] },
+        matched: 2,
+        ids: ['A', 'B'],
+      },
     ]);
   });
 
@@ -352,5 +358,66 @@ describe('matchRows reads a value as the profile would (ADR-0067)', () => {
       ],
     };
     expect(fieldsOf(items)).toEqual({ id: 'id' });
+  });
+});
+
+/** The undecided fields matchRows kept in the one collection of a document. */
+function undecidedOf(document: JsonValue, known: KnownRows = priced) {
+  const found = matchRows(document, known);
+  expect(found).toHaveLength(1);
+  return found[0]?.undecided;
+}
+
+describe('matchRows keeps the ways an undecided field fits (ADR-0068)', () => {
+  it('keeps two plain paths, in the order found', () => {
+    const items = {
+      list: [
+        { id: 'A', cost: 1999.9, shown: 1999.9 },
+        { id: 'B', cost: 450, shown: 450 },
+      ],
+    };
+    expect(undecidedOf(items)).toEqual({ price: ['cost', 'shown'] });
+    const one = mutate(items, (document) => ({
+      list: document.list.map((item) => (item.id === 'B' ? { ...item, shown: 451 } : item)),
+    }));
+    expect(undecidedOf(one)).toBeUndefined();
+    expect(fieldsOf(one)).toEqual({ id: 'id', price: 'cost' });
+  });
+
+  it('keeps two readings as a number', () => {
+    const items = {
+      list: [
+        { id: 'A', sale: '1999.90', page: '1999.90' },
+        { id: 'B', sale: '450.00', page: '450.00' },
+      ],
+    };
+    expect(undecidedOf(items)).toEqual({
+      price: [
+        { from: 'sale', as: 'number' },
+        { from: 'page', as: 'number' },
+      ],
+    });
+    expect(fieldsOf(items)).toEqual({ id: 'id' });
+  });
+
+  it('keeps two fallbacks', () => {
+    const items = {
+      list: [
+        { id: 'A', sale: '1999.90', list: '2499.90', was: '2999' },
+        { id: 'B', sale: null, list: '450', was: '450' },
+      ],
+    };
+    expect(undecidedOf(items)).toEqual({
+      price: [
+        { from: ['sale', 'list'], as: 'number' },
+        { from: ['sale', 'was'], as: 'number' },
+      ],
+    });
+  });
+
+  it('keeps nothing for a field that fits one way, or none', () => {
+    const items = { list: [{ id: 'A', cost: '1999.90' }] };
+    expect(undecidedOf(items)).toBeUndefined();
+    expect(undecidedOf({ list: [{ id: 'A', other: 'x' }] })).toBeUndefined();
   });
 });
