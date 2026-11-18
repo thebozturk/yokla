@@ -82,7 +82,7 @@ old one.
 | [0067](0067-an-evidence-field-read-as-a-number-or-from-a-fallback.md) | An evidence field read as a number, or from a fallback | Accepted |
 | [0068](0068-an-evidence-field-left-undecided-names-its-candidates.md) | An evidence field left undecided names its candidates | Accepted |
 | [0069](0069-the-model-proxy-reads-an-ai-sdk-gateway.md) | The model proxy reads an AI SDK gateway | Accepted |
-| [0070](0070-v0-4-ships-with-one-criterion-partly-met.md) | v0.4 ships with one exit criterion partly met | Proposed |
+| [0070](0070-v0-4-ships-with-one-criterion-partly-met.md) | v0.4 ships with one exit criterion partly met | Accepted |
 
 ## Template
 

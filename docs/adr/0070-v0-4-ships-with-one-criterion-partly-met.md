@@ -1,6 +1,6 @@
 # 0070. v0.4 ships with one exit criterion partly met
 
-Status: Proposed · Date: 2026-11-18
+Status: Accepted · Date: 2026-11-18
 
 ## Context
 
