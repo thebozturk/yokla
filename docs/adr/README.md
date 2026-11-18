@@ -78,6 +78,7 @@ old one.
 | [0063](0063-a-generated-name-names-one-product.md) | A generated name names one product, and "cheaper" has an answer | Accepted; amended by 0064 |
 | [0064](0064-a-cheaper-follow-up-says-cheaper-than-what.md) | A cheaper follow-up says cheaper than what | Accepted |
 | [0065](0065-data-from-outside-the-repository.md) | Data from outside the repository, and a comparison without the contract | Accepted |
+| [0066](0066-a-large-catalog-read-whole.md) | A large catalog read whole, and a contract that is a schema | Proposed |
 
 ## Template
 
