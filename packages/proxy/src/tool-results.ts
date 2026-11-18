@@ -6,6 +6,7 @@
 // or else the text from its first `{` to its last `}`.
 
 import { updateJsonPath, type ToolResultChange } from '@yokla/core';
+import { gatewayResults } from './gateway.ts';
 import type { UpstreamKind } from './usage.ts';
 
 export type ToolChange =
@@ -29,10 +30,14 @@ function str(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-/** A tool result where it sits in the request: as text, or as a Gemini object. */
+/**
+ * A tool result where it sits in the request: as text, as a Gemini object,
+ * or as the JSON value of a gateway output (ADR-0069).
+ */
 type Holder =
   | { readonly tool: string; readonly get: () => string; readonly set: (text: string) => void }
-  | { readonly tool: string; readonly object: Record<string, unknown> };
+  | { readonly tool: string; readonly object: Record<string, unknown> }
+  | { readonly tool: string; readonly json: Record<string, unknown> };
 
 /**
  * A content field as one text: a string, or a list with one text part. Any
@@ -64,6 +69,14 @@ function holders(kind: UpstreamKind, body: Record<string, unknown>): Holder[] {
           if (name !== undefined) found.push({ tool: name, object: response['response'] });
         }
       }
+    }
+    return found;
+  }
+  if (kind === 'ai-gateway') {
+    // A text output changes as text; a JSON one only by a path; any other is left.
+    for (const { tool, output } of gatewayResults(body)) {
+      if (output['type'] === 'text') found.push(...textHolder(tool, output, 'value'));
+      else if (output['type'] === 'json') found.push({ tool, json: output });
     }
     return found;
   }
@@ -150,6 +163,13 @@ function changeText(change: ToolChange, at: string, text: string): string | unde
 
 /** Applies one change to one tool result; whether it changed anything. */
 function apply(change: ToolChange, holder: Holder): boolean {
+  if ('json' in holder) {
+    if (change.at === undefined) return false;
+    const next = changeValue(change, change.at, holder.json['value']);
+    if (next === undefined) return false;
+    holder.json['value'] = next;
+    return true;
+  }
   if ('object' in holder) {
     // A Gemini result is an object: only a path into it can change it, never its root.
     if (change.at === undefined) return false;

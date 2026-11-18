@@ -3,6 +3,7 @@
 // the changes to a real answer that empty it, break it or cut it short.
 
 import { seededFraction, type Fault, type FaultPlan, type ToolInjection } from '@yokla/core';
+import { gatewayBreakToolCalls, gatewayError, gatewayTextSlots } from './gateway.ts';
 import { geminiBreakToolCalls, geminiEmptyText, geminiError } from './gemini.ts';
 import type { UpstreamKind } from './usage.ts';
 
@@ -81,6 +82,7 @@ export function jitter(seed: string, max: number): number {
 export function errorBody(kind: UpstreamKind, status: 429 | 500 | 503): string {
   const message = `the model proxy injected a ${String(status)} (a yokla fault)`;
   if (kind === 'gemini') return geminiError(status, message);
+  if (kind === 'ai-gateway') return gatewayError(status, message);
   if (kind === 'anthropic') {
     const type =
       status === 429 ? 'rate_limit_error' : status === 503 ? 'overloaded_error' : 'api_error';
@@ -111,6 +113,10 @@ function emptyText(kind: UpstreamKind, value: unknown): boolean {
   };
   if (!isObject(value)) return false;
   if (kind === 'gemini') return geminiEmptyText(value);
+  if (kind === 'ai-gateway') {
+    for (const [holder, key] of gatewayTextSlots(value)) clear(holder, key);
+    return changed;
+  }
   if (kind === 'anthropic') {
     for (const part of list(value['content']))
       if (isObject(part) && part['type'] === 'text') clear(part, 'text');
@@ -134,6 +140,7 @@ function breakToolCalls(kind: UpstreamKind, value: unknown): boolean {
   let changed = false;
   if (!isObject(value)) return false;
   if (kind === 'gemini') return geminiBreakToolCalls(value, BROKEN_ARGUMENTS);
+  if (kind === 'ai-gateway') return gatewayBreakToolCalls(value, BROKEN_ARGUMENTS);
   if (kind === 'anthropic') {
     for (const part of list(value['content'])) {
       if (isObject(part) && part['type'] === 'tool_use') {
@@ -187,6 +194,10 @@ function textSlots(kind: UpstreamKind, value: unknown): TextSlot[] {
         if (isObject(part) && part['thought'] !== true) add(part, 'text');
       }
     }
+    return slots;
+  }
+  if (kind === 'ai-gateway') {
+    for (const [holder, key] of gatewayTextSlots(value)) add(holder, key);
     return slots;
   }
   if (kind === 'anthropic') {

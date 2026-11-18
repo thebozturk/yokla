@@ -7,6 +7,7 @@
 // (ADR-0026).
 
 import type { PromptMessage, PromptRole } from '@yokla/core';
+import { gatewayPrompt } from './gateway.ts';
 import { geminiPrompt } from './gemini.ts';
 import type { UpstreamKind } from './usage.ts';
 
@@ -175,6 +176,7 @@ export function readPrompt(
     const value: unknown = JSON.parse(body);
     if (!isObject(value)) return null;
     if (kind === 'gemini') return geminiPrompt(value);
+    if (kind === 'ai-gateway') return gatewayPrompt(value);
     const messages = value['messages'];
     if (kind === 'anthropic') return Array.isArray(messages) ? anthropic(value, messages) : null;
     if (Array.isArray(messages)) return chat(messages);

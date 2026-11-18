@@ -6,6 +6,7 @@
 // can't read gives null, never an empty list, so a check that needs it says it
 // couldn't measure. A call that got no answer asked for nothing.
 
+import { gatewayAnswers, gatewayOffered, gatewayToolCalls } from './gateway.ts';
 import { geminiAnswers, geminiOffered, geminiToolCalls } from './gemini.ts';
 import { sseEvents, type UpstreamKind } from './usage.ts';
 
@@ -51,6 +52,7 @@ export function readOffered(kind: UpstreamKind, body: string | undefined): strin
     const value: unknown = JSON.parse(body);
     if (!isObject(value)) return null;
     if (kind === 'gemini') return geminiOffered(value['tools']);
+    if (kind === 'ai-gateway') return gatewayOffered(value['tools']);
     const tools = [...list(value['tools']), ...list(value['functions'])];
     return tools.map(toolName).filter((name): name is string => name !== undefined);
   } catch {
@@ -187,6 +189,10 @@ export function readToolCalls(
   if (kind === 'gemini') {
     const answers = geminiAnswers(body, stream, sseEvents);
     return answers === undefined ? null : geminiToolCalls(answers);
+  }
+  if (kind === 'ai-gateway') {
+    const answers = gatewayAnswers(body, stream, sseEvents);
+    return answers === undefined ? null : gatewayToolCalls(answers);
   }
   if (stream) {
     const events = sseEvents(body);

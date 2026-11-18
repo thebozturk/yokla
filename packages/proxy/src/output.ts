@@ -5,6 +5,7 @@
 // an empty text, so the origin of a finding stays unknown rather than wrong.
 // A call that got no answer, or an error, said nothing.
 
+import { gatewayAnswers, gatewayText } from './gateway.ts';
 import { geminiAnswers, geminiText } from './gemini.ts';
 import { sseEvents, type UpstreamKind } from './usage.ts';
 
@@ -107,6 +108,10 @@ export function readOutputText(
   if (kind === 'gemini') {
     const answers = geminiAnswers(body, stream, sseEvents);
     return answers === undefined ? null : geminiText(answers);
+  }
+  if (kind === 'ai-gateway') {
+    const answers = gatewayAnswers(body, stream, sseEvents);
+    return answers === undefined ? null : gatewayText(answers);
   }
   if (stream) {
     const events = sseEvents(body);

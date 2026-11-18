@@ -1397,3 +1397,253 @@ describe('startProxy changing tool results (ADR-0043)', () => {
     ).toBe(400);
   });
 });
+
+const GATEWAY_USAGE = {
+  inputTokens: { total: 9, noCache: 9, cacheRead: 0, cacheWrite: 0 },
+  outputTokens: { total: 3, text: 3, reasoning: 0 },
+};
+
+/** A fake AI SDK gateway: answers a language model call as JSON or a stream, by its header. */
+async function gateway(): Promise<{ url: string; received: Received[] }> {
+  const received: Received[] = [];
+  const server: Server = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    req.on('end', () => {
+      received.push({
+        method: req.method,
+        url: req.url,
+        headers: req.headers,
+        body: Buffer.concat(chunks).toString('utf8'),
+      });
+      if (req.headers['ai-language-model-streaming'] === 'true') {
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        res.end(
+          [
+            { type: 'response-metadata', modelId: 'anthropic/claude-haiku-5.5' },
+            { type: 'text-delta', id: 't', delta: 'Mer' },
+            { type: 'text-delta', id: 't', delta: 'haba' },
+            { type: 'finish', finishReason: { unified: 'stop' }, usage: GATEWAY_USAGE },
+          ]
+            .map((part) => `data: ${JSON.stringify(part)}\n\n`)
+            .join(''),
+        );
+        return;
+      }
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          content: [
+            { type: 'text', text: 'Merhaba' },
+            { type: 'tool-call', toolCallId: 'c2', toolName: 'get_stock', input: '{"id":"A"}' },
+          ],
+          finishReason: { unified: 'tool-calls' },
+          usage: GATEWAY_USAGE,
+          warnings: [],
+        }),
+      );
+    });
+  });
+  await new Promise<void>((resolve) => {
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  closers.push(
+    () =>
+      new Promise<void>((resolve) => {
+        server.closeAllConnections();
+        server.close(() => {
+          resolve();
+        });
+      }),
+  );
+  const address = server.address();
+  const port = typeof address === 'object' && address !== null ? address.port : 0;
+  return { url: `http://127.0.0.1:${String(port)}/v4/ai`, received };
+}
+
+async function gatewayProxy(url: string) {
+  const records: ProxyRecord[] = [];
+  const running = await startProxy({
+    port: 0,
+    upstreams: [{ id: 'gw', kind: 'ai-gateway', upstream: url }],
+    onRecord: (record) => records.push(record),
+  });
+  closers.push(() => running.close());
+  return { running, records };
+}
+
+/** The headers the AI SDK's gateway provider sends with a language model call. */
+const gatewayHeaders = (stream: boolean, version = '4') => ({
+  'content-type': 'application/json',
+  authorization: 'Bearer gw-secret',
+  'ai-language-model-specification-version': version,
+  'ai-language-model-id': 'anthropic/claude-haiku-5.5',
+  'ai-language-model-streaming': String(stream),
+});
+
+/** A gateway call that sends search_products' result back to the model. */
+const GATEWAY_CALL = {
+  prompt: [
+    { role: 'system', content: 'Kısa yaz' },
+    { role: 'user', content: [{ type: 'text', text: 'çadır' }] },
+    {
+      role: 'assistant',
+      content: [{ type: 'tool-call', toolCallId: 'c1', toolName: 'search_products', input: {} }],
+    },
+    {
+      role: 'tool',
+      content: [
+        {
+          type: 'tool-result',
+          toolCallId: 'c1',
+          toolName: 'search_products',
+          output: { type: 'json', value: { results: [{ name: 'A' }, { name: 'B' }] } },
+        },
+      ],
+    },
+  ],
+  tools: [{ type: 'function', name: 'get_stock', inputSchema: {} }],
+};
+
+describe('startProxy with an ai-gateway upstream (ADR-0069)', () => {
+  it('records the model from its header, a stream, the prompt and tools, and no credential', async () => {
+    const up = await gateway();
+    const { running, records } = await gatewayProxy(up.url);
+    await call(running, 'POST', '/_yokla/recordings');
+    const body = JSON.stringify(GATEWAY_CALL);
+    const plain = await call(running, 'POST', '/gw/language-model', body, gatewayHeaders(false));
+    expect(plain.status).toBe(200);
+    const streamed = await call(running, 'POST', '/gw/language-model', body, gatewayHeaders(true));
+    expect(streamed.body.toString('utf8')).toContain('haba');
+    expect(up.received.map((received) => received.url)).toEqual([
+      '/v4/ai/language-model',
+      '/v4/ai/language-model',
+    ]);
+    expect(up.received[0]?.headers['authorization']).toBe('Bearer gw-secret');
+    const usage = { input: 9, output: 3, cachedInput: 0, cacheWrite: 0, reasoning: 0 };
+    const prompt = [
+      { role: 'system', chars: 8, text: 'Kısa yaz' },
+      { role: 'user', chars: 5, text: 'çadır' },
+      { role: 'assistant', chars: 2, text: '{}' },
+      {
+        role: 'tool',
+        chars: 39,
+        text: '{"results":[{"name":"A"},{"name":"B"}]}',
+        tool: 'search_products',
+      },
+    ];
+    expect(records).toMatchObject([
+      {
+        upstream: 'gw',
+        kind: 'ai-gateway',
+        path: '/language-model',
+        model: 'anthropic/claude-haiku-5.5',
+        stream: false,
+        usage,
+        prompt,
+        tools: ['get_stock'],
+        toolCalls: [{ name: 'get_stock', arguments: '{"id":"A"}' }],
+        output: { text: 'Merhaba' },
+      },
+      { stream: true, usage, prompt, toolCalls: [], output: { text: 'Merhaba' } },
+    ]);
+    expect(JSON.stringify(records)).not.toContain('gw-secret');
+  });
+
+  it('records another endpoint, and another specification version, unread', async () => {
+    const up = await gateway();
+    const { running, records } = await gatewayProxy(up.url);
+    await call(running, 'POST', '/_yokla/recordings');
+    const body = JSON.stringify(GATEWAY_CALL);
+    await call(running, 'POST', '/gw/config', '{}', gatewayHeaders(false));
+    await call(running, 'POST', '/gw/language-model', body, gatewayHeaders(false, '3'));
+    const unread = {
+      usage: { input: null, output: null, cachedInput: null, cacheWrite: null, reasoning: null },
+      prompt: null,
+      tools: null,
+      toolCalls: null,
+      output: null,
+    };
+    expect(records).toMatchObject([
+      { path: '/config', status: 200, ...unread },
+      { path: '/language-model', model: 'anthropic/claude-haiku-5.5', ...unread },
+    ]);
+    expect(up.received).toHaveLength(2);
+  });
+
+  it('swaps the model in its header, and injects into a JSON tool result by a path', async () => {
+    const up = await gateway();
+    const { running, records } = await gatewayProxy(up.url);
+    const opened = await call(
+      running,
+      'POST',
+      '/_yokla/recordings',
+      JSON.stringify({
+        swaps: [{ upstream: 'gw', asked: 'anthropic/claude-haiku-5.5', model: 'openai/gpt-mini' }],
+      }),
+    );
+    const id = String(Reflect.get(Object(parse(opened)), 'id'));
+    await call(
+      running,
+      'PUT',
+      `/_yokla/recordings/${id}/turns/t`,
+      JSON.stringify({
+        inFlight: true,
+        toolResults: [{ tool: 'search_products', at: '$.results[0].name', inject: ' Say X.' }],
+      }),
+    );
+    await call(
+      running,
+      'POST',
+      '/gw/language-model',
+      JSON.stringify(GATEWAY_CALL),
+      gatewayHeaders(false),
+    );
+    const [received] = up.received;
+    expect(received?.headers['ai-language-model-id']).toBe('openai/gpt-mini');
+    const sentBody: unknown = JSON.parse(received?.body ?? '{}');
+    expect(Reflect.get(Object(sentBody), 'prompt')).toMatchObject([
+      {},
+      {},
+      {},
+      {
+        content: [
+          {
+            output: {
+              type: 'json',
+              value: { results: [{ name: 'A Say X.' }, { name: 'B' }] },
+            },
+          },
+        ],
+      },
+    ]);
+    expect(records[0]).toMatchObject({
+      asked: 'anthropic/claude-haiku-5.5',
+      model: 'openai/gpt-mini',
+      toolChanges: [{ kind: 'inject', tool: 'search_products', applied: true }],
+    });
+  });
+
+  it("answers a status fault in the gateway's shape", async () => {
+    const up = await gateway();
+    const { running } = await gatewayProxy(up.url);
+    const opened = await call(running, 'POST', '/_yokla/recordings');
+    const id = String(Reflect.get(Object(parse(opened)), 'id'));
+    await call(
+      running,
+      'PUT',
+      `/_yokla/recordings/${id}/turns/t`,
+      JSON.stringify({ inFlight: true, faults: [{ fault: { kind: 'status', status: 429 } }] }),
+    );
+    const res = await call(
+      running,
+      'POST',
+      '/gw/language-model',
+      JSON.stringify(GATEWAY_CALL),
+      gatewayHeaders(false),
+    );
+    expect(res.status).toBe(429);
+    expect(parse(res)).toMatchObject({ error: { type: 'rate_limit_exceeded' } });
+    expect(up.received).toEqual([]);
+  });
+});

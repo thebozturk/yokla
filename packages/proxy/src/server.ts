@@ -45,6 +45,7 @@ import {
   nextFault,
   type ArmedTurn,
 } from './faults.ts';
+import { GATEWAY_MODEL_HEADER, gatewayFacts } from './gateway.ts';
 import { geminiFacts } from './gemini.ts';
 import { readPrompt } from './prompts.ts';
 import { readOutputText } from './output.ts';
@@ -240,8 +241,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * The call the proxy makes of an app's call within a recording: its tool
  * results changed by the turn's injections and the run's reversals (ADR-0043),
  * and its model's name changed by the first swap of the called upstream for
- * the model it asks for, in the body or a Gemini call's path, and sent to the
- * swap's upstream (ADR-0042). Undefined when nothing applies.
+ * the model it asks for, in the body, a Gemini call's path or a gateway
+ * call's header (ADR-0069), and sent to the swap's upstream (ADR-0042).
+ * Undefined when nothing applies.
  */
 function rewriteRequest(
   swaps: readonly ModelSwap[],
@@ -271,19 +273,30 @@ function rewriteRequest(
     value = undefined;
   }
   const json = isRecord(value) ? value : undefined;
-  const asked = called.kind === 'gemini' ? geminiFacts(rest).model : json?.['model'];
+  // Gemini names the model in the path, a gateway call in a header; others in the body.
+  const outside = called.kind === 'gemini' || called.kind === 'ai-gateway';
+  const asked =
+    called.kind === 'gemini'
+      ? geminiFacts(rest).model
+      : called.kind === 'ai-gateway'
+        ? gatewayFacts(rest, headers).model
+        : json?.['model'];
   const swap =
-    typeof asked === 'string' && (called.kind === 'gemini' || json !== undefined)
+    typeof asked === 'string' && (outside || json !== undefined)
       ? swaps.find((s) => s.upstream === called.id && s.asked === asked)
       : undefined;
   const toolChanges = json === undefined ? [] : changeToolResults(called.kind, json, changes);
   if (swap === undefined && toolChanges.length === 0) return undefined;
-  const renamed = swap !== undefined && called.kind !== 'gemini';
+  const renamed = swap !== undefined && !outside;
   if (renamed && json !== undefined) json['model'] = swap.model;
   const unchanged = !renamed && !toolChanges.some((change) => change.applied);
   // A changed body goes uncompressed, as a fault's does (ADR-0013); the app's length goes,
   // and Node sets the new one, since the body is given whole to end().
   const { 'content-encoding': _encoding, 'content-length': _length, ...kept } = endToEnd(headers);
+  const sentHeaders = unchanged ? endToEnd(headers) : kept;
+  if (swap !== undefined && called.kind === 'ai-gateway') {
+    sentHeaders[GATEWAY_MODEL_HEADER] = swap.model;
+  }
   return {
     asked: swap === undefined || typeof asked !== 'string' ? undefined : asked,
     upstream: swap === undefined ? called : (upstreams.get(swap.to ?? called.id) ?? called),
@@ -292,7 +305,7 @@ function rewriteRequest(
         ? rest.replace(`/models/${asked}:`, `/models/${swap.model}:`)
         : rest,
     body: unchanged ? body : Buffer.from(JSON.stringify(json), 'utf8'),
-    headers: unchanged ? endToEnd(headers) : kept,
+    headers: sentHeaders,
     encoding: unchanged ? headers['content-encoding'] : undefined,
     toolChanges,
   };
@@ -638,8 +651,17 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
     const base = new URL(upstream.upstream);
     const startedAt = new Date();
     const started = performance.now();
-    // Gemini names the model and the streaming method in the path (ADR-0032).
-    const facts = upstream.kind === 'gemini' ? geminiFacts(rest) : requestFacts(body);
+    // Gemini names the model and the streaming method in the path (ADR-0032), a
+    // gateway call in its headers (ADR-0069), as sent after a swap.
+    const sentHeaders = rewritten?.headers ?? request.headers;
+    const facts =
+      upstream.kind === 'gemini'
+        ? geminiFacts(rest)
+        : upstream.kind === 'ai-gateway'
+          ? gatewayFacts(rest, sentHeaders)
+          : requestFacts(body);
+    // A gateway call of another endpoint or version is recorded, its contents unread.
+    const unread = 'readable' in facts && !facts.readable;
     const captured: Buffer[] = [];
     let capturedBytes = 0;
     let overflow = false;
@@ -675,14 +697,16 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
       const read =
         extra.usage !== undefined
           ? { usage: extra.usage, model: null }
-          : raw === undefined
+          : raw === undefined || unread
             ? { usage: UNMEASURED, model: null }
             : readUsage(upstream.kind, raw, stream);
       const path = callPath;
       const sent = decoded(body, sentEncoding);
-      const asked = readToolCalls(upstream.kind, raw, stream, status);
+      const asked = unread ? null : readToolCalls(upstream.kind, raw, stream, status);
       // What the app got: the changed answer, when a fault changed it (ADR-0033).
-      const output = readOutputText(upstream.kind, extra.answered ?? raw, stream, status);
+      const output = unread
+        ? null
+        : readOutputText(upstream.kind, extra.answered ?? raw, stream, status);
       const record: ProxyRecord = {
         id: randomUUID(),
         upstream: upstream.id,
@@ -703,9 +727,9 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
         ...(extra.forwarded === false ? { forwarded: false } : {}),
         ...(error === undefined ? {} : { error }),
         // What the call sent to the model, read only for an open recording (ADR-0015).
-        prompt: readPrompt(upstream.kind, path, sent),
+        prompt: unread ? null : readPrompt(upstream.kind, path, sent),
         // The tools it offered, and the calls the model asked for (ADR-0025).
-        tools: readOffered(upstream.kind, sent),
+        tools: unread ? null : readOffered(upstream.kind, sent),
         toolCalls:
           asked === null
             ? null

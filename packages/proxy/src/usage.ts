@@ -1,12 +1,14 @@
 // Reads the model and token usage from a provider response body, JSON or a
 // server-sent event stream, for OpenAI-compatible and Anthropic APIs
-// (ADR-0012), and Gemini's native API (ADR-0032). A token kind the provider
+// (ADR-0012), Gemini's native API (ADR-0032) and the AI SDK gateway
+// protocol (ADR-0069). A token kind the provider
 // didn't report is null, never 0.
 
 import type { ProxyUsage } from '@yokla/core';
+import { gatewayAnswers, gatewayUsage } from './gateway.ts';
 import { geminiAnswers, geminiUsage } from './gemini.ts';
 
-export type UpstreamKind = 'openai-compatible' | 'anthropic' | 'gemini';
+export type UpstreamKind = 'openai-compatible' | 'anthropic' | 'gemini' | 'ai-gateway';
 
 export const UNMEASURED: ProxyUsage = {
   input: null,
@@ -177,6 +179,11 @@ export function readUsage(kind: UpstreamKind, body: string, stream: boolean): Re
   if (kind === 'gemini') {
     const answers = geminiAnswers(body, stream, sseEvents);
     const read = answers === undefined ? undefined : geminiUsage(answers);
+    return { usage: read?.usage ?? UNMEASURED, model: read?.model ?? null };
+  }
+  if (kind === 'ai-gateway') {
+    const answers = gatewayAnswers(body, stream, sseEvents);
+    const read = answers === undefined ? undefined : gatewayUsage(answers);
     return { usage: read?.usage ?? UNMEASURED, model: read?.model ?? null };
   }
   if (stream) return fromStream(kind, sseEvents(body));

@@ -354,9 +354,9 @@ const Target = z.discriminatedUnion('adapter', [HttpTarget, WebSocketTarget]);
 
 const Upstream = z.strictObject({
   id: Id.meta({ description: 'The app reaches this upstream at http://127.0.0.1:<port>/<id>.' }),
-  kind: z.enum(['openai-compatible', 'anthropic', 'gemini']).meta({
+  kind: z.enum(['openai-compatible', 'anthropic', 'gemini', 'ai-gateway']).meta({
     description:
-      "The provider's API: OpenAI-compatible, Anthropic's Messages, or Gemini's native API on AI Studio or Vertex AI (ADR-0032).",
+      "The provider's API: OpenAI-compatible, Anthropic's Messages, Gemini's native API on AI Studio or Vertex AI (ADR-0032), or the AI SDK's gateway protocol (ADR-0069).",
   }),
   upstream: z
     .url({ protocol: /^https?$/u })
