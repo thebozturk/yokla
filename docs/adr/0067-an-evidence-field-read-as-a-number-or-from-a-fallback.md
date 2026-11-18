@@ -1,6 +1,6 @@
 # 0067. An evidence field read as a number, or from a fallback
 
-Status: Proposed · Date: 2026-11-18
+Status: Accepted · Date: 2026-11-18
 
 ## Context
 
