@@ -79,6 +79,7 @@ old one.
 | [0064](0064-a-cheaper-follow-up-says-cheaper-than-what.md) | A cheaper follow-up says cheaper than what | Accepted |
 | [0065](0065-data-from-outside-the-repository.md) | Data from outside the repository, and a comparison without the contract | Accepted; amended by 0066 |
 | [0066](0066-a-large-catalog-read-whole.md) | A large catalog read whole, and a contract that is a schema | Accepted |
+| [0067](0067-an-evidence-field-read-as-a-number-or-from-a-fallback.md) | An evidence field read as a number, or from a fallback | Proposed |
 
 ## Template
 
