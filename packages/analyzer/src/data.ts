@@ -45,6 +45,18 @@ function csvFields(line: string): string[] {
   return fields;
 }
 
+/**
+ * Whether a file holds data rows, as the inventory sorts files: JSON Lines,
+ * CSV, or a JSON array of objects (ADR-0065).
+ */
+export function isDataText(path: string, text: string): boolean {
+  const name = path.toLowerCase();
+  if (name.endsWith('.jsonl') || name.endsWith('.csv')) return true;
+  if (!name.endsWith('.json')) return false;
+  const value = parsed(text);
+  return Array.isArray(value) && value.length > 0 && value.every(isRow);
+}
+
 /** The rows of a data file's text, by its extension. */
 export function rowsOf(path: string, text: string): DataRow[] {
   const lines = () =>
@@ -88,4 +100,18 @@ export function readDataFiles(
       path: pathFor(file.path),
       rows: rowsOf(file.path, readFileSync(join(dir, file.path), 'utf8')),
     }));
+}
+
+/**
+ * Data files given from outside the repository (ADR-0065), read as the
+ * inventory's are. `pathFor` writes each one's path as the profile reads it.
+ */
+export function readGivenDataFiles(
+  paths: readonly string[],
+  pathFor: (path: string) => string,
+): DataFile[] {
+  return paths.map((path) => ({
+    path: pathFor(path),
+    rows: rowsOf(path, readFileSync(path, 'utf8')),
+  }));
 }

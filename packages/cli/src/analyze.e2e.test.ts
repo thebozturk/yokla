@@ -12,9 +12,17 @@
 // is dropped. A second analysis answers from the cache. At no model cost.
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { Analysis, toJson, unapprovedEntries } from '@yokla/core';
 import { installNetworkGuard, type NetworkGuard } from '@yokla/runtime/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -83,6 +91,12 @@ async function cli(...args: string[]): Promise<Ran> {
 // A copy whose contract requires a field the answers lack (ADR-0057).
 const staleRepo = join(work, 'stale-shop');
 let stale: Ran | undefined;
+
+// A copy without its data, which is given from beside it (ADR-0065).
+const outside = join(work, 'outside');
+const outsideRepo = join(outside, 'demo-shop');
+const outsideProposal = join(outside, 'yokla.profile.proposed.yaml');
+let fromOutside: Ran | undefined;
 
 const analyzeIn = (dir: string, out: string, json: string, ...more: string[]) =>
   cli(
@@ -155,6 +169,24 @@ beforeAll(async () => {
     join(staleRepo, 'yokla.profile.proposed.yaml'),
     join(work, 'stale.json'),
     '--force',
+  );
+  const repoData = join(repo, 'data');
+  cpSync(repo, outsideRepo, {
+    recursive: true,
+    filter: (path) => path !== repoData && !path.startsWith(`${repoData}${sep}`),
+  });
+  mkdirSync(join(outside, 'data'));
+  for (const file of ['catalog.jsonl', 'faq.jsonl']) {
+    cpSync(join(repoData, file), join(outside, 'data', file));
+  }
+  fromOutside = await analyzeIn(
+    outsideRepo,
+    outsideProposal,
+    join(work, 'outside.json'),
+    '--data',
+    join(outside, 'data', 'catalog.jsonl'),
+    '--data',
+    join(outside, 'data', 'faq.jsonl'),
   );
 
   const configText = (maxTokens: number) =>
@@ -350,6 +382,30 @@ const cutReport = () => Analysis.parse(JSON.parse(readFileSync(join(work, 'cut.j
 
 const modelReport = () =>
   Analysis.parse(JSON.parse(readFileSync(join(work, 'model.json'), 'utf8')));
+
+describe('data from outside the repository, and the comparison without the contract (ADR-0065)', () => {
+  it('reads the data given from outside the repository as its own', () => {
+    expect(fromOutside?.code, fromOutside?.output).toBe(0);
+    expect(existsSync(join(outsideRepo, 'data'))).toBe(false);
+    expect(fromOutside?.output).toMatch(/^data given: .*catalog\.jsonl, .*faq\.jsonl$/mu);
+    expect(readFileSync(outsideProposal, 'utf8')).toBe(firstText);
+    expect(fromOutside?.output).toContain('precision 100.0%, recall 71.0%');
+  });
+
+  it('gives the precision and the recall without the 19 entries of the contract too', () => {
+    expect(first?.output).toContain(
+      '  without target.response.schema: precision 100.0%, recall 60.0%',
+    );
+    expect(report().comparison?.withoutSchema).toEqual({
+      same: 30,
+      different: 0,
+      new: 0,
+      missed: 20,
+      precision: 1,
+      recall: 0.6,
+    });
+  });
+});
 
 describe('the response contract from a contract file (ADR-0057, ADR-0058)', () => {
   it('reads openapi.json at the answer, verified by every probe answer', () => {

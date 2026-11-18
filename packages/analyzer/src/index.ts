@@ -13,7 +13,7 @@ import type {
   ProbedRows,
 } from '@yokla/core';
 import { contractStep, type ContractReport } from './contract.ts';
-import { readDataFiles } from './data.ts';
+import { readDataFiles, readGivenDataFiles } from './data.ts';
 import { inventory, type Inventory } from './inventory.ts';
 import {
   planModelStep,
@@ -34,7 +34,7 @@ import {
 import { sessionMode } from '@yokla/core';
 
 export { inventory, MAX_FILE_BYTES, type Inventory, type InventoryFile } from './inventory.ts';
-export { MAX_ROWS, readDataFiles, rowsOf } from './data.ts';
+export { isDataText, MAX_ROWS, readDataFiles, readGivenDataFiles, rowsOf } from './data.ts';
 export { ProbeError, type Probed, type ProbeTarget, type SentProbe } from './probe.ts';
 export { contractStep, type ContractReport, type ContractStep } from './contract.ts';
 export {
@@ -66,6 +66,8 @@ export interface AnalyzeOptions {
   /** The greeting per language; the probes go in the profile's first language. */
   readonly greetings: Readonly<Record<string, string>>;
   readonly maxFiles: number;
+  /** Data files from outside the repository, as absolute paths (ADR-0065). */
+  readonly data?: readonly string[];
   readonly domainPacks: readonly DomainPack[];
   readonly languages: readonly LanguagePack[];
   /** The model step (ADR-0049); without it, the analysis uses no model. */
@@ -107,14 +109,17 @@ function requestPath(url: string): string {
   }
 }
 
-/** A data file's path as the proposed profile reads it: relative to its folder. */
-function pathFrom(outDir: string, dir: string): (inRepo: string) => string {
-  return (inRepo) => {
-    const path = relative(outDir, `${dir}${sep}${inRepo.split('/').join(sep)}`)
-      .split(sep)
-      .join('/');
+/** An absolute path as the proposed profile reads it: relative to its folder. */
+function fromOut(outDir: string): (absolute: string) => string {
+  return (absolute) => {
+    const path = relative(outDir, absolute).split(sep).join('/');
     return path.startsWith('.') ? path : `./${path}`;
   };
+}
+
+/** A data file's path as the proposed profile reads it: relative to its folder. */
+function pathFrom(outDir: string, dir: string): (inRepo: string) => string {
+  return (inRepo) => fromOut(outDir)(`${dir}${sep}${inRepo.split('/').join(sep)}`);
 }
 
 interface Prepared {
@@ -130,11 +135,11 @@ interface Prepared {
 function prepare(options: AnalyzeOptions): Prepared {
   const listed = inventory(options.dir, options.maxFiles);
   options.onInventory?.(listed);
-  const files: DataFile[] = readDataFiles(
-    options.dir,
-    listed.files,
-    pathFrom(options.outDir, options.dir),
-  );
+  const files: DataFile[] = [
+    ...readDataFiles(options.dir, listed.files, pathFrom(options.outDir, options.dir)),
+    // Beside the repository's own data, the files given from outside it (ADR-0065).
+    ...readGivenDataFiles(options.data ?? [], fromOut(options.outDir)),
+  ];
   const { person } = options;
   const entries: ProposedEntry[] = [];
   let probedRows: ProbedRows | undefined;

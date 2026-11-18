@@ -1,11 +1,17 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { DataAnalyzer, DomainPack } from '@yokla/core';
+import type { DataAnalyzer, DataFile, DomainPack, JsonValue } from '@yokla/core';
 import { stubLanguagePack } from '@yokla/core/testing';
 import { startTestServer, type TestServer, type TestServerOptions } from '@yokla/runtime/testing';
 import { afterEach, describe, expect, it } from 'vitest';
-import { analyzeTarget, personPointers, type PersonInputs } from './index.ts';
+import {
+  analysisReport,
+  analyzeTarget,
+  isDataText,
+  personPointers,
+  type PersonInputs,
+} from './index.ts';
 import { probeEntries } from './propose.ts';
 
 type OnHttp = NonNullable<TestServerOptions['onHttp']>;
@@ -157,5 +163,113 @@ describe('probeEntries (ADR-0047)', () => {
       ['/target/response/evidence/products/fields/id', 'id'],
       ['/target/response/evidence/products/fields/name', 'ad'],
     ]);
+  });
+});
+
+describe('data from outside the repository (ADR-0065)', () => {
+  it("gives the pack a file from outside --dir beside the repository's, its path from the proposal", async () => {
+    const { url } = await target();
+    const base = mkdtempSync(join(tmpdir(), 'yokla-analyze-'));
+    mkdirSync(join(base, 'repo', 'data'), { recursive: true });
+    writeFileSync(join(base, 'repo', 'data', 'names.jsonl'), '{"id":"A"}\n');
+    mkdirSync(join(base, 'export'));
+    writeFileSync(join(base, 'export', 'catalog.csv'), 'id,price\nB,10\nC,20\n');
+    const seen: DataFile[][] = [];
+    const recording: DomainPack = {
+      ...pack([]),
+      analyzer: {
+        analyze: (files) => {
+          seen.push([...files]);
+          return { entries: [] };
+        },
+      },
+    };
+    await analyzeTarget({
+      dir: join(base, 'repo'),
+      outDir: base,
+      person: person(url),
+      greetings: { en: 'Hello!' },
+      probe: { env: {}, timeoutMs: 5_000 },
+      maxFiles: 100,
+      data: [join(base, 'export', 'catalog.csv')],
+      domainPacks: [recording],
+      languages: [stubLanguagePack('en')],
+    });
+    expect(seen[0]).toEqual([
+      { path: './repo/data/names.jsonl', rows: [{ id: 'A' }] },
+      {
+        path: './export/catalog.csv',
+        rows: [
+          { id: 'B', price: '10' },
+          { id: 'C', price: '20' },
+        ],
+      },
+    ]);
+  });
+
+  it.each([
+    ['catalog.jsonl', '{"id":"A"}', true],
+    ['CATALOG.JSONL', '{"id":"A"}', true],
+    ['catalog.csv', 'id\nA', true],
+    ['catalog.json', '[{"id":"A"}]', true],
+    ['catalog.json', '{"id":"A"}', false],
+    ['catalog.json', '[]', false],
+    ['catalog.json', '[1, 2]', false],
+    ['catalog.json', 'not json', false],
+    ['catalog.txt', '{"id":"A"}', false],
+  ])('reads %s holding %s as data: %s', (path, text, data) => {
+    expect(isDataText(path, text)).toBe(data);
+  });
+});
+
+/** The analysis report's comparison of two documents (ADR-0065). */
+const compared = (proposal: JsonValue, reference: JsonValue) =>
+  analysisReport({
+    version: '0.0.0',
+    inventory: { files: [], skipped: 0, capped: false },
+    probes: [],
+    entries: [],
+    proposal,
+    reference: { path: 'yokla.profile.yaml', document: reference },
+    exclude: [],
+  }).comparison;
+const schema = { type: 'object', required: ['answer'] };
+const withText = (more: Record<string, JsonValue> = {}) => ({
+  target: { response: { text: '$.answer', ...more } },
+});
+
+describe('the comparison without the response contract (ADR-0065)', () => {
+  it('counts the proposal again without a schema only it has', () => {
+    const result = compared(withText({ schema }), withText());
+    expect(result).toMatchObject({ precision: 1 / 3, recall: 1 });
+    expect(result?.withoutSchema).toEqual({
+      same: 1,
+      different: 0,
+      new: 0,
+      missed: 0,
+      precision: 1,
+      recall: 1,
+    });
+  });
+
+  it('leaves the schema out of both sides, whichever holds it', () => {
+    expect(compared(withText(), withText({ schema }))?.withoutSchema).toMatchObject({
+      missed: 0,
+      recall: 1,
+    });
+    const other = { type: 'object', required: ['text'] };
+    expect(
+      compared(withText({ schema }), withText({ schema: other }))?.withoutSchema,
+    ).toMatchObject({
+      same: 1,
+      different: 0,
+      precision: 1,
+    });
+  });
+
+  it('gives no second count when neither side has a schema', () => {
+    const result = compared(withText(), { target: { response: { text: '$.text' } } });
+    expect(result).toBeDefined();
+    expect(result).not.toHaveProperty('withoutSchema');
   });
 });

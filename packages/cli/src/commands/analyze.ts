@@ -5,12 +5,13 @@
 // Exit codes: 0 written; 2 a wrong option, a probe that failed, or a file
 // that exists without --force.
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import {
   analysisReport,
   analyzeTarget,
+  isDataText,
   personPointers,
   planAnalysis,
   type AnalyzeOptions,
@@ -57,6 +58,8 @@ Options:
                         <dir>/yokla.profile.yaml, when present)
   --json <file>         also write the analysis report
   --max-files <n>       list at most this many files (default: 5000)
+  --data <file>         a data file from outside the repository, such as a catalog
+                        export; repeatable (ADR-0065)
   --force               overwrite the proposal
 
 With models.analyzer in the configuration, a model also reads the docs,
@@ -81,6 +84,7 @@ const OPTIONS = {
   profile: { type: 'string' },
   json: { type: 'string' },
   'max-files': { type: 'string' },
+  data: { type: 'string', multiple: true },
   force: { type: 'boolean' },
   config: { type: 'string' },
   'max-cost': { type: 'string' },
@@ -155,6 +159,19 @@ export async function analyzeCommand(
     }
     const dir = resolve(cwd, values.dir ?? '.');
     if (!existsSync(dir)) throw new InitError(`--dir ${values.dir ?? '.'} doesn't exist`);
+    // Data from outside the repository, checked before anything is sent (ADR-0065).
+    const data = (values.data ?? []).map((option) => {
+      const path = resolve(cwd, option);
+      if (!existsSync(path) || !statSync(path).isFile()) {
+        throw new InitError(`--data ${option} doesn't exist`);
+      }
+      if (!isDataText(path, readFileSync(path, 'utf8'))) {
+        throw new InitError(
+          `--data ${option} is not a data file: JSON Lines, CSV, or a JSON array of objects`,
+        );
+      }
+      return path;
+    });
     const out = resolve(cwd, values.out ?? join(dir, 'yokla.profile.proposed.yaml'));
     const estimateOnly = values.estimate === true;
     if (!estimateOnly && existsSync(out) && values.force !== true) {
@@ -204,6 +221,7 @@ export async function analyzeCommand(
         ...(values['session-url'] === undefined ? {} : { sessionUrl: values['session-url'] }),
       },
       maxFiles,
+      data,
       domainPacks: DOMAIN_PACKS,
       languages: LANGUAGE_PACKS,
       onInventory: (listed) => {
@@ -212,6 +230,9 @@ export async function analyzeCommand(
         io.out(
           `inventory of ${shown(cwd, dir)}: ${String(listed.files.length)} files (${[...counts].map(([kind, total]) => `${kind} ${String(total)}`).join(', ')}), ${String(listed.skipped)} left out${listed.capped ? `; stopped at --max-files ${String(maxFiles)}` : ''}`,
         );
+        if (data.length > 0) {
+          io.out(`data given: ${data.map((path) => shown(cwd, path)).join(', ')}`);
+        }
       },
       onProbes: (messages: readonly string[]) => {
         io.out(
@@ -312,6 +333,12 @@ export async function analyzeCommand(
         `  same ${String(comparison.same.length)}, different ${String(comparison.different.length)}, new ${String(comparison.new.length)}, missed ${String(comparison.missed.length)}`,
       );
       io.out(`  precision ${percent(comparison.precision)}, recall ${percent(comparison.recall)}`);
+      const { withoutSchema } = comparison;
+      if (withoutSchema !== undefined) {
+        io.out(
+          `  without target.response.schema: precision ${percent(withoutSchema.precision)}, recall ${percent(withoutSchema.recall)}`,
+        );
+      }
       for (const entry of comparison.different) io.out(`  different: ${entry.pointer}`);
       for (const entry of comparison.new) io.out(`  new: ${entry.pointer}`);
       for (const entry of comparison.missed) io.out(`  missed: ${entry.pointer}`);

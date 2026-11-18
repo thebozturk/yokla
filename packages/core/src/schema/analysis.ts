@@ -97,6 +97,20 @@ export const Analysis = z
         missed: z.array(Entry),
         precision: z.number().min(0).max(1).nullable(),
         recall: z.number().min(0).max(1).nullable(),
+        /**
+         * The same comparison without target.response.schema, whose leaves
+         * count one by one; absent when neither side has one (ADR-0065).
+         */
+        withoutSchema: z
+          .object({
+            same: z.int().min(0),
+            different: z.int().min(0),
+            new: z.int().min(0),
+            missed: z.int().min(0),
+            precision: z.number().min(0).max(1).nullable(),
+            recall: z.number().min(0).max(1).nullable(),
+          })
+          .optional(),
       })
       .optional(),
   })

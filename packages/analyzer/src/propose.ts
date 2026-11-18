@@ -226,6 +226,16 @@ export function analysisReport(input: {
     input.reference === undefined
       ? undefined
       : compareProfiles(input.proposal, input.reference.document, input.exclude);
+  // A contract counts leaf by leaf, so the comparison is also given without it (ADR-0065).
+  const withoutSchema =
+    input.reference === undefined
+      ? undefined
+      : compareProfiles(input.proposal, input.reference.document, [
+          ...input.exclude,
+          RESPONSE_SCHEMA,
+        ]);
+  const sizeOf = (c: NonNullable<typeof comparison>) =>
+    c.same.length + c.different.length + c.new.length + c.missed.length;
   return {
     schema: ANALYSIS_SCHEMA_ID,
     yokla: { version: input.version },
@@ -273,10 +283,26 @@ export function analysisReport(input: {
             missed: [...comparison.missed],
             precision: comparison.precision,
             recall: comparison.recall,
+            // Neither side has a schema when leaving it out changes nothing.
+            ...(withoutSchema === undefined || sizeOf(withoutSchema) === sizeOf(comparison)
+              ? {}
+              : {
+                  withoutSchema: {
+                    same: withoutSchema.same.length,
+                    different: withoutSchema.different.length,
+                    new: withoutSchema.new.length,
+                    missed: withoutSchema.missed.length,
+                    precision: withoutSchema.precision,
+                    recall: withoutSchema.recall,
+                  },
+                }),
           },
         }),
   };
 }
+
+/** The response contract's pointer: its leaves count one by one (ADR-0065). */
+export const RESPONSE_SCHEMA = '/target/response/schema';
 
 /** A profile's text as a document: its entries as written, without the schema's defaults. */
 export function profileDocument(text: string): JsonValue {

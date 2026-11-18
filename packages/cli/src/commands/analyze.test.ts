@@ -105,6 +105,29 @@ describe('yokla analyze options (ADR-0047)', () => {
     );
   });
 
+  it('refuses --data that is missing or not data, before it sends anything (ADR-0065)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'yokla-analyze-'));
+    writeFileSync(join(dir, 'notes.md'), '# notes\n');
+    const refused = async (data: string) => {
+      const output = io();
+      const code = await analyzeCommand(
+        ['--url', 'http://127.0.0.1:1/chat', '--dir', dir, '--data', data],
+        output,
+        '0.0.0',
+        dir,
+        {},
+      );
+      return [code, output.lines.join('\n')];
+    };
+    expect(await refused('missing.jsonl')).toEqual([2, "--data missing.jsonl doesn't exist"]);
+    expect(await refused(dir)).toEqual([2, `--data ${dir} doesn't exist`]);
+    const [code, message] = await refused('notes.md');
+    expect(code).toBe(2);
+    expect(message).toContain(
+      '--data notes.md is not a data file: JSON Lines, CSV, or a JSON array of objects',
+    );
+  });
+
   it('estimates without a model too, and sends nothing (ADR-0049)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'yokla-analyze-'));
     const output = io();
