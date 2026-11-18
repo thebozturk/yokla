@@ -1,6 +1,6 @@
 # 0069. The model proxy reads an AI SDK gateway
 
-Status: Proposed · Date: 2026-11-18
+Status: Accepted · Date: 2026-11-18
 
 ## Context
 
