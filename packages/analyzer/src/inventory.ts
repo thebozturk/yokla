@@ -4,7 +4,7 @@
 
 import { closeSync, lstatSync, openSync, readdirSync, readFileSync, readSync } from 'node:fs';
 import { basename, extname, join, relative, sep } from 'node:path';
-import type { InventoryKind } from '@yokla/core';
+import { namesJsonSchemaDialect, type InventoryKind } from '@yokla/core';
 import { parse } from 'yaml';
 
 export interface InventoryFile {
@@ -120,7 +120,8 @@ function kindOf(path: string, folders: readonly string[], top: unknown): Invento
   if (name.startsWith('readme') || DOC_EXTENSIONS.has(extension) || folders.includes('docs')) {
     return 'doc';
   }
-  if (isObject(top) && ('openapi' in top || 'swagger' in top || '$schema' in top)) {
+  // A file that names the schema it follows is not a schema (ADR-0066).
+  if (isObject(top) && ('openapi' in top || 'swagger' in top || namesJsonSchemaDialect(top))) {
     return 'contract';
   }
   if (extension === '.jsonl' || extension === '.csv') return 'data';

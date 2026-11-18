@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startTestServer } from '@yokla/runtime/testing';
 import { describe, expect, it } from 'vitest';
+import { MAX_ROWS } from '@yokla/analyzer';
 import { analyzeCommand } from './analyze.ts';
 import { runCommand } from './run.ts';
 
@@ -125,6 +126,27 @@ describe('yokla analyze options (ADR-0047)', () => {
     expect(code).toBe(2);
     expect(message).toContain(
       '--data notes.md is not a data file: JSON Lines, CSV, or a JSON array of objects',
+    );
+  });
+
+  it('says, before sending anything, which data file it read only to its first rows (ADR-0066)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'yokla-analyze-'));
+    const big = join(dir, 'big.jsonl');
+    writeFileSync(
+      big,
+      Array.from({ length: MAX_ROWS + 1 }, (_, i) => `{"id":"P${String(i)}"}`).join('\n'),
+    );
+    const output = io();
+    const code = await analyzeCommand(
+      ['--url', 'http://127.0.0.1:1/chat', '--dir', dir, '--data', big, '--estimate'],
+      output,
+      '0.0.0',
+      dir,
+      {},
+    );
+    expect(code, output.lines.join('\n')).toBe(0);
+    expect(output.lines).toContain(
+      `data read to its first ${String(MAX_ROWS)} rows: ./big.jsonl; a product the probes show past them can't be matched`,
     );
   });
 

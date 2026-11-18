@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { schemaProblems } from '../jsonschema/jsonschema.ts';
-import { contractAt, contractKind, readJsonSchema, readOpenApi } from './contract.ts';
+import {
+  contractAt,
+  contractKind,
+  namesJsonSchemaDialect,
+  readJsonSchema,
+  readOpenApi,
+} from './contract.ts';
 
 const answer = {
   type: 'object',
@@ -69,6 +75,18 @@ describe('contract files (ADR-0057)', () => {
     expect(contractKind({ swagger: '2.0' })).toBeUndefined();
     expect(contractKind({ openapi: '2.0', $schema: 'x' })).toBeUndefined();
     expect(contractKind(['openapi'])).toBeUndefined();
+  });
+
+  it.each([
+    ['https://json-schema.org/draft/2020-12/schema', true],
+    ['http://json-schema.org/draft-07/schema#', true],
+    ['https://json.schemastore.org/package', false],
+    ['https://example.com/json-schema.org/schema', false],
+    ['json-schema.org', false],
+    [7, false],
+  ])('takes a $schema of %j as a JSON Schema dialect: %s (ADR-0066)', ($schema, dialect) => {
+    expect(namesJsonSchemaDialect({ $schema })).toBe(dialect);
+    expect(contractKind({ $schema, type: 'object' })).toBe(dialect ? 'json-schema' : undefined);
   });
 
   it("reads the request's operation, its lowest 2xx JSON response, after the server's path", () => {

@@ -281,6 +281,7 @@ export {
 export {
   contractAt,
   contractKind,
+  namesJsonSchemaDialect,
   readJsonSchema,
   readOpenApi,
   type ContractRead,

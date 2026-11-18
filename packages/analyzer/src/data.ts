@@ -1,14 +1,20 @@
 // The inventory's data files, parsed into rows for the packs (ADR-0047):
 // JSON Lines, a JSON array of objects, or CSV with a header line. A file is
-// read up to its first MAX_ROWS rows; a line that isn't an object is left out.
+// read up to its first MAX_ROWS rows, and said to be cut past that
+// (ADR-0066); a line that isn't an object is left out.
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { toJson, type DataFile, type DataRow, type JsonValue } from '@yokla/core';
 import type { InventoryFile } from './inventory.ts';
 
-/** Rows read from one data file at most. */
-export const MAX_ROWS = 10_000;
+/** Rows read from one data file at most (ADR-0066). */
+export const MAX_ROWS = 1_000_000;
+
+/** A data file as the analyzer read it: cut when it holds more than MAX_ROWS rows. */
+export interface ReadDataFile extends DataFile {
+  readonly cut: boolean;
+}
 
 function isRow(value: JsonValue): value is { [key: string]: JsonValue } {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -57,32 +63,40 @@ export function isDataText(path: string, text: string): boolean {
   return Array.isArray(value) && value.length > 0 && value.every(isRow);
 }
 
-/** The rows of a data file's text, by its extension. */
-export function rowsOf(path: string, text: string): DataRow[] {
-  const lines = () =>
-    text
-      .split(/\r?\n/u)
-      .filter((line) => line.trim() !== '')
-      .slice(0, MAX_ROWS + 1);
-  if (path.endsWith('.jsonl')) {
-    return lines()
-      .slice(0, MAX_ROWS)
-      .flatMap((line) => {
-        const value = parsed(line);
-        return value !== undefined && isRow(value) ? [value] : [];
-      });
+/** The rows of a data file's text, by its extension, up to `max`, and whether it held more. */
+export function readRows(
+  path: string,
+  text: string,
+  max: number = MAX_ROWS,
+): { rows: DataRow[]; cut: boolean } {
+  const name = path.toLowerCase();
+  const lines = () => text.split(/\r?\n/u).filter((line) => line.trim() !== '');
+  if (name.endsWith('.jsonl')) {
+    const all = lines();
+    const rows = all.slice(0, max).flatMap((line) => {
+      const value = parsed(line);
+      return value !== undefined && isRow(value) ? [value] : [];
+    });
+    return { rows, cut: all.length > max };
   }
-  if (path.endsWith('.csv')) {
+  if (name.endsWith('.csv')) {
     const [header, ...body] = lines();
-    if (header === undefined) return [];
+    if (header === undefined) return { rows: [], cut: false };
     const keys = csvFields(header);
-    return body.map((line) => {
+    const rows = body.slice(0, max).map((line) => {
       const values = csvFields(line);
       return Object.fromEntries(keys.map((key, index) => [key, values[index] ?? '']));
     });
+    return { rows, cut: body.length > max };
   }
   const value = parsed(text);
-  return Array.isArray(value) ? value.filter(isRow).slice(0, MAX_ROWS) : [];
+  const all = Array.isArray(value) ? value.filter(isRow) : [];
+  return { rows: all.slice(0, max), cut: all.length > max };
+}
+
+/** The rows of a data file's text, by its extension, up to `max`. */
+export function rowsOf(path: string, text: string, max: number = MAX_ROWS): DataRow[] {
+  return readRows(path, text, max).rows;
 }
 
 /**
@@ -93,12 +107,12 @@ export function readDataFiles(
   dir: string,
   files: readonly InventoryFile[],
   pathFor: (inRepo: string) => string,
-): DataFile[] {
+): ReadDataFile[] {
   return files
     .filter((file) => file.kind === 'data')
     .map((file) => ({
       path: pathFor(file.path),
-      rows: rowsOf(file.path, readFileSync(join(dir, file.path), 'utf8')),
+      ...readRows(file.path, readFileSync(join(dir, file.path), 'utf8')),
     }));
 }
 
@@ -109,9 +123,9 @@ export function readDataFiles(
 export function readGivenDataFiles(
   paths: readonly string[],
   pathFor: (path: string) => string,
-): DataFile[] {
+): ReadDataFile[] {
   return paths.map((path) => ({
     path: pathFor(path),
-    rows: rowsOf(path, readFileSync(path, 'utf8')),
+    ...readRows(path, readFileSync(path, 'utf8')),
   }));
 }

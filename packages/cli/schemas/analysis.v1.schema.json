@@ -384,6 +384,12 @@
         "additionalProperties": false
       }
     },
+    "cut": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "comparison": {
       "type": "object",
       "properties": {

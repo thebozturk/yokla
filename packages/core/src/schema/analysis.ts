@@ -87,6 +87,8 @@ export const Analysis = z
       .optional(),
     /** Pointers whose verified values disagree; none is proposed (ADR-0049). */
     conflicts: z.array(z.object({ pointer: z.string(), evidence: z.array(z.string()) })).optional(),
+    /** The data files read only to their first rows, by their path in the proposal (ADR-0066). */
+    cut: z.array(z.string()).optional(),
     /** The proposal compared with a profile, entry by entry. */
     comparison: z
       .object({

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { inventory, MAX_FILE_BYTES } from './inventory.ts';
-import { MAX_ROWS, rowsOf } from './data.ts';
+import { MAX_ROWS, readRows, rowsOf } from './data.ts';
 
 function repository(files: Readonly<Record<string, string | Buffer>>): string {
   const dir = mkdtempSync(join(tmpdir(), 'yokla-inventory-'));
@@ -33,6 +33,8 @@ describe('inventory (ADR-0047)', () => {
       'data/settings.json': '{"theme":"dark"}',
       'openapi.yaml': 'openapi: 3.1.0\n',
       'schemas/reply.json': '{"$schema":"https://json-schema.org/draft/2020-12/schema"}',
+      // A settings file that names the schema it follows is not a schema (ADR-0066).
+      'tool-cli.json': '{"$schema":"https://json.schemastore.org/tool-cli","sourceRoot":"src"}',
       '.env.example': 'OPENAI_BASE_URL=',
       'deploy.env.example': 'X=',
       'package.json': '{"name":"shop"}',
@@ -58,6 +60,7 @@ describe('inventory (ADR-0047)', () => {
       'schemas/reply.json': 'contract',
       'src/app.ts': 'code',
       'src/writer-prompt.ts': 'prompt',
+      'tool-cli.json': 'other',
     });
   });
 
@@ -123,6 +126,18 @@ describe('inventory (ADR-0047)', () => {
   });
 });
 
+/** Data files of `count` rows, in each kind (ADR-0066). */
+const numbers = (count: number) => Array.from({ length: count }, (_, i) => String(i));
+const jsonl = (count: number) =>
+  numbers(count)
+    .map((n) => `{"n":${n}}`)
+    .join('\n');
+const csv = (count: number) => `n\n${numbers(count).join('\n')}`;
+const json = (count: number) =>
+  `[${numbers(count)
+    .map((n) => `{"n":${n}}`)
+    .join(',')}]`;
+
 describe('rowsOf (ADR-0047)', () => {
   it('reads JSON Lines, leaving out a line that is no object', () => {
     expect(rowsOf('a.jsonl', '{"id":"A"}\n\nnot json\n[1]\n{"id":"B"}\r\n')).toEqual([
@@ -145,10 +160,24 @@ describe('rowsOf (ADR-0047)', () => {
     expect(rowsOf('a.csv', '')).toEqual([]);
   });
 
-  it('reads a file up to its first rows only', () => {
-    const lines = Array.from({ length: MAX_ROWS + 5 }, (_, i) => `{"n":${String(i)}}`).join('\n');
-    expect(rowsOf('a.jsonl', lines)).toHaveLength(MAX_ROWS);
-    const csv = `n\n${Array.from({ length: MAX_ROWS + 5 }, (_, i) => String(i)).join('\n')}`;
-    expect(rowsOf('a.csv', csv)).toHaveLength(MAX_ROWS);
+  it('reads a file up to its first rows only, and says it was cut (ADR-0066)', () => {
+    for (const [path, text] of [
+      ['a.jsonl', jsonl],
+      ['a.csv', csv],
+      ['a.json', json],
+    ] as const) {
+      expect(readRows(path, text(7), 5), path).toMatchObject({ cut: true });
+      expect(readRows(path, text(7), 5).rows, path).toHaveLength(5);
+      expect(readRows(path, text(5), 5), path).toMatchObject({ cut: false });
+      expect(readRows(path, text(5), 5).rows, path).toHaveLength(5);
+    }
+    expect(rowsOf('A.JSONL', jsonl(2))).toHaveLength(2);
+  });
+
+  it('reads well past 10,000 rows by default (ADR-0066)', () => {
+    expect(MAX_ROWS).toBe(1_000_000);
+    const lines = Array.from({ length: 12_000 }, (_, i) => `{"n":${String(i)}}`).join('\n');
+    expect(readRows('a.jsonl', lines)).toMatchObject({ cut: false });
+    expect(rowsOf('a.jsonl', lines).at(-1)).toEqual({ n: 11_999 });
   });
 });

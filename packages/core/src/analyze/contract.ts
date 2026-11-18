@@ -16,7 +16,18 @@ export function contractKind(document: unknown): 'openapi' | 'json-schema' | und
   if (!isObject(document)) return undefined;
   const version = document['openapi'];
   if (typeof version === 'string') return version.startsWith('3') ? 'openapi' : undefined;
-  return '$schema' in document ? 'json-schema' : undefined;
+  return namesJsonSchemaDialect(document) ? 'json-schema' : undefined;
+}
+
+/**
+ * Whether a document's `$schema` names a JSON Schema dialect, a URL on
+ * json-schema.org: it is a schema then, not a file that names the schema it
+ * follows (ADR-0066).
+ */
+export function namesJsonSchemaDialect(document: unknown): boolean {
+  if (!isObject(document)) return false;
+  const dialect = document['$schema'];
+  return typeof dialect === 'string' && /^https?:\/\/json-schema\.org\//u.test(dialect);
 }
 
 /** The request a contract is read for: the url's path and the method. */

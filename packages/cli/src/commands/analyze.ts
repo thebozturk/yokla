@@ -12,6 +12,7 @@ import {
   analysisReport,
   analyzeTarget,
   isDataText,
+  MAX_ROWS,
   personPointers,
   planAnalysis,
   type AnalyzeOptions,
@@ -234,6 +235,14 @@ export async function analyzeCommand(
           io.out(`data given: ${data.map((path) => shown(cwd, path)).join(', ')}`);
         }
       },
+      // A cut file may hold a product the probes show, which then can't be matched (ADR-0066).
+      onDataCut: (paths) => {
+        for (const path of paths) {
+          io.out(
+            `data read to its first ${String(MAX_ROWS)} rows: ${path}; a product the probes show past them can't be matched`,
+          );
+        }
+      },
       onProbes: (messages: readonly string[]) => {
         io.out(
           `probing ${url.href}: ${String(messages.length)} message(s); the target may make its own model calls`,
@@ -323,6 +332,7 @@ export async function analyzeCommand(
       proposal: analyzed.document,
       exclude: personPointers(person),
       contracts: analyzed.contracts,
+      cut: analyzed.cut,
       ...(reference === undefined ? {} : { reference }),
       ...(model === undefined ? {} : { model }),
     });

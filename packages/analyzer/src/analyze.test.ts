@@ -273,3 +273,22 @@ describe('the comparison without the response contract (ADR-0065)', () => {
     expect(result).not.toHaveProperty('withoutSchema');
   });
 });
+
+/** A report naming these data files as cut (ADR-0066). */
+const reported = (cut: readonly string[]) =>
+  analysisReport({
+    version: '0.0.0',
+    inventory: { files: [], skipped: 0, capped: false },
+    probes: [],
+    entries: [],
+    proposal: {},
+    exclude: [],
+    cut,
+  });
+
+describe('the data files read only in part (ADR-0066)', () => {
+  it('names them in the report, and nothing when none was cut', () => {
+    expect(reported(['./data/catalog.jsonl']).cut).toEqual(['./data/catalog.jsonl']);
+    expect(reported([])).not.toHaveProperty('cut');
+  });
+});

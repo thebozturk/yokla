@@ -221,6 +221,8 @@ export function analysisReport(input: {
   readonly contracts?: readonly ContractReport[];
   /** The model step's outcome, when it ran (ADR-0049). */
   readonly model?: ModelStep;
+  /** The data files read only to the row bound (ADR-0066). */
+  readonly cut?: readonly string[];
 }): Analysis {
   const comparison =
     input.reference === undefined
@@ -254,6 +256,7 @@ export function analysisReport(input: {
             details: [...contract.details],
           })),
         }),
+    ...(input.cut === undefined || input.cut.length === 0 ? {} : { cut: [...input.cut] }),
     ...(input.model === undefined
       ? {}
       : {

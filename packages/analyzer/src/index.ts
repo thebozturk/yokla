@@ -34,7 +34,15 @@ import {
 import { sessionMode } from '@yokla/core';
 
 export { inventory, MAX_FILE_BYTES, type Inventory, type InventoryFile } from './inventory.ts';
-export { isDataText, MAX_ROWS, readDataFiles, readGivenDataFiles, rowsOf } from './data.ts';
+export {
+  isDataText,
+  MAX_ROWS,
+  readDataFiles,
+  readGivenDataFiles,
+  readRows,
+  rowsOf,
+  type ReadDataFile,
+} from './data.ts';
 export { ProbeError, type Probed, type ProbeTarget, type SentProbe } from './probe.ts';
 export { contractStep, type ContractReport, type ContractStep } from './contract.ts';
 export {
@@ -84,6 +92,8 @@ export interface AnalyzeOptions {
   /** Hears what is about to happen: the inventory, the messages, the model's plan. */
   readonly onInventory?: (listed: Inventory) => void;
   readonly onProbes?: (messages: readonly string[]) => void;
+  /** Hears the data files read only to MAX_ROWS rows, before anything is sent (ADR-0066). */
+  readonly onDataCut?: (paths: readonly string[]) => void;
   readonly onModelPlan?: (plan: ModelPlan) => void;
 }
 
@@ -98,6 +108,8 @@ export interface Analyzed {
   readonly document: Record<string, JsonValue>;
   /** The pointers a comparison leaves out: the person's own inputs. */
   readonly exclude: readonly string[];
+  /** The data files read only to MAX_ROWS rows, by their path in the proposal (ADR-0066). */
+  readonly cut: readonly string[];
 }
 
 /** The path a request url calls, for finding its operation in a contract. */
@@ -129,17 +141,22 @@ interface Prepared {
   readonly evidenceFields: Readonly<Record<string, string>>;
   /** The profile's languages: the person's, the data's, or else English. */
   readonly languages: readonly string[];
+  /** The data files read only to MAX_ROWS rows (ADR-0066). */
+  readonly cut: readonly string[];
 }
 
 /** The inventory, the data's entries, and the profile's languages: nothing sent yet. */
 function prepare(options: AnalyzeOptions): Prepared {
   const listed = inventory(options.dir, options.maxFiles);
   options.onInventory?.(listed);
-  const files: DataFile[] = [
+  const read = [
     ...readDataFiles(options.dir, listed.files, pathFrom(options.outDir, options.dir)),
     // Beside the repository's own data, the files given from outside it (ADR-0065).
     ...readGivenDataFiles(options.data ?? [], fromOut(options.outDir)),
   ];
+  const files: DataFile[] = read.map(({ path, rows }) => ({ path, rows }));
+  const cut = read.filter((file) => file.cut).map((file) => file.path);
+  if (cut.length > 0) options.onDataCut?.(cut);
   const { person } = options;
   const entries: ProposedEntry[] = [];
   let probedRows: ProbedRows | undefined;
@@ -187,7 +204,7 @@ function prepare(options: AnalyzeOptions): Prepared {
       },
     });
   }
-  return { listed, entries, probedRows, evidenceFields, languages };
+  return { listed, entries, probedRows, evidenceFields, languages, cut };
 }
 
 /** The model's plan for the analysis: what it would read, and what that costs at most. */
@@ -276,5 +293,6 @@ export async function analyzeTarget(options: AnalyzeOptions): Promise<Analyzed> 
     entries,
     document: proposalDocument(person, mode, entries),
     exclude: personPointers(person),
+    cut: prepared.cut,
   };
 }

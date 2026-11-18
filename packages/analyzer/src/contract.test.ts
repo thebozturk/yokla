@@ -54,7 +54,10 @@ const envelope = { type: 'object', properties: { data: ANSWER } };
 describe('the contract step (ADR-0057)', () => {
   it('proposes the first contract every answer keeps, an OpenAPI operation before a JSON Schema', () => {
     const result = step({
-      'a.schema.json': JSON.stringify({ $schema: 'x', ...envelope }),
+      'a.schema.json': JSON.stringify({
+        $schema: 'https://json-schema.org/draft/2020-12/schema',
+        ...envelope,
+      }),
       'z.openapi.json': openApi({ ...envelope, 'x-internal': true }),
     });
     expect(result.contracts).toEqual([
@@ -81,7 +84,10 @@ describe('the contract step (ADR-0057)', () => {
     const strict = { ...envelope, properties: { data: { ...ANSWER, required: ['answer', 'id'] } } };
     const result = step({
       'openapi.json': openApi(strict),
-      'answer.schema.json': JSON.stringify({ $schema: 'x', ...envelope }),
+      'answer.schema.json': JSON.stringify({
+        $schema: 'https://json-schema.org/draft/2020-12/schema',
+        ...envelope,
+      }),
     });
     const [broken, kept] = result.contracts;
     expect(broken).toMatchObject({ file: 'openapi.json', outcome: 'violated', at: '$.data' });
