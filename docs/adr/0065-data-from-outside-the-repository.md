@@ -1,6 +1,6 @@
 # 0065. Data from outside the repository, and a comparison without the contract
 
-Status: Proposed · Date: 2026-11-18
+Status: Accepted · Date: 2026-11-18
 
 ## Context
 
