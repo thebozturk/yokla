@@ -4,7 +4,33 @@ Notable changes per version. Versions follow the roadmap in
 [design §20](docs/design.md#20-roadmap); a version ships when its exit criteria
 hold.
 
+## 0.4.1 — 2026-11-19
+
+v0.4 in full. The 0.4.0 release stopped halfway: seven packages were
+published, but not `@yokla/analyzer`, a new name trusted publishing can't
+publish first, nor the CLI, `yokla`, which comes last. 0.4.1 publishes
+every package; what v0.4 adds is under 0.4.0 below.
+
+### Added
+
+- **Workflow guides and diagrams.** The README shows how a run works and
+  the workflow from a proposed profile to the gate. The guide has three new
+  pages: the analyzer, from a finding to its fix, and yokla in CI, with a
+  GitHub Actions example.
+
+### Fixed
+
+- **A new package is found before a release starts (ADR-0071).** `pnpm
+  pack-check --release` stops when a package's name isn't on the registry,
+  and names the steps to reserve it.
+- **A release that stopped halfway can run again (ADR-0071).** The release
+  workflow skips a version already published with the same tarball, and
+  stops at one published with another.
+
 ## 0.4.0 — 2026-11-19
+
+Seven of its packages are on npm; `@yokla/analyzer` and the CLI were not
+published (ADR-0071). Use 0.4.1.
 
 The analyzer and the steps from a finding to its fix: `yokla analyze`
 proposes a profile from a target's repository, data and a few probes;
