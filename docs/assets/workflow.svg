@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 440" width="980" height="440" role="img" aria-labelledby="title desc">
+  <title id="title">The yokla workflow</title>
+  <desc id="desc">yokla init and yokla analyze propose a profile; you approve it. yokla generate and yokla explore then propose cases from it, beside the cases you write; you approve them. yokla run runs the approved cases and yokla gate judges them. A broken gate leads from a finding to its fix and back to the run; a passed gate becomes the baseline you commit.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1a7f37"/>
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#cf222e"/>
+    </marker>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; fill: #1f2328; }
+      .title { font-size: 15px; font-weight: 600; }
+      .sub { font-size: 12px; fill: #57606a; }
+      .label { font-size: 12px; fill: #57606a; }
+      .cmd { fill: #ddf4ff; stroke: #0969da; stroke-width: 1.5; }
+      .proposed { fill: #fff8c5; stroke: #9a6700; stroke-width: 1.5; }
+      .approved { fill: #dafbe1; stroke: #1a7f37; stroke-width: 1.5; }
+      .yours { fill: #ffffff; stroke: #57606a; stroke-width: 1.5; }
+      .edge { stroke: #57606a; stroke-width: 1.5; fill: none; }
+      .ok { stroke: #1a7f37; stroke-width: 1.8; fill: none; }
+      .bad { stroke: #cf222e; stroke-width: 1.8; fill: none; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="980" height="440" rx="14" fill="#ffffff" stroke="#d0d7de"/>
+
+  <!-- Legend -->
+  <rect x="24" y="404" width="14" height="14" rx="3" class="proposed"/>
+  <text x="44" y="416" class="label">proposed: runs, never gates</text>
+  <rect x="230" y="404" width="14" height="14" rx="3" class="approved"/>
+  <text x="250" y="416" class="label">approved by a person</text>
+  <rect x="410" y="404" width="14" height="14" rx="3" class="cmd"/>
+  <text x="430" y="416" class="label">a yokla command</text>
+
+  <!-- Row 1: the profile -->
+  <rect x="24" y="24" width="180" height="58" rx="8" class="cmd"/>
+  <text x="114" y="49" text-anchor="middle" class="title">yokla init</text>
+  <text x="114" y="68" text-anchor="middle" class="sub">one message</text>
+  <rect x="24" y="104" width="180" height="58" rx="8" class="cmd"/>
+  <text x="114" y="129" text-anchor="middle" class="title">yokla analyze</text>
+  <text x="114" y="148" text-anchor="middle" class="sub">repository · data · probes</text>
+
+  <rect x="260" y="64" width="180" height="58" rx="8" class="proposed"/>
+  <text x="350" y="89" text-anchor="middle" class="title">Profile</text>
+  <text x="350" y="108" text-anchor="middle" class="sub">each entry with its evidence</text>
+
+  <rect x="510" y="64" width="180" height="58" rx="8" class="approved"/>
+  <text x="600" y="89" text-anchor="middle" class="title">Approved profile</text>
+  <text x="600" y="108" text-anchor="middle" class="sub">yokla.profile.yaml</text>
+
+  <rect x="770" y="24" width="186" height="58" rx="8" class="cmd"/>
+  <text x="863" y="49" text-anchor="middle" class="title">yokla generate</text>
+  <text x="863" y="68" text-anchor="middle" class="sub">cases from your catalog</text>
+  <rect x="770" y="104" width="186" height="58" rx="8" class="cmd"/>
+  <text x="863" y="129" text-anchor="middle" class="title">yokla explore</text>
+  <text x="863" y="148" text-anchor="middle" class="sub">paths your cases miss</text>
+
+  <path d="M204,53 L260,85" class="edge" marker-end="url(#arrow)"/>
+  <path d="M204,133 L260,103" class="edge" marker-end="url(#arrow)"/>
+  <path d="M440,93 L510,93" class="ok" marker-end="url(#arrow-green)"/>
+  <text x="475" y="84" text-anchor="middle" class="label" style="fill:#1a7f37">you approve</text>
+  <path d="M690,85 L770,55" class="edge" marker-end="url(#arrow)"/>
+  <path d="M690,101 L770,131" class="edge" marker-end="url(#arrow)"/>
+
+  <!-- Row 2: the cases -->
+  <rect x="770" y="214" width="186" height="58" rx="8" class="proposed"/>
+  <text x="863" y="239" text-anchor="middle" class="title">Cases</text>
+  <text x="863" y="258" text-anchor="middle" class="sub">with where they came from</text>
+  <rect x="510" y="304" width="180" height="58" rx="8" class="yours"/>
+  <text x="600" y="329" text-anchor="middle" class="title">Cases you write</text>
+  <text x="600" y="348" text-anchor="middle" class="sub">cases/*.yaml</text>
+  <rect x="510" y="214" width="180" height="58" rx="8" class="approved"/>
+  <text x="600" y="239" text-anchor="middle" class="title">Approved cases</text>
+  <text x="600" y="258" text-anchor="middle" class="sub">these gate the build</text>
+
+  <rect x="260" y="214" width="180" height="58" rx="8" class="cmd"/>
+  <text x="350" y="239" text-anchor="middle" class="title">yokla run</text>
+  <text x="350" y="258" text-anchor="middle" class="sub">results.json</text>
+  <rect x="24" y="214" width="180" height="58" rx="8" class="cmd"/>
+  <text x="114" y="239" text-anchor="middle" class="title">yokla gate</text>
+  <text x="114" y="258" text-anchor="middle" class="sub">0 passed · 1 broken · 2</text>
+
+  <rect x="24" y="320" width="180" height="58" rx="8" class="cmd"/>
+  <text x="114" y="345" text-anchor="middle" class="title">yokla baseline</text>
+  <text x="114" y="364" text-anchor="middle" class="sub">commit it</text>
+  <rect x="260" y="320" width="180" height="58" rx="8" class="yours"/>
+  <text x="350" y="345" text-anchor="middle" class="title">From a finding to its fix</text>
+  <text x="350" y="364" text-anchor="middle" class="sub">origin · shrink · replay · mcp</text>
+
+  <path d="M863,162 L863,214" class="edge" marker-end="url(#arrow)"/>
+  <path d="M770,243 L690,243" class="ok" marker-end="url(#arrow-green)"/>
+  <text x="730" y="234" text-anchor="middle" class="label" style="fill:#1a7f37">you approve</text>
+  <path d="M600,304 L600,272" class="edge" marker-end="url(#arrow)"/>
+  <path d="M510,243 L440,243" class="edge" marker-end="url(#arrow)"/>
+  <path d="M260,243 L204,243" class="edge" marker-end="url(#arrow)"/>
+  <path d="M114,272 L114,320" class="ok" marker-end="url(#arrow-green)"/>
+  <text x="122" y="300" class="label" style="fill:#1a7f37">passed</text>
+  <path d="M204,262 L262,338" class="bad" marker-end="url(#arrow-red)"/>
+  <text x="240" y="300" class="label" style="fill:#cf222e">broken</text>
+  <path d="M370,320 L370,272" class="edge" marker-end="url(#arrow)"/>
+  <text x="378" y="300" class="label">run again</text>
+</svg>

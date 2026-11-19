@@ -202,22 +202,7 @@ they judge every answer they apply to.
 
 ## How it works
 
-```mermaid
-flowchart LR
-    Cases["cases/*.yaml"] --> Runner
-    Profile["yokla.profile.yaml"] --> Runner
-    subgraph Machine["Your machine"]
-        Runner["yokla run"] -- "the customer's question" --> App["Your assistant<br/>HTTP or WebSocket"]
-        App -- "its model calls" --> Proxy["yokla proxy<br/>127.0.0.1"]
-        Proxy -. "calls, prompts, tools, cost" .-> Checks
-        App -- "its answer" --> Checks["Checks<br/>against your data"]
-        Runner --> Checks
-        Checks --> Results["results.json"]
-    end
-    Proxy -- "forwarded, with the app's own key" --> Provider["Your model provider"]
-    Results --> Reports["Terminal · JUnit · HTML"]
-    Results --> Gate{"yokla gate<br/>0 · 1 · 2"}
-```
+![How yokla works: yokla run asks your assistant, the proxy sees its model calls, the checks judge each answer against your data, and yokla gate decides the build](https://raw.githubusercontent.com/thebozturk/yokla/main/docs/assets/how-it-works.svg)
 
 - **The profile** maps your API: the request, where the answer and the
   products are, sessions, rate limits and tokens. Nothing about a particular
@@ -233,23 +218,7 @@ Nothing yokla writes judges your build until a person approves it. Every
 command that proposes something marks it `proposed`, with where it came
 from.
 
-```mermaid
-flowchart TD
-    Init["yokla init<br/>one message"] --> Profile
-    Analyze["yokla analyze<br/>repository, data, probes"] --> Profile
-    Profile["Profile, proposed"] -- "you approve it" --> Approved["Approved profile"]
-    Approved --> Generate["yokla generate<br/>cases from your catalog"]
-    Approved --> Explore["yokla explore<br/>paths your cases miss"]
-    Generate --> Proposed["Cases, proposed"]
-    Explore --> Proposed
-    Written["Cases you write"] --> Cases
-    Proposed -- "you approve them" --> Cases["Approved cases"]
-    Cases --> Run["yokla run"]
-    Run --> Gate{"yokla gate"}
-    Gate -- "broken" --> Fix["From a finding to its fix<br/>origin · shrink · replay · swap · mcp"]
-    Fix --> Run
-    Gate -- "passed" --> Baseline["yokla baseline<br/>commit it"]
-```
+![The yokla workflow: a proposed profile you approve, cases you approve, yokla run and yokla gate, then a fix or a baseline](https://raw.githubusercontent.com/thebozturk/yokla/main/docs/assets/workflow.svg)
 
 The [guide](https://github.com/thebozturk/yokla/blob/main/docs/guide/README.md)
 walks through each step: [the analyzer](https://github.com/thebozturk/yokla/blob/main/docs/guide/analyzer.md),
