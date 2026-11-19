@@ -1,12 +1,18 @@
+<div align="center">
+
 # yokla
 
-**End-to-end tests for conversational AI assistants: grounded in your data,
-judged deterministically, run on your machine.**
+**End-to-end tests for conversational AI assistants:<br/>
+grounded in your data, judged deterministically, run on your machine.**
 
 [![npm](https://img.shields.io/npm/v/yokla)](https://www.npmjs.com/package/yokla)
 [![CI](https://github.com/thebozturk/yokla/actions/workflows/ci.yml/badge.svg)](https://github.com/thebozturk/yokla/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/thebozturk/yokla/blob/main/LICENSE)
 ![Node.js 24+](https://img.shields.io/badge/node-%3E%3D24-brightgreen)
+
+[Quick start](https://github.com/thebozturk/yokla#quick-start) · [How it works](https://github.com/thebozturk/yokla#how-it-works) · [The workflow](https://github.com/thebozturk/yokla#the-workflow) · [Guide](https://github.com/thebozturk/yokla/blob/main/docs/guide/README.md) · [Changelog](https://github.com/thebozturk/yokla/blob/main/CHANGELOG.md)
+
+</div>
 
 > *yokla* (Turkish): to probe, to check by touch, as in *nabzını yoklamak*,
 > "to take someone's pulse".
@@ -98,8 +104,9 @@ answer, or only in your app's code after the model call.
 
 **The model calls behind each answer**
 - Calls, tokens, cost and latency per turn, reconciled with the provider's
-  own records. OpenAI-compatible APIs, Anthropic and Gemini (AI Studio and
-  Vertex AI) are supported, and so are calls the app makes after answering.
+  own records. OpenAI-compatible APIs, Anthropic, Gemini (AI Studio and
+  Vertex AI) and the Vercel AI SDK's gateway are supported, and so are calls
+  the app makes after answering.
 - The tools the model offers and calls: which ones must and must not be
   called, with what arguments, in what order and how often.
 - The prompts: a leaked system prompt, retrieved content in the system
@@ -195,20 +202,21 @@ they judge every answer they apply to.
 
 ## How it works
 
-```text
-                 cases/*.yaml            yokla.profile.yaml
-                       │                         │
-                       ▼                         ▼
-yokla run ──► runner ──────► your assistant (HTTP or WebSocket)
-                │                     │
-                │                     ▼
-                │              yokla proxy ──► your model provider
-                │                     │
-                ▼                     │  model calls, prompts, tools, cost
-             checks ◄─────────────────┘
-                │
-                ▼
-        results.json ──► terminal, JUnit, HTML ──► yokla gate
+```mermaid
+flowchart LR
+    Cases["cases/*.yaml"] --> Runner
+    Profile["yokla.profile.yaml"] --> Runner
+    subgraph Machine["Your machine"]
+        Runner["yokla run"] -- "the customer's question" --> App["Your assistant<br/>HTTP or WebSocket"]
+        App -- "its model calls" --> Proxy["yokla proxy<br/>127.0.0.1"]
+        Proxy -. "calls, prompts, tools, cost" .-> Checks
+        App -- "its answer" --> Checks["Checks<br/>against your data"]
+        Runner --> Checks
+        Checks --> Results["results.json"]
+    end
+    Proxy -- "forwarded, with the app's own key" --> Provider["Your model provider"]
+    Results --> Reports["Terminal · JUnit · HTML"]
+    Results --> Gate{"yokla gate<br/>0 · 1 · 2"}
 ```
 
 - **The profile** maps your API: the request, where the answer and the
@@ -218,6 +226,35 @@ yokla run ──► runner ──────► your assistant (HTTP or WebSock
   an answer.
 - **Packs** add a domain or a language. The e-commerce, Turkish and English
   packs ship with yokla.
+
+## The workflow
+
+Nothing yokla writes judges your build until a person approves it. Every
+command that proposes something marks it `proposed`, with where it came
+from.
+
+```mermaid
+flowchart TD
+    Init["yokla init<br/>one message"] --> Profile
+    Analyze["yokla analyze<br/>repository, data, probes"] --> Profile
+    Profile["Profile, proposed"] -- "you approve it" --> Approved["Approved profile"]
+    Approved --> Generate["yokla generate<br/>cases from your catalog"]
+    Approved --> Explore["yokla explore<br/>paths your cases miss"]
+    Generate --> Proposed["Cases, proposed"]
+    Explore --> Proposed
+    Written["Cases you write"] --> Cases
+    Proposed -- "you approve them" --> Cases["Approved cases"]
+    Cases --> Run["yokla run"]
+    Run --> Gate{"yokla gate"}
+    Gate -- "broken" --> Fix["From a finding to its fix<br/>origin · shrink · replay · swap · mcp"]
+    Fix --> Run
+    Gate -- "passed" --> Baseline["yokla baseline<br/>commit it"]
+```
+
+The [guide](https://github.com/thebozturk/yokla/blob/main/docs/guide/README.md)
+walks through each step: [the analyzer](https://github.com/thebozturk/yokla/blob/main/docs/guide/analyzer.md),
+[from a finding to its fix](https://github.com/thebozturk/yokla/blob/main/docs/guide/debugging.md)
+and [yokla in CI](https://github.com/thebozturk/yokla/blob/main/docs/guide/ci.md).
 
 ## Try it on the demo-shop
 
@@ -246,8 +283,15 @@ upstreams your profile names. An egress test in CI holds yokla to that.
 ## Documentation
 
 - [The guide](https://github.com/thebozturk/yokla/blob/main/docs/guide/README.md):
-  a first run against your own assistant, the profile, cases, checks, the
-  model proxy and every command.
+  a first run against your own assistant, and a page for each part.
+  - Workflows: [the analyzer](https://github.com/thebozturk/yokla/blob/main/docs/guide/analyzer.md),
+    [from a finding to its fix](https://github.com/thebozturk/yokla/blob/main/docs/guide/debugging.md),
+    [yokla in CI](https://github.com/thebozturk/yokla/blob/main/docs/guide/ci.md).
+  - Reference: [the profile](https://github.com/thebozturk/yokla/blob/main/docs/guide/profile.md),
+    [cases](https://github.com/thebozturk/yokla/blob/main/docs/guide/cases.md),
+    [checks](https://github.com/thebozturk/yokla/blob/main/docs/guide/checks.md),
+    [the model proxy](https://github.com/thebozturk/yokla/blob/main/docs/guide/model-proxy.md),
+    [commands and configuration](https://github.com/thebozturk/yokla/blob/main/docs/guide/cli.md).
 - [The design](https://github.com/thebozturk/yokla/blob/main/docs/design.md)
   and the [decision records](https://github.com/thebozturk/yokla/blob/main/docs/adr/README.md).
 - [The changelog](https://github.com/thebozturk/yokla/blob/main/CHANGELOG.md).

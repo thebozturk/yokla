@@ -5,9 +5,31 @@ each turn shows the model calls it caused, their tokens, cost and latency,
 and the prompts they sent. yokla can also make the provider fail on purpose
 during a turn.
 
+```mermaid
+sequenceDiagram
+    participant Run as yokla run
+    participant App as Your app
+    participant Proxy as yokla proxy (127.0.0.1)
+    participant Model as Model provider
+    Run->>Proxy: open a recording, arm the turn's faults
+    Run->>App: the turn's message
+    App->>Proxy: model call, with the app's own key
+    alt a fault for this call
+        Proxy-->>App: 429, a timeout or a changed answer
+    else
+        Proxy->>Model: forwarded
+        Model-->>Proxy: answer
+        Proxy-->>App: answer
+    end
+    App-->>Run: its answer
+    Run->>Proxy: close the recording
+    Proxy-->>Run: the turn's calls: tokens, cost, prompts, tools
+```
+
 The proxy speaks the OpenAI-compatible APIs (chat completions, the Responses
-API, embeddings), the Anthropic Messages API, and Gemini's native API on AI
-Studio and Vertex AI ([below](#gemini)), as JSON or event streams.
+API, embeddings), the Anthropic Messages API, Gemini's native API on AI
+Studio and Vertex AI ([below](#gemini)), and the AI SDK's gateway protocol
+([below](#the-ai-sdks-gateway)), as JSON or event streams.
 The app must let you set its provider base URL. For a target whose calls the
 proxy can't see, read them from the app's OpenTelemetry spans
 ([below](#model-calls-from-opentelemetry-spans)), or read its logs
@@ -294,7 +316,8 @@ pnpm yokla run --swap-model openai:gpt-big=gateway/vendor/gpt-mini --out runs/ga
 ```
 
 - **The same protocol only.** The proxy changes the model's name: the
-  body's `model`, or the `models/{model}` segment of a Gemini path. A body
+  body's `model`, the `models/{model}` segment of a Gemini path, or a
+  gateway call's `ai-language-model-id` header (ADR-0069). A body
   it changes is sent uncompressed, with its new length.
 - **`=<upstream>/<model>`** sends the call to another upstream of the same
   kind, when the profile names one by that name; otherwise the whole is the

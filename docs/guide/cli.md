@@ -1,11 +1,16 @@
 # Commands, configuration and the gate
 
-From a checkout of the repository, run each command as `pnpm yokla <command>`.
-`yokla <command> --help` prints its options.
+Run each command as `npx yokla <command>`, or from a checkout of the
+repository as `pnpm yokla <command>`. `yokla <command> --help` prints its
+options. For a task from start to end, see the workflows:
+[the analyzer](analyzer.md), [from a finding to its fix](debugging.md) and
+[yokla in CI](ci.md).
 
 | Command | Does |
 |---|---|
 | `init` | Writes a first profile and starter cases from one message to the target. |
+| `analyze` | Proposes a profile from the target's repository, its data and up to three probes. |
+| `generate` | Writes cases from the profile's data, as proposed cases. |
 | `run` | Runs cases against the profile's target and writes a results file. |
 | `report` | Prints the summary of a results file, and optionally writes JUnit XML or an HTML report. |
 | `gate` | Judges a results file against thresholds and a baseline. |
@@ -16,7 +21,7 @@ From a checkout of the repository, run each command as `pnpm yokla <command>`.
 | `mcp` | Serves yokla's tools to a coding agent over stdio. |
 | `compare` | Sets runs side by side and names the cheapest that passes. |
 | `explore` | Searches for paths the written cases never take, and proposes cases for them. |
-| `schema <name>` | Prints a JSON Schema: `profile`, `cases`, `config`, `results`, `baseline` or `comparison`. |
+| `schema <name>` | Prints a JSON Schema: `profile`, `cases`, `config`, `results`, `baseline`, `comparison` or `analysis`. |
 
 ## `yokla init`
 
@@ -152,11 +157,11 @@ rate limits, the cache bypass header and the canonical refusals.
 | `--max-cost <usd>` | | Send no further chunk once the step's spend reaches this. Required with `models.analyzer`. |
 | `--max-tokens <n>` | 200000 | The most input tokens the model reads; files beyond it aren't sent, and the summary names them. |
 | `--chunk-tokens <n>` | 8000 | The most tokens in one call. A file larger than that is cut at line breaks. |
+| `--estimate` | | Print the files and the estimate, and send nothing: no probe, no model call. |
+| `--fresh-model` | | Ask the model anew, whatever its reply cache holds. |
 
 Tokens are counted as one per two characters (ADR-0051): code takes about
 one per 2.5, so the estimate stays above most code's count.
-| `--estimate` | | Print the files and the estimate, and send nothing: no probe, no model call. |
-| `--fresh-model` | | Ask the model anew, whatever its reply cache holds. |
 
 - **What it never reads:** data files, whose rows may hold personal data,
   environment files, and test files: paths in a `test`, `tests` or

@@ -1,28 +1,64 @@
 # yokla guide
 
-How to test your own assistant with yokla 0.2. The
-[design](../design.md) explains why yokla works this way, and the
-[ADRs](../adr/README.md) record each decision.
+How to test your own assistant with yokla 0.4. The [design](../design.md)
+explains why yokla works this way, and the [ADRs](../adr/README.md) record
+each decision.
+
+The commands below run yokla from npm as `npx yokla`. From a checkout of
+this repository, `pnpm yokla` runs the same command from source.
+
+## The pages
+
+```mermaid
+flowchart LR
+    Start(["A first run<br/>this page"]) --> Analyzer
+    subgraph Workflows
+        Analyzer["The analyzer<br/>analyze · generate"]
+        Debugging["From a finding to its fix<br/>origin · shrink · replay · swap · mcp"]
+        CI["yokla in CI<br/>gate · baseline · JUnit"]
+    end
+    subgraph Reference
+        Profile["The profile"]
+        Cases["Cases"]
+        Checks["Checks"]
+        Proxy["The model proxy"]
+        CLI["Commands and configuration"]
+    end
+    Analyzer --> Profile
+    Analyzer --> Cases
+    Debugging --> Proxy
+    Debugging --> Checks
+    CI --> CLI
+```
+
+**Workflows** walk through a task from start to end:
+
+| Page | What it covers |
+|---|---|
+| [The analyzer](analyzer.md) | From your repository and data to an approved profile, then cases computed from your catalog. |
+| [From a finding to its fix](debugging.md) | Where a wrong value came from, the smallest case that still fails, runs that repeat at no model cost, other models, indirect injection, and a coding agent that fixes against your cases. |
+| [yokla in CI](ci.md) | The gate, the baseline, budgets and reports in a pipeline, with a GitHub Actions example. |
+
+**Reference** gives every field and option:
 
 | Page | What it covers |
 |---|---|
 | [The profile](profile.md) | Reaching the target, reading its answer and evidence, sessions, limits, logs, the model proxy and the e-commerce data. |
-| [Cases](cases.md) | Turns, expectations, provider faults and case statuses. |
+| [Cases](cases.md) | Turns, expectations, provider faults, tool result changes and case statuses. |
 | [Checks](checks.md) | Every check: what it judges, and when it applies. |
-| [The model proxy](model-proxy.md) | Seeing the app's model calls, their cost and prompts, making the provider fail, and replaying recorded calls. |
-| [Commands, configuration and the gate](cli.md) | Every command and option, `yokla.config.yaml`, the gate and the baseline, and `yokla mcp` for coding agents. |
+| [The model proxy](model-proxy.md) | Seeing the app's model calls, their cost and prompts, making the provider fail, swapping models and replaying recorded calls. |
+| [Commands and configuration](cli.md) | Every command and option, `yokla.config.yaml`, the gate and the baseline, and `yokla mcp` for coding agents. |
 
 ## A first run
 
-From a checkout of this repository, with Node.js 24 or later and pnpm, run
-`pnpm install` once. `yokla init` is on the main branch and ships with 0.3.
+With Node.js 24 or later, and your assistant running:
 
 1. **Let `yokla init` write the profile and the starter cases.** Describe the
    request; init works out where the answer is (ADR-0018):
 
    ```sh
    export ASSISTANT_TOKEN=...      # the profile reads it; a missing one stops the run
-   pnpm yokla init --url http://127.0.0.1:8080/chat \
+   npx yokla init --url http://127.0.0.1:8080/chat \
      --body '{"message": "{{message}}", "session": "{{session}}"}' \
      --header 'authorization: Bearer {{env.ASSISTANT_TOKEN}}'
    ```
@@ -39,6 +75,10 @@ From a checkout of this repository, with Node.js 24 or later and pnpm, run
      `--session-url /api/session --header 'x-session-id: {{carry.session}}'`.
    - **Every option:** see [the CLI page](cli.md#yokla-init).
 
+   With the assistant's repository at hand, [`yokla analyze`](analyzer.md)
+   proposes much more of the profile: the catalog, the policies, where the
+   products are in an answer, and the response contract.
+
 2. **Review, and approve the starter cases.** Read both files: each inferred
    line of the profile says which rule chose it. The starter cases are
    proposed: they run, but don't gate until you set a case's `status` to
@@ -50,16 +90,18 @@ From a checkout of this repository, with Node.js 24 or later and pnpm, run
 3. **Run it, then gate it:**
 
    ```sh
-   pnpm yokla run --profile yokla.profile.yaml --cases cases
-   pnpm yokla gate --results runs/<run id>.json
+   npx yokla run --profile yokla.profile.yaml --cases cases
+   npx yokla gate --results runs/<run id>.json
    ```
 
    `run` prints a summary and writes the results file. `gate` exits with `0`,
-   `1` or `2`, ready for CI.
+   `1` or `2`, ready for CI ([yokla in CI](ci.md)).
 
 4. **Grow it from there:**
    - **Your own cases:** write the turns and expectations your assistant must
      meet ([cases](cases.md)), and approve nothing you haven't read.
+   - **Cases from your data:** `yokla generate` writes lookups, absent types,
+     empty price bands and more from your catalog ([the analyzer](analyzer.md#cases-from-your-catalog)).
    - **Product evidence:** map the products your assistant returns as
      evidence. The e-commerce checks then judge its prices, stock claims and
      filters ([profile](profile.md#evidence), [checks](checks.md)).
