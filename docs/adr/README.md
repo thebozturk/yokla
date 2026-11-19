@@ -49,7 +49,7 @@ old one.
 | [0034](0034-publishing-to-npm.md) | Publishing to npm | Accepted; amended by 0047 |
 | [0035](0035-the-smallest-failing-conversation.md) | The smallest failing conversation: yokla shrink | Accepted; amended by 0036 |
 | [0036](0036-shrink-keeps-whole-messages-by-default.md) | yokla shrink keeps whole messages by default | Accepted |
-| [0037](0037-the-first-publish-of-the-npm-names.md) | The first publish of the npm names | Accepted |
+| [0037](0037-the-first-publish-of-the-npm-names.md) | The first publish of the npm names | Accepted; amended by 0071 |
 | [0038](0038-stopping-once-a-failure-is-settled.md) | Stopping a case's samples once its failure is settled | Accepted; amended by 0039 |
 | [0039](0039-a-majority-failure-in-the-demo-shop.md) | A majority-of-N failure in the demo-shop | Accepted |
 | [0040](0040-recorded-model-calls-replayed.md) | Recorded model calls, replayed | Accepted |
@@ -83,7 +83,7 @@ old one.
 | [0068](0068-an-evidence-field-left-undecided-names-its-candidates.md) | An evidence field left undecided names its candidates | Accepted |
 | [0069](0069-the-model-proxy-reads-an-ai-sdk-gateway.md) | The model proxy reads an AI SDK gateway | Accepted |
 | [0070](0070-v0-4-ships-with-one-criterion-partly-met.md) | v0.4 ships with one exit criterion partly met | Accepted |
-| [0071](0071-a-new-package-reserved-before-it-ships-and-a-release-that-resumes.md) | A new package reserved before it ships, and a release that resumes | Proposed |
+| [0071](0071-a-new-package-reserved-before-it-ships-and-a-release-that-resumes.md) | A new package reserved before it ships, and a release that resumes | Accepted |
 
 ## Template
 

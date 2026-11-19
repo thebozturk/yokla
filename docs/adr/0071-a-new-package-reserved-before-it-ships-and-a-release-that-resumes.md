@@ -1,6 +1,6 @@
 # 0071. A new package reserved before it ships, and a release that resumes
 
-Status: Proposed · Date: 2026-11-19 · Amends 0037
+Status: Accepted · Date: 2026-11-19 · Amends 0037
 
 ## Context
 
