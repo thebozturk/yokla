@@ -4,6 +4,11 @@ Notable changes per version. Versions follow the roadmap in
 [design §20](docs/design.md#20-roadmap); a version ships when its exit criteria
 hold.
 
+## 0.4.2 — 2026-11-19
+
+Documentation only. The README's diagrams are images, so the npm page
+shows them; it showed them as Mermaid code in 0.4.1.
+
 ## 0.4.1 — 2026-11-19
 
 v0.4 in full. The 0.4.0 release stopped halfway: seven packages were
