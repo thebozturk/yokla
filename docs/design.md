@@ -1253,7 +1253,15 @@ the guard with `--import`.
     Matching prices sent as text (ADR-0067) left both unchanged: two of
     its fields hold the same price in every product shown, and values
     can't tell them apart. The summary now names both (ADR-0068).
-  - **What yokla learnt:** these runs led to ADR-0061 to ADR-0068.
+  - **With the model step** (ADR-0049, $0.0227), both stayed the same: the
+    token budget was spent on docs and prompts, and the code that holds
+    the rate limits and the cache layers was never read. Ranking files by
+    the fields asked is open work.
+  - **Indirect injection through a tool result** wasn't tried: the target
+    can't be pointed at the model proxy. The proxy now reads its
+    provider's protocol (ADR-0069); the target needs a base url setting.
+  - **Released as 0.4.0** with this criterion partly met (ADR-0070).
+  - **What yokla learnt:** these runs led to ADR-0061 to ADR-0069.
 - **A public open-source retail assistant,** to prove that yokla generalises.
   It streams its answers, opens its own sessions and calls its model after
   answering. In v0.2 its model cost reconciled with the provider's records,

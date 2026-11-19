@@ -28,7 +28,7 @@ wrong value came from.
   calls, and a turn can break the provider on purpose.
 - **Nothing leaves your machine.** No telemetry, no account, no cloud.
 
-**Status: v0.3.** Turkish and English are first-class. The e-commerce pack is
+**Status: v0.4.** Turkish and English are first-class. The e-commerce pack is
 the first domain pack.
 
 ## Quick start
@@ -256,9 +256,6 @@ upstreams your profile names. An egress test in CI holds yokla to that.
 
 ## Roadmap
 
-- **v0.4:** an analyzer that reads your code, API contract, prompts, data
-  schema and docs, and writes a profile for you to review. Its first step,
-  from your data and a few probes, is `yokla analyze`.
 - **v0.5:** red teaming with local attack generation, mapped to OWASP, GDPR
   and KVKK, and the EU AI Act.
 - **v0.6:** import and export for other evaluation tools, a GitHub Action and

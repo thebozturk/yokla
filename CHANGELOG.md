@@ -4,7 +4,35 @@ Notable changes per version. Versions follow the roadmap in
 [design §20](docs/design.md#20-roadmap); a version ships when its exit criteria
 hold.
 
-## Unreleased
+## 0.4.0 — 2026-11-19
+
+The analyzer and the steps from a finding to its fix: `yokla analyze`
+proposes a profile from a target's repository, data and a few probes;
+`yokla generate` writes cases from the catalog; cases the data no longer
+holds send nothing; recorded model calls replay at no cost; models compare
+through the proxy, and tool results change before the model sees them;
+robustness transforms, `yokla explore` and `yokla mcp`.
+
+**Exit criteria.** v0.4 ships with one criterion partly met (ADR-0070).
+- **On the demo-shop, the analyzer reproduces the approved entries of the
+  hand-written profile,** with precision and recall reported (ADR-0047).
+- **On the demo-shop, a transform catches a seeded defect that shows only
+  in a message without diacritics, and every other approved case keeps its
+  verdict** (ADR-0045); code-switching catches one too (ADR-0059).
+- **On the private target, yokla rediscovers the known issue classes:
+  partly.** Of four classes (design §19):
+  - type absence vs price-band relaxation: rediscovered;
+  - fabricated prices and direct prompt injection: not rediscovered, with
+    every turn judged;
+  - stale data-bound cases: waiting, as the target's data hasn't changed
+    since 2026-11-10;
+  - indirect injection through a tool result couldn't be tried: the target
+    can't be pointed at the model proxy yet (ADR-0069).
+
+  Its repository, analyzed with its catalog, gave a precision of 81.0 %
+  and a recall of 34.7 %, with the model step too.
+
+### Added
 
 - **Recorded model calls, replayed (ADR-0040).** `yokla run --record` keeps
   the target's model calls in a cassette, and `--replay` answers them from
@@ -140,6 +168,39 @@ hold.
   code-switch that keeps the case's language. A rewrite with more sentences
   than the message, or a code-switch whose mixed-in language's common
   words outnumber its own, is not sent.
+- **Negated stock wording, and products the answer only names (ADR-0061).**
+  `stock-claim` reads listed negated forms ("stokta değil", "isn't in
+  stock") as out-of-stock claims, and an English negation before a claim
+  phrase cancels it. With a catalog snapshot, a claim binds to a catalog
+  product the answer names by its full name only.
+- **Generated cases name products in stock (ADR-0062).** `lookup`,
+  `comparison`, `cheaper` and `attribute` name a product in stock, and a
+  case's basis gives the stock it was named by.
+- **A generated name names one product (ADR-0063).** A named product's name
+  is held by no other product in the case's language. `cheaper` names a
+  product with a cheaper one in stock of its type, and its second turn
+  expects a product shown.
+- **A cheaper follow-up says cheaper than what (ADR-0064).** The second
+  turn asks for something cheaper than the product asked about first.
+- **Data from outside the repository (ADR-0065).** `yokla analyze --data
+  <file>`, repeatable, gives a data file such as a database export. The
+  comparison also gives precision and recall without
+  `target.response.schema`.
+- **A large catalog read whole, and a contract that is a schema
+  (ADR-0066).** Data files are read up to 1,000,000 rows, and a file cut
+  there is named. A file is a JSON Schema contract only when its `$schema`
+  is on `json-schema.org`.
+- **An evidence field read as a number, or from a fallback (ADR-0067).**
+  The probes' match proposes `{ from: <path>, as: number }` for a value
+  sent as a decimal string, and `{ from: [a, b] }` when an answer shows
+  `a` null and `b` holding the value.
+- **An evidence field left undecided names its candidates (ADR-0068).** A
+  field the match fits two or more ways gets no path, and the summary and
+  the report's additive `undecided` name the ways, for the person to pick.
+- **The model proxy reads an AI SDK gateway (ADR-0069).** A new upstream
+  kind, `ai-gateway`, reads the AI SDK's gateway protocol: model, tokens,
+  prompts, tools, tool calls and tool results; faults, model swaps and
+  tool result changes apply. profile.v1's upstream kind gains the value.
 
 ## 0.3.0 — 2026-11-15
 
