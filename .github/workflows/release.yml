@@ -48,8 +48,10 @@ jobs:
       - run: pnpm check
       - name: pack-check, keeping the tarballs it checked
         run: pnpm pack-check --release "$GITHUB_REF_NAME" --out "$RUNNER_TEMP/release"
+      # A version already published with the same tarball is skipped, so a
+      # release that stopped halfway can run again (ADR-0071).
       - name: publish the checked tarballs, dependencies first
         run: |
           while IFS= read -r tarball; do
-            npm publish "$tarball" --access public
+            node scripts/publish-tarball.ts "$tarball"
           done < "$RUNNER_TEMP/release/publish-order.txt"

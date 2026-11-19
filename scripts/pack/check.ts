@@ -1,6 +1,8 @@
 // Pure checks of what a packed package holds (ADR-0034), of a release's
-// versions, and of the order to publish in (ADR-0037). No I/O: the caller lists
-// the tarball and reads the package.json inside it.
+// versions, of the order to publish in (ADR-0037), of the names on the
+// registry and of what to do with a version already published (ADR-0071). No
+// I/O: the caller lists the tarball, reads the package.json inside it, and
+// asks the registry.
 
 export interface PackedPackage {
   /** Paths inside the tarball, relative to its `package/` folder. */
@@ -18,7 +20,8 @@ export type ProblemKind =
   | 'unsupported-entry'
   | 'wrong-repository'
   | 'wrong-version'
-  | 'private';
+  | 'private'
+  | 'unregistered';
 
 export interface Problem {
   readonly kind: ProblemKind;
@@ -220,4 +223,51 @@ export function publishOrder(packages: readonly Publishable[]): string[] {
     remaining.delete(next);
   }
   return order;
+}
+
+/**
+ * Checks that each package's name is on the registry (ADR-0071): trusted
+ * publishing can't make a package's first version, so a new name is reserved
+ * once from the maintainer's machine first (ADR-0037).
+ */
+export function checkRegistered(
+  names: readonly string[],
+  registered: ReadonlySet<string>,
+): Problem[] {
+  return names
+    .filter((name) => !registered.has(name))
+    .map((name) => ({
+      kind: 'unregistered' as const,
+      subject: name,
+      message:
+        `${name} is not on the registry, and trusted publishing can't publish its first version: ` +
+        'publish a 0.0.0 placeholder from your machine, deprecate it, then add the trusted ' +
+        'publisher and require two-factor authentication (ADR-0037, ADR-0071)',
+    }));
+}
+
+/** What the release does with a tarball, by what the registry holds at its version (ADR-0071). */
+export type PublishDecision =
+  | { readonly action: 'publish' }
+  | { readonly action: 'skip'; readonly reason: string }
+  | { readonly action: 'stop'; readonly reason: string };
+
+/**
+ * Publish a version the registry doesn't hold; skip one it holds with the
+ * same integrity, as a resumed release finds; stop at one it holds with
+ * another, since something else was published under that version.
+ */
+export function publishDecision(
+  spec: string,
+  local: string,
+  published: string | undefined,
+): PublishDecision {
+  if (published === undefined) return { action: 'publish' };
+  if (published === local) {
+    return { action: 'skip', reason: `${spec} is already published, with the same tarball` };
+  }
+  return {
+    action: 'stop',
+    reason: `${spec} is already published with another tarball: ${published}, not ${local}`,
+  };
 }

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   checkPacked,
+  checkRegistered,
   checkRelease,
+  publishDecision,
   exportTargets,
   isTestFile,
   publishOrder,
@@ -376,5 +378,41 @@ describe('exportTargets', () => {
 
   it('finds nothing in an absent field', () => {
     expect(exportTargets(undefined)).toEqual([]);
+  });
+});
+
+describe('checkRegistered (ADR-0071)', () => {
+  it('finds nothing when every name is on the registry', () => {
+    expect(checkRegistered(['@a/x', 'y'], new Set(['@a/x', 'y', 'z']))).toEqual([]);
+  });
+
+  it('reports each name the registry lacks, with the steps to reserve it', () => {
+    const problems = checkRegistered(['@a/x', 'y', '@a/new'], new Set(['y']));
+    expect(problems.map((problem) => [problem.kind, problem.subject])).toEqual([
+      ['unregistered', '@a/x'],
+      ['unregistered', '@a/new'],
+    ]);
+    expect(problems[0]?.message).toContain('publish a 0.0.0 placeholder from your machine');
+    expect(problems[0]?.message).toContain('ADR-0037');
+  });
+});
+
+describe('publishDecision (ADR-0071)', () => {
+  it('publishes a version the registry does not hold', () => {
+    expect(publishDecision('@a/x@1.0.0', 'sha512-L', undefined)).toEqual({ action: 'publish' });
+  });
+
+  it('skips a version published with the same tarball', () => {
+    expect(publishDecision('@a/x@1.0.0', 'sha512-L', 'sha512-L')).toEqual({
+      action: 'skip',
+      reason: '@a/x@1.0.0 is already published, with the same tarball',
+    });
+  });
+
+  it('stops at a version published with another tarball, and names both', () => {
+    expect(publishDecision('@a/x@1.0.0', 'sha512-L', 'sha512-R')).toEqual({
+      action: 'stop',
+      reason: '@a/x@1.0.0 is already published with another tarball: sha512-R, not sha512-L',
+    });
   });
 });

@@ -2,8 +2,9 @@
 // installs the tarballs into an empty project and runs the CLI from there
 // (ADR-0034). Nothing is published.
 // Run from the repository root after a build: pnpm pack-check
-//   --release <tag>  also check that every package is at the tag's version and
-//                    none is private (ADR-0037)
+//   --release <tag>  also check that every package is at the tag's version,
+//                    none is private (ADR-0037), and each name is on the
+//                    registry (ADR-0071)
 //   --out <dir>      keep the tarballs there, with publish-order.txt listing
 //                    them in the order to publish
 
@@ -20,7 +21,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, posix, resolve as resolvePath } from 'node:path';
 import { parseArgs } from 'node:util';
-import { checkPacked, checkRelease, publishOrder } from './pack/check.ts';
+import { checkPacked, checkRegistered, checkRelease, publishOrder } from './pack/check.ts';
 
 /** Workspace folders whose packages are published; the demo-shop and the scripts are not. */
 const PUBLISHED_GROUPS = ['packages', 'packs'] as const;
@@ -100,6 +101,22 @@ function inspect(packed: Packed): Inspected {
     (problem) => `${packed.name}: ${problem.kind}: ${problem.message}`,
   );
   return { manifest, problems };
+}
+
+/** The names the registry holds, of those asked; any failure but E404 stops pack-check. */
+function registeredNames(names: readonly string[]): Set<string> {
+  const registered = new Set<string>();
+  for (const name of names) {
+    const result = spawnSync('npm', ['view', name, 'name', '--prefer-online'], {
+      encoding: 'utf8',
+    });
+    if (result.error !== undefined) throw result.error;
+    if (result.status === 0) registered.add(name);
+    else if (!`${result.stdout}${result.stderr}`.includes('E404')) {
+      fail(`npm view ${name} exited with ${String(result.status)}\n${result.stderr}`);
+    }
+  }
+  return registered;
 }
 
 /** Every dependency kind of a manifest, merged. */
@@ -223,6 +240,12 @@ try {
         inspected.map((one) => one.manifest),
         options.release,
       ).map((problem) => `${problem.subject}: ${problem.kind}: ${problem.message}`),
+    );
+    const names = packages.map((p) => p.name);
+    problems.push(
+      ...checkRegistered(names, registeredNames(names)).map(
+        (problem) => `${problem.subject}: ${problem.kind}: ${problem.message}`,
+      ),
     );
   }
   if (problems.length > 0) {
