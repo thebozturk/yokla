@@ -1,6 +1,6 @@
 {
   "name": "@yokla/core",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Schemas, check API, aggregation and gate. Pure: no I/O, no network.",
   "license": "Apache-2.0",
   "repository": {

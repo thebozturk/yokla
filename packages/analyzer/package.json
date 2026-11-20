@@ -1,6 +1,6 @@
 {
   "name": "@yokla/analyzer",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Proposes a profile from the target's repository, its data and a few probes.",
   "license": "Apache-2.0",
   "repository": {

@@ -4,6 +4,27 @@ Notable changes per version. Versions follow the roadmap in
 [design §20](docs/design.md#20-roadmap); a version ships when its exit criteria
 hold.
 
+## 0.4.3 — 2026-11-20
+
+The analyzer's model step reads what can answer its questions first.
+
+### Changed
+
+- **Files that name a field asked go first (ADR-0072, ADR-0073).** A
+  file whose path or text names a rate limit, a cache bypass or a refusal,
+  and every prompt, is sent before the rest, the shortest first, so a
+  large repository's token budget reaches the code that sets the values.
+  The estimate says how many of those files are sent and how many the
+  budget leaves out.
+- **`models.analyzer.maxTokens` defaults to 2000 (ADR-0072).** The
+  customer and transform models keep 400.
+
+### Fixed
+
+- **A number written with digit separators passes its check (ADR-0074).**
+  `2_000`, `2,000` and `2.000` hold 2000, read in groups of three with one
+  separator.
+
 ## 0.4.2 — 2026-11-19
 
 Documentation only. The README's diagrams are images, so the npm page
