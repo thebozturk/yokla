@@ -92,6 +92,7 @@ old one.
 | [0077](0077-tags-group-the-summary-and-select-a-run.md) | Tags group the summary and select a run | Accepted |
 | [0078](0078-a-cached-reply-needs-no-key.md) | A cached reply needs no key | Accepted |
 | [0079](0079-the-red-team-track.md) | The red-team track: v0.5 in seven items | Accepted |
+| [0080](0080-attack-cases-from-templates.md) | Attack cases from templates (R1) | Proposed |
 
 ## Template
 
