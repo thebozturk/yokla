@@ -1,6 +1,6 @@
 # 0079. The red-team track: v0.5 in seven items
 
-Status: Proposed · Date: 2026-11-20
+Status: Accepted · Date: 2026-11-20
 
 ## Context
 
