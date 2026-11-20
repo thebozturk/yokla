@@ -130,6 +130,7 @@ let uncapped: Ran | undefined;
 let modelled: Ran | undefined;
 let callsAfterFirst = 0;
 let cachedRun: Ran | undefined;
+let freshRun: Ran | undefined;
 let modelText = '';
 // The run whose maxTokens cuts the replies that hold entries (ADR-0051).
 const cutOut = join(repo, 'yokla.profile.cut.yaml');
@@ -233,6 +234,8 @@ beforeAll(async () => {
   );
   callsAfterFirst = providerCalls();
   modelText = readFileSync(withModel, 'utf8');
+  // Every reply is cached now: the key is never asked for (ADR-0078).
+  Reflect.deleteProperty(process.env, KEY_ENV);
   cachedRun = await analyze(
     withModel,
     join(work, 'cached.json'),
@@ -241,6 +244,17 @@ beforeAll(async () => {
     '--max-cost',
     '1',
     '--force',
+  );
+  // Asked anew, with no key: it fails before any call, and writes nothing (ADR-0078).
+  freshRun = await analyze(
+    withModel,
+    join(work, 'fresh.json'),
+    '--config',
+    config,
+    '--max-cost',
+    '1',
+    '--force',
+    '--fresh-model',
   );
 }, 120_000);
 
@@ -549,6 +563,18 @@ describe('yokla analyze with a model on the demo-shop (ADR-0049)', () => {
     const again = Analysis.parse(JSON.parse(readFileSync(join(work, 'cached.json'), 'utf8')));
     // Every chunk, now: the cut run asked each one.
     expect(again.model).toMatchObject({ calls: 0, cached: callsAfterCut, costUsd: 0 });
+  });
+
+  it('needs the key only for a reply not cached, and fails before sending without it (ADR-0078)', () => {
+    // The cached run above had no key set.
+    expect(cachedRun?.code, cachedRun?.output).toBe(0);
+    expect(freshRun?.code).toBe(2);
+    expect(freshRun?.output).toContain(
+      `environment variable ${KEY_ENV} is not set: the analyzer model is called for a reply not in the cache`,
+    );
+    expect(providerCalls()).toBe(callsAfterFirst);
+    expect(readFileSync(withModel, 'utf8')).toBe(modelText);
+    expect(existsSync(join(work, 'fresh.json'))).toBe(false);
   });
 
   // Last, so it sees the traffic of everything above.

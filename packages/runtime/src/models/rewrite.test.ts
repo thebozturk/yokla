@@ -220,3 +220,37 @@ describe('the rewriter (ADR-0059)', () => {
     ]);
   });
 });
+
+describe('the rewriter without its key (ADR-0078)', () => {
+  const keyed: OwnModel = { ...model, apiKeyEnv: 'NO_SUCH_KEY' };
+
+  it('answers from the cache with no key set, and asks for it only for a reply not cached', async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), 'yokla-rw-'));
+    const fake = caller(polite);
+    await new Rewriter({ model: keyed, env: {}, cacheDir, caller: fake }).run(
+      [job()],
+      spend(),
+      undefined,
+    );
+    expect(fake.calls).toBe(1);
+    // The same rewrite, now cached: no client is made, so the missing key is never asked for.
+    const spent = spend();
+    const results = await new Rewriter({ model: keyed, env: {}, cacheDir }).run(
+      [job()],
+      spent,
+      undefined,
+    );
+    expect(results.get('tents|0')?.text).toBe('Merhaba, 500 TL altı çadır');
+    expect(spent).toEqual({ calls: 1, cached: 1, costUsd: 0, unknown: false });
+    // A message not cached needs a call, and the key: it fails before anything is sent.
+    await expect(
+      new Rewriter({ model: keyed, env: {}, cacheDir }).run(
+        [job({ message: '300 TL altı çadır', keep: ['300 TL'] })],
+        spend(),
+        undefined,
+      ),
+    ).rejects.toThrow(
+      'environment variable NO_SUCH_KEY is not set: the transform model is called for a reply not in the cache',
+    );
+  });
+});

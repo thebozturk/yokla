@@ -224,3 +224,31 @@ interface Call {
   readonly body: unknown;
   readonly read: (json: unknown) => { text: unknown; usage: OwnReply['usage']; cut: boolean };
 }
+
+/**
+ * A client made at its first call, for a role whose replies are cached: when
+ * the cache holds every reply, no client is made and no key is asked for
+ * (ADR-0078). A missing key fails that first call, before anything is sent.
+ */
+export function clientOnFirstCall(
+  config: OwnModel,
+  env: Readonly<Record<string, string | undefined>>,
+  role: string,
+): { complete: ModelClient['complete'] } {
+  let client: ModelClient | undefined;
+  return {
+    complete: async (prompt, seed) => {
+      if (client === undefined) {
+        try {
+          client = new ModelClient(config, env, role);
+        } catch (error) {
+          if (!(error instanceof ModelClientError)) throw error;
+          throw new ModelClientError(
+            `${error.message}: the ${role} model is called for a reply not in the cache`,
+          );
+        }
+      }
+      return client.complete(prompt, seed);
+    },
+  };
+}

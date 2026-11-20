@@ -18,7 +18,7 @@ import {
   type OwnModel,
   type RewriteAsk,
 } from '@yokla/core';
-import { ModelClient, type OwnReply } from './client.ts';
+import { clientOnFirstCall, type OwnReply } from './client.ts';
 
 /** What makes a model's call: the model client, or a stand-in for it. */
 export interface RewriteCaller {
@@ -96,7 +96,7 @@ export class Rewriter {
     this.#model = options.model;
     this.#cacheDir = options.cacheDir;
     this.#languages = options.languages ?? new Map();
-    this.#caller = options.caller ?? new ModelClient(options.model, options.env, 'transform');
+    this.#caller = options.caller ?? clientOnFirstCall(options.model, options.env, 'transform');
   }
 
   /** A rewrite's cache file: by the model's settings, the prompt's version and what is asked. */

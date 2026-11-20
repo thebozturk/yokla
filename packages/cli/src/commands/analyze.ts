@@ -25,7 +25,7 @@ import {
   undecidedLine,
 } from '@yokla/analyzer';
 import type { OwnModel } from '@yokla/core';
-import { ModelClient, ModelClientError } from '@yokla/runtime';
+import { clientOnFirstCall, ModelClientError } from '@yokla/runtime';
 import { LoadError, loadConfig } from '../load.ts';
 import { DOMAIN_PACKS, LANGUAGE_PACKS } from '../packs.ts';
 import {
@@ -258,7 +258,7 @@ export async function analyzeCommand(
         : {
             model: {
               config: modelConfig,
-              caller: estimateOnly ? NO_CALLS : new ModelClient(modelConfig, env, 'analyzer'),
+              caller: estimateOnly ? NO_CALLS : clientOnFirstCall(modelConfig, env, 'analyzer'),
               maxCostUsd,
               chunkTokens,
               maxTokens,

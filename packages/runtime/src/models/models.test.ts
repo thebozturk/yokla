@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CUSTOMER_PROMPT_MARK, type OwnModel } from '@yokla/core';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ModelClient, ModelClientError, providerSeed } from './client.ts';
+import { clientOnFirstCall, ModelClient, ModelClientError, providerSeed } from './client.ts';
 import { CustomerPlayer } from './customer.ts';
 
 const servers: Server[] = [];
@@ -277,6 +277,25 @@ describe('the model client (ADR-0028)', () => {
     await expect(new ModelClient(model(url), {}).complete(prompt, 's')).rejects.toBeInstanceOf(
       ModelClientError,
     );
+  });
+});
+
+describe('a client made at its first call (ADR-0078)', () => {
+  it('asks for no key until it calls, then fails before sending, naming why', async () => {
+    const { url, seen } = await provider(() => [
+      200,
+      { choices: [{ message: { content: 'hi' } }], model: 'm' },
+    ]);
+    const unset = clientOnFirstCall(model(url, { apiKeyEnv: 'NONE' }), {}, 'analyzer');
+    await expect(unset.complete(prompt, 's')).rejects.toThrow(
+      'environment variable NONE is not set: the analyzer model is called for a reply not in the cache',
+    );
+    await expect(unset.complete(prompt, 's')).rejects.toBeInstanceOf(ModelClientError);
+    expect(seen).toEqual([]);
+    const set = clientOnFirstCall(model(url, { apiKeyEnv: 'KEY' }), { KEY: 'k-1' }, 'analyzer');
+    expect((await set.complete(prompt, 's')).text).toBe('hi');
+    expect((await set.complete(prompt, 's')).text).toBe('hi');
+    expect(seen).toHaveLength(2);
   });
 });
 
