@@ -166,11 +166,13 @@ npx yokla analyze --dir ../shop-assistant --url http://127.0.0.1:3000/v1/chat \
   machine. Data files, environment files and tests are never sent.
 - **Every value is checked** against the line it quotes. A value that isn't
   on that line is listed as unverified and never proposed.
-- **Files go in a fixed order:** docs, prompts, contracts, manifests, env
-  examples, then code, until `--max-tokens` (200,000 by default). In a large
-  repository the code that holds your limits may come after the budget
-  ends: the summary names the files left out, and a larger `--max-tokens`
-  reads them, at the cost the estimate shows.
+- **Files that name what is asked go first** (ADR-0072): a rate limit,
+  throttling, `retry-after` or `429`; a cache with `bypass`, `no-cache` or
+  `no-store`; a refusal, or any prompt. The rest follow: docs, prompts,
+  contracts, manifests, env examples, then code, until `--max-tokens`
+  (200,000 by default). The estimate says how many marked files the budget
+  leaves out; a larger `--max-tokens` reads them, at the cost the estimate
+  shows.
 - **Replies are cached,** so a rerun on unchanged files costs nothing.
 
 ## Cases from your catalog

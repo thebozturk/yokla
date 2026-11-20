@@ -148,8 +148,12 @@ it proposes `target.response.schema`, with no model:
 
 **With a model (ADR-0049).** With `models.analyzer` in the configuration, a
 model also reads the docs, prompts, contracts, manifests, env examples and
-code, in that order, for three things each project writes its own way: the
-rate limits, the cache bypass header and the canonical refusals.
+code for three things each project writes its own way: the rate limits, the
+cache bypass header and the canonical refusals. Files that name one of them
+go first (ADR-0072): a rate limit, throttling, `retry-after` or `429`; a
+cache with `bypass`, `no-cache` or `no-store`; a refusal, or any prompt.
+The more of the three a file names, the sooner it goes; the rest follow in
+the order above.
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -170,7 +174,8 @@ one per 2.5, so the estimate stays above most code's count.
 - **Before the first call** it prints the files it sends, the chunks and
   their input tokens, the most output tokens, the estimated cost and twice
   that as the upper bound, and the model's url, where the files' text goes.
-  Run with `--estimate` first, and approve that figure.
+  It also says how many marked files are sent and how many the budget
+  leaves out. Run with `--estimate` first, and approve that figure.
 - **Every value is checked** against the line it quotes: the file and line
   were sent, the quote is on that line or within two lines of it, and the
   value stands alone in the quote. What fails is listed as unverified, with
@@ -428,8 +433,9 @@ plan:
     answers included.
 - **`models.analyzer`:** the model `yokla analyze` asks for values in the
   target's docs, prompts and code (ADR-0049), in the same kinds as
-  `models.customer`. Give it a `maxTokens` its replies fit in, such as 8000:
-  a model that reasons spends output tokens on it, counted against
+  `models.customer`. Its `maxTokens` is 2,000 by default (ADR-0072), the
+  others' 400. Raise it to what its replies fit in, such as 8000: a model
+  that reasons spends output tokens on it, counted against
   `maxTokens` and billed as output (ADR-0051). Give it a `price` too, 0 for
   a local model: without one, `--max-cost` couldn't be kept, and
   `yokla analyze` refuses to run it. A hosted model receives those files'
