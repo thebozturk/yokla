@@ -86,6 +86,7 @@ old one.
 | [0071](0071-a-new-package-reserved-before-it-ships-and-a-release-that-resumes.md) | A new package reserved before it ships, and a release that resumes | Accepted |
 | [0072](0072-the-model-step-reads-the-likely-files-first.md) | The model step reads the likely files first, and answers at length | Accepted; amended by 0073 |
 | [0073](0073-marked-files-smallest-first.md) | Marked files go smallest first | Accepted |
+| [0074](0074-a-number-written-with-digit-separators.md) | A number written with digit separators | Proposed |
 
 ## Template
 
