@@ -152,8 +152,8 @@ code for three things each project writes its own way: the rate limits, the
 cache bypass header and the canonical refusals. Files that name one of them
 go first (ADR-0072): a rate limit, throttling, `retry-after` or `429`; a
 cache with `bypass`, `no-cache` or `no-store`; a refusal, or any prompt.
-The more of the three a file names, the sooner it goes; the rest follow in
-the order above.
+Among those, the shortest goes first, so no large doc spends the budget
+alone (ADR-0073); the rest follow in the order above.
 
 | Option | Default | Meaning |
 |---|---|---|

@@ -325,8 +325,9 @@ give, and measures the proposal against a profile, at no model cost.
   checked word for word against the line it quotes: the rate limits, the
   cache bypass and the canonical refusals. What fails the check is listed
   and never proposed. On the demo-shop, with the fake provider: 56 entries,
-  recall 81.2 %. Files that name a field asked go first, so a large
-  repository's budget reaches the code that sets them (ADR-0072).
+  recall 81.2 %. Files that name a field asked go first, the shortest
+  first, so a large repository's budget reaches the code that sets them
+  (ADR-0072, ADR-0073).
 - **Replies it can't read (ADR-0051):** a reply cut at `maxTokens`, as each
   provider kind reports it, or not the JSON asked for, gives no value, is
   named in the summary and the report, and is never cached. Tokens are
@@ -1257,7 +1258,9 @@ the guard with `--import`.
   - **With the model step** (ADR-0049, $0.0227), both stayed the same: the
     token budget was spent on docs and prompts, and the code that holds
     the rate limits and the cache layers was never read. Files that name
-    the fields asked now go first (ADR-0072).
+    the fields asked now go first (ADR-0072), the shortest first: by how
+    many fields they named, a few large docs took the whole budget
+    (ADR-0073).
   - **Indirect injection through a tool result** wasn't tried: the target
     can't be pointed at the model proxy. The proxy now reads its
     provider's protocol (ADR-0069); the target needs a base url setting.
