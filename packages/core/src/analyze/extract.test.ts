@@ -396,6 +396,19 @@ describe('readReply (ADR-0049)', () => {
   });
 });
 
+/** Whether a one-line doc's text holds `value` as the number a limit asks for. */
+function holds(quote: string, value: number): boolean {
+  const doc: SourceFile = { path: 'a.md', kind: 'doc', text: quote };
+  const [only] = chunkFiles([doc], 8_000, 200_000).chunks;
+  if (only === undefined) throw new Error('no chunk');
+  return verifyEntry(
+    { field: 'limits.perHour', value, file: 'a.md', line: 1, quote },
+    only,
+    () => [quote],
+    ['en'],
+  ).ok;
+}
+
 describe('verifyEntry (ADR-0049)', () => {
   it('keeps a value whose quote is on its line', () => {
     expect(verify({})).toMatchObject({ ok: true, entry: { kind: 'code', value: 120 } });
@@ -438,6 +451,39 @@ describe('verifyEntry (ADR-0049)', () => {
         ['en'],
       ).ok;
     expect([check(120), check(12), check(1), check(5)]).toEqual([true, false, false, false]);
+  });
+
+  it.each([
+    ['limit: 2_000', '_'],
+    ['2,000 an hour', ','],
+    ['saatte 2.000 istek', '.'],
+    ['2 000 par heure', ' '],
+    ['2\u00A0000 per hour', '\u00A0'],
+    ['2\u202F000 per hour', '\u202F'],
+  ])('reads %j as 2000, and without its %j as plain digits (ADR-0074)', (quote, separator) => {
+    expect(holds(quote, 2000)).toBe(true);
+    expect(quote).toContain(separator);
+    expect(holds(quote.replace(separator, ''), 2000)).toBe(true);
+    // A group of two digits is no group.
+    expect(holds(quote.replace(`${separator}000`, `${separator}00`), 2000)).toBe(false);
+    expect(holds(quote.replace(`${separator}000`, `${separator}00`), 200)).toBe(false);
+  });
+
+  it.each([
+    ['ttl: 3_600_000', 3_600_000, true],
+    ['1,000,000 calls', 1_000_000, true],
+    ['12,000 an hour', 2000, false],
+    ['12,000 an hour', 12, false],
+    ['2,0001 an hour', 2000, false],
+    ['1,000.000 calls', 1_000_000, false],
+    ['1,000.000 calls', 1000, false],
+    ['20_00 an hour', 2000, false],
+    ['limit_120', 120, false],
+    ['3,120 a day', 120, false],
+    ['120_000 a day', 120, false],
+    ['up to 120 a minute', 120, true],
+  ])('in %j finds %d: %s (ADR-0074)', (quote, value, found) => {
+    expect(holds(quote, value)).toBe(found);
   });
 
   it('needs the header name, then its value after it', () => {

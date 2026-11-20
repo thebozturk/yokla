@@ -324,9 +324,27 @@ function standsAlone(word: string, text: string, flags = 'u'): RegExpExecArray |
   );
 }
 
-/** A whole number standing alone, as digits, not part of a longer number. */
+/** What may stand between the groups of three digits of a number (ADR-0074). */
+const DIGIT_SEPARATORS = ['_', ',', '.', ' ', '\u00A0', '\u202F'] as const;
+
+/**
+ * A whole number standing alone, not part of a longer number: as plain
+ * digits, or grouped by threes from the right with one separator between
+ * every group, as `2_000`, `2,000` or `2.000` (ADR-0074).
+ */
 function numberStandsAlone(value: number, text: string): boolean {
-  return new RegExp(`(?<![\\d.,])${String(value)}(?![\\d]|[.,]\\d)`, 'u').test(text);
+  const digits = String(value);
+  const groups: string[] = [];
+  for (let end = digits.length; end > 0; end -= 3) {
+    groups.unshift(digits.slice(Math.max(0, end - 3), end));
+  }
+  const forms = [
+    digits,
+    ...(groups.length > 1
+      ? DIGIT_SEPARATORS.map((separator) => groups.join(escapeRegExp(separator)))
+      : []),
+  ];
+  return new RegExp(`(?<![\\d.,_])(?:${forms.join('|')})(?![\\d]|[.,_]\\d)`, 'u').test(text);
 }
 
 /** Why an entry's value isn't in its quote, or undefined when it is. */
