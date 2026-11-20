@@ -94,7 +94,7 @@ old one.
 | [0079](0079-the-red-team-track.md) | The red-team track: v0.5 in seven items | Accepted; amended by 0081 |
 | [0080](0080-attack-cases-from-templates.md) | Attack cases from templates (R1) | Accepted |
 | [0081](0081-the-red-team-track-widened.md) | The red-team track, widened | Accepted |
-| [0082](0082-more-attack-kinds-from-templates.md) | More attack kinds from templates (R1b) | Proposed |
+| [0082](0082-more-attack-kinds-from-templates.md) | More attack kinds from templates (R1b) | Accepted |
 
 ## Template
 
