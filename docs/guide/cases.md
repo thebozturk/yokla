@@ -51,6 +51,7 @@ Each sample opens a new session and bypasses the target's cache (see the
 | `user` | The user's message, sent as `{{message}}`. |
 | `request.body` | Merged into the profile's request body for this turn only: objects merge key by key, any other value replaces. |
 | `request.headers` | Extra headers for this turn only. |
+| `as` | The profile identity the turn is sent as (ADR-0083): with that identity's `request`, then the turn's own, in the identity's own session, with its own `{{session}}` id and carried values for the rest of the sample. A turn without `as` goes as no identity, in the sample's session. Not yet for a target with `session.open` or over WebSocket. |
 | `faults` | Provider faults the model proxy injects into this turn (below). |
 | `expect` | What the answer must satisfy (below). |
 

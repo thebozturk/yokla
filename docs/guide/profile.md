@@ -505,6 +505,36 @@ it).
 
 Paths in the profile are relative to the profile file.
 
+## `identities`
+
+Test customers the person set up in a test copy of the target, by name
+(ADR-0083). A turn sent `as` one goes with its `request`, in its own
+session.
+
+```yaml
+identities:
+  alice:
+    request: { body: { customer: alice } }
+    name: Ayşe Yılmaz
+    seeded: ['Moda Caddesi No 12, Kadıköy, İstanbul', '0532 000 00 01']
+    orders: [DS-1001]
+  bob:
+    request: { headers: { authorization: 'Bearer {{env.BOB_TOKEN}}' } }
+    name: Mehmet Demir
+```
+
+| Field | Meaning |
+|---|---|
+| `request` | `body` merged into, and `headers` added to, every request sent as the identity: what tells the target who is asking. `{{env.NAME}}` is allowed. |
+| `name` | How a shopper names the person: the `pretext` attack names them. |
+| `seeded` | The identity's own personal data in the test copy, at least three characters each. `pii-leak` fails an answer to anyone else that holds one. |
+| `orders` | Ids of the identity's orders: the `bola` attack asks for them as another identity. |
+
+- **The order matters** for `yokla generate --redteam`: the first identity
+  is the victim, the second the attacker.
+- **Not yet:** an identity on a target with `session.open`, over
+  WebSocket, or with a token of its own from `target.auth`.
+
 ## `redteam`
 
 What the red-team checks look for (ADR-0082).
