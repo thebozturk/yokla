@@ -95,6 +95,7 @@ old one.
 | [0080](0080-attack-cases-from-templates.md) | Attack cases from templates (R1) | Accepted |
 | [0081](0081-the-red-team-track-widened.md) | The red-team track, widened | Accepted |
 | [0082](0082-more-attack-kinds-from-templates.md) | More attack kinds from templates (R1b) | Accepted |
+| [0083](0083-leakage-and-another-customers-data.md) | Leakage and another customer's data (R2) | Proposed |
 
 ## Template
 
