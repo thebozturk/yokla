@@ -87,6 +87,9 @@ old one.
 | [0072](0072-the-model-step-reads-the-likely-files-first.md) | The model step reads the likely files first, and answers at length | Accepted; amended by 0073 |
 | [0073](0073-marked-files-smallest-first.md) | Marked files go smallest first | Accepted |
 | [0074](0074-a-number-written-with-digit-separators.md) | A number written with digit separators | Accepted |
+| [0075](0075-a-turn-says-what-kind-of-request-it-is.md) | A turn says what kind of request it is | Accepted |
+| [0076](0076-a-case-carries-a-weight.md) | A case carries a weight | Accepted |
+| [0077](0077-tags-group-the-summary-and-select-a-run.md) | Tags group the summary and select a run | Accepted |
 
 ## Template
 
