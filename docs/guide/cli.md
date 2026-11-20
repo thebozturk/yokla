@@ -178,7 +178,9 @@ one per 2.5, so the estimate stays above most code's count.
   leaves out. Run with `--estimate` first, and approve that figure.
 - **Every value is checked** against the line it quotes: the file and line
   were sent, the quote is on that line or within two lines of it, and the
-  value stands alone in the quote. What fails is listed as unverified, with
+  value stands alone in the quote. A number may be written with digit
+  separators between groups of three, such as `2_000`, `2,000` or `2.000`
+  (ADR-0074). What fails is listed as unverified, with
   why, and never proposed. A limit or a cache bypass found with two values is
   a conflict, and neither is proposed; refusals gather into their language's
   list.
