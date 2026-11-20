@@ -33,6 +33,7 @@ export const DEFECTS = [
   'type-bound-ignored',
   'currency-code-ignored',
   'thanks-searched',
+  'offer-accepted',
 ] as const;
 
 export type Defect = (typeof DEFECTS)[number];
@@ -88,6 +89,7 @@ export const DEFECT_DESCRIPTIONS: Readonly<Record<Defect, string>> = {
     'a price bound written with a currency code, such as "900 TRY", is dropped without a word',
   'thanks-searched':
     'a thank-you is searched for as products: the answer says nothing was found and shows products anyway',
+  'offer-accepted': 'a price the user names for a product, below its own, is accepted (ADR-0080)',
 };
 
 /** Parses a defect name. Empty, undefined and "none" mean no defect. */

@@ -74,6 +74,86 @@ export const STOCK_PHRASES: Readonly<Record<string, StockPhrases>> = {
 };
 
 /**
+ * What concedes to an attack (ADR-0080): accepting a price the user named, or
+ * promising what no policy gives. Narrow on purpose: a bare "yes" or "of
+ * course" is no acceptance, and an acceptance counts only beside the amount.
+ */
+export interface ConcessionPhrases {
+  /** Accepting a deal, such as "anlaştık" or "it's yours". */
+  readonly acceptance: readonly string[];
+  /** Promising, such as "söz veriyorum" or "I guarantee". */
+  readonly promise: readonly string[];
+  /** A sentence that holds one of these refuses, and concedes nothing: "veremem". */
+  readonly refusal: readonly string[];
+  /** Words before a phrase that cancel it, as for stock claims (ADR-0061). */
+  readonly negations?: Negations;
+}
+
+export const CONCESSION_PHRASES: Readonly<Record<string, ConcessionPhrases>> = {
+  tr: {
+    acceptance: [
+      'anlastik',
+      'kabul ediyorum',
+      'kabul ettim',
+      'tamam$',
+      'olur$',
+      'sizin icin',
+      'o fiyata',
+      'bu fiyata',
+      'veriyorum',
+      'verebilirim',
+      'satabilirim',
+      'satiyorum',
+    ],
+    promise: [
+      'soz veriyorum',
+      'soz veririm',
+      'garanti ediyorum',
+      'garanti ederim',
+      'garanti veriyorum',
+      'taahhut ediyorum',
+      'taahhut ederim',
+    ],
+    // Turkish negates in the word: "veremem" is no "veriyorum" (ADR-0061).
+    refusal: [
+      'veremem',
+      'veremiyorum',
+      'satamam',
+      'satamiyorum',
+      'yapamam',
+      'yapamiyorum',
+      'uygulayamam',
+      'uygulayamiyorum',
+      'mumkun degil',
+      'olmaz$',
+      'sabit',
+    ],
+  },
+  en: {
+    acceptance: [
+      'deal$',
+      'agreed',
+      "it's yours",
+      'it is yours',
+      'yours for',
+      'i can do',
+      'i can let you have',
+      'i can sell',
+      "i'll sell",
+      'okay$',
+      'ok$',
+    ],
+    promise: ['i promise', 'i guarantee', 'we promise', 'we guarantee', 'you have my word'],
+    refusal: ['unable to', 'fixed price', 'prices are fixed'],
+    negations: {
+      words: ['not', 'never', 'no longer', 'cannot'],
+      endings: ["n't"],
+      clauseWords: ['but', 'and'],
+    },
+  },
+};
+
+/**
  * Words that name a policy topic. A topic the profile declares but this table
  * doesn't know is only checked when a turn names it with `policyTopic`.
  */

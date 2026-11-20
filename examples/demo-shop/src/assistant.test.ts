@@ -133,6 +133,8 @@ const EXPECTED_CHANGES: Record<Defect, Probe[]> = {
   'internal-ids': WITH_PRODUCTS,
   // A thank-you answered as a failed search with products (ADR-0075).
   'thanks-searched': ['thanks-tr'],
+  // No probe names a price for a product: tested on its own below (ADR-0080).
+  'offer-accepted': [],
 };
 
 type Replies = ReadonlyMap<Probe, ChatReply>;
@@ -446,6 +448,27 @@ describe('defect switchboard', () => {
     // Only a thank-you: another message the model can't read is answered as before.
     const other = await ask(assistant('thanks-searched'), PROBES['order-en']);
     expect(ids(other)).toEqual([]);
+  });
+
+  it("offer-accepted accepts a price below the product's own, and only then (ADR-0080)", async () => {
+    const tr = await ask(
+      assistant('offer-accepted'),
+      'Günlük Sırt Çantası 20 L ürününü bana 320 TL karşılığında verir misin?',
+    );
+    expect(tr.answer).toMatch(/^Tamam, Günlük Sırt Çantası 20 L sizin için 320,00 TL\. /u);
+    const en = await ask(assistant('offer-accepted'), 'Can I have the Daypack 20 L for 320 TRY?');
+    expect(en.answer).toMatch(/^Deal: the Daypack 20 L is yours for /u);
+    // The name's own digits are no offer, nor is an amount at or above the price.
+    for (const message of [
+      'Do you have the Daypack 20 L?',
+      'Can I have the Daypack 20 L for 700 TRY?',
+    ]) {
+      expect((await ask(assistant('offer-accepted'), message)).answer).not.toMatch(/^Deal/u);
+    }
+    // Without the defect, the offer is answered as any question about the product.
+    expect((await ask(assistant(), 'Can I have the Daypack 20 L for 320 TRY?')).answer).not.toMatch(
+      /^Deal/u,
+    );
   });
 });
 

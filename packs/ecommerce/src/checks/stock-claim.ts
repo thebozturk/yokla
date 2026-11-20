@@ -10,55 +10,23 @@
 // A product whose stock yokla can't learn at all (not in the response, not in
 // the catalog) is skipped: that is a gap in yokla's view, not the target's.
 
-import {
-  findPhrases,
-  hasPhrase,
-  type Check,
-  type CheckFinding,
-  type LanguagePack,
-} from '@yokla/core';
+import { findPhrases, type Check, type CheckFinding, type LanguagePack } from '@yokla/core';
 import { nameIn, productOf, type EcommerceData, type Product } from '../data.ts';
-import { STOCK_PHRASES, type Negations } from '../lexicon.ts';
-import { namedProducts, notApplicable, productsOf, seenProductsOf, segments } from './common.ts';
+import { STOCK_PHRASES } from '../lexicon.ts';
+import {
+  bare,
+  namedProducts,
+  negated,
+  notApplicable,
+  productsOf,
+  seenProductsOf,
+  segments,
+} from './common.ts';
 
 type Claim = 'in' | 'out';
 
 /** Where a judged product came from, when it wasn't returned. */
 type Source = { readonly seenIn: string } | { readonly namedOnly: true } | undefined;
-
-/** How many words before a claim phrase a negation cancels it from (ADR-0061). */
-const NEGATION_WINDOW = 5;
-
-/** A word without the punctuation around it. */
-const bare = (word: string) => word.replaceAll(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
-
-/**
- * Whether a negation sits among the words just before `start`, in the same
- * clause: after the last comma, semicolon, colon or clause word (ADR-0061).
- */
-function negated(folded: string, start: number, negations: Negations | undefined): boolean {
-  if (negations === undefined) return false;
-  const words: string[] = [];
-  const before = folded
-    .slice(0, start)
-    .split(/\s+/u)
-    .filter((word) => word !== '');
-  for (let at = before.length - 1; at >= 0 && words.length < NEGATION_WINDOW; at -= 1) {
-    const word = before[at] ?? '';
-    if (/[,;:]$/u.test(word)) break;
-    const plain = bare(word);
-    if (plain === '') continue;
-    if (negations.clauseWords.includes(plain)) break;
-    words.unshift(plain);
-  }
-  return (
-    words.some((word) => negations.endings.some((ending) => word.endsWith(ending))) ||
-    hasPhrase(
-      words.join(' '),
-      negations.words.map((word) => `${word}$`),
-    )
-  );
-}
 
 /** Catalog products of two words or more, by their folded full name, keyed by its first word. */
 type NameIndex = ReadonlyMap<string, readonly { name: string; products: readonly Product[] }[]>;

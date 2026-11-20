@@ -337,6 +337,33 @@ function present(scope: Scope, absent: string): CatalogRow | undefined {
   });
 }
 
+/**
+ * The products lookup asks about in a language, in its order: in stock, by a
+ * name no other product holds, one per type. Offers name them too (ADR-0080).
+ */
+export function lookupProducts(
+  data: EcommerceData,
+  language: string,
+): { readonly row: CatalogRow; readonly name: string; readonly group: WordGroup }[] {
+  const { catalog } = data;
+  const say = PHRASINGS[language];
+  const word = WORDINGS[language];
+  if (catalog === undefined || say === undefined || word === undefined) return [];
+  const rows = [...catalog.values()];
+  const separator = data.config.typeSeparator;
+  const wordsOf = typeWordsIn(rows, separator, language);
+  const keyOf = (type: string) => wordKey(wordsOf(type), language);
+  const groups = spreadTypes(rows, separator, Number.POSITIVE_INFINITY, keyOf).map((type) =>
+    wordGroup(type, rows, wordsOf, language),
+  );
+  const shared = sharedNames(rows, language);
+  const scope: Scope = { language, say, word, groups, rows, data, absent: [], shared };
+  return groups.flatMap((group) => {
+    const found = named(scope, group, stocked);
+    return found === undefined ? [] : [{ ...found, group }];
+  });
+}
+
 /** The cases of every kind from the catalog, in each language there are phrasings for. */
 export function ecommerceGenerate(
   data: EcommerceData,

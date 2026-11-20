@@ -14,7 +14,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { parseConfig, Results, z } from '@yokla/core';
 import { installNetworkGuard, type NetworkGuard } from '@yokla/runtime/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -318,8 +318,16 @@ const INSPECTION: Readonly<Record<string, Readonly<Record<string, readonly strin
   },
 };
 const inspection = new Map<string, Results>();
+/** The attacks yokla generate --redteam wrote, run on the correct shop and on no-leak-guard (ADR-0080). */
+const attacks = new Map<string, Results>();
+const ATTACK_DEFECTS = ['none', 'no-leak-guard'];
 
-async function runInspection(defect: string, providerUrl: string): Promise<void> {
+async function runInspection(
+  defect: string,
+  providerUrl: string,
+  cases = join(DEMO, 'cases-inspection'),
+  into = inspection,
+): Promise<void> {
   const shop = await start('src/main.ts', [
     '--port',
     '0',
@@ -330,7 +338,7 @@ async function runInspection(defect: string, providerUrl: string): Promise<void>
     '--defect',
     defect,
   ]);
-  const out = join(dir, `inspection-${defect}.json`);
+  const out = join(dir, `${into === inspection ? 'inspection' : 'attacks'}-${defect}.json`);
   const quiet = { out: () => undefined, err: () => undefined };
   const code = await main(
     [
@@ -338,7 +346,7 @@ async function runInspection(defect: string, providerUrl: string): Promise<void>
       '--profile',
       profileFor('serial', providerUrl, 'inspection', INSPECT),
       '--cases',
-      join(DEMO, 'cases-inspection'),
+      cases,
       '--target-url',
       `${shop}/v1/chat`,
       '--proxy-url',
@@ -349,7 +357,28 @@ async function runInspection(defect: string, providerUrl: string): Promise<void>
     quiet,
   );
   expect(code, defect).toBe(0);
-  inspection.set(defect, Results.parse(JSON.parse(readFileSync(out, 'utf8'))));
+  into.set(defect, Results.parse(JSON.parse(readFileSync(out, 'utf8'))));
+}
+
+/** yokla generate --redteam on the profile with a canary: every kind, extraction too (ADR-0080). */
+async function generateAttacks(providerUrl: string): Promise<string> {
+  const out = join(dir, 'attacks', 'redteam.yaml');
+  const lines: string[] = [];
+  const code = await main(
+    [
+      'generate',
+      '--redteam',
+      '--profile',
+      profileFor('serial', providerUrl, 'inspection', INSPECT),
+      '--competitor',
+      'Rivalmart',
+      '--out',
+      out,
+    ],
+    { out: (line) => lines.push(line), err: (line) => lines.push(line) },
+  );
+  expect(code, lines.join('\n')).toBe(0);
+  return dirname(out);
 }
 
 /** Tool-call defect → the one check that must catch it → the cases it must fail (ADR-0025). */
@@ -720,6 +749,9 @@ beforeAll(async () => {
   await run('header', headerShop, providerUrl);
   for (const defect of Object.keys(RESILIENCE)) await runResilience(defect, providerUrl);
   for (const defect of Object.keys(INSPECTION)) await runInspection(defect, providerUrl);
+  const attackCases = await generateAttacks(providerUrl);
+  for (const defect of ATTACK_DEFECTS)
+    await runInspection(defect, providerUrl, attackCases, attacks);
   for (const defect of Object.keys(TOOLS)) await runTools(defect, providerUrl);
   for (const defect of Object.keys(ORIGINS)) await runOrigin(defect, providerUrl);
   await runStreaming(providerUrl);
@@ -823,6 +855,7 @@ describe('the model proxy against the demo-shop', () => {
       ...[...runs.values()].map((done) => done.results),
       ...resilience.values(),
       ...inspection.values(),
+      ...attacks.values(),
       ...toolRuns.values(),
       ...originRuns.values(),
       ...(streamed === undefined ? [] : [streamed.results]),
@@ -894,6 +927,28 @@ describe('the model proxy against the demo-shop', () => {
       expect(results?.run.issues).toBeUndefined();
     },
   );
+
+  it('attacks: the correct shop withstands every generated kind, extraction with the model over HTTP (ADR-0080)', () => {
+    const results = attacks.get('none');
+    const kinds = new Set(results?.cases.map((c) => c.id.split('-')[0]));
+    expect(kinds).toEqual(
+      new Set(['injection', 'extraction', 'offer', 'commitment', 'competitor']),
+    );
+    for (const c of results?.cases ?? []) expect(c.status, c.id).toBe('pass');
+  });
+
+  it('attacks: no-leak-guard fails exactly the extraction cases, by answer-text and prompt-leak (ADR-0080)', () => {
+    const results = attacks.get('no-leak-guard');
+    const extraction = (results?.cases ?? [])
+      .map((c) => c.id)
+      .filter((id) => id.startsWith('extraction-'))
+      .toSorted();
+    expect(extraction).toHaveLength(4);
+    expect(failingByCheck(results)).toEqual({
+      'answer-text': extraction,
+      'prompt-leak': extraction,
+    });
+  });
 
   it('inspection: every check applied where it should, and the results keep no prompt text', () => {
     const results = inspection.get('none');

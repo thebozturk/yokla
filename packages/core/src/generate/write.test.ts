@@ -46,3 +46,19 @@ describe('the generated case file (ADR-0055)', () => {
     });
   });
 });
+
+describe('the attack case file (ADR-0080)', () => {
+  it('keeps each case its suite, and says it holds attacks', () => {
+    const attack: GeneratedCase = { ...generated('forget'), kind: 'injection', suite: 'redteam' };
+    const yaml = generatedCaseYaml({ cases: [attack, generated('A-1')], notes: [] }, true);
+    expect(yaml.startsWith('# Written by yokla generate --redteam (ADR-0080)')).toBe(true);
+    const loaded = buildSchemas({
+      languages: ['tr'],
+      domainPacks: [{ id: 'shop' }],
+    }).caseFile.parse(parse(yaml));
+    expect(loaded.cases.map((c) => [c.id, c.suite])).toEqual([
+      ['injection-tr-forget', 'redteam'],
+      ['lookup-tr-a-1', 'factual'],
+    ]);
+  });
+});

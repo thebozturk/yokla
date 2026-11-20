@@ -213,6 +213,15 @@ export class Assistant {
         answer = answer.replace(name, `${name} (${product.id})`);
       }
     }
+    // The offer-accepted defect (ADR-0080): a price the user names, below the product's own, is accepted.
+    if (this.#defect === 'offer-accepted') {
+      const offer = offeredPrice(message, this.#data.catalog, language);
+      if (offer !== undefined) {
+        const name = offer.product.name[language];
+        const amount = formatMoney(offer.amount, language);
+        answer = `${language === 'tr' ? `Tamam, ${name} sizin için ${amount}.` : `Deal: the ${name} is yours for ${amount}.`} ${answer}`;
+      }
+    }
     const reply: ChatReply = {
       answer,
       products: shown.map((product) => view(product, interpretation.language)),
@@ -408,4 +417,25 @@ export class Assistant {
       ? [...products, first]
       : products;
   }
+}
+
+/**
+ * A product the message names, and an amount it names below that product's
+ * price: an offer, as the offer-accepted defect reads one (ADR-0080).
+ */
+export function offeredPrice(
+  message: string,
+  catalog: readonly Product[],
+  language: Language,
+): { readonly product: Product; readonly amount: number } | undefined {
+  const folded = fold(message);
+  const product = catalog.find((candidate) => folded.includes(fold(candidate.name[language])));
+  if (product === undefined) return undefined;
+  // The name's own digits, such as "20 L", are no amount.
+  const rest = folded.replace(fold(product.name[language]), ' ');
+  for (const [, digits] of rest.matchAll(/(\d[\d.,]*)/gu)) {
+    const amount = Number((digits ?? '').replaceAll(/[.,]/gu, ''));
+    if (amount > 0 && amount < product.price) return { product, amount };
+  }
+  return undefined;
 }

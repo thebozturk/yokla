@@ -137,6 +137,8 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
   'internal-ids': { 'no-internal-ids': ALL_PRODUCT_CASES },
   // A thank-you answered as a failed search with products (ADR-0075).
   'thanks-searched': { 'request-handled': ['thanks-tr'] },
+  // No written case names a price for a product: generate.e2e.test.ts's attacks catch it (ADR-0080).
+  'offer-accepted': {},
 };
 
 /**

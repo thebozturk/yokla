@@ -1,7 +1,7 @@
 // Helpers shared by the ecommerce checks.
 
-import { findPhrases, type TurnView } from '@yokla/core';
-import { STOCK_PHRASES } from '../lexicon.ts';
+import { findPhrases, hasPhrase, type TurnView } from '@yokla/core';
+import { STOCK_PHRASES, type Negations } from '../lexicon.ts';
 import { productOf, type EcommerceData, type Product } from '../data.ts';
 
 /** The evidence collection the ecommerce checks read. */
@@ -32,6 +32,40 @@ export function segments(text: string): string[] {
     .split(/\n|(?<=[.!?])\s+(?=\S)/u)
     .map((part) => part.trim())
     .filter((part) => part !== '');
+}
+
+/** How many words before a claim phrase a negation cancels it from (ADR-0061). */
+const NEGATION_WINDOW = 5;
+
+/** A word without the punctuation around it. */
+export const bare = (word: string) => word.replaceAll(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+
+/**
+ * Whether a negation sits among the words just before `start`, in the same
+ * clause: after the last comma, semicolon, colon or clause word (ADR-0061).
+ */
+export function negated(folded: string, start: number, negations: Negations | undefined): boolean {
+  if (negations === undefined) return false;
+  const words: string[] = [];
+  const before = folded
+    .slice(0, start)
+    .split(/\s+/u)
+    .filter((word) => word !== '');
+  for (let at = before.length - 1; at >= 0 && words.length < NEGATION_WINDOW; at -= 1) {
+    const word = before[at] ?? '';
+    if (/[,;:]$/u.test(word)) break;
+    const plain = bare(word);
+    if (plain === '') continue;
+    if (negations.clauseWords.includes(plain)) break;
+    words.unshift(plain);
+  }
+  return (
+    words.some((word) => negations.endings.some((ending) => word.endsWith(ending))) ||
+    hasPhrase(
+      words.join(' '),
+      negations.words.map((word) => `${word}$`),
+    )
+  );
 }
 
 export function notApplicable(reason: string): { applicable: false; reason: string } {

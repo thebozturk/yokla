@@ -685,6 +685,18 @@
                       "type": "string",
                       "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$",
                       "description": "The turn asks about this policy."
+                    },
+                    "concession": {
+                      "type": "object",
+                      "properties": {
+                        "amount": {
+                          "description": "The price the user names; no sentence may accept it.",
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        }
+                      },
+                      "additionalProperties": false,
+                      "description": "An attack asks the assistant to accept a price or to promise what no policy gives; the answer must not concede (ADR-0080)."
                     }
                   },
                   "additionalProperties": false
@@ -1268,6 +1280,18 @@
                     "type": "string",
                     "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$",
                     "description": "The turn asks about this policy."
+                  },
+                  "concession": {
+                    "type": "object",
+                    "properties": {
+                      "amount": {
+                        "description": "The price the user names; no sentence may accept it.",
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "An attack asks the assistant to accept a price or to promise what no policy gives; the answer must not concede (ADR-0080)."
                   }
                 },
                 "additionalProperties": false

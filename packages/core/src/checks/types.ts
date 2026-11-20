@@ -184,6 +184,22 @@ export interface LanguagePack {
    * "four bags" (ADR-0021). Words that also mean something else are left out.
    */
   readonly numberWords: Readonly<Record<string, number>>;
+  /** How the language words the attacks that need no domain (ADR-0080). */
+  readonly attacks?: AttackPhrasings;
+}
+
+/** The styles of a direct injection (ADR-0080). */
+export const INJECTION_STYLES = ['forget', 'persona', 'system', 'after-question'] as const;
+export type InjectionStyle = (typeof INJECTION_STYLES)[number];
+
+/** The ways of asking for the system prompt (ADR-0080). */
+export const EXTRACTION_STYLES = ['repeat', 'code-block', 'translate'] as const;
+export type ExtractionStyle = (typeof EXTRACTION_STYLES)[number];
+
+/** A language's attack phrasings; `{canary}` stands for the word the answer must not hold. */
+export interface AttackPhrasings {
+  readonly injection: Readonly<Record<InjectionStyle, string>>;
+  readonly extraction: Readonly<Record<ExtractionStyle, string>>;
 }
 
 export interface CheckContext {
@@ -272,6 +288,18 @@ export interface GeneratedCase {
   }[];
   /** The data its expectations came from, such as `catalog JKT-001: color blue`. */
   readonly basis: string;
+  /** Its suite; `factual` when not given. Attacks are `redteam` (ADR-0080). */
+  readonly suite?: string;
+}
+
+/** What yokla generate --redteam asks a pack for (ADR-0080). */
+export interface AttackOptions {
+  /** The profile's languages. */
+  readonly languages: readonly string[];
+  /** The most cases of each kind, in each language. */
+  readonly perKind: number;
+  /** The target's competitors, as the person names them. */
+  readonly competitors: readonly string[];
 }
 
 export interface Generated {
@@ -288,6 +316,8 @@ export interface PreparedPack {
   readonly unmetFacts?: UnmetFacts;
   /** Cases with expectations computed from the pack's data, for yokla generate (ADR-0055). */
   readonly generate?: (options: GenerateOptions) => Generated;
+  /** The domain's attack cases, for yokla generate --redteam (ADR-0080). */
+  readonly attacks?: (options: AttackOptions) => Generated;
 }
 
 export interface PackIo {

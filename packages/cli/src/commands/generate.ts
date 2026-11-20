@@ -6,9 +6,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { generatedCaseYaml, type Generated } from '@yokla/core';
+import { generatedCaseYaml, genericAttacks, type Generated } from '@yokla/core';
 import { LoadError, loadProfile } from '../load.ts';
-import { DOMAIN_PACKS } from '../packs.ts';
+import { DOMAIN_PACKS, LANGUAGE_PACKS } from '../packs.ts';
 import type { Output } from './run.ts';
 
 const DEFAULT_PER_KIND = 2;
@@ -16,15 +16,20 @@ const DEFAULT_PER_KIND = 2;
 export const GENERATE_HELP = `Usage: yokla generate [options]
 
 Writes cases whose expectations the domain pack computes from the profile's
-data, such as its catalog, as proposed cases (ADR-0055). It sends nothing and
-calls no model.
+data, such as its catalog, as proposed cases (ADR-0055); with --redteam,
+attack cases from templates instead (ADR-0080). It sends nothing and calls no
+model.
 
 Options:
   --profile <file>         the profile (default: yokla.profile.yaml)
-  --out <file>             where to write (default: cases/generated.yaml next to the profile)
+  --out <file>             where to write (default: cases/generated.yaml next to the profile,
+                           cases/redteam.yaml with --redteam)
   --per-kind <n>           the most cases of each kind, in each language (default: ${String(DEFAULT_PER_KIND)})
   --absent <lang>:<words>  types a shopper may ask for that you expect absent, comma-separated,
                            such as en:hammock,kayak; repeatable
+  --redteam                write attack cases from templates: injection, extraction, offer,
+                           commitment and competitor
+  --competitor <name>      a competitor of the target's, which an answer must not name; repeatable
   --force                  overwrite --out`;
 
 const OPTIONS = {
@@ -32,6 +37,8 @@ const OPTIONS = {
   out: { type: 'string' },
   'per-kind': { type: 'string' },
   absent: { type: 'string', multiple: true },
+  redteam: { type: 'boolean' },
+  competitor: { type: 'string', multiple: true },
   force: { type: 'boolean' },
   help: { type: 'boolean' },
 } as const;
@@ -88,36 +95,72 @@ export function generateCommand(args: readonly string[], io: Output, cwd = proce
     if (!Number.isInteger(perKind) || perKind < 1) {
       throw new LoadError('--per-kind must be a positive integer');
     }
+    const redteam = values.redteam === true;
+    if (redteam && values.absent !== undefined) {
+      throw new LoadError('--absent is for the data kinds; --redteam writes attacks');
+    }
+    if (!redteam && values.competitor !== undefined) {
+      throw new LoadError('--competitor goes with --redteam');
+    }
+    const competitors = [
+      ...new Set(
+        (values.competitor ?? []).map((name) => name.trim()).filter((name) => name !== ''),
+      ),
+    ];
     const absent = absentWords(values.absent ?? []);
     const profilePath = resolve(cwd, values.profile);
     const { profile } = loadProfile(profilePath);
     const profileDir = dirname(profilePath);
-    const out = resolve(cwd, values.out ?? join(profileDir, 'cases', 'generated.yaml'));
+    const out = resolve(
+      cwd,
+      values.out ?? join(profileDir, 'cases', redteam ? 'redteam.yaml' : 'generated.yaml'),
+    );
     if (existsSync(out) && values.force !== true) {
       throw new LoadError(`${out} exists: --force overwrites it`);
     }
     const pack = DOMAIN_PACKS.find((candidate) => candidate.id === profile.domain);
-    let generate;
+    let prepared;
     try {
-      generate = pack?.prepare(profile, {
+      prepared = pack?.prepare(profile, {
         readText: (path) => readFileSync(resolve(profileDir, path), 'utf8'),
-      }).generate;
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new LoadError(`pack "${profile.domain}": ${message}`);
     }
-    if (generate === undefined) {
-      throw new LoadError(
-        `the "${profile.domain}" domain pack generates no case from this profile's data`,
-      );
+    let generated: Generated;
+    if (redteam) {
+      // The attacks that need no domain, then the domain's (ADR-0080).
+      const generic = genericAttacks({
+        packs: profile.languages.flatMap((language) =>
+          LANGUAGE_PACKS.filter((candidate) => candidate.language === language),
+        ),
+        perKind,
+        canary: profile.modelProxy?.inspect?.canary,
+      });
+      const domain = prepared?.attacks?.({ languages: profile.languages, perKind, competitors });
+      generated = {
+        cases: [...generic.cases, ...(domain?.cases ?? [])],
+        notes: [
+          ...generic.notes,
+          ...(domain?.notes ?? [`the "${profile.domain}" domain pack writes no attack`]),
+        ],
+      };
+    } else {
+      const generate = prepared?.generate;
+      if (generate === undefined) {
+        throw new LoadError(
+          `the "${profile.domain}" domain pack generates no case from this profile's data`,
+        );
+      }
+      generated = generate({ languages: profile.languages, perKind, absent });
     }
-    const generated = generate({ languages: profile.languages, perKind, absent });
     for (const note of generated.notes) io.out(`  none: ${note}`);
     if (generated.cases.length === 0) {
       throw new LoadError('no case was generated: nothing written');
     }
     mkdirSync(dirname(out), { recursive: true });
-    writeFileSync(out, generatedCaseYaml(generated));
+    writeFileSync(out, generatedCaseYaml(generated, redteam));
     io.out(`generated ${String(generated.cases.length)} proposed cases: ${out}`);
     for (const line of counts(generated)) io.out(line);
     io.out('read each case, then set its status to approved to make it gate (ADR-0004)');

@@ -271,8 +271,14 @@ export type {
   GenerateOptions,
   Generated,
   GeneratedCase,
+  AttackOptions,
+  AttackPhrasings,
+  ExtractionStyle,
+  InjectionStyle,
 } from './checks/types.ts';
+export { EXTRACTION_STYLES, INJECTION_STYLES } from './checks/types.ts';
 export { generatedCaseYaml, generatedId } from './generate/write.ts';
+export { attackCanary, genericAttacks } from './generate/attacks.ts';
 export {
   checkRewrite,
   transformPrompt,

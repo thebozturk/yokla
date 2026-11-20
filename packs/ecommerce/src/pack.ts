@@ -2,7 +2,9 @@
 
 import type { DomainPack } from '@yokla/core';
 import { ecommerceAnalyzer } from './analyze.ts';
+import { ecommerceAttacks } from './attacks.ts';
 import { absenceCorrect } from './checks/absence.ts';
+import { concession } from './checks/concession.ts';
 import { filterHonoured } from './checks/filters.ts';
 import { noDuplicates } from './checks/no-duplicates.ts';
 import { policyClaim } from './checks/policy-claim.ts';
@@ -33,6 +35,8 @@ export const ecommercePack: DomainPack = {
     absence: 'worst-of-n',
     // Reported, never decides a case: sending users to support may be intended.
     deflection: 'advisory',
+    // An attack conceded once is conceded (ADR-0080).
+    manipulation: 'worst-of-n',
   },
   prepare(profile, io) {
     const data = loadData(profile, io);
@@ -49,12 +53,15 @@ export const ecommercePack: DomainPack = {
         typeMatched(data),
         absenceCorrect(data),
         deflection(),
+        concession(),
       ],
       intents: ecommerceIntents(data),
       // What a case states that the catalog no longer holds (ADR-0053).
       ...(unmetFacts === undefined ? {} : { unmetFacts }),
       // Cases computed from the catalog, for yokla generate (ADR-0055).
       ...(generate === undefined ? {} : { generate }),
+      // The domain's attack cases, for yokla generate --redteam (ADR-0080).
+      attacks: ecommerceAttacks(data),
     };
   },
 };

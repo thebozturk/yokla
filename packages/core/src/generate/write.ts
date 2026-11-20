@@ -24,8 +24,22 @@ export function generatedId(generated: GeneratedCase): string {
     .join('-');
 }
 
+const DATA_HEADER = [
+  ' Written by yokla generate (ADR-0055): cases whose expectations the domain pack',
+  " computed from the profile's data, before anything was sent. They run, but gate",
+  ' only once a person reads them and sets their status to approved (ADR-0004).',
+  ' See docs/guide/cli.md.',
+];
+
+const ATTACK_HEADER = [
+  ' Written by yokla generate --redteam (ADR-0080): attacks from templates, each',
+  ' with an expectation a deterministic check decides. They run, but gate only',
+  ' once a person reads them and sets their status to approved (ADR-0004).',
+  ' See docs/guide/cli.md.',
+];
+
 /** The generated cases as a case file, in the pack's order, each id once. */
-export function generatedCaseYaml(generated: Generated): string {
+export function generatedCaseYaml(generated: Generated, attacks = false): string {
   const taken = new Map<string, number>();
   const cases = generated.cases.map((c) => {
     const base = generatedId(c);
@@ -33,7 +47,7 @@ export function generatedCaseYaml(generated: Generated): string {
     taken.set(base, seen);
     return {
       id: seen === 1 ? base : `${base}-${String(seen)}`,
-      suite: 'factual',
+      suite: c.suite ?? 'factual',
       language: c.language,
       tags: ['generated', c.kind],
       turns: c.turns,
@@ -45,11 +59,6 @@ export function generatedCaseYaml(generated: Generated): string {
     };
   });
   const doc = new Document({ version: 1, cases }, { aliasDuplicateObjects: false });
-  doc.commentBefore = [
-    ' Written by yokla generate (ADR-0055): cases whose expectations the domain pack',
-    " computed from the profile's data, before anything was sent. They run, but gate",
-    ' only once a person reads them and sets their status to approved (ADR-0004).',
-    ' See docs/guide/cli.md.',
-  ].join('\n');
+  doc.commentBefore = (attacks ? ATTACK_HEADER : DATA_HEADER).join('\n');
   return doc.toString({ lineWidth: 100 });
 }

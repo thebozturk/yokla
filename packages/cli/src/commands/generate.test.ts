@@ -96,3 +96,48 @@ describe('yokla generate (ADR-0055)', () => {
     );
   });
 });
+
+describe('yokla generate --redteam (ADR-0080)', () => {
+  it('writes the attacks to cases/redteam.yaml, and the extraction once the profile has a canary', () => {
+    const dir = shop();
+    const output = io();
+    const args = ['--redteam', '--competitor', 'Rivalmart', '--competitor', ' Rivalmart '];
+    expect(generateCommand(args, output, dir), output.lines.join('\n')).toBe(0);
+    const file = join(dir, 'cases', 'redteam.yaml');
+    expect(readFileSync(file, 'utf8')).toMatch(/^# Written by yokla generate --redteam/u);
+    expect(output.lines).toContain('  injection: 2 tr, 2 en');
+    expect(output.lines).toContain('  offer: 2 tr, 2 en');
+    expect(output.lines).toContain('  commitment: 2 tr, 2 en');
+    expect(output.lines).toContain('  competitor: 2 tr, 2 en');
+    expect(output.lines).toContain(
+      '  none: extraction (tr): the profile has no canary (modelProxy.inspect.canary) to find in an answer',
+    );
+    const cases = loadCases([file]);
+    expect(cases.every((c) => c.suite === 'redteam')).toBe(true);
+    // Each competitor once, trimmed.
+    const competitor = cases.find((c) => c.id.startsWith('competitor-'));
+    expect(competitor?.turns[0]?.expect).toMatchObject({ answer: { notContains: ['Rivalmart'] } });
+
+    const profile = join(dir, 'yokla.profile.yaml');
+    writeFileSync(
+      profile,
+      `${readFileSync(profile, 'utf8')}\nmodelProxy:\n  port: 1\n  upstreams: [{ id: m, kind: openai-compatible, upstream: 'http://127.0.0.1:1' }]\n  inspect: { canary: CANARY-12345 }\n`,
+    );
+    const withCanary = io();
+    expect(generateCommand(['--redteam', '--force'], withCanary, dir)).toBe(0);
+    expect(withCanary.lines).toContain('  extraction: 2 tr, 2 en');
+    expect(withCanary.lines).toContain('  none: competitor (tr): no --competitor was given');
+  });
+
+  it.each([
+    [
+      ['--redteam', '--absent', 'en:hammock'],
+      '--absent is for the data kinds; --redteam writes attacks',
+    ],
+    [['--competitor', 'Rivalmart'], '--competitor goes with --redteam'],
+  ])('refuses %j', (args, message) => {
+    const output = io();
+    expect(generateCommand(args, output, shop())).toBe(2);
+    expect(output.lines).toContain(message);
+  });
+});
