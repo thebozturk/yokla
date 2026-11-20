@@ -82,8 +82,33 @@ describe('yokla analyze options (ADR-0047)', () => {
     const text = output.lines.join('\n');
     expect(code, text).toBe(0);
     expect(text).toContain('model step: 1 file(s) to m at http://127.0.0.1:1/v1');
+    expect(text).toContain('  1 of the files sent name a field asked');
     expect(text).toMatch(/estimated cost \$\d+\.\d{4}, at most \$\d+\.\d{4}/u);
     expect(text).toContain('--estimate: nothing was sent');
+  });
+
+  it('says how many marked files the budget leaves out, and what to raise (ADR-0072)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'yokla-analyze-'));
+    writeFileSync(join(dir, 'README.md'), 'Send `x-cache-bypass: 1` to skip the cache.\n');
+    mkdirSync(join(dir, 'src'));
+    writeFileSync(join(dir, 'src', 'throttle.ts'), 'export const PER_MINUTE = 120;\n');
+    writeFileSync(
+      join(dir, 'yokla.config.yaml'),
+      'version: 1\nmodels:\n  analyzer: { kind: anthropic, url: http://127.0.0.1:1/v1, model: m, price: { input: 1, output: 2 } }\n',
+    );
+    const output = io();
+    const code = await analyzeCommand(
+      ['--url', 'http://127.0.0.1:1/chat', '--dir', dir, '--estimate', '--max-tokens', '40'],
+      output,
+      '0.0.0',
+      dir,
+      {},
+    );
+    expect(code, output.lines.join('\n')).toBe(0);
+    expect(output.lines).toContain('  left out by --max-tokens: src/throttle.ts');
+    expect(output.lines).toContain(
+      '  1 of the files sent name a field asked; 1 left out do too: raise --max-tokens to send them',
+    );
   });
 
   it('refuses a model with no price, since --max-cost could not be kept (ADR-0049)', async () => {

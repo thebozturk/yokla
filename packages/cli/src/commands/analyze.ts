@@ -383,6 +383,13 @@ function printPlan(io: Output, plan: ModelPlan, model: OwnModel): void {
     `model step: ${String(plan.sent.length)} file(s) to ${model.model} at ${model.url}; their text goes there`,
   );
   if (plan.left.length > 0) io.out(`  left out by --max-tokens: ${plan.left.join(', ')}`);
+  // The files that name a field asked, sent and left out (ADR-0072).
+  io.out(
+    `  ${String(plan.marked.sent)} of the files sent name a field asked` +
+      (plan.marked.left > 0
+        ? `; ${String(plan.marked.left)} left out do too: raise --max-tokens to send them`
+        : ''),
+  );
   io.out(
     `  ${String(estimate.chunks)} chunk(s), about ${String(estimate.inputTokens)} input tokens, at most ${String(estimate.maxOutputTokens)} output tokens`,
   );

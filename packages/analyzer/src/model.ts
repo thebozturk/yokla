@@ -12,7 +12,9 @@ import {
   chunkFiles,
   estimateExtraction,
   extractSource,
+  markedFields,
   mergeExtracted,
+  rankFiles,
   readableFiles,
   readReply,
   verifyEntry,
@@ -37,6 +39,8 @@ export interface ModelPlan {
   readonly chunks: readonly Chunk[];
   readonly sent: readonly string[];
   readonly left: readonly string[];
+  /** How many of the files sent, and of those left out, name a field asked (ADR-0072). */
+  readonly marked: { readonly sent: number; readonly left: number };
   readonly estimate: ExtractionEstimate;
 }
 
@@ -49,12 +53,26 @@ export function planModelStep(
   chunkTokens: number,
   maxTokens: number,
 ): ModelPlan {
-  const sources: SourceFile[] = readableFiles(
-    files.map((file) => ({ path: file.path, kind: file.kind, text: '' })),
-  ).map((file) => ({ ...file, text: readFileSync(join(dir, file.path), 'utf8') }));
+  // The files that name a field asked go first (ADR-0072).
+  const sources: SourceFile[] = rankFiles(
+    readableFiles(files.map((file) => ({ path: file.path, kind: file.kind, text: '' }))).map(
+      (file) => ({ ...file, text: readFileSync(join(dir, file.path), 'utf8') }),
+    ),
+  );
   const { chunks, left } = chunkFiles(sources, chunkTokens, maxTokens);
   const sent = [...new Set(chunks.flatMap((chunk) => chunk.parts.map((part) => part.path)))];
-  return { chunks, sent, left, estimate: estimateExtraction(chunks, languages, model) };
+  const isMarked = new Set(
+    sources.filter((file) => markedFields(file).length > 0).map((file) => file.path),
+  );
+  const count = (paths: readonly string[]): number =>
+    paths.filter((path) => isMarked.has(path)).length;
+  return {
+    chunks,
+    sent,
+    left,
+    marked: { sent: count(sent), left: count(left) },
+    estimate: estimateExtraction(chunks, languages, model),
+  };
 }
 
 export interface ModelStep {

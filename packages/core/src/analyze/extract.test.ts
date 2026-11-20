@@ -7,7 +7,9 @@ import {
   estimateTokens,
   extractSource,
   isTestPath,
+  markedFields,
   mergeExtracted,
+  rankFiles,
   readableFiles,
   readReply,
   verifyEntry,
@@ -137,6 +139,118 @@ describe('which files the model reads (ADR-0049)', () => {
       'src/a.ts',
       'src/b.ts',
     ]);
+  });
+});
+
+/** A file of one kind holding this text. */
+const textFile = (text: string, kind = 'doc', path = 'notes.md'): SourceFile => ({
+  path,
+  kind,
+  text,
+});
+
+/** The text with `marker` replaced; fails when the marker isn't in it, so no case is vacuous. */
+function without(text: string, marker: string): string {
+  expect(text).toContain(marker);
+  return text.replace(marker, 'value');
+}
+
+describe('the markers that order the files (ADR-0072)', () => {
+  it.each([
+    ['A rate limit applies.', 'rate limit'],
+    ['the rate-limit guard', 'rate-limit'],
+    ['RATE_LIMIT = 3', 'RATE_LIMIT'],
+    ['class RateLimiter {}', 'RateLimit'],
+    ['ThrottlerModule.forRoot()', 'Throttl'],
+    ["res.setHeader('Retry-After', '1')", 'Retry-After'],
+    ['answers Too Many Requests', 'Too Many Requests'],
+    ['status(429)', '429'],
+    ['a burst of 3 requests', 'burst'],
+    ['3 requests per second', 'per second'],
+    ['perMinute: 120', 'perMinute'],
+    ['PER_HOUR = 2000', 'PER_HOUR'],
+  ])('marks %j for limits, and not without %j', (text, marker) => {
+    expect(markedFields(textFile(text))).toEqual(['limits']);
+    expect(markedFields(textFile(without(text, marker)))).toEqual([]);
+  });
+
+  it.each(['1429 items', 'v4290', 'a burs of light'])('leaves %j unmarked', (text) => {
+    expect(markedFields(textFile(text))).toEqual([]);
+  });
+
+  it.each([
+    ['Send x-cache-bypass: 1', 'bypass'],
+    ['Cache-Control: no-cache', 'no-cache'],
+    ['the cache honours no-store', 'no-store'],
+  ])('marks %j for the cache bypass, and not without %j', (text, marker) => {
+    expect(markedFields(textFile(text))).toEqual(['cacheBypass']);
+    expect(markedFields(textFile(without(text, marker)))).toEqual([]);
+  });
+
+  it('marks the cache bypass only where a cache is named', () => {
+    const text = 'Cached answers can be skipped: send the bypass header.';
+    expect(markedFields(textFile(text))).toEqual(['cacheBypass']);
+    expect(markedFields(textFile(without(text, 'Cache')))).toEqual([]);
+  });
+
+  it.each([
+    ["refusal: 'I can't help with that.'", 'refus'],
+    ['It refuses politely.', 'refus'],
+    ['The assistant declines.', 'declin'],
+  ])('marks %j for refusals, and not without %j', (text, marker) => {
+    expect(markedFields(textFile(text))).toEqual(['refusal']);
+    expect(markedFields(textFile(without(text, marker)))).toEqual([]);
+  });
+
+  it('marks a prompt for refusals, with no marker in it', () => {
+    expect(markedFields(textFile('You help shoppers.', 'prompt', 'prompts/system.txt'))).toEqual([
+      'refusal',
+    ]);
+    expect(markedFields(textFile('You help shoppers.', 'doc', 'prompts/system.txt'))).toEqual([]);
+  });
+
+  it('reads the path as well as the text', () => {
+    expect(markedFields(textFile('export {};', 'code', 'src/throttle.ts'))).toEqual(['limits']);
+    expect(markedFields(textFile('export {};', 'code', 'src/app.ts'))).toEqual([]);
+  });
+
+  it('names every field a file marks', () => {
+    expect(markedFields(server)).toEqual(['limits', 'cacheBypass']);
+  });
+});
+
+describe('rankFiles (ADR-0072)', () => {
+  const docs = textFile('# About\nWe sell tents.', 'doc', 'README.md');
+  const limits = textFile('const perMinute = 120;', 'code', 'src/limits.ts');
+  const both = textFile("perMinute: 120; refusal: 'No.'", 'code', 'src/z.ts');
+  const prompt = textFile('You help shoppers.', 'prompt', 'prompts/system.txt');
+
+  it('puts the files that name more fields first, and keeps the order within a rank', () => {
+    const ordered = readableFiles([docs, limits, both, prompt]);
+    expect(ordered.map((file) => file.path)).toEqual([
+      'README.md',
+      'prompts/system.txt',
+      'src/limits.ts',
+      'src/z.ts',
+    ]);
+    expect(rankFiles(ordered).map((file) => file.path)).toEqual([
+      'src/z.ts',
+      'prompts/system.txt',
+      'src/limits.ts',
+      'README.md',
+    ]);
+  });
+
+  it('sends the marked code when the budget holds one file', () => {
+    const budget = estimateTokens(`=== src/limits.ts\n1| ${limits.text}`);
+    const ranked = chunkFiles(rankFiles([docs, limits]), 8_000, budget);
+    expect(ranked.chunks.flatMap((piece) => piece.parts.map((part) => part.path))).toEqual([
+      'src/limits.ts',
+    ]);
+    expect(ranked.left).toEqual(['README.md']);
+    // ADR-0049's order alone would have sent the doc.
+    const unranked = chunkFiles([docs, limits], 8_000, budget);
+    expect(unranked.left).toEqual(['src/limits.ts']);
   });
 });
 

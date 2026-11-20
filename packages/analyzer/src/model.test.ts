@@ -259,3 +259,40 @@ describe('the model step (ADR-0049)', () => {
     });
   });
 });
+
+/** The plan for a repository of these files, each a doc or code by its extension. */
+function planOf(files: Readonly<Record<string, string>>, maxTokens: number) {
+  const dir = mkdtempSync(join(tmpdir(), 'yokla-rank-'));
+  for (const [path, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(dir, path)), { recursive: true });
+    writeFileSync(join(dir, path), text);
+  }
+  const inventory = Object.entries(files).map(([path, text]): InventoryFile => ({
+    path,
+    kind: path.endsWith('.md') ? 'doc' : 'code',
+    bytes: text.length,
+  }));
+  return planModelStep(dir, inventory, model, ['en'], 8_000, maxTokens);
+}
+
+describe('the files the model step reads first (ADR-0072)', () => {
+  const files = {
+    'docs/about.md': 'We sell tents and stoves.',
+    'docs/z.md': 'A burst of 3 requests is allowed.',
+    'src/app.ts': 'export const app = 1;',
+    'src/throttle.ts': 'export const PER_MINUTE = 120;',
+  };
+
+  it('sends the marked files first, and counts them', () => {
+    const whole = planOf(files, 200_000);
+    expect(whole.sent).toEqual(['docs/z.md', 'src/throttle.ts', 'docs/about.md', 'src/app.ts']);
+    expect(whole.marked).toEqual({ sent: 2, left: 0 });
+  });
+
+  it('counts the marked files a small budget leaves out', () => {
+    const first = planOf(files, 40);
+    expect(first.sent).toEqual(['docs/z.md']);
+    expect(first.left).toEqual(['src/throttle.ts', 'docs/about.md', 'src/app.ts']);
+    expect(first.marked).toEqual({ sent: 1, left: 1 });
+  });
+});

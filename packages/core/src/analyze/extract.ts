@@ -66,7 +66,7 @@ export function isTestPath(path: string): boolean {
   );
 }
 
-/** The kinds the model reads, claims first: a budget that runs out leaves code unread. */
+/** The kinds the model reads, claims first; files that name a field go before them all (ADR-0072). */
 export const READ_KINDS = ['doc', 'prompt', 'contract', 'manifest', 'env-example', 'code'] as const;
 
 /** The files the model may read, in the order it reads them: by kind, then by path. */
@@ -76,6 +76,50 @@ export function readableFiles(files: readonly SourceFile[]): SourceFile[] {
       .filter((file) => file.kind === kind && !isTestPath(file.path))
       .toSorted((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)),
   );
+}
+
+/** The groups of fields a file's markers point to (ADR-0072). */
+export type MarkedField = 'limits' | 'cacheBypass' | 'refusal';
+
+/** A rate limit named: in a path, a doc or code, in any case (ADR-0072). */
+const LIMIT_MARKERS = [
+  /rate[ _-]?limit/iu,
+  /throttl/iu,
+  /retry-after/iu,
+  /too many requests/iu,
+  /\b429\b/u,
+  /burst/iu,
+  /per[ _-]?(?:second|minute|hour)/iu,
+] as const;
+/** A cache named with a way past it (ADR-0072). */
+const CACHE_MARKER = /cache/iu;
+const BYPASS_MARKERS = [/bypass/iu, /no-cache/iu, /no-store/iu] as const;
+const REFUSAL_MARKERS = [/refus/iu, /declin/iu] as const;
+
+/**
+ * The fields a file's path and text name. A prompt is marked for refusals,
+ * since that is where they are written. The markers only order the files:
+ * every value is still checked against its line (ADR-0072).
+ */
+export function markedFields(file: SourceFile): MarkedField[] {
+  const text = `${file.path}\n${file.text}`;
+  const any = (markers: readonly RegExp[]): boolean => markers.some((marker) => marker.test(text));
+  const fields: MarkedField[] = [];
+  if (any(LIMIT_MARKERS)) fields.push('limits');
+  if (CACHE_MARKER.test(text) && any(BYPASS_MARKERS)) fields.push('cacheBypass');
+  if (file.kind === 'prompt' || any(REFUSAL_MARKERS)) fields.push('refusal');
+  return fields;
+}
+
+/**
+ * The readable files, the ones that name the most fields first. Within a
+ * rank, the order they came in: ADR-0049's, by kind, then by path (ADR-0072).
+ */
+export function rankFiles(files: readonly SourceFile[]): SourceFile[] {
+  return files
+    .map((file) => ({ file, rank: markedFields(file).length }))
+    .toSorted((a, b) => b.rank - a.rank)
+    .map(({ file }) => file);
 }
 
 /**

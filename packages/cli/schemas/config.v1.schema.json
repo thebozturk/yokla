@@ -365,7 +365,7 @@
               "maximum": 2
             },
             "maxTokens": {
-              "default": 400,
+              "default": 2000,
               "type": "integer",
               "minimum": 1,
               "maximum": 64000

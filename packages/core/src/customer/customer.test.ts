@@ -229,4 +229,21 @@ describe('the customer case and model (ADR-0028)', () => {
       false,
     ]);
   });
+
+  it("gives the analyzer's model 2,000 tokens by default, the others 400 (ADR-0072)", () => {
+    const model = { kind: 'anthropic', url: 'https://example.test/v1', model: 'm' } as const;
+    const { models } = YoklaConfig.parse({
+      version: 1,
+      models: { analyzer: model, customer: model, transform: model },
+    });
+    expect([
+      models.analyzer?.maxTokens,
+      models.customer?.maxTokens,
+      models.transform?.maxTokens,
+    ]).toEqual([2000, 400, 400]);
+    expect(
+      YoklaConfig.parse({ version: 1, models: { analyzer: { ...model, maxTokens: 300 } } }).models
+        .analyzer?.maxTokens,
+    ).toBe(300);
+  });
 });
