@@ -1765,6 +1765,18 @@
               "type": "string",
               "minLength": 1
             }
+          },
+          "tags": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+            }
+          },
+          "weight": {
+            "type": "number",
+            "exclusiveMinimum": 0
           }
         },
         "required": [
@@ -1856,6 +1868,315 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 9007199254740991
+          }
+        },
+        "passRate": {
+          "type": "object",
+          "properties": {
+            "passed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "measured": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "rate": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "interval": {
+              "type": "object",
+              "properties": {
+                "level": {
+                  "type": "number",
+                  "const": 0.95
+                },
+                "lower": {
+                  "type": "number"
+                },
+                "upper": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "level",
+                "lower",
+                "upper"
+              ],
+              "additionalProperties": false
+            },
+            "weighted": {
+              "type": "object",
+              "properties": {
+                "passed": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "measured": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "rate": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              },
+              "required": [
+                "passed",
+                "measured",
+                "rate"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "passed",
+            "measured",
+            "rate",
+            "interval"
+          ],
+          "additionalProperties": false
+        },
+        "suites": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "suite": {
+                "type": "string",
+                "enum": [
+                  "quality",
+                  "factual",
+                  "redteam",
+                  "robustness",
+                  "perf",
+                  "resilience"
+                ]
+              },
+              "cases": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "statuses": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "enum": [
+                    "pass",
+                    "fail",
+                    "error",
+                    "fixture-missing",
+                    "known-gap",
+                    "gap-closed",
+                    "unmeasured"
+                  ]
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "passRate": {
+                "type": "object",
+                "properties": {
+                  "passed": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "measured": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "rate": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "interval": {
+                    "type": "object",
+                    "properties": {
+                      "level": {
+                        "type": "number",
+                        "const": 0.95
+                      },
+                      "lower": {
+                        "type": "number"
+                      },
+                      "upper": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "level",
+                      "lower",
+                      "upper"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "weighted": {
+                    "type": "object",
+                    "properties": {
+                      "passed": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "measured": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "rate": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      }
+                    },
+                    "required": [
+                      "passed",
+                      "measured",
+                      "rate"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "passed",
+                  "measured",
+                  "rate",
+                  "interval"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "suite",
+              "cases",
+              "statuses"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "tag": {
+                "type": "string",
+                "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+              },
+              "cases": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "statuses": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "enum": [
+                    "pass",
+                    "fail",
+                    "error",
+                    "fixture-missing",
+                    "known-gap",
+                    "gap-closed",
+                    "unmeasured"
+                  ]
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "passRate": {
+                "type": "object",
+                "properties": {
+                  "passed": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "measured": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "rate": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "interval": {
+                    "type": "object",
+                    "properties": {
+                      "level": {
+                        "type": "number",
+                        "const": 0.95
+                      },
+                      "lower": {
+                        "type": "number"
+                      },
+                      "upper": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "level",
+                      "lower",
+                      "upper"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "weighted": {
+                    "type": "object",
+                    "properties": {
+                      "passed": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "measured": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "rate": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      }
+                    },
+                    "required": [
+                      "passed",
+                      "measured",
+                      "rate"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "passed",
+                  "measured",
+                  "rate",
+                  "interval"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "tag",
+              "cases",
+              "statuses"
+            ],
+            "additionalProperties": false
           }
         }
       },

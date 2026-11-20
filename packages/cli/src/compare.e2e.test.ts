@@ -193,7 +193,7 @@ describe('comparing models through the proxy, on the demo-shop (ADR-0042)', () =
   it('as the app asks: every call goes to demo-writer-1, and every case passes', () => {
     const { code, output, results, models } = ran('as-is');
     expect(code, output).toBe(0);
-    expect(results.summary.statuses).toEqual({ pass: 18 });
+    expect(results.summary.statuses).toEqual({ pass: 21 });
     expect(new Set(models)).toEqual(new Set(['demo-writer-1']));
     expect(results.run.swaps).toBeUndefined();
     expect(calls(results).every((call) => call.asked === undefined)).toBe(true);
@@ -202,7 +202,7 @@ describe('comparing models through the proxy, on the demo-shop (ADR-0042)', () =
   it('swapped: the provider answers with the other model, and each call keeps the one asked for', () => {
     const { code, output, results, models } = ran('mini');
     expect(code, output).toBe(0);
-    expect(results.summary.statuses).toEqual({ pass: 18 });
+    expect(results.summary.statuses).toEqual({ pass: 21 });
     expect(new Set(models)).toEqual(new Set(['demo-writer-mini']));
     const swapped = calls(results);
     expect(swapped.length).toBe(models.length);

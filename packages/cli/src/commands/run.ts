@@ -30,6 +30,8 @@ export const RUN_HELP = `Usage: yokla run [options]
 Options:
   --profile <file>      the profile (default: yokla.profile.yaml)
   --cases <path>        a case file or directory; repeatable (default: cases)
+  --tag <tag>           run only the cases with this tag; repeatable, a case runs when it has
+                        any of them; the gate then compares only the cases that ran
   --out <file>          where to write results (default: runs/<run id>.json)
   --samples <n>         samples per case when the case doesn't say (default: 1)
   --stop-early          stop a case's samples once its failure is settled; not with target
@@ -111,6 +113,24 @@ export function parseTransform(text: string): TransformKind {
   return kind.data;
 }
 
+/**
+ * The cases with any of the tags (ADR-0077), in their order; every case
+ * without tags given. No case left is a configuration problem: a run of
+ * nothing would pass any gate.
+ */
+export function selectByTags<C extends { readonly tags: readonly string[] }>(
+  cases: readonly C[],
+  tags: readonly string[],
+): C[] {
+  if (tags.length === 0) return [...cases];
+  const wanted = new Set(tags);
+  const selected = cases.filter((c) => c.tags.some((tag) => wanted.has(tag)));
+  if (selected.length === 0) {
+    throw new LoadError(`no case has the tag ${tags.map((tag) => `"${tag}"`).join(' or ')}`);
+  }
+  return selected;
+}
+
 function positiveInt(value: string | undefined, name: string): number | undefined {
   if (value === undefined) return undefined;
   const number = Number(value);
@@ -137,6 +157,7 @@ export function writeReport(path: string, content: string): string {
 const RUN_OPTIONS = {
   profile: { type: 'string', default: 'yokla.profile.yaml' },
   cases: { type: 'string', multiple: true },
+  tag: { type: 'string', multiple: true },
   out: { type: 'string' },
   samples: { type: 'string' },
   'stop-early': { type: 'boolean' },
@@ -213,7 +234,8 @@ export async function runCommand(
     const transforms = (values.transform ?? []).map(parseTransform);
     const results = await runSuite({
       ...prepared.base,
-      cases: [...prepared.cases],
+      // Only the cases with one of the tags asked for (ADR-0077).
+      cases: selectByTags(prepared.cases, values.tag ?? []),
       ...(samples === undefined ? {} : { samples }),
       ...(values['stop-early'] === true ? { stopEarly: true } : {}),
       ...(values.record === undefined

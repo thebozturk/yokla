@@ -35,6 +35,7 @@ import {
   CASSETTE_SCHEMA_ID,
   reviewStatus,
   runChecks,
+  summariseCases,
   summariseChecks,
   toJson,
   transformMessage,
@@ -254,6 +255,14 @@ function prepare(options: RunOptions): Prepared {
   };
 }
 
+/** What the summary groups and weighs a case by: its tags (ADR-0077) and weight (ADR-0076). */
+function labels(testCase: Case): Pick<CaseResult, 'tags' | 'weight'> {
+  return {
+    ...(testCase.tags.length === 0 ? {} : { tags: [...testCase.tags] }),
+    ...(testCase.weight === undefined || testCase.weight === 1 ? {} : { weight: testCase.weight }),
+  };
+}
+
 /** A case the data no longer holds: it sent nothing, and says which facts changed (ADR-0053). */
 function fixtureMissing(testCase: Case, unmet: readonly string[]): CaseResult {
   return {
@@ -265,6 +274,7 @@ function fixtureMissing(testCase: Case, unmet: readonly string[]): CaseResult {
     unstable: false,
     ...(testCase.knownGap === undefined ? {} : { knownGap: testCase.knownGap }),
     ...(reviewStatus(testCase) === 'proposed' ? { review: 'proposed' as const } : {}),
+    ...labels(testCase),
     fixture: [...unmet],
     dimensions: [],
     samples: [],
@@ -1565,6 +1575,7 @@ function judgeCase(
     unstable: aggregate.unstable,
     ...(testCase.knownGap === undefined ? {} : { knownGap: testCase.knownGap }),
     ...(reviewStatus(testCase) === 'proposed' ? { review: 'proposed' as const } : {}),
+    ...labels(testCase),
     dimensions: aggregate.dimensions,
     samples,
   };
@@ -2084,8 +2095,6 @@ export async function runSuite(input: RunOptions): Promise<Results> {
     ...(stop === undefined ? [] : [stop]),
   ];
   const own = simulation === undefined && rewrites === undefined ? undefined : ownSpend;
-  const statuses: Partial<Record<CaseResult['status'], number>> = {};
-  for (const c of cases) statuses[c.status] = (statuses[c.status] ?? 0) + 1;
   const finishedAt = new Date();
   const results: Results = {
     schema: RESULTS_SCHEMA_ID,
@@ -2135,7 +2144,7 @@ export async function runSuite(input: RunOptions): Promise<Results> {
     },
     cases,
     checks: summariseChecks(cases),
-    summary: { cases: cases.length, statuses },
+    summary: summariseCases(cases),
   };
   // No secret of the run leaves it: not in the results, nor what is made of them (ADR-0031).
   return tokens === undefined ? results : masked(results, tokens.secrets());

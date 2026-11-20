@@ -9,7 +9,17 @@
 // - A model call's prompt is shown by role and size only (ADR-0015).
 
 import { CASE_STATUSES, type Results } from '@yokla/core';
-import { counted, observedTotals, round, withOrigin } from './format.ts';
+import {
+  byWeight,
+  counted,
+  observedTotals,
+  passRateText,
+  rate,
+  round,
+  tagsByFailures,
+  hasWeights,
+  withOrigin,
+} from './format.ts';
 import { xmlText } from './junit.ts';
 import { caseProblems, caseReason, dimensionSummary, type CaseResult } from './problems.ts';
 
@@ -225,8 +235,10 @@ function runSection(results: Results): Html {
   }</section>`;
 }
 
-function marks(c: CaseResult): Html[] {
+function marks(c: CaseResult, weights = false): Html[] {
   return [
+    // Its weight, when the run's cases carry weights (ADR-0076).
+    ...(weights ? [h`<span class="mark">[weight ${String(c.weight ?? 1)}]</span>`] : []),
     ...(c.review === 'proposed' ? [h`<span class="mark">[proposed]</span>`] : []),
     ...(c.unstable ? [h`<span class="mark">[unstable]</span>`] : []),
     // A case that stopped once its failure was settled (ADR-0038).
@@ -254,15 +266,67 @@ function casesSection(results: Results, ordered: readonly CaseResult[]): Html {
     return count === undefined ? [] : [h`<li>${badge(status, STATUS_TONE[status])} ${count}</li>`];
   });
   const proposed = results.cases.filter((c) => c.review === 'proposed').length;
+  const weights = hasWeights(results);
+  // A Tags column once a case has tags, so each failing case shows its own (ADR-0077).
+  const tagged = results.cases.some((c) => c.tags !== undefined);
   const rows = ordered.map(
     (c) =>
-      h`<tr><td>${badge(c.status, STATUS_TONE[c.status])}</td><td><a href="#case-${c.id}"><code>${c.id}</code></a>${marks(c)}</td><td>${c.suite}</td><td>${c.language}</td><td>${reasonOf(c)}</td></tr>`,
+      h`<tr><td>${badge(c.status, STATUS_TONE[c.status])}</td><td><a href="#case-${c.id}"><code>${c.id}</code></a>${marks(c, weights)}</td><td>${c.suite}</td><td>${c.language}</td>${
+        tagged ? h`<td>${(c.tags ?? []).join(', ')}</td>` : undefined
+      }<td>${reasonOf(c)}</td></tr>`,
   );
-  return h`<section id="cases"><h2>Cases</h2><p>${counted(results.summary.cases, 'case')}</p><ul class="counts">${counts}</ul>${
+  const passRate = results.summary.passRate;
+  return h`<section id="cases"><h2>Cases</h2><p>${counted(results.summary.cases, 'case')}${
+    passRate === undefined ? undefined : `; ${passRateText(passRate)}`
+  }</p><ul class="counts">${counts}</ul>${
+    weights
+      ? h`<p class="muted">The weighted pass rate counts each case by its weight; failing cases are listed heaviest first.</p>`
+      : undefined
+  }${
     proposed === 0
       ? undefined
       : h`<p class="muted">${counted(proposed, 'proposed case')}: they ran, and gate once a person sets their status to approved.</p>`
-  }${table(['Status', 'Case', 'Suite', 'Language', 'Reason'], rows)}</section>`;
+  }${table(
+    ['Status', 'Case', 'Suite', 'Language', ...(tagged ? ['Tags'] : []), 'Reason'],
+    rows,
+  )}</section>`;
+}
+
+/** Per tag: the cases, their statuses and pass rate, the most failing first (ADR-0077). */
+function tagsSection(results: Results): Html | undefined {
+  const tags = tagsByFailures(results);
+  if (tags.length === 0) return undefined;
+  const weights = hasWeights(results);
+  const rows = tags.map((group) => {
+    const statuses = CASE_STATUSES.flatMap((status) => {
+      const count = group.statuses[status];
+      return count === undefined ? [] : [`${status} ${String(count)}`];
+    }).join(', ');
+    const own = group.passRate;
+    return h`<tr><td><code>${group.tag}</code></td><td class="num">${group.cases}</td><td>${statuses}</td><td class="num">${
+      own === undefined
+        ? '–'
+        : `${rate(own.rate)} (${String(own.passed)} of ${String(own.measured)})`
+    }</td><td class="num">${
+      own === undefined ? '–' : `${rate(own.interval.lower)} to ${rate(own.interval.upper)}`
+    }</td>${
+      weights
+        ? h`<td class="num">${own?.weighted === undefined ? '–' : rate(own.weighted.rate)}</td>`
+        : undefined
+    }</tr>`;
+  });
+  return h`<section id="tags"><h2>By tag</h2><p class="muted">A case with several tags counts in each.</p>${table(
+    [
+      'Tag',
+      'Cases',
+      'Statuses',
+      'Pass rate',
+      'Pass rate, 95 %',
+      ...(weights ? ['Weighted pass rate'] : []),
+    ],
+    rows,
+    weights ? [1, 3, 4, 5] : [1, 3, 4],
+  )}</section>`;
 }
 
 function checksSection(results: Results): Html | undefined {
@@ -493,9 +557,13 @@ function caseBlock(c: CaseResult): Html {
 
 /** The report as one HTML document. */
 export function htmlReport(results: Results): string {
-  // Cases that didn't pass come first, in the order the results list them.
+  // Cases that didn't pass come first, in the order the results list them; the
+  // heaviest first when the cases carry weights (ADR-0076).
   const ordered = [
-    ...results.cases.filter((c) => c.status !== 'pass'),
+    ...byWeight(
+      results,
+      results.cases.filter((c) => c.status !== 'pass'),
+    ),
     ...results.cases.filter((c) => c.status === 'pass'),
   ];
   const page = h`<!doctype html>
@@ -513,6 +581,7 @@ export function htmlReport(results: Results): string {
 <p class="muted">This report holds the target's answers and evidence. Keep it as private as the results file.</p>
 ${runSection(results)}
 ${casesSection(results, ordered)}
+${tagsSection(results)}
 ${checksSection(results)}
 <section id="details"><h2>Case details</h2>
 ${ordered.map((c) => h`${caseBlock(c)}\n`)}</section>

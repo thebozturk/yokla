@@ -20,6 +20,7 @@ import {
   CHEAPER_TERMS,
   COLORS,
   GENDERS,
+  HANDOFF_TERMS,
   OUT_OF_SCOPE_TERMS,
   POLICY_TOPICS,
   PRODUCT_TYPES,
@@ -38,7 +39,7 @@ export interface Filters {
 }
 
 export type Route =
-  'product-search' | 'policy' | 'follow-up-cheapest' | 'cart' | 'refusal' | 'fallback';
+  'product-search' | 'policy' | 'follow-up-cheapest' | 'cart' | 'refusal' | 'handoff' | 'fallback';
 
 export type Interpretation =
   | {
@@ -49,7 +50,10 @@ export type Interpretation =
     }
   | { readonly route: 'policy'; readonly language: Language; readonly topic: PolicyTopic }
   | { readonly route: 'cart'; readonly language: Language; readonly productId: string }
-  | { readonly route: 'follow-up-cheapest' | 'refusal' | 'fallback'; readonly language: Language };
+  | {
+      readonly route: 'follow-up-cheapest' | 'refusal' | 'handoff' | 'fallback';
+      readonly language: Language;
+    };
 
 /** What a session remembers between turns. */
 export interface ConversationContext {
@@ -91,7 +95,13 @@ export type AnswerDraft =
       /** The FAQ answer, if the shop has a source for this topic. */
       readonly source: string | undefined;
     }
-  | { readonly kind: 'refusal' | 'fallback'; readonly language: Language };
+  | {
+      /** The thanks-searched defect: a search that found nothing, and products anyway. */
+      readonly kind: 'no-results';
+      readonly language: Language;
+      readonly products: readonly Product[];
+    }
+  | { readonly kind: 'refusal' | 'handoff' | 'fallback'; readonly language: Language };
 
 /** Per-call details the app passes on, e.g. a trace id to forward to the provider. */
 export interface ModelCall {
@@ -254,6 +264,9 @@ const TEXT = {
       `${name} sepetinize eklendi. Sepetinizde ${String(count)} ürün var:`,
     total: (amount: string) => `Toplam: ${amount}`,
     refusal: 'Bu konuda yardımcı olamıyorum.',
+    handoff:
+      'Bir temsilciyle görüşmek için help.demo-shop.example adresinden müşteri hizmetlerimize yazabilirsiniz.',
+    noResults: 'Aramanıza uygun ürün bulamadım. Popüler ürünlerimiz:',
     outOfScope: 'Tabii, geniş bir endeks fonu iyi bir başlangıç olabilir.',
     fallback: 'Ürünler, fiyatlar ve iade koşulları hakkında yardımcı olabilirim. Ne aramıştınız?',
     unavailable: 'Şu anda yanıt hazırlayamıyorum. Lütfen biraz sonra tekrar deneyin.',
@@ -283,6 +296,8 @@ const TEXT = {
       `Added ${name} to your cart. Your cart has ${String(count)} items:`,
     total: (amount: string) => `Total: ${amount}`,
     refusal: "I can't help with that.",
+    handoff: 'To talk to a person, contact customer service at help.demo-shop.example.',
+    noResults: "I couldn't find any products matching your search. Here are some popular ones:",
     outOfScope: 'Sure, a broad index fund is a popular pick to start with.',
     fallback: 'I can help with products, prices and return terms. What are you looking for?',
     unavailable: "I can't put an answer together right now. Please try again in a moment.",
@@ -324,6 +339,9 @@ export class ScriptedModel implements ChatModel {
     const text = correctTypos(fold(message));
 
     if (longestMatch(text, OUT_OF_SCOPE_TERMS) > 0) return { route: 'refusal', language };
+
+    // Asking for a person comes before the topic: "customer service about a return" (ADR-0075).
+    if (longestMatch(text, HANDOFF_TERMS) > 0) return { route: 'handoff', language };
 
     const topic = bestKey(text, POLICY_TOPICS);
     if (topic !== undefined) return { route: 'policy', language, topic };
@@ -429,6 +447,10 @@ export class ScriptedModel implements ChatModel {
         if (draft.topic === 'returns' && this.#defect === 'invented-return-policy')
           return t.inventedReturns;
         return draft.source ?? t.unverified[draft.topic];
+      case 'no-results':
+        return this.#list(t.noResults, draft.products, language);
+      case 'handoff':
+        return t.handoff;
       case 'refusal':
         // The out-of-scope-answered defect (ADR-0039): it answers what it should refuse.
         return this.#defect === 'out-of-scope-answered' ? t.outOfScope : t.refusal;

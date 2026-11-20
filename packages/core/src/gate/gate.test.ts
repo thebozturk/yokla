@@ -435,3 +435,42 @@ describe('evaluateGate latency and cost thresholds (ADR-0014)', () => {
     ).toEqual(['quality']);
   });
 });
+
+const tagged = (id: string, status: CaseResult['status'], tags: string[]) => ({
+  ...kase(id, status),
+  tags,
+});
+
+describe('a run limited by tag (ADR-0077)', () => {
+  const full = run([
+    tagged('thanks', 'pass', ['chitchat']),
+    tagged('tents', 'pass', ['search']),
+    tagged('jackets', 'pass', ['search']),
+  ]);
+
+  it('compares only the cases it ran: a case it did not run is no regression', () => {
+    const limited = run([tagged('thanks', 'pass', ['chitchat'])]);
+    const outcome = gate(limited, {}, full);
+    expect(outcome.verdict).toBe('pass');
+    expect(outcome.breaches).toEqual([]);
+    expect(outcome.notices).toEqual([
+      // The baseline lists its cases by id.
+      'jackets passed in the baseline but is not in this run',
+      'tents passed in the baseline but is not in this run',
+    ]);
+  });
+
+  it('still breaks on a regression among the cases it ran', () => {
+    const limited = run([
+      tagged('tents', 'fail', ['search']),
+      tagged('jackets', 'pass', ['search']),
+    ]);
+    expect(gate(limited, {}, full)).toMatchObject({
+      verdict: 'broken',
+      breaches: [
+        { rule: 'failures', cases: ['tents'] },
+        { rule: 'regression', cases: ['tents'] },
+      ],
+    });
+  });
+});

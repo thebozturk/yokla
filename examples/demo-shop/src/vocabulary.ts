@@ -139,6 +139,19 @@ export const CHEAPER_TERMS: readonly string[] = ['daha ucuz', 'en ucuz', 'cheape
 /** Words that ask to put a product in the cart, such as "sepete ekle" or "add it to my cart". */
 export const CART_TERMS: readonly string[] = ['sepet', 'cart', 'basket'];
 
+/** Words that ask for a person instead of the assistant (ADR-0075). */
+export const HANDOFF_TERMS: readonly string[] = [
+  'temsilci',
+  'musteri hizmet',
+  'representative',
+  'human',
+  'real person',
+  'customer service',
+];
+
+/** Words that thank the shop, which the thanks-searched defect searches for (ADR-0075). */
+export const THANKS_TERMS: readonly string[] = ['tesekkur', 'sagol', 'thank', 'cheers'];
+
 function escape(term: string): string {
   return term.replaceAll(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }

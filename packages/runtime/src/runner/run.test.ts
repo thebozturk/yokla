@@ -172,7 +172,12 @@ describe('runSuite', () => {
       evidence: { items: [{ id: 'P1', price: 19.9 }] },
     });
     expect(results.cases[0]?.status).toBe('unmeasured');
-    expect(results.summary).toEqual({ cases: 1, statuses: { unmeasured: 1 } });
+    // No case measured: no pass rate, over the run or its suite (ADR-0076).
+    expect(results.summary).toEqual({
+      cases: 1,
+      statuses: { unmeasured: 1 },
+      suites: [{ suite: 'quality', cases: 1, statuses: { unmeasured: 1 } }],
+    });
     expect(results.run).toMatchObject({
       correlation: 'none',
       partial: false,
@@ -192,10 +197,41 @@ describe('runSuite', () => {
     const [first] = await hashes(plain);
     expect(first).toMatch(/^[a-f0-9]{64}$/u);
     expect(
-      await hashes(plain, { ...plain, title: 'Same case, other title', tags: ['smoke'] }),
-    ).toEqual([first, first]);
+      await hashes(
+        plain,
+        { ...plain, title: 'Same case, other title', tags: ['smoke'] },
+        // A weight is the author's claim about traffic, not the verdict (ADR-0076).
+        { ...plain, weight: 40 },
+      ),
+    ).toEqual([first, first, first]);
     const [stricter] = await hashes({ turns: [{ user: 'a', expect: { answerable: false } }] });
     expect(stricter).not.toBe(first);
+  });
+
+  it('writes each case its tags and a weight other than 1, and the summary by tag (ADR-0076, ADR-0077)', async () => {
+    const t = await target((_r, _i, response) => {
+      json(response, answer());
+    });
+    const results = await runSuite(
+      options(
+        profile(t.url),
+        cases(
+          { id: 'tagged', turns: [{ user: 'a' }], tags: ['chitchat', 'english'], weight: 12.5 },
+          { id: 'one', turns: [{ user: 'a' }], tags: ['english'], weight: 1 },
+          { id: 'plain', turns: [{ user: 'a' }] },
+        ),
+      ),
+    );
+    expect(Results.safeParse(results).success).toBe(true);
+    expect(results.cases.map((c) => [c.id, c.tags, c.weight])).toEqual([
+      ['tagged', ['chitchat', 'english'], 12.5],
+      ['one', ['english'], undefined],
+      ['plain', undefined, undefined],
+    ]);
+    expect(results.summary.tags?.map((g) => [g.tag, g.cases])).toEqual([
+      ['chitchat', 1],
+      ['english', 2],
+    ]);
   });
 
   it('runs proposed cases marked as such, and never a rejected one (ADR-0004)', async () => {

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>yokla run run-1</title>
+<style>
+:root { color-scheme: light dark; --bg: #ffffff; --fg: #1d2025; --muted: #5d6570;
+  --line: #d8dce2; --panel: #f6f7f9; --code: #eef0f3;
+  --good: #1a7f37; --bad: #c42b2b; --warn: #8f6200; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #16181b; --fg: #e5e7ea; --muted: #9ba3ad; --line: #30353c;
+    --panel: #1c1f23; --code: #23272c; --good: #4fc26f; --bad: #ff6f6f; --warn: #d6a832; }
+}
+* { box-sizing: border-box; }
+body { margin: 0 auto; max-width: 76rem; padding: 1.5rem 1rem 3rem; background: var(--bg);
+  color: var(--fg); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+h1 { font-size: 1.4rem; margin: 0 0 1rem; }
+h2 { font-size: 1.1rem; margin: 2rem 0 .5rem; padding-bottom: .25rem; border-bottom: 1px solid var(--line); }
+h3 { font-size: 1rem; margin: 1rem 0 .25rem; }
+h4 { font-size: .95rem; margin: .75rem 0 .25rem; }
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+pre { margin: .25rem 0 .5rem; padding: .5rem .75rem; border-radius: 4px; background: var(--code);
+  font-size: 12.5px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+pre.text { font-family: inherit; font-size: 14px; line-height: 1.5; }
+.scroll { overflow-x: auto; }
+table { width: 100%; margin: .25rem 0 .75rem; border-collapse: collapse; }
+th, td { padding: .3rem .5rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+td { overflow-wrap: break-word; }
+td code { white-space: nowrap; }
+.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: .2rem 1rem; margin: 0; }
+dt { color: var(--muted); }
+dd { margin: 0; overflow-wrap: anywhere; }
+ul { margin: .25rem 0; padding-left: 1.25rem; }
+.counts { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; padding: 0; list-style: none; }
+.status { display: inline-block; padding: 0 .4rem; border: 1px solid currentColor; border-radius: 3px;
+  font-size: 12px; font-weight: 600; white-space: nowrap; }
+.good { color: var(--good); }
+.bad { color: var(--bad); }
+.warn { color: var(--warn); }
+.muted { color: var(--muted); }
+.mark { margin-left: .4rem; color: var(--muted); font-size: 12px; }
+.label { color: var(--muted); font-size: 12px; }
+details.case { margin: .5rem 0; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+details.case > summary { padding: .5rem .75rem; cursor: pointer; }
+details.case > div { padding: 0 .75rem .75rem; }
+.turn { margin-top: .75rem; padding-top: .5rem; border-top: 1px solid var(--line); }
+details details > summary { color: var(--muted); cursor: pointer; }
+a { color: inherit; }
+@media print { details.case { break-inside: avoid-page; } }
+</style>
+</head>
+<body>
+<h1>yokla run</h1>
+<p class="muted">This report holds the target's answers and evidence. Keep it as private as the results file.</p>
+<section id="run"><h2>Run</h2><dl><dt>Run</dt><dd><code>run-1</code></dd><dt>Target</dt><dd>t</dd><dt>Profile</dt><dd><code>aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</code></dd><dt>Started</dt><dd>2026-11-10T12:00:00.000Z (UTC)</dd><dt>Finished</dt><dd>2026-11-10T12:00:02.500Z (UTC)</dd><dt>Duration</dt><dd>2.500 s</dd><dt>Completeness</dt><dd>every case ran</dd><dt>yokla</dt><dd>0.0.0-test</dd><dt>Environment</dt><dd>Node.js v24.0.0, darwin arm64</dd><dt>Correlation</dt><dd>none</dd></dl></section>
+<section id="cases"><h2>Cases</h2><p>4 cases; pass rate 0.333 (1 of 3, 95 % 0.061 to 0.792), weighted 0.040</p><ul class="counts"><li><span class="status good">pass</span> 1</li><li><span class="status bad">fail</span> 2</li><li><span class="status muted">known-gap</span> 1</li></ul><p class="muted">The weighted pass rate counts each case by its weight; failing cases are listed heaviest first.</p><div class="scroll"><table><thead><tr><th>Status</th><th>Case</th><th>Suite</th><th>Language</th><th>Tags</th><th>Reason</th></tr></thead><tbody><tr><td><span class="status bad">fail</span></td><td><a href="#case-jackets"><code>jackets</code></a><span class="mark">[weight 1200]</span></td><td>factual</td><td>tr</td><td>search</td><td>request 1/1: showed cards</td></tr><tr><td><span class="status bad">fail</span></td><td><a href="#case-thanks"><code>thanks</code></a><span class="mark">[weight 3]</span></td><td>factual</td><td>tr</td><td>chitchat</td><td>request 1/1: showed cards</td></tr><tr><td><span class="status muted">known-gap</span></td><td><a href="#case-gift-wrap"><code>gift-wrap</code></a><span class="mark">[weight 9000]</span></td><td>factual</td><td>tr</td><td>search</td><td>known gap: no reason given</td></tr><tr><td><span class="status good">pass</span></td><td><a href="#case-tents"><code>tents</code></a><span class="mark">[weight 50]</span></td><td>factual</td><td>tr</td><td>search, chitchat</td><td></td></tr></tbody></table></div></section>
+<section id="tags"><h2>By tag</h2><p class="muted">A case with several tags counts in each.</p><div class="scroll"><table><thead><tr><th>Tag</th><th class="num">Cases</th><th>Statuses</th><th class="num">Pass rate</th><th class="num">Pass rate, 95 %</th><th class="num">Weighted pass rate</th></tr></thead><tbody><tr><td><code>chitchat</code></td><td class="num">2</td><td>pass 1, fail 1</td><td class="num">0.500 (1 of 2)</td><td class="num">0.095 to 0.905</td><td class="num">0.943</td></tr><tr><td><code>search</code></td><td class="num">3</td><td>pass 1, fail 1, known-gap 1</td><td class="num">0.500 (1 of 2)</td><td class="num">0.095 to 0.905</td><td class="num">0.040</td></tr></tbody></table></div></section>
+
+<section id="details"><h2>Case details</h2>
+<details class="case" id="case-jackets" open><summary><span class="status bad">fail</span> <code>jackets</code> <span class="muted">factual · tr</span> · request 1/1: showed cards</summary><div><h3>Dimensions</h3><div class="scroll"><table><thead><tr><th>Dimension</th><th>Policy</th><th>Verdict</th><th class="num">Failed samples</th><th class="num">Failure rate, 95 %</th></tr></thead><tbody><tr><td>request</td><td>worst-of-n</td><td><span class="status bad">fail</span></td><td class="num">1 of 1</td><td class="num"></td></tr></tbody></table></div><h3>Sample 0 · cold</h3><div class="turn"><h4>Sample 0, turn 0</h4><div class="label">User</div><pre class="text">question</pre><div class="label">Answer · status 200 · 120 ms</div><pre class="text">the target answer must never reach a report</pre><div class="scroll"><table><thead><tr><th>Check</th><th>Verdict</th><th>Dimension</th><th>Severity</th><th>Message</th></tr></thead><tbody><tr><td><code>request-handled</code></td><td><span class="status bad">fail</span></td><td>request</td><td>high</td><td>showed cards</td></tr></tbody></table></div></div></div></details>
+<details class="case" id="case-thanks" open><summary><span class="status bad">fail</span> <code>thanks</code> <span class="muted">factual · tr</span> · request 1/1: showed cards</summary><div><h3>Dimensions</h3><div class="scroll"><table><thead><tr><th>Dimension</th><th>Policy</th><th>Verdict</th><th class="num">Failed samples</th><th class="num">Failure rate, 95 %</th></tr></thead><tbody><tr><td>request</td><td>worst-of-n</td><td><span class="status bad">fail</span></td><td class="num">1 of 1</td><td class="num"></td></tr></tbody></table></div><h3>Sample 0 · cold</h3><div class="turn"><h4>Sample 0, turn 0</h4><div class="label">User</div><pre class="text">question</pre><div class="label">Answer · status 200 · 120 ms</div><pre class="text">the target answer must never reach a report</pre><div class="scroll"><table><thead><tr><th>Check</th><th>Verdict</th><th>Dimension</th><th>Severity</th><th>Message</th></tr></thead><tbody><tr><td><code>request-handled</code></td><td><span class="status bad">fail</span></td><td>request</td><td>high</td><td>showed cards</td></tr></tbody></table></div></div></div></details>
+<details class="case" id="case-gift-wrap" open><summary><span class="status muted">known-gap</span> <code>gift-wrap</code> <span class="muted">factual · tr</span> · known gap: no reason given</summary><div><h3>Sample 0 · cold</h3><div class="turn"><h4>Sample 0, turn 0</h4><div class="label">User</div><pre class="text">question</pre><div class="label">Answer · status 200 · 120 ms</div><pre class="text">the target answer must never reach a report</pre><p class="muted">No check applied.</p></div></div></details>
+<details class="case" id="case-tents"><summary><span class="status good">pass</span> <code>tents</code> <span class="muted">factual · tr</span></summary><div><h3>Sample 0 · cold</h3><div class="turn"><h4>Sample 0, turn 0</h4><div class="label">User</div><pre class="text">question</pre><div class="label">Answer · status 200 · 120 ms</div><pre class="text">the target answer must never reach a report</pre><p class="muted">No check applied.</p></div></div></details>
+</section>
+</body>
+</html>

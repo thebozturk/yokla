@@ -60,6 +60,12 @@ export const english: LanguagePack = {
       'no results',
       'not available',
       'no exact match',
+      // A failed search's own sentence (ADR-0075).
+      'no products',
+      'no matching',
+      'nothing found',
+      "didn't find",
+      'did not find',
     ],
     alternative: [
       'instead',
@@ -79,6 +85,10 @@ export const english: LanguagePack = {
       'customer support team',
       'help center',
       'live chat',
+      // A pointer to a person or a channel, as a handoff needs (ADR-0075).
+      'contact us',
+      'customer service team',
+      'customer representative',
     ],
   },
   // Number words for quantities such as "four bags" (ADR-0021).

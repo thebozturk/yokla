@@ -14,7 +14,7 @@ import {
   type Route,
   unavailableAnswer,
 } from './model.ts';
-import { ABSENT_TYPES } from './vocabulary.ts';
+import { ABSENT_TYPES, longestMatch, THANKS_TERMS } from './vocabulary.ts';
 
 export interface ProductView {
   readonly id: string;
@@ -307,10 +307,21 @@ export class Assistant {
           (product) => said.includes(fold(product.name.tr)) || said.includes(fold(product.name.en)),
         );
         if (named !== undefined) return this.#search(named.type, {}, language, message);
+        // The thanks-searched defect (ADR-0075): a thank-you goes to the catalog search,
+        // which finds nothing, says so, and shows the cheapest products anyway.
+        if (this.#defect === 'thanks-searched' && longestMatch(said, THANKS_TERMS) > 0) {
+          const products = this.#data.catalog.toSorted(byPriceThenId).slice(0, RESULT_LIMIT);
+          return {
+            draft: { kind: 'no-results', language, products },
+            next: { ...EMPTY_CONTEXT, products },
+          };
+        }
         return { draft: { kind: 'fallback', language }, next: context ?? EMPTY_CONTEXT };
       }
       case 'refusal':
         return { draft: { kind: 'refusal', language }, next: context ?? EMPTY_CONTEXT };
+      case 'handoff':
+        return { draft: { kind: 'handoff', language }, next: context ?? EMPTY_CONTEXT };
     }
   }
 

@@ -22,6 +22,7 @@ export function isInterpretation(value: unknown): value is Interpretation {
       return typeof value['productId'] === 'string' && value['productId'] !== '';
     case 'follow-up-cheapest':
     case 'refusal':
+    case 'handoff':
     case 'fallback':
       return true;
     default:
@@ -51,7 +52,10 @@ export function isDraft(value: unknown): value is AnswerDraft {
       );
     case 'policy':
       return typeof value['topic'] === 'string';
+    case 'no-results':
+      return Array.isArray(value['products']);
     case 'refusal':
+    case 'handoff':
     case 'fallback':
       return true;
     default:

@@ -3,7 +3,14 @@
 // logs observed. Errors and run issues go to stderr.
 
 import { CASE_STATUSES, type Results } from '@yokla/core';
-import { counted, observedTotals } from './format.ts';
+import {
+  byWeight,
+  counted,
+  observedTotals,
+  passRateText,
+  tagsByFailures,
+  hasWeights,
+} from './format.ts';
 import { caseProblems, caseReason, dimensionSummary } from './problems.ts';
 
 export interface TerminalSummary {
@@ -19,7 +26,11 @@ export function terminalSummary(results: Results): TerminalSummary {
     const count = results.summary.statuses[status];
     return count === undefined ? [] : [`${status} ${String(count)}`];
   });
-  out.push(`${String(results.summary.cases)} cases: ${counts.join(', ')}`);
+  const passRate = results.summary.passRate;
+  out.push(
+    `${String(results.summary.cases)} cases: ${counts.join(', ')}` +
+      (passRate === undefined ? '' : `; ${passRateText(passRate)}`),
+  );
   if (results.run.sampling?.stopEarly === true) {
     // How many samples --stop-early saved (ADR-0038).
     const ran = results.cases.reduce((n, c) => n + c.samples.length, 0);
@@ -34,7 +45,9 @@ export function terminalSummary(results: Results): TerminalSummary {
   }
 
   const rows: [string, string, string][] = [];
-  for (const c of results.cases) {
+  const weights = hasWeights(results);
+  // Heaviest first when the cases carry weights: a heavy failure is worth fixing first (ADR-0076).
+  for (const c of byWeight(results, results.cases)) {
     const problems = caseProblems(c);
     const reason = caseReason(c, problems);
     if (reason !== undefined) {
@@ -42,7 +55,10 @@ export function terminalSummary(results: Results): TerminalSummary {
         c.samplesPlanned === undefined
           ? ''
           : ` [stopped after ${String(c.samples.length)} of ${String(c.samplesPlanned)} samples]`;
-      const marks = `${c.unstable ? ' [unstable]' : ''}${stopped}${c.review === 'proposed' ? ' [proposed]' : ''}`;
+      const marks =
+        `${c.unstable ? ' [unstable]' : ''}${stopped}${c.review === 'proposed' ? ' [proposed]' : ''}` +
+        (weights ? ` [weight ${String(c.weight ?? 1)}]` : '') +
+        (c.tags === undefined ? '' : ` [tags: ${c.tags.join(', ')}]`);
       rows.push([c.status, c.id, `${reason}${marks}`]);
     }
     const advisory = dimensionSummary(c, problems.advisory, true);
@@ -58,6 +74,23 @@ export function terminalSummary(results: Results): TerminalSummary {
   const idWidth = Math.max(0, ...rows.map(([, id]) => id.length));
   for (const [status, id, reason] of rows) {
     out.push(`  ${status.padEnd(statusWidth)}  ${id.padEnd(idWidth)}  ${reason}`);
+  }
+
+  // Per tag, the most failing first (ADR-0077).
+  const tags = tagsByFailures(results);
+  if (tags.length > 0) {
+    out.push('by tag:');
+    const tagWidth = Math.max(...tags.map((group) => group.tag.length));
+    for (const group of tags) {
+      const statuses = CASE_STATUSES.flatMap((status) => {
+        const count = group.statuses[status];
+        return count === undefined ? [] : [`${status} ${String(count)}`];
+      });
+      out.push(
+        `  ${group.tag.padEnd(tagWidth)}  ${counted(group.cases, 'case')}: ${statuses.join(', ')}` +
+          (group.passRate === undefined ? '' : `; ${passRateText(group.passRate)}`),
+      );
+    }
   }
 
   const observation = results.run.observation;

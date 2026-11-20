@@ -215,6 +215,12 @@ describe('phrases', () => {
     ['free', 'Kargo ücretsizdir.'],
     ['deflection', 'Bu konuda müşteri hizmetlerimize başvurabilirsiniz.'],
     ['deflection', 'Canlı destek ve yardım merkezi: https://example.test'],
+    // A failed search, and a pointer to a person (ADR-0075).
+    ['absence', 'Aramanıza uygun ürün bulamadık.'],
+    ['absence', 'Sonuç bulunamamıştır.'],
+    ['deflection', 'Müşteri hizmetleri ile görüşebilirsiniz.'],
+    ['deflection', 'Sizi bir müşteri temsilcisine aktarıyorum.'],
+    ['deflection', 'Bizimle iletişime geçebilirsiniz.'],
   ] as const)('%s: %s', (kind, text) => {
     expect(hits(kind, text)).toBe(true);
   });
@@ -227,6 +233,9 @@ describe('phrases', () => {
     ['absence', 'Aramanıza tam uyan ürünleri buldum.'],
     ['alternative', 'Size en yakın mağazamız Kadıköy’de.'],
     ['free', 'Ücret 50 TL.'],
+    ['absence', 'Aradığınız ürünleri bulduk.'],
+    ['deflection', 'Rica ederim, başka bir isteğiniz var mı?'],
+    ['deflection', 'Müşterilerimizin en çok sevdiği çadırlar.'],
   ] as const)('not %s: %s', (kind, text) => {
     expect(hits(kind, text)).toBe(false);
   });

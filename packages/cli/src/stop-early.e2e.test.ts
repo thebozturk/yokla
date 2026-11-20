@@ -151,9 +151,9 @@ describe('--stop-early against the demo-shop (ADR-0038)', () => {
 
   it('ran fewer samples than planned where something failed, and says so', () => {
     const done = runs.get('fabricated-price');
-    expect(done?.output).toMatch(/--stop-early: \d+ samples ran of 54 planned/u);
+    expect(done?.output).toMatch(/--stop-early: \d+ samples ran of 63 planned/u);
     const ran = (done?.early.cases ?? []).reduce((n, c) => n + c.samples.length, 0);
-    expect(ran).toBeLessThan(54);
+    expect(ran).toBeLessThan(63);
     const none = runs.get('none');
     expect((none?.early.cases ?? []).every((c) => c.samples.length === 3)).toBe(true);
   });

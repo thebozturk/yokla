@@ -9,7 +9,7 @@ import { baselineCommand } from './commands/baseline.ts';
 import { gateCommand } from './commands/gate.ts';
 import { planCommand } from './commands/plan.ts';
 import { proxyCommand } from './commands/proxy.ts';
-import { printSummary } from './commands/run.ts';
+import { printSummary, selectByTags } from './commands/run.ts';
 import { main } from './main.ts';
 
 function capture() {
@@ -268,6 +268,34 @@ describe('yokla', () => {
       await main(['run', '--profile', join(dir, 'yokla.profile.yaml'), '--samples', 'many'], io),
     ).toBe(2);
     expect(err[0]).toBe('--samples must be a positive integer');
+  });
+});
+
+describe('yokla run --tag (ADR-0077)', () => {
+  const cases = [
+    { id: 'thanks', tags: ['chitchat'] },
+    { id: 'tents', tags: ['search', 'english'] },
+    { id: 'order', tags: ['support', 'english'] },
+    { id: 'plain', tags: [] },
+  ];
+  const ids = (tags: string[]) => selectByTags(cases, tags).map((c) => c.id);
+
+  it('runs every case without --tag', () => {
+    expect(ids([])).toEqual(['thanks', 'tents', 'order', 'plain']);
+  });
+
+  it('runs a case with any of the tags, in the order given, once', () => {
+    expect(ids(['chitchat'])).toEqual(['thanks']);
+    expect(ids(['support', 'chitchat'])).toEqual(['thanks', 'order']);
+    expect(ids(['english', 'search'])).toEqual(['tents', 'order']);
+    // A tag no case has selects nothing by itself, and nothing more beside another.
+    expect(ids(['nothing', 'search'])).toEqual(['tents']);
+  });
+
+  it('refuses a selection of no case', () => {
+    expect(() => selectByTags(cases, ['nothing', 'none'])).toThrow(
+      new LoadError('no case has the tag "nothing" or "none"'),
+    );
   });
 });
 

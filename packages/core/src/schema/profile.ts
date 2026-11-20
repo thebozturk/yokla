@@ -127,6 +127,10 @@ const HttpResponse = z.strictObject({
     description:
       'A JSON Schema every usable answer, or a part of it, must match: the contract of the response, judged by json-schema (ADR-0030).',
   }),
+  contactPhrases: z.array(z.string().min(1)).min(1).optional().meta({
+    description:
+      "The target's own words for its channels to a person, such as a support URL or a phone line's name, matched after folding. request-handled counts them as a pointer to a person, with the language pack's deflection phrases (ADR-0075).",
+  }),
 });
 
 /** ADR-0024: a connection opened once per sample, and one message sent per turn. */

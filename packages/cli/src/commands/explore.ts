@@ -27,6 +27,7 @@ import {
   type ObservedTurn,
   type Profile,
   type Results,
+  summariseCases,
   summariseChecks,
 } from '@yokla/core';
 import { ConfigError, runSuite, type RunOptions } from '@yokla/runtime';
@@ -184,8 +185,6 @@ export function explorationResults(
   }
   const issues = [...new Set([seeds, ...runs].flatMap((ran) => ran.run.issues ?? []))];
   const last = runs.at(-1) ?? seeds;
-  const statuses: Partial<Record<CaseResult['status'], number>> = {};
-  for (const c of cases) statuses[c.status] = (statuses[c.status] ?? 0) + 1;
   return {
     ...seeds,
     run: {
@@ -201,7 +200,7 @@ export function explorationResults(
     },
     cases,
     checks: summariseChecks(cases),
-    summary: { cases: cases.length, statuses },
+    summary: summariseCases(cases),
   };
 }
 

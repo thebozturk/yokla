@@ -912,6 +912,15 @@
                     }
                   },
                   "additionalProperties": false
+                },
+                "contactPhrases": {
+                  "description": "The target's own words for its channels to a person, such as a support URL or a phone line's name, matched after folding. request-handled counts them as a pointer to a person, with the language pack's deflection phrases (ADR-0075).",
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
                 }
               },
               "required": [
@@ -1811,6 +1820,15 @@
                     }
                   },
                   "additionalProperties": false
+                },
+                "contactPhrases": {
+                  "description": "The target's own words for its channels to a person, such as a support URL or a phone line's name, matched after folding. request-handled counts them as a pointer to a person, with the language pack's deflection phrases (ADR-0075).",
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
                 }
               },
               "required": [

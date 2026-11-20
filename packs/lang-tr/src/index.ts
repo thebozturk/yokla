@@ -48,7 +48,9 @@ export const turkish: LanguagePack = {
       'bulunmuyor',
       'bulunmamaktadir',
       'bulamadim',
+      'bulamadik',
       'bulunamadi',
+      'bulunamamistir',
       'mevcut degil',
       'yok$',
       'yoktur',
@@ -69,6 +71,10 @@ export const turkish: LanguagePack = {
     deflection: [
       'musteri hizmetlerimize',
       'musteri hizmetlerine',
+      // A pointer to a person or a channel, as a handoff needs (ADR-0075).
+      'musteri hizmetleri',
+      'musteri temsilci',
+      'bizimle iletisime',
       'canli destek',
       'yardim merkezi',
       'destek ekibimize',

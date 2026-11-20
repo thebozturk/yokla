@@ -205,8 +205,8 @@ describe('tool results changed by the proxy, on the demo-shop (ADR-0043)', () =>
   it('reversing the search results moves no verdict, and compare --expect-same says so', () => {
     const plain = ran('plain');
     const reversed = ran('reversed');
-    expect(plain.results.summary.statuses).toEqual({ pass: 18 });
-    expect(reversed.results.summary.statuses).toEqual({ pass: 18 });
+    expect(plain.results.summary.statuses).toEqual({ pass: 21 });
+    expect(reversed.results.summary.statuses).toEqual({ pass: 21 });
     const [change] = reversed.results.run.toolChanges ?? [];
     expect(change).toMatchObject({ tool: 'search_products', at: '$.results' });
     expect(change?.results).toBeGreaterThan(0);

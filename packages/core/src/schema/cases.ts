@@ -11,6 +11,10 @@ export const KnownGap = z.strictObject({
   issue: z.string().min(1).optional(),
 });
 
+/** The kinds of request a turn may say it is (ADR-0075). A fourth needs its own ADR. */
+export const REQUEST_KINDS = ['chitchat', 'handoff', 'support'] as const;
+export type RequestKind = (typeof REQUEST_KINDS)[number];
+
 /** Domain-neutral expectations every case may use. Packs add their own keys. */
 export const coreExpectations = {
   route: z
@@ -36,6 +40,10 @@ export const coreExpectations = {
     }),
   language: LanguageCode.meta({
     description: 'The language the answer must be in, judged by language-match (ADR-0018).',
+  }),
+  request: z.enum(REQUEST_KINDS).meta({
+    description:
+      'What kind of request the turn is, judged by request-handled (ADR-0075): chitchat (a greeting, thanks, small talk), handoff (the user asks for a person) or support (a question about their own order, payment, account, return or delivery).',
   }),
   similar: z
     .strictObject({
@@ -253,7 +261,14 @@ export function caseShape<E extends z.ZodType>(language: z.ZodType<string>, expe
       .optional()
       .meta({ description: 'Run only these checks. By default every applicable check runs.' }),
     knownGap: KnownGap.optional(),
-    tags: z.array(Id).default([]),
+    tags: z.array(Id).default([]).meta({
+      description:
+        'Labels the summary groups the results by, and yokla run --tag selects cases by (ADR-0077).',
+    }),
+    weight: z.number().positive().optional().meta({
+      description:
+        "The case's share of traffic, in any unit; only ratios matter. The summary's weighted pass rate counts a case by its weight (ADR-0076). Default: 1.",
+    }),
     provenance: Provenance.optional(),
   };
 }

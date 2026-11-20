@@ -5,10 +5,13 @@
 // `unmeasured` when no check applied to any turn, or a deciding dimension went
 // unmeasured and nothing failed (ADR-0014): never a silent pass.
 
+import { SUITES } from '../schema/common.ts';
 import type { Results } from '../schema/results.ts';
 import type { AggregationPolicy } from './types.ts';
 
 type CaseResult = Results['cases'][number];
+type RunSummary = Results['summary'];
+type PassRate = NonNullable<RunSummary['passRate']>;
 type Sample = CaseResult['samples'][number];
 type DimensionResult = CaseResult['dimensions'][number];
 type CheckSummary = Results['checks'][number];
@@ -19,7 +22,7 @@ function round(value: number): number {
   return Math.round(value * 10_000) / 10_000;
 }
 
-/** Wilson 95 % interval for `failed` out of `n`. */
+/** Wilson 95 % interval for a proportion of `failed` out of `n`; a pass rate's too. */
 export function wilson(failed: number, n: number): { level: 0.95; lower: number; upper: number } {
   if (n === 0) return { level: 0.95, lower: 0, upper: 1 };
   const p = failed / n;
@@ -163,4 +166,97 @@ export function summariseChecks(cases: readonly CaseResult[]): CheckSummary[] {
     }
   }
   return [...byCheck.values()].toSorted((a, b) => a.check.localeCompare(b.check));
+}
+
+/** Statuses that pass, and that fail; every other status is left out of a pass rate (ADR-0076). */
+const PASSING: ReadonlySet<CaseResult['status']> = new Set(['pass', 'gap-closed']);
+const FAILING: ReadonlySet<CaseResult['status']> = new Set(['fail']);
+
+const weightOf = (c: CaseResult): number => c.weight ?? 1;
+
+/** At most six decimals: a weight's unit is the author's. */
+function roundWeight(value: number): number {
+  return Math.round(value * 1e6) / 1e6;
+}
+
+/**
+ * The sum of the weights of passing cases over the sum of the weights of
+ * measured cases (ADR-0076); undefined when no case was measured. With every
+ * weight 1 it is the plain pass rate.
+ */
+export function weightedPassRate(
+  cases: readonly CaseResult[],
+): { passed: number; measured: number; rate: number } | undefined {
+  let passed = 0;
+  let measured = 0;
+  for (const c of cases) {
+    if (PASSING.has(c.status)) passed += weightOf(c);
+    if (PASSING.has(c.status) || FAILING.has(c.status)) measured += weightOf(c);
+  }
+  if (measured === 0) return undefined;
+  return {
+    passed: roundWeight(passed),
+    measured: roundWeight(measured),
+    rate: round(passed / measured),
+  };
+}
+
+/** The plain pass rate with its Wilson interval, and the weighted one when asked (ADR-0076). */
+function passRate(cases: readonly CaseResult[], weighted: boolean): PassRate | undefined {
+  const passed = cases.filter((c) => PASSING.has(c.status)).length;
+  const measured = passed + cases.filter((c) => FAILING.has(c.status)).length;
+  if (measured === 0) return undefined;
+  const byWeight = weighted ? weightedPassRate(cases) : undefined;
+  return {
+    passed,
+    measured,
+    rate: round(passed / measured),
+    interval: wilson(passed, measured),
+    ...(byWeight === undefined ? {} : { weighted: byWeight }),
+  };
+}
+
+function statusCounts(cases: readonly CaseResult[]): RunSummary['statuses'] {
+  const statuses: RunSummary['statuses'] = {};
+  for (const c of cases) statuses[c.status] = (statuses[c.status] ?? 0) + 1;
+  return statuses;
+}
+
+function group(cases: readonly CaseResult[], weighted: boolean) {
+  const rate = passRate(cases, weighted);
+  return {
+    cases: cases.length,
+    statuses: statusCounts(cases),
+    ...(rate === undefined ? {} : { passRate: rate }),
+  };
+}
+
+/**
+ * The run's summary: how many cases, each status, and the pass rate, over the
+ * run, per suite and per tag (ADR-0076, ADR-0077). A case with several tags
+ * counts in each; a case without tags in none. The weighted rate is there
+ * when a case has a weight other than 1.
+ */
+export function summariseCases(cases: readonly CaseResult[]): RunSummary {
+  const weighted = cases.some((c) => weightOf(c) !== 1);
+  const bySuite = SUITES.flatMap((suite) => {
+    const own = cases.filter((c) => c.suite === suite);
+    return own.length === 0 ? [] : [{ suite, ...group(own, weighted) }];
+  });
+  const names = [...new Set(cases.flatMap((c) => c.tags ?? []))].toSorted();
+  const byTag = names.map((tag) => ({
+    tag,
+    ...group(
+      cases.filter((c) => c.tags?.includes(tag) === true),
+      weighted,
+    ),
+  }));
+  const rate = passRate(cases, weighted);
+  return {
+    cases: cases.length,
+    statuses: statusCounts(cases),
+    ...(rate === undefined ? {} : { passRate: rate }),
+    ...(bySuite.length === 0 ? {} : { suites: bySuite }),
+    ...(byTag.length === 0 ? {} : { tags: byTag }),
+  };
 }

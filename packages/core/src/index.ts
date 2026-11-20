@@ -78,6 +78,8 @@ export { buildSchemas, type DomainPackSchemas, type SchemaOptions } from './sche
 export {
   coreExpectations,
   KnownGap,
+  REQUEST_KINDS,
+  type RequestKind,
   type Case,
   type CaseFile,
   type CaseCustomer,
@@ -221,7 +223,9 @@ export {
 export {
   aggregateCase,
   settledFailure,
+  summariseCases,
   summariseChecks,
+  weightedPassRate,
   wilson,
   type CaseAggregate,
 } from './checks/aggregate.ts';

@@ -1,4 +1,11 @@
-import type { CheckOutcome, EvidenceItem, LanguagePack, TurnView } from '@yokla/core';
+import {
+  aggregateCase,
+  type CheckOutcome,
+  type EvidenceItem,
+  type LanguagePack,
+  type Results,
+  type TurnView,
+} from '@yokla/core';
 import { checkContext, mutate } from '@yokla/core/testing';
 import { describe, expect, it } from 'vitest';
 import { loadData, type EcommerceData } from '../data.ts';
@@ -10,6 +17,7 @@ import { noDuplicates } from './no-duplicates.ts';
 import { policyClaim } from './policy-claim.ts';
 import { priceGrounded } from './price-grounded.ts';
 import { deflection, overRefusal } from './refusal.ts';
+import { ecommercePack } from '../pack.ts';
 import { stockClaim } from './stock-claim.ts';
 import { typeMatched } from './type-match.ts';
 
@@ -1472,6 +1480,22 @@ describe('clarifying turns and deflection', () => {
       /not marked answerable/u,
     );
   });
+
+  it('deflection leaves a turn that says what kind of request it is to request-handled (ADR-0075)', () => {
+    const check = deflection();
+    const sent = {
+      ...answer('Bu konuda müşteri hizmetlerimize başvurabilirsiniz.', []),
+      expect: { answerable: true },
+    };
+    expect(verdicts(check.run(checkContext(sent, { lang: fakeTurkish })))).toEqual(['fail']);
+    const support = mutate(sent, (view) => ({
+      ...view,
+      expect: { ...view.expect, request: 'support' },
+    }));
+    expect(verdicts(check.run(checkContext(support, { lang: fakeTurkish })))[0]).toMatch(
+      /request-handled judges it/u,
+    );
+  });
 });
 
 /** A turn that returned `products`, after the model saw `seen` in search_products. */
@@ -1738,6 +1762,38 @@ describe('the subject of a failing finding (ADR-0033)', () => {
     // A topic without a source supports nothing: its first claim is the subject.
     expect(run('Kargo 3 gün içinde ücretsiz.')).toEqual([
       { kind: 'duration', amount: 3, unit: 'day' },
+    ]);
+  });
+});
+
+/** A sample whose one turn request-handled judged so (ADR-0075). */
+const requestSample = (verdict: 'pass' | 'fail'): Results['cases'][number]['samples'][number] => ({
+  index: 0,
+  cache: 'cold',
+  turns: [
+    {
+      user: 'thanks',
+      checks: [
+        {
+          check: 'request-handled',
+          applicable: true,
+          findings: [{ dimension: 'request', verdict, severity: 'high', message: verdict }],
+        },
+      ],
+    },
+  ],
+});
+
+describe('the request dimension (ADR-0075)', () => {
+  it('is worst-of-N: a greeting answered with cards in one sample of three fails the case', () => {
+    const result = aggregateCase(
+      [requestSample('pass'), requestSample('fail'), requestSample('pass')],
+      ecommercePack.dimensions,
+      false,
+    );
+    expect(result.status).toBe('fail');
+    expect(result.dimensions.map((d) => [d.dimension, d.policy, d.failed])).toEqual([
+      ['request', 'worst-of-n', 1],
     ]);
   });
 });

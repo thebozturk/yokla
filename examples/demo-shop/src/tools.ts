@@ -104,6 +104,7 @@ export function toolCallOf(interpretation: Interpretation): ToolCallText | undef
       return { name: TOOL.cart, arguments: JSON.stringify({ productId, language }) };
     }
     case 'refusal':
+    case 'handoff':
     case 'fallback':
       return undefined;
   }

@@ -170,3 +170,32 @@ cases:
           filters: { attributes: { gender: women, size: M } }
       - user: the cheaper one?
         expect: { answerable: true, productType: outdoor/clothing/jacket }
+
+  # Requests that are not a search (ADR-0075): no products, no failed-search
+  # sentence, and for a handoff, a way to reach a person.
+  - id: thanks-tr
+    title: A thank-you is not searched for
+    suite: quality
+    language: tr
+    tags: [not-a-search]
+    turns:
+      - user: Teşekkürler, bu kadar!
+        expect: { request: chitchat }
+
+  - id: handoff-en
+    title: Asking for a person is told how to reach one
+    suite: quality
+    language: en
+    tags: [not-a-search]
+    turns:
+      - user: Can I talk to a real person?
+        expect: { request: handoff }
+
+  - id: order-en
+    title: A question about the user's own order
+    suite: quality
+    language: en
+    tags: [not-a-search]
+    turns:
+      - user: Where is my order?
+        expect: { request: support }

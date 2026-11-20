@@ -52,7 +52,9 @@ export function overRefusal(): Check {
 /**
  * deflection: an answerable turn is answered here, not sent to customer
  * service or a help centre with nothing else. Advisory: it is reported, but it
- * doesn't fail the case.
+ * doesn't fail the case. A turn that says what kind of request it is
+ * (`expect.request`) is left to request-handled: sending an order question
+ * elsewhere is the expected answer there (ADR-0075).
  */
 export function deflection(): Check {
   return {
@@ -61,6 +63,8 @@ export function deflection(): Check {
     run(context) {
       if (context.turn.expect['answerable'] !== true)
         return notApplicable('the turn is not marked answerable');
+      if (context.turn.expect['request'] !== undefined)
+        return notApplicable('the turn says what kind of request it is; request-handled judges it');
       const { lang } = context;
       if (lang === undefined)
         return notApplicable(`no language pack for "${context.case.language}"`);

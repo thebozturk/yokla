@@ -757,7 +757,7 @@ describe('the model proxy against the demo-shop', () => {
     (name) => {
       const result = runs.get(name);
       expect(result?.code, result?.output).toBe(0);
-      expect(result?.results.summary.statuses).toEqual({ pass: 18 });
+      expect(result?.results.summary.statuses).toEqual({ pass: 21 });
       expect(result?.results.run.correlation).toBe(name);
     },
   );
@@ -984,7 +984,7 @@ describe('the model proxy against the demo-shop', () => {
 
   it('streaming: the acceptance passes the same, answer for answer, with sessions the shop issues', () => {
     expect(streamed?.code, streamed?.output).toBe(0);
-    expect(streamed?.results.summary.statuses).toEqual({ pass: 18 });
+    expect(streamed?.results.summary.statuses).toEqual({ pass: 21 });
     expect(answers(streamed?.results)).toEqual(answers(runs.get('serial')?.results));
     for (const turn of streamed?.results.cases.flatMap((c) => c.samples[0]?.turns ?? []) ?? []) {
       const first = turn.response?.firstTextMs;
@@ -1017,7 +1017,7 @@ describe('the model proxy against the demo-shop', () => {
     (protocol, correlation) => {
       const done = spanRuns.get(protocol);
       expect(done?.code, done?.output).toBe(0);
-      expect(done?.results.summary.statuses).toEqual({ pass: 18 });
+      expect(done?.results.summary.statuses).toEqual({ pass: 21 });
       const measured = done?.results.run;
       // The proxy keeps its own correlation for its calls.
       expect(measured?.correlation).toBe(correlation);
@@ -1068,7 +1068,7 @@ describe('the model proxy against the demo-shop', () => {
   it('spans only: a target whose calls the proxy never sees is measured from its spans', () => {
     const done = spanRuns.get('only');
     expect(done?.code, done?.output).toBe(0);
-    expect(done?.results.summary.statuses).toEqual({ pass: 18 });
+    expect(done?.results.summary.statuses).toEqual({ pass: 21 });
     const measured = done?.results.run;
     expect(measured?.correlation).toBe('traceparent');
     expect(measured?.proxy).toBeUndefined();
@@ -1110,7 +1110,7 @@ describe('the model proxy against the demo-shop', () => {
     (mode, correlation) => {
       const done = geminiRuns.get(mode);
       expect(done?.code, done?.output).toBe(0);
-      expect(done?.results.summary.statuses).toEqual({ pass: 18 });
+      expect(done?.results.summary.statuses).toEqual({ pass: 21 });
       expect(done?.results.run.correlation).toBe(correlation);
       expect(answers(done?.results)).toEqual(answers(runs.get('serial')?.results));
     },
@@ -1210,7 +1210,7 @@ describe('the model proxy against the demo-shop', () => {
     const spent = runs.get('serial')?.results.run.proxy?.totals['costUsd'] ?? 0;
     expect(spent).toBeGreaterThan(0);
     // Same cases, same definitions, one sample: the estimate is what the run cost.
-    expect(lines[1]).toMatch(/^ {2}18 of 18 cases priced from their own calibration/u);
+    expect(lines[1]).toMatch(/^ {2}21 of 21 cases priced from their own calibration/u);
     expect(lines[2]).toBe(
       `  estimate: ${String(Math.round(spent * 1e6) / 1e6)} USD; upper bound: ${String(Math.round(spent * 2 * 1e6) / 1e6)} USD (2x)`,
     );

@@ -12,6 +12,7 @@ import {
   CHEAPER_TERMS,
   COLORS,
   GENDERS,
+  HANDOFF_TERMS,
   OUT_OF_SCOPE_TERMS,
   POLICY_TOPICS,
   PRODUCT_TYPES,
@@ -52,7 +53,9 @@ export const VOCABULARY_WORDS: ReadonlySet<string> = new Set([
   ...[...PRODUCT_TYPES, ...ABSENT_TYPES, ...COLORS, ...GENDERS, ...POLICY_TOPICS].flatMap((entry) =>
     entry.terms.flatMap((term) => term.split(' ')),
   ),
-  ...[...OUT_OF_SCOPE_TERMS, ...CHEAPER_TERMS, ...CART_TERMS].flatMap((term) => term.split(' ')),
+  ...[...OUT_OF_SCOPE_TERMS, ...CHEAPER_TERMS, ...CART_TERMS, ...HANDOFF_TERMS].flatMap((term) =>
+    term.split(' '),
+  ),
   ...PHRASE_WORDS,
 ]);
 

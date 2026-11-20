@@ -147,7 +147,7 @@ describe('richer evidence mapping against the demo-shop (ADR-0020)', () => {
   });
 
   it('passes every acceptance case without defects', () => {
-    expect(pairOf('none').richer.summary.statuses).toEqual({ pass: 18 });
+    expect(pairOf('none').richer.summary.statuses).toEqual({ pass: 21 });
   });
 
   it('catches the unknown-stock claim through availability alone', () => {

@@ -254,7 +254,44 @@ export const CaseResult = z.object({
   samplesPlanned: z.int().positive().optional(),
   /** Why the case is fixture-missing: the facts the data no longer holds, one line each (ADR-0053). */
   fixture: z.array(z.string().min(1)).min(1).optional(),
+  /** The case's tags, when it has any (ADR-0077). */
+  tags: z.array(Id).min(1).optional(),
+  /** The case's weight, when it isn't 1 (ADR-0076). */
+  weight: z.number().positive().optional(),
 });
+
+/**
+ * The pass rate of the cases measured: passing (`pass`, `gap-closed`) over
+ * passing and failing (`fail`). `unmeasured`, `error`, `known-gap` and
+ * `fixture-missing` cases are left out (ADR-0076).
+ */
+export const PassRate = z.object({
+  passed: z.int().nonnegative(),
+  measured: z.int().positive(),
+  rate: z.number().min(0).max(1),
+  /** Wilson 95 % interval of the pass rate (design §13). */
+  interval: z.object({ level: z.literal(0.95), lower: z.number(), upper: z.number() }),
+  /**
+   * The sum of the weights of passing cases over that of measured cases, when
+   * a case of the run has a weight other than 1 (ADR-0076). No interval: its
+   * effective sample size depends on the weights.
+   */
+  weighted: z
+    .object({
+      passed: z.number().nonnegative(),
+      measured: z.number().positive(),
+      rate: z.number().min(0).max(1),
+    })
+    .optional(),
+});
+
+/** The cases of a group, such as a suite or a tag: how many, their statuses and pass rate. */
+const GroupSummary = {
+  cases: z.int().positive(),
+  statuses: z.partialRecord(CaseStatus, z.int().nonnegative()),
+  /** Absent when no case of the group was measured. */
+  passRate: PassRate.optional(),
+};
 
 export const CheckSummary = z.object({
   check: Id,
@@ -417,6 +454,12 @@ export const Results = z
     summary: z.object({
       cases: z.int().nonnegative(),
       statuses: z.partialRecord(CaseStatus, z.int().nonnegative()),
+      /** Absent when no case was measured (ADR-0076). */
+      passRate: PassRate.optional(),
+      /** Per suite, in the order of the suite list (ADR-0076). */
+      suites: z.array(z.object({ suite: Suite, ...GroupSummary })).optional(),
+      /** Per tag, by name; a case with several tags counts in each (ADR-0077). */
+      tags: z.array(z.object({ tag: Id, ...GroupSummary })).optional(),
     }),
   })
   .meta({ title: 'yokla results v1' });

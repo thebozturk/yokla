@@ -170,6 +170,15 @@ describe('phrases', () => {
     ['free', 'Shipping is free.'],
     ['deflection', 'Please contact customer service.'],
     ['deflection', 'Visit our help center.'],
+    // A failed search, and a pointer to a person (ADR-0075).
+    ['absence', 'No products found for your search.'],
+    ['absence', 'There are no matching products.'],
+    ['absence', 'Nothing found for "thanks".'],
+    ['absence', "Sorry, I didn't find anything."],
+    ['absence', 'I did not find any tents.'],
+    ['deflection', 'You can contact us by e-mail.'],
+    ['deflection', 'Our customer service team is happy to help.'],
+    ['deflection', 'A customer representative will call you back.'],
   ] as const)('%s: %s', (kind, text) => {
     expect(hits(kind, text)).toBe(true);
   });
@@ -182,6 +191,11 @@ describe('phrases', () => {
     ['absence', 'We have these.'],
     ['absence', 'This tent is an exact match.'],
     ['alternative', 'Our closest store is downtown.'],
+    ['absence', 'Here are our products.'],
+    ['absence', 'Nothing beats a good tent, and I found three.'],
+    ['absence', 'I found these matching products.'],
+    ['deflection', "You're welcome! Anything else?"],
+    ['deflection', 'Our team picked these for you.'],
   ] as const)('not %s: %s', (kind, text) => {
     expect(hits(kind, text)).toBe(false);
   });

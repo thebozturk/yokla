@@ -119,7 +119,7 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
   'currency-code-ignored': {},
   // The generic checks (ADR-0030): the profile's everyAnswer patterns, its
   // response contract, and the check the demo-shop's team wrote.
-  'unfilled-template': { 'answer-text': ['greeting-tr'] },
+  'unfilled-template': { 'answer-text': ['greeting-tr', 'thanks-tr', 'order-en'] },
   'missing-contract-field': {
     'json-schema': [
       ...ALL_PRODUCT_CASES,
@@ -129,9 +129,14 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
       'warranty-en',
       'invest-en',
       'greeting-tr',
+      'thanks-tr',
+      'handoff-en',
+      'order-en',
     ].toSorted(),
   },
   'internal-ids': { 'no-internal-ids': ALL_PRODUCT_CASES },
+  // A thank-you answered as a failed search with products (ADR-0075).
+  'thanks-searched': { 'request-handled': ['thanks-tr'] },
 };
 
 /**
@@ -179,7 +184,14 @@ async function startShop(
   });
 }
 
-async function runAgainst(defect: string): Promise<void> {
+/** The run of the not-a-search cases alone, against the shop that searches a thank-you (ADR-0077). */
+const TAGGED = 'thanks-searched --tag not-a-search';
+
+async function runAgainst(
+  defect: string,
+  name = defect,
+  extra: readonly string[] = [],
+): Promise<void> {
   const base = await startShop(defect);
   const dir = mkdtempSync(join(tmpdir(), `yokla-e2e-${defect}-`));
   const out = join(dir, 'results.json');
@@ -195,12 +207,13 @@ async function runAgainst(defect: string): Promise<void> {
     join(DEMO, 'yokla.config.yaml'),
     '--cases',
     join(DEMO, 'cases'),
+    ...extra,
   ];
   const code = await main(
     [...args, '--target-url', `${base}/v1/chat`, '--out', out, '--junit', junit, '--html', html],
     io,
   );
-  runs.set(defect, {
+  runs.set(name, {
     code,
     output: lines.join('\n'),
     results: Results.parse(JSON.parse(readFileSync(out, 'utf8'))),
@@ -441,6 +454,7 @@ beforeAll(async () => {
     runWithAuth('oauth'),
     runWithAuth('login'),
     ...['none', ...Object.keys(EXPECTED)].map((defect) => runAgainst(defect)),
+    runAgainst('thanks-searched', TAGGED, ['--tag', 'not-a-search', '--tag', 'no-such-tag']),
     ...['none', 'fabricated-price'].map((defect) => runOverSocket(defect)),
   ]);
 }, 120_000);
@@ -476,16 +490,16 @@ describe('the demo-shop acceptance', () => {
           .digest('hex'),
       },
     ]);
-    expect(run?.results.cases).toHaveLength(18);
-    expect(run?.results.summary.statuses).toEqual({ pass: 18 });
+    expect(run?.results.cases).toHaveLength(21);
+    expect(run?.results.summary.statuses).toEqual({ pass: 21 });
     expect(run?.junit).toMatch(
-      /<testsuites name="yokla" tests="18" failures="0" errors="0" skipped="0"/u,
+      /<testsuites name="yokla" tests="21" failures="0" errors="0" skipped="0"/u,
     );
     // Every case in the HTML report, closed, since every case passed (ADR-0023).
     const cases = [
       ...(run?.html ?? '').matchAll(/<details class="case" id="case-[^"]+"( open)?>/gu),
     ];
-    expect(cases).toHaveLength(18);
+    expect(cases).toHaveLength(21);
     expect(cases.filter((match) => match[1] !== undefined)).toEqual([]);
   });
 
@@ -558,6 +572,62 @@ describe('the demo-shop acceptance', () => {
     }
   });
 
+  it('runs only the cases with a tag, and gates them alone against the full baseline (ADR-0077)', async () => {
+    const run = runs.get(TAGGED);
+    expect(run?.code, run?.output).toBe(0);
+    expect(run?.results.cases.map((c) => [c.id, c.status, c.tags])).toEqual([
+      ['thanks-tr', 'fail', ['not-a-search']],
+      ['handoff-en', 'pass', ['not-a-search']],
+      ['order-en', 'pass', ['not-a-search']],
+    ]);
+    expect(run?.results.summary.tags).toEqual([
+      {
+        tag: 'not-a-search',
+        cases: 3,
+        statuses: { fail: 1, pass: 2 },
+        passRate: {
+          passed: 2,
+          measured: 3,
+          rate: 0.6667,
+          interval: { level: 0.95, lower: 0.2077, upper: 0.9385 },
+        },
+      },
+    ]);
+    // The full run's summary groups by the same tag, and only those three cases carry it.
+    expect(runs.get('none')?.results.summary.tags?.map((t) => [t.tag, t.cases])).toEqual([
+      ['not-a-search', 3],
+    ]);
+
+    const baseline = join(mkdtempSync(join(tmpdir(), 'yokla-e2e-tagged-')), 'yokla.baseline.json');
+    const quiet = { out: () => undefined, err: () => undefined };
+    expect(
+      await main(['baseline', '--results', runs.get('none')?.out ?? '', '--out', baseline], quiet),
+    ).toBe(0);
+    const lines: string[] = [];
+    const io = { out: (line: string) => lines.push(line), err: (line: string) => lines.push(line) };
+    const code = await main(['gate', '--results', run?.out ?? '', '--baseline', baseline], io);
+    const output = lines.join('\n');
+    expect(code, output).toBe(1);
+    // The one regression is a case the run ran; the 18 it didn't run break nothing.
+    expect(output.match(/passed in the baseline and is now/gu)).toHaveLength(1);
+    expect(output).toContain('thanks-tr passed in the baseline and is now fail');
+    expect(output.match(/passed in the baseline but is not in this run/gu)).toHaveLength(18);
+  });
+
+  it('refuses a run whose tags no case has', async () => {
+    const lines: string[] = [];
+    const io = { out: (line: string) => lines.push(line), err: (line: string) => lines.push(line) };
+    const args = [
+      'run',
+      '--profile',
+      join(DEMO, 'yokla.profile.yaml'),
+      '--cases',
+      join(DEMO, 'cases'),
+    ];
+    expect(await main([...args, '--tag', 'no-such-tag'], io)).toBe(2);
+    expect(lines.join('\n')).toContain('no case has the tag "no-such-tag"');
+  });
+
   // Last, so it sees the traffic of every test above.
   it('contacts no host but the demo-shops (ADR-0003)', () => {
     const attempts = guard?.attempts ?? [];
@@ -567,7 +637,8 @@ describe('the demo-shop acceptance', () => {
     );
     // Not vacuous: the guard saw every demo-shop the runs talked to.
     expect(new Set(attempts.map((attempt) => attempt.port))).toEqual(shopPorts);
-    expect(shopPorts.size).toBe(Object.keys(EXPECTED).length + 1 + socketRuns.size + authRuns.size);
+    // The defects, the clean shop, and the tag-limited run's shop.
+    expect(shopPorts.size).toBe(Object.keys(EXPECTED).length + 2 + socketRuns.size + authRuns.size);
   });
 });
 
@@ -575,7 +646,7 @@ describe('the demo-shop acceptance behind bearer tokens (ADR-0031)', () => {
   it.each(Object.keys(AUTH_RUNS))('%s: every case passes, with the tokens yokla gets', (kind) => {
     const run = authRuns.get(kind);
     expect(run?.code, run?.output).toBe(0);
-    expect(run?.results.summary.statuses).toEqual({ pass: 18 });
+    expect(run?.results.summary.statuses).toEqual({ pass: 21 });
     // The answers are those of the run without tokens.
     expect(answers(run?.results)).toEqual(answers(runs.get('none')?.results));
   });
@@ -612,7 +683,7 @@ describe('the demo-shop acceptance over a WebSocket (ADR-0024)', () => {
   it('passes every case without defects, with the same answers as over HTTP', () => {
     const run = socketRuns.get('none');
     expect(run?.code, run?.output).toBe(0);
-    expect(run?.results.summary.statuses).toEqual({ pass: 18 });
+    expect(run?.results.summary.statuses).toEqual({ pass: 21 });
     const turns = run?.results.cases.flatMap((c) => c.samples.flatMap((s) => s.turns)) ?? [];
     expect(new Set(turns.map((turn) => turn.response?.status))).toEqual(new Set([101]));
     expect(answers(run?.results)).toEqual(answers(runs.get('none')?.results));

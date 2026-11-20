@@ -181,7 +181,7 @@ describe('robustness transforms on the demo-shop (ADR-0045)', () => {
     for (const name of ['correct-written', 'by-letters-written']) {
       const { code, output, results } = ran(name);
       expect(code, output).toBe(0);
-      expect(results.summary.statuses, name).toEqual({ pass: 18 });
+      expect(results.summary.statuses, name).toEqual({ pass: 21 });
       expect(results.run.transforms).toBeUndefined();
     }
   });
@@ -191,7 +191,7 @@ describe('robustness transforms on the demo-shop (ADR-0045)', () => {
     (kind: TransformKind) => {
       const { code, output, results } = ran(`correct-${kind}`);
       expect(code, output).toBe(0);
-      expect(results.summary.statuses).toEqual({ pass: 18 });
+      expect(results.summary.statuses).toEqual({ pass: 21 });
       const [counted] = results.run.transforms ?? [];
       expect(counted?.kind).toBe(kind);
       expect(counted?.messages).toBeGreaterThan(0);

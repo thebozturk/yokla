@@ -1,4 +1,4 @@
-import { Results, RESULTS_SCHEMA_ID } from '@yokla/core';
+import { Results, RESULTS_SCHEMA_ID, summariseCases } from '@yokla/core';
 import { describe, expect, it, vi } from 'vitest';
 import {
   CONTENT_SECURITY_POLICY,
@@ -61,8 +61,6 @@ function kase(
 }
 
 function results(cases: CaseResult[], run: Partial<Results['run']> = {}): Results {
-  const statuses: Partial<Record<CaseResult['status'], number>> = {};
-  for (const c of cases) statuses[c.status] = (statuses[c.status] ?? 0) + 1;
   const value: Results = {
     schema: RESULTS_SCHEMA_ID,
     yokla: { version: '0.0.0-test' },
@@ -79,7 +77,7 @@ function results(cases: CaseResult[], run: Partial<Results['run']> = {}): Result
     },
     cases,
     checks: [],
-    summary: { cases: cases.length, statuses },
+    summary: summariseCases(cases),
   };
   expect(Results.safeParse(value).success).toBe(true);
   return value;
@@ -162,7 +160,8 @@ describe('terminalSummary', () => {
   it('counts statuses in a fixed order and explains every case that did not plainly pass', () => {
     const { out } = terminalSummary(mixed);
     expect(out).toEqual([
-      '8 cases: pass 2, fail 2, error 1, known-gap 1, gap-closed 1, unmeasured 1',
+      // Passing (pass, gap-closed) over measured (and fail): 3 of 5 (ADR-0076).
+      '8 cases: pass 2, fail 2, error 1, known-gap 1, gap-closed 1, unmeasured 1; pass rate 0.600 (3 of 5, 95 % 0.231 to 0.882)',
       '  fail        high-chair  filter-honesty 1/1: presents 7 product(s) of other types',
       '  fail        bitcoin     refusal 2/3: did not refuse [unstable]',
       '  error       broken      sample 0, turn 0: HTTP 500',
@@ -178,7 +177,7 @@ describe('terminalSummary', () => {
       results([{ ...typeFail, review: 'proposed' }, kase('ok', 'pass', { review: 'proposed' })]),
     );
     expect(out.slice(0, 3)).toEqual([
-      '2 cases: pass 1, fail 1',
+      '2 cases: pass 1, fail 1; pass rate 0.500 (1 of 2, 95 % 0.095 to 0.905)',
       '  2 proposed: they ran, and gate once a person sets their status to approved',
       '  fail  high-chair  filter-honesty 1/1: presents 7 product(s) of other types [proposed]',
     ]);
@@ -271,7 +270,7 @@ describe('terminalSummary', () => {
 
   it('shows one line for a clean run and never the answers', () => {
     const { out, err } = terminalSummary(results([kase('a', 'pass')]));
-    expect(out).toEqual(['1 cases: pass 1']);
+    expect(out).toEqual(['1 cases: pass 1; pass rate 1.000 (1 of 1, 95 % 0.206 to 1.000)']);
     expect(err).toEqual([]);
     expect(JSON.stringify(terminalSummary(mixed))).not.toContain(ANSWER);
   });
@@ -897,5 +896,106 @@ describe('transformed messages (ADR-0045)', () => {
   it('says nothing of transforms in a run without them', () => {
     expect(terminalSummary(mixed).out.join('\n')).not.toContain('transforms');
     expect(htmlReport(mixed)).not.toContain('As the case wrote it');
+  });
+});
+
+describe('weights and tags (ADR-0076, ADR-0077)', () => {
+  const failed = (id: string, change: Partial<CaseResult>) =>
+    kase(id, 'fail', {
+      dimensions: [dimension('request')],
+      samples: [
+        {
+          index: 0,
+          cache: 'cold',
+          turns: [turn({ checks: [failing('request-handled', 'request', 'showed cards')] })],
+        },
+      ],
+      ...change,
+    });
+  const cases = [
+    failed('thanks', { weight: 3, tags: ['chitchat'] }),
+    kase('tents', 'pass', { weight: 50, tags: ['search', 'chitchat'] }),
+    failed('jackets', { weight: 1200, tags: ['search'] }),
+    kase('gift-wrap', 'known-gap', { weight: 9000, tags: ['search'] }),
+  ];
+  const heavy = results(cases);
+  const plain = results(cases.map(({ weight: _weight, ...rest }) => rest));
+
+  it('shows the weighted pass rate beside the plain one, and the failing cases heaviest first', () => {
+    const { out } = terminalSummary(heavy);
+    expect(out).toEqual([
+      // 50 of 1253 by weight; the known gap is left out of both sums.
+      '4 cases: pass 1, fail 2, known-gap 1; pass rate 0.333 (1 of 3, 95 % 0.061 to 0.792), weighted 0.040',
+      '  fail       jackets    request 1/1: showed cards [weight 1200] [tags: search]',
+      '  fail       thanks     request 1/1: showed cards [weight 3] [tags: chitchat]',
+      // A known gap is no failure: it keeps its place after them.
+      '  known-gap  gift-wrap  known gap: no reason given [weight 9000] [tags: search]',
+      'by tag:',
+      '  chitchat  2 cases: pass 1, fail 1; pass rate 0.500 (1 of 2, 95 % 0.095 to 0.905), weighted 0.943',
+      '  search    3 cases: pass 1, fail 1, known-gap 1; pass rate 0.500 (1 of 2, 95 % 0.095 to 0.905), weighted 0.040',
+    ]);
+  });
+
+  it('shows neither the weighted rate nor weights when every weight is 1', () => {
+    const { out } = terminalSummary(plain);
+    expect(out[0]).toBe(
+      '4 cases: pass 1, fail 2, known-gap 1; pass rate 0.333 (1 of 3, 95 % 0.061 to 0.792)',
+    );
+    // As the results list them, with their tags.
+    expect(out[1]).toBe('  fail       thanks     request 1/1: showed cards [tags: chitchat]');
+    expect(out.join('\n')).not.toMatch(/weight/u);
+  });
+
+  it('says nothing by tag when no case has a tag', () => {
+    const { out } = terminalSummary(results([kase('a', 'pass'), failed('b', {})]));
+    expect(out.join('\n')).not.toMatch(/by tag|tags:/u);
+    expect(htmlReport(results([kase('a', 'pass')]))).not.toMatch(/By tag|<th>Tags<\/th>/u);
+  });
+
+  it('has a By tag table, the most failing tag first, and each case its tags', () => {
+    const page = htmlReport(plain);
+    expect(page).toContain(
+      '<tr><td><code>chitchat</code></td><td class="num">2</td><td>pass 1, fail 1</td><td class="num">0.500 (1 of 2)</td><td class="num">0.095 to 0.905</td></tr>',
+    );
+    expect(page.indexOf('<code>chitchat</code></td><td class="num">2')).toBeLessThan(
+      page.indexOf('<code>search</code></td><td class="num">3'),
+    );
+    expect(page).toContain('<td>factual</td><td>tr</td><td>search, chitchat</td>');
+    expect(page).not.toContain('Weighted pass rate');
+  });
+
+  it('lists the tag with the most failing cases first, before the name decides', () => {
+    const page = htmlReport(
+      results([
+        kase('a', 'pass', { tags: ['alpha'] }),
+        failed('b', { tags: ['zeta'] }),
+        failed('c', { tags: ['zeta', 'beta'] }),
+        failed('d', { tags: ['beta'] }),
+        failed('e', { tags: ['gamma'] }),
+      ]),
+    );
+    const order = [...page.matchAll(/<tr><td><code>([a-z]+)<\/code><\/td><td class="num">/gu)].map(
+      (m) => m[1],
+    );
+    expect(order).toEqual(['beta', 'zeta', 'gamma', 'alpha']);
+    const { out } = terminalSummary(
+      results([kase('a', 'pass', { tags: ['alpha'] }), failed('b', { tags: ['zeta'] })]),
+    );
+    expect(out.slice(-2).map((row) => row.trim().split(' ')[0])).toEqual(['zeta', 'alpha']);
+  });
+
+  it('puts the heaviest failing case first in the HTML report, with both rates', () => {
+    const page = htmlReport(heavy);
+    expect(page).toContain(
+      '<p>4 cases; pass rate 0.333 (1 of 3, 95 % 0.061 to 0.792), weighted 0.040</p>',
+    );
+    const order = [...page.matchAll(/<details class="case" id="case-([^"]+)"/gu)].map((m) => m[1]);
+    expect(order).toEqual(['jackets', 'thanks', 'gift-wrap', 'tents']);
+    expect(page).toContain('<th class="num">Weighted pass rate</th>');
+    expect(page).toContain('<span class="mark">[weight 1200]</span>');
+  });
+
+  it('matches its snapshot with weights and tags', async () => {
+    await expect(htmlReport(heavy)).toMatchFileSnapshot('./__snapshots__/report-weighted.html');
   });
 });

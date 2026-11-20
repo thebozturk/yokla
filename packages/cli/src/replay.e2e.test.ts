@@ -292,7 +292,7 @@ describe('recorded model calls, replayed, against the demo-shop (ADR-0040)', () 
       const { recorded, replayed } = both(name);
       expect(recorded.code, recorded.output).toBe(0);
       expect(replayed.code, replayed.output).toBe(0);
-      expect(recorded.results.summary.statuses).toEqual({ pass: 18, 'known-gap': 1 });
+      expect(recorded.results.summary.statuses).toEqual({ pass: 21, 'known-gap': 1 });
       expect(decided(replayed.results)).toEqual(decided(recorded.results));
       expect(recorded.provider).toBeGreaterThan(0);
       expect(replayed.provider).toBe(0);

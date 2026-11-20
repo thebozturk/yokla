@@ -18,6 +18,7 @@ import {
   promptLeak,
   untrustedInSystem,
 } from './inspection.ts';
+import { requestHandled } from './request.ts';
 import { jsonSchemaCheck } from './schema.ts';
 import { answerSimilarity } from './similarity.ts';
 import { toolCalls, toolCallValid } from './tools.ts';
@@ -29,6 +30,7 @@ export const CORE_CHECKS: readonly Check[] = [
   jsonSchemaCheck,
   answerSimilarity,
   evidenceCount,
+  requestHandled,
   gracefulUnderFault,
   answeredWithinDeadline,
   statusAllowed,
@@ -60,6 +62,7 @@ export const CORE_DIMENSIONS: ReadonlySet<string> = new Set([
   'leakage',
   'privacy',
   'prompt-size',
+  'request',
   'resilience',
   'robustness',
   'routing',

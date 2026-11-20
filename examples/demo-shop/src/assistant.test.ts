@@ -45,6 +45,10 @@ const PROBES = {
   'warranty-en': 'Do your tents have a warranty?',
   'invest-en': 'Can you recommend a stock to invest in?',
   'greeting-tr': 'Merhaba',
+  // Requests that are not a search (ADR-0075).
+  'thanks-tr': 'Teşekkürler, bu kadar!',
+  'handoff-en': 'Can I talk to a real person?',
+  'order-en': 'Where is my order?',
 } as const;
 type Probe = keyof typeof PROBES;
 
@@ -124,9 +128,11 @@ const EXPECTED_CHANGES: Record<Defect, Probe[]> = {
   // No probe carries personal data, and masking changes nothing else.
   'unmasked-pii': [],
   // The generic checks' defects (ADR-0030).
-  'unfilled-template': ['greeting-tr'],
+  'unfilled-template': ['greeting-tr', 'thanks-tr', 'order-en'],
   'missing-contract-field': PROBE_LIST,
   'internal-ids': WITH_PRODUCTS,
+  // A thank-you answered as a failed search with products (ADR-0075).
+  'thanks-searched': ['thanks-tr'],
 };
 
 type Replies = ReadonlyMap<Probe, ChatReply>;
@@ -236,6 +242,21 @@ describe('correct behaviour (no defect)', () => {
     expect(shownIds(compared).slice(0, 2).toSorted()).toEqual(['TNT-001', 'TNT-002']);
     // A message that names nothing is answered as before.
     expect((await ask(shop, 'Merhaba', 'hello')).metadata.route).toBe('fallback');
+  });
+
+  it('tells a user who asks for a person how to reach one, and shows no products (ADR-0075)', async () => {
+    const shop = assistant();
+    for (const [message, pointer] of [
+      [PROBES['handoff-en'], 'contact customer service'],
+      ['Bir müşteri temsilcisiyle görüşmek istiyorum.', 'müşteri hizmetlerimize'],
+    ] as const) {
+      const reply = await ask(shop, message, message);
+      expect(reply.metadata.route).toBe('handoff');
+      expect(reply.answer).toContain(pointer);
+      expect(ids(reply)).toEqual([]);
+    }
+    const thanks = await ask(shop, PROBES['thanks-tr'], 'thanks');
+    expect([thanks.metadata.route, ids(thanks)]).toEqual(['fallback', []]);
   });
 
   it('carries context across turns', async () => {
@@ -414,6 +435,17 @@ describe('defect switchboard', () => {
   it('invented-return-policy contradicts the FAQ', async () => {
     const reply = await ask(assistant('invented-return-policy'), PROBES['returns-en']);
     expect(reply.answer).toContain('30 days');
+  });
+
+  it('thanks-searched answers a thank-you as a failed search, with products (ADR-0075)', async () => {
+    const reply = await ask(assistant('thanks-searched'), PROBES['thanks-tr']);
+    expect(reply.answer).toMatch(/^Aramanıza uygun ürün bulamadım/u);
+    expect(ids(reply)).toHaveLength(3);
+    const english = await ask(assistant('thanks-searched'), "Thanks, that's all!");
+    expect(english.answer).toMatch(/^I couldn't find any products/u);
+    // Only a thank-you: another message the model can't read is answered as before.
+    const other = await ask(assistant('thanks-searched'), PROBES['order-en']);
+    expect(ids(other)).toEqual([]);
   });
 });
 

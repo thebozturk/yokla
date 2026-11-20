@@ -399,6 +399,15 @@
                       "pattern": "^[a-z]{2}$",
                       "description": "The language the answer must be in, judged by language-match (ADR-0018)."
                     },
+                    "request": {
+                      "type": "string",
+                      "enum": [
+                        "chitchat",
+                        "handoff",
+                        "support"
+                      ],
+                      "description": "What kind of request the turn is, judged by request-handled (ADR-0075): chitchat (a greeting, thanks, small talk), handoff (the user asks for a person) or support (a question about their own order, payment, account, return or delivery)."
+                    },
                     "similar": {
                       "type": "object",
                       "properties": {
@@ -973,6 +982,15 @@
                     "pattern": "^[a-z]{2}$",
                     "description": "The language the answer must be in, judged by language-match (ADR-0018)."
                   },
+                  "request": {
+                    "type": "string",
+                    "enum": [
+                      "chitchat",
+                      "handoff",
+                      "support"
+                    ],
+                    "description": "What kind of request the turn is, judged by request-handled (ADR-0075): chitchat (a greeting, thanks, small talk), handoff (the user asks for a person) or support (a question about their own order, payment, account, return or delivery)."
+                  },
                   "similar": {
                     "type": "object",
                     "properties": {
@@ -1298,11 +1316,17 @@
           },
           "tags": {
             "default": [],
+            "description": "Labels the summary groups the results by, and yokla run --tag selects cases by (ADR-0077).",
             "type": "array",
             "items": {
               "type": "string",
               "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
             }
+          },
+          "weight": {
+            "description": "The case's share of traffic, in any unit; only ratios matter. The summary's weighted pass rate counts a case by its weight (ADR-0076). Default: 1.",
+            "type": "number",
+            "exclusiveMinimum": 0
           },
           "provenance": {
             "oneOf": [

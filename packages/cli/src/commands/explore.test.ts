@@ -196,7 +196,12 @@ describe('yokla explore (ADR-0044)', () => {
       ['cart-1', 'fail'],
       ['repeat-1', 'fail'],
     ]);
-    expect(results.summary).toEqual({ cases: 6, statuses: { pass: 2, unmeasured: 1, fail: 3 } });
+    expect(results.summary).toMatchObject({
+      cases: 6,
+      statuses: { pass: 2, unmeasured: 1, fail: 3 },
+      // Passing over measured, the unmeasured case left out (ADR-0076).
+      passRate: { passed: 2, measured: 5, rate: 0.4 },
+    });
     // The trace holds every candidate that ran, kept or not (ADR-0046).
     const trace = results.run.exploration?.candidates ?? [];
     const ranLine = out.find((line) => / candidates run;/u.test(line)) ?? '';

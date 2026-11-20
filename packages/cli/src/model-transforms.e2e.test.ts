@@ -205,7 +205,7 @@ describe('model transforms on the demo-shop (ADR-0059)', () => {
       const ran = runs.get(`correct-${kind}`);
       expect(ran?.code, ran?.output).toBe(0);
       const { run: summary, summary: counts } = results(ran);
-      expect(counts.statuses).toEqual({ pass: 18 });
+      expect(counts.statuses).toEqual({ pass: 21 });
       expect(summary.transforms?.[0]?.kind).toBe(kind);
       expect(summary.transforms?.[0]?.messages).toBeGreaterThan(0);
       expect(summary.own?.calls).toBeGreaterThan(0);
@@ -230,7 +230,7 @@ describe('model transforms on the demo-shop (ADR-0059)', () => {
 
   it('language-by-words shows only under code-switching, in Turkish cases that gained an English word', () => {
     const written = results(runs.get('by-words-written'));
-    expect(written.summary.statuses).toEqual({ pass: 18 });
+    expect(written.summary.statuses).toEqual({ pass: 21 });
     expect(comparisons.get('by-words-paraphrase')?.code).toBe(0);
     const switched = results(runs.get('by-words-code-switch'));
     const gained = new Set(

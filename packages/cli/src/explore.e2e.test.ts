@@ -203,7 +203,15 @@ function get(name: string): Explored {
   return found;
 }
 
-const ROUTES = ['cart', 'fallback', 'follow-up-cheapest', 'policy', 'product-search', 'refusal'];
+const ROUTES = [
+  'cart',
+  'fallback',
+  'follow-up-cheapest',
+  'handoff',
+  'policy',
+  'product-search',
+  'refusal',
+];
 const TOOLS = ['add_to_cart', 'cheapest_shown', 'get_policy', 'search_products'];
 
 describe('yokla explore on the demo-shop (ADR-0044)', () => {

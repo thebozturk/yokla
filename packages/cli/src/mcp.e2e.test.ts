@@ -309,9 +309,9 @@ describe('yokla mcp against the demo-shop (ADR-0041)', () => {
   });
 
   it('runs the cases, and each price the app rewrote fails with the origin app', () => {
-    expect(field(steps['list'], 'cases', 'length')).toBe(19);
+    expect(field(steps['list'], 'cases', 'length')).toBe(22);
     const run = steps['run'];
-    expect(field(run, 'statuses')).toEqual({ fail: 13, pass: 6 });
+    expect(field(run, 'statuses')).toEqual({ fail: 13, pass: 9 });
     const notPassed = list(field(run, 'notPassed'));
     expect(notPassed.map((c) => field(c, 'id'))).toContain(SHRUNK);
     for (const c of notPassed) {
@@ -416,7 +416,7 @@ describe('yokla mcp against the demo-shop (ADR-0041)', () => {
       expect(JSON.parse(line)).toMatchObject({ jsonrpc: '2.0' });
     }
     expect(client?.stderr.join('')).toContain(
-      'yokla mcp: serving 19 cases of demo-shop over stdio, capped at 1 USD',
+      'yokla mcp: serving 22 cases of demo-shop over stdio, capped at 1 USD',
     );
   });
 
