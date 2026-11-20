@@ -327,7 +327,8 @@ pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml \
   type and shows them first, as a shop's search ranks an exact name: a
   comparison or a stock question shows what it asks about (ADR-0055).
 - **Routes.** `metadata.route` is one of `product-search`, `policy`,
-  `follow-up-cheapest`, `refusal` and `fallback`. `fallback` answers a model
+  `follow-up-cheapest`, `cart`, `refusal`, `handoff` and `fallback`. `handoff`
+  answers a user who asks for a person (ADR-0075). `fallback` answers a model
   failure, a message the shop doesn't understand, such as a greeting, and a
   "cheaper" follow-up with no earlier products.
 - **Response cache.** The first turn of a session is cached by message. Send
@@ -415,6 +416,11 @@ them (ADR-0029).
   can't verify them.
 - **Out-of-scope questions.** It refuses them, for example investment or
   medical questions.
+- **Asking for a person.** It sends the user to customer service at
+  `help.demo-shop.example`, on the `handoff` route, and shows no products
+  (ADR-0075).
+- **Anything else,** such as thanks or a question about an order it can't
+  see, gets its fallback answer: what it can help with, and no products.
 - **Language.** It answers in Turkish when the message has a Turkish letter,
   and otherwise in the language whose common words the message uses more:
   "Cadir onerir misin?" is Turkish.
@@ -454,6 +460,7 @@ them (ADR-0029).
 | `language-by-words` | The model answers in English a Turkish message that holds an English product word. | `yokla run --transform code-switch` and `yokla compare --expect-same`: `tents-under-500-tr` and `sleeping-pad-tr` fail (ADR-0059) |
 | `type-bound-ignored` | The price bound is dropped for sleeping bags, which are still presented as matching it. | `filter-honoured-or-disclosed`, on a case `yokla explore --types 7` proposes: no written case asks for sleeping bags (ADR-0046) |
 | `currency-code-ignored` | A price bound written with a currency code, such as "900 TRY", is dropped without a word. | `filter-honoured-or-disclosed`, on the `currency-code` case `yokla explore` proposes: no written case writes the code (ADR-0052) |
+| `thanks-searched` | A thank-you goes to the catalog search, which finds nothing, says so, and shows the cheapest products anyway. | `request-handled` on `thanks-tr` (ADR-0075) |
 
 `src/assistant.test.ts` holds a fixed set of probe questions. For each defect,
 it asserts that the defect changes exactly the listed probes and nothing else.

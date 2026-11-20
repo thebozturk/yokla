@@ -499,7 +499,8 @@ The [checks guide](guide/checks.md) gives each check's exact conditions.
 | `no-duplicates` | evidence has ids | |
 | `absence-correct` | the turn expects absence | The answer states the absence and doesn't present other types as the requested one. |
 | `over-refusal` | the turn says whether the request is answerable | An answerable request isn't refused, and one marked not answerable is. Uses the language pack's lexicon and the profile's canonical refusals. |
-| `deflection` | the turn is answerable | The answer does more than send the user to customer service. Advisory: it never decides a case. |
+| `deflection` | the turn is answerable, and sets no `request` (ADR-0075) | The answer does more than send the user to customer service. Advisory: it never decides a case. |
+| `request-handled` | the turn sets `request`: `chitchat`, `handoff` or `support` (ADR-0075) | No evidence items in any mapped collection, clarifying question or not; no `absence` phrase of the language pack unless a `deflection` phrase or one of the profile's `response.contactPhrases` is there too; and for a `handoff`, one of those as a pointer to a person or a channel. |
 | `route-expected` | the turn expects a route, and the profile maps one | |
 | `answer-text` | the turn lists phrases or patterns the answer must or must not contain, or the profile's `everyAnswer` does (ADR-0030) | Phrases are matched after folding; patterns, regular expressions, on the answer as it came. |
 | `json-schema` | the profile has a response contract, or the turn a schema (ADR-0030) | Every value a rule's path selects matches its JSON Schema, in the subset yokla checks itself; a path that selects nothing fails. |
@@ -757,7 +758,7 @@ hash, the text with patterns redacted, or the full text (ADR-0015).
 
   | Dimension | Default policy |
   |---|---|
-  | fabrication, over-refusal, filter honesty, duplicates, absence, and the core dimensions (leakage, cost, resilience and the others) | **worst-of-N**: one bad sample fails the case |
+  | fabrication, over-refusal, filter honesty, duplicates, absence, request (ADR-0075), and the core dimensions (leakage, cost, resilience and the others) | **worst-of-N**: one bad sample fails the case |
   | refusal correctness | **majority-of-N** |
   | deflection (sent to customer service) | **advisory**: reported, never decides the case |
   | latency | percentiles over the suite's answered turns, every sample pooled, as gate thresholds (ADR-0014) |
@@ -765,6 +766,14 @@ hash, the text with patterns redacted, or the full text (ADR-0015).
 
 - **Statistics.** Rates are reported with Wilson 95 % intervals. A case whose
   samples disagree is flagged `unstable`.
+- **Pass rates (ADR-0076, ADR-0077).** The summary gives, over the run, per
+  suite and per tag, the pass rate: passing cases (`pass`, `gap-closed`) over
+  passing and failing ones, with its Wilson interval. `unmeasured`, `error`,
+  `known-gap` and `fixture-missing` cases are left out. A case may carry a
+  `weight`, its share of traffic (default 1); once one isn't 1, each rate has
+  a weighted rate beside it, the weights of passing cases over those of
+  measured cases, without an interval. A case with several tags counts in
+  each. Weights and tags never change a verdict or the gate.
 - **Status precedence:** `error` (a turn couldn't be run or read) → `fail`,
   or `known-gap` for a case marked as a known gap → `unmeasured` → `pass`, or
   `gap-closed` for a case marked as a known gap. A case where no deciding
@@ -891,10 +900,14 @@ ADR-0014 sets how cost and latency are bounded.
     finding's value (ADR-0033),
   - each turn's model calls and cost, and the fields observed in the target's
     logs,
-  - aggregates and timings.
+  - aggregates and timings, and the summary's pass rates over the run, per
+    suite and per tag, weighted too when the cases carry weights (ADR-0076,
+    ADR-0077).
 - **Reports:** a terminal summary, JUnit XML, and a single-file offline HTML
-  report with no script that shows every turn (ADR-0023). A Markdown summary
-  for pull requests comes later.
+  report with no script that shows every turn (ADR-0023). Both summaries
+  show the pass rate, the weighted rate and the failing cases heaviest first
+  when the cases carry weights, and the rates by tag (ADR-0076, ADR-0077). A
+  Markdown summary for pull requests comes later.
 - **Gate (ADR-0010).** `yokla gate` applies the thresholds per suite from
   `yokla.config.yaml`. Exit codes: `0` passed, `1` gate broken, `2` run error.
   - By default a suite allows no `fail` and no `unmeasured` case;
@@ -907,6 +920,8 @@ ADR-0014 sets how cost and latency are bounded.
     prints what changed.
   - A run with an `error` or `fixture-missing` case, or a partial run, can't
     be judged and exits with `2`.
+  - A run limited by `yokla run --tag` is gated on the cases it ran: a case
+    it didn't run is not a regression (ADR-0077).
   - `yokla compare` sets runs side by side, such as one per model, gates
     each, and names the cheapest that passes (ADR-0042).
   - Latency percentiles and cost thresholds per suite (`latencyP95Ms`,

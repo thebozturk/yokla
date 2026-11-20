@@ -37,7 +37,8 @@ cases:
 | `samples` | How many times to run the case. Without it, `yokla run --samples` decides, and that defaults to 1. |
 | `checks` | Run only these checks. By default every check that applies runs. |
 | `knownGap` | `{ reason, issue? }`: a known failure. A failing case is then `known-gap`, not `fail`. Once it passes, it is `gap-closed`, and the gate asks for the marker to be removed. |
-| `tags` | Free labels. |
+| `tags` | Labels of your own, in the same form as an `id`, such as a category of the messages the case stands for. The summary gives each tag's statuses and pass rate, and `yokla run --tag` runs only the cases with a tag (ADR-0077). |
+| `weight` | A positive number, 1 by default: the case's share of traffic, in any unit you pick, such as conversations. Only ratios matter. The summary adds a pass rate weighted by it (ADR-0076). The gate ignores it. |
 | `provenance` | `{ source, evidence, status }`: where the case comes from, and whether a person approved it. See [approval](#approval). |
 
 Each sample opens a new session and bypasses the target's cache (see the
@@ -120,6 +121,7 @@ check does and when it doesn't apply.
 | `similar` | `to`: reference answers; `min`: the answer scores at least this against one; `max`: at most this against every one. One of `min` and `max` is required, from 0 to 1 (ADR-0030). | `answer-similarity` |
 | `custom.<check id>` | A value for a check you wrote, validated by its `expect` schema (ADR-0030). | that check |
 | `language` | The language the answer must be in, `tr` or `en`. | `language-match` |
+| `request` | The kind of request the turn is, when it isn't a product or information request: `chitchat` (a greeting, thanks, a goodbye, small talk), `handoff` (the user asks for a person) or `support` (a question about the user's own order, payment, account, return or delivery). The answer shows no evidence items and no failed-search sentence, and a `handoff` is told how to reach a person (ADR-0075). | `request-handled` |
 | `allowStatus` | Marks an edge-case turn, and lists the non-2xx statuses that count as handled, such as `[400, 413]` for a message too long. The turn is judged on whether the target handled it, never stopped by its answer: another status, an incomplete stream, an unreadable body or no answer at all is a finding (ADR-0019). | `status-allowed` |
 | `evidence.<collection>` | `min` and `max` item counts, and `includes`: item ids that must be returned. | `evidence-count` |
 | `deadlineMs` | The answer must arrive within this many milliseconds. | `answered-within-deadline` |
@@ -130,7 +132,7 @@ check does and when it doesn't apply.
 | `filters` | The filters the user asked for: `maxPrice`, `minPrice`, and `attributes` (evidence field → value). | `filter-honoured-or-disclosed` |
 | `productType` | The product type or types asked for, as catalog types. A type under one of them, by `typeSeparator`, matches. | `type-matched-or-disclosed` |
 | `absentType` | The type asked for is not in the catalog. | `absence-correct` |
-| `answerable` | `true`: the request can be answered, so a refusal is over-refusal. `false`: it must be refused. | `over-refusal`, `deflection` |
+| `answerable` | `true`: the request can be answered, so a refusal is over-refusal. `false`: it must be refused. A greeting is neither: give it `request: chitchat` instead. | `over-refusal`, `deflection` |
 | `policyTopic` | The turn asks about this policy, so every concrete claim in the answer is about it. | `policy-claim` |
 
 **When the catalog changes (ADR-0053, ADR-0054).** `absentType` and
@@ -243,6 +245,77 @@ case `yokla explore` found with `explore` (ADR-0044):
 - **`approved`:** the case gates like any other. Set it after reading the
   case.
 - **`rejected`:** the case doesn't run.
+
+## Requests that are not a search
+
+A shop assistant's users also greet it, thank it, ask for a person and ask
+about their own order. A target that treats such a message as a product
+search answers "I couldn't find any products" or, worse, shows products for
+"ok thanks". `expect.request` says what kind of request the turn is, and
+`request-handled` judges it (ADR-0075):
+
+```yaml
+- id: thanks-tr
+  suite: quality
+  language: tr
+  turns:
+    - user: Teşekkürler, bu kadar!
+      expect: { request: chitchat }
+
+- id: handoff-en
+  suite: quality
+  language: en
+  turns:
+    - user: Can I talk to a real person?
+      expect: { request: handoff }
+```
+
+- **Every kind:** no evidence items in any collection the profile maps, even
+  when the target asked a clarifying question, and no failed-search sentence:
+  no `absence` phrase of the language pack, unless the answer also points to a
+  person or a channel. "I can't see your order; please contact customer
+  service" answers an order question well.
+- **`handoff`:** the answer points to a person or a channel: a `deflection`
+  phrase of the language pack, or one of the profile's
+  [`response.contactPhrases`](profile.md#targetresponse).
+- **`deflection` doesn't judge the turn,** even when it is answerable: sending
+  an order question elsewhere is the expected answer there.
+
+Product and information requests need no value: `answerable` and the domain
+expectations cover them. yokla doesn't set `request` itself; a person writes
+it.
+
+## Tags and weights
+
+Cases mined from real conversations come in categories, and one message can
+stand for many conversations. `tags` names a case's categories and `weight`
+its share of traffic:
+
+```yaml
+- id: order-status-en
+  suite: quality
+  language: en
+  tags: [support, orders]
+  weight: 1840 # conversations last month
+  turns:
+    - user: Where is my order?
+      expect: { request: support }
+```
+
+- **The summary** gives, over the run, per suite and per tag, the cases, each
+  status and the pass rate with its 95 % Wilson interval: passing cases
+  (`pass`, `gap-closed`) over passing and failing ones. `unmeasured`,
+  `error`, `known-gap` and `fixture-missing` cases are left out. A case with
+  two tags counts in both, and a case without tags in none (ADR-0077).
+- **Once a case's weight isn't 1,** each rate has a weighted rate beside it:
+  the weights of the passing cases over the weights of the measured ones. It
+  has no interval: its effective sample size depends on the weights. The
+  reports list failing cases heaviest first (ADR-0076).
+- **`yokla run --tag <tag>`** runs only the cases with that tag; repeat it to
+  run the cases with any of several. The gate then compares only the cases
+  that ran: a case left out is not a regression.
+- **The gate ignores weights and tags.** A regression is a case that passed
+  and no longer does, however light.
 
 ## Statuses
 

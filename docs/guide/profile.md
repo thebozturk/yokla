@@ -68,6 +68,7 @@ A case turn can add headers or body fields for that turn only (see
 | `evidence` | The structured items the answer is based on, such as products (below). |
 | `stream` | Read the answer as an event stream (below). |
 | `schema` | The contract of every usable answer: `{ at, schema }` or `{ at, schemaFile }`, a JSON Schema that every value `at` selects must match, judged by `json-schema` (below). |
+| `contactPhrases` | The target's own words for its channels to a person, such as a support URL or a phone line's name, matched after the language pack's folding. `request-handled` counts them as a pointer to a person, beside the language pack's `deflection` phrases; no other check reads them (ADR-0075). |
 
 ### Evidence
 

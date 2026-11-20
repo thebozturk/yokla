@@ -212,6 +212,7 @@ option, a probe that failed, or a proposal that exists without `--force`.
 |---|---|---|
 | `--profile <file>` | `yokla.profile.yaml` | The profile. |
 | `--cases <path>` | `cases`, next to the profile | A case file or directory; repeatable. |
+| `--tag <tag>` | | Run only the cases with this tag; repeatable, a case runs when it has any of them (ADR-0077). No case left is a configuration problem. |
 | `--out <file>` | `runs/<run id>.json` | Where to write the results. |
 | `--samples <n>` | 1 | Samples per case, when the case doesn't say. |
 | `--stop-early` | | Stop a case's samples once no further sample can change its failure (ADR-0038). Not with target logs or spans. |
@@ -235,6 +236,26 @@ them. It exits with `2` for a configuration problem, when `target.auth` can't
 get the run's first token, when a cassette can't be read, when a case ended
 in `error`, or when a case is `fixture-missing`: the data no longer holds a
 fact it states, and it sent nothing (ADR-0053).
+
+**The summary** gives each status's count and the pass rate: passing cases
+(`pass`, `gap-closed`) over passing and failing ones, with its 95 % Wilson
+interval; `unmeasured`, `error`, `known-gap` and `fixture-missing` cases are
+left out (ADR-0076). Once a case's weight isn't 1, a weighted rate follows,
+and the failing cases are listed heaviest first. Each case that didn't
+plainly pass shows its tags, and a `by tag:` block gives every tag's cases,
+statuses and pass rate, the most failing first (ADR-0077). The results hold
+the same rates in `summary`, over the run, per suite and per tag.
+
+**`--tag`** runs part of the cases, such as a category you just fixed, in
+seconds:
+
+```sh
+pnpm yokla run --tag support --tag orders
+```
+
+A gate on a tag-limited run compares only the cases it ran with the
+baseline: one it left out passed before and isn't in this run, which the gate
+notes and doesn't count as a regression. Run every case before a merge.
 
 **`--stop-early`** judges each sample during the run, as the final judging
 would, and stops a case's samples when:
@@ -370,9 +391,12 @@ JUnit XML or an HTML report.
   pass, and none of the target's answers.
 - **The HTML report** (ADR-0023) is one offline file to read why a case
   didn't pass.
-  - It shows the run, the status of each case, how often each check applied,
-    and every turn: the user's message, the answer, the findings, the mapped
-    evidence and the model calls. Cases that didn't pass come first, open.
+  - It shows the run, the status of each case with its tags, the pass rate
+    and, with weights, the weighted rate (ADR-0076), a By tag table, the most
+    failing tag first (ADR-0077), how often each check applied, and every
+    turn: the user's message, the answer, the findings, the mapped
+    evidence and the model calls. Cases that didn't pass come first, open;
+    with weights, the failing ones heaviest first.
   - It has no script and loads nothing, so it opens offline and contacts
     nobody. The answers are shown as text, never as markup or links.
   - A model call's prompt is shown by role and size only, whatever the

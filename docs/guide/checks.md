@@ -23,6 +23,7 @@ These work for any assistant.
 | `json-schema` | contract | the profile has `target.response.schema`, or the turn has `schema` | Every value each rule's `at` selects in the response matches the rule's JSON Schema (ADR-0030). A path that selects nothing fails. A finding names each broken rule by the value's path and keyword, never the value, and keeps the first ten. Not applicable to a response that isn't JSON. |
 | `answer-similarity` | similarity | the turn has `similar` | The answer scores at least `min` against one reference, and at most `max` against every one (ADR-0030). The score is the cosine similarity of character trigrams after folding, from 0 to 1, rounded to three decimals, and every finding carries it. It measures wording, not meaning. |
 | `evidence-count` | evidence | the turn expects `evidence` | Each collection has between `min` and `max` items and includes the listed ids. Not applicable when the target asked a clarifying question, or when the profile doesn't map the collection. |
+| `request-handled` | request | the turn sets `request` | A `chitchat`, `handoff` or `support` turn gets no evidence items in any collection the profile maps, clarifying question or not, and no failed-search sentence: no `absence` phrase of the language pack unless a `deflection` phrase or one of the profile's `response.contactPhrases` is there too. A `handoff` also gets a pointer to a person or a channel: one of those phrases. Without a language pack, the evidence is judged and the wording is unmeasured (ADR-0075). |
 | `graceful-under-fault` | resilience | the turn injects faults | The target still gives a usable answer: a non-2xx status, an unreadable answer or no answer at all fails. |
 | `answered-within-deadline` | deadline | the turn has `deadlineMs` | The full answer arrived in time. |
 | `status-allowed` | robustness | the turn has `allowStatus` | The target handled the turn: a 2xx answer yokla reads in full, or a listed status. Another status, a stream cut before its done event, a body that isn't JSON, an answer without its text or no answer at all fails, and the finding says which (ADR-0019). A target that mishandles an edge case then fails the case instead of making the run unjudgeable. |
@@ -146,7 +147,7 @@ section. Each needs the language pack of the case's language.
 | `type-matched-or-disclosed` | filter-honesty | the turn has `productType`, and a returned product's type is known | The products are of the type, or a type under it, or the answer says it shows other types. Not applicable after a clarifying question. |
 | `absence-correct` | absence | the turn has `absentType` | The answer states the absence and presents other products as alternatives, not as the type asked for. Not applicable after a clarifying question. |
 | `over-refusal` | over-refusal, refusal | the turn sets `answerable` | An answerable turn isn't refused; a turn marked not answerable is. A refusal is the language pack's wording or one of the profile's `refusal.canonical` sentences. |
-| `deflection` | deflection | the turn is answerable | The answer does more than send the user to customer service. Advisory: reported, never decides a case. |
+| `deflection` | deflection | the turn is answerable, and doesn't set `request` | The answer does more than send the user to customer service. Advisory: reported, never decides a case. On a turn that sets `request`, `request-handled` judges instead: sending an order question elsewhere is the expected answer there (ADR-0075). |
 
 The detectors are narrow: they match concrete claims, such as an amount or a
 duration, not bare words. A sentence such as "I can't verify the shipping
@@ -187,6 +188,8 @@ guessed.
 A case's status comes from its dimensions, each judged across the samples:
 
 - **Worst of N,** the default: one failing sample fails the dimension.
+  `request` is one of them: a greeting answered with products in one sample
+  of three is a defect.
 - **Majority of N:** `refusal` fails only when most samples fail.
 - **Advisory:** `deflection` is reported but never decides the case.
 - **A check you write** sets the policy of a dimension of its own.
