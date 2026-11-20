@@ -91,9 +91,9 @@ old one.
 | [0076](0076-a-case-carries-a-weight.md) | A case carries a weight | Accepted |
 | [0077](0077-tags-group-the-summary-and-select-a-run.md) | Tags group the summary and select a run | Accepted |
 | [0078](0078-a-cached-reply-needs-no-key.md) | A cached reply needs no key | Accepted |
-| [0079](0079-the-red-team-track.md) | The red-team track: v0.5 in seven items | Accepted |
+| [0079](0079-the-red-team-track.md) | The red-team track: v0.5 in seven items | Accepted; amended by 0081 |
 | [0080](0080-attack-cases-from-templates.md) | Attack cases from templates (R1) | Accepted |
-| [0081](0081-the-red-team-track-widened.md) | The red-team track, widened | Proposed |
+| [0081](0081-the-red-team-track-widened.md) | The red-team track, widened | Accepted |
 
 ## Template
 

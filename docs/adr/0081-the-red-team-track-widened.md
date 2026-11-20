@@ -1,6 +1,6 @@
 # 0081. The red-team track, widened
 
-Status: Proposed · Date: 2026-11-20 · Amends 0079
+Status: Accepted · Date: 2026-11-20 · Amends 0079
 
 ## Context
 
