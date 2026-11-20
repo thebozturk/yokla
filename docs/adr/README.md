@@ -61,7 +61,7 @@ old one.
 | [0046](0046-intents-that-state-what-they-ask.md) | Intents that state what they ask, across the catalog's types | Accepted; amended by 0048 |
 | [0047](0047-the-analyzer-deterministic-first.md) | The analyzer, deterministic first: inventory, data and probes | Accepted; amended by 0066, 0067, 0068 |
 | [0048](0048-intents-ask-as-a-shopper-names-things.md) | Intents ask as a shopper names things | Accepted; amended by 0050, 0052 |
-| [0049](0049-the-analyzer-reads-code-and-docs.md) | The analyzer reads code and docs: values a model finds, verified in their source | Accepted; amended by 0051, 0072 |
+| [0049](0049-the-analyzer-reads-code-and-docs.md) | The analyzer reads code and docs: values a model finds, verified in their source | Accepted; amended by 0051, 0072, 0074 |
 | [0050](0050-a-type-asked-by-its-catalog-label.md) | A type asked by its catalog label | Accepted |
 | [0051](0051-replies-the-analyzer-could-not-read.md) | Replies the analyzer couldn't read, and tokens counted as code takes them | Accepted |
 | [0052](0052-the-currency-code-turn-where-a-dropped-bound-shows.md) | The currency-code turn where a dropped bound shows | Accepted |
@@ -86,7 +86,7 @@ old one.
 | [0071](0071-a-new-package-reserved-before-it-ships-and-a-release-that-resumes.md) | A new package reserved before it ships, and a release that resumes | Accepted |
 | [0072](0072-the-model-step-reads-the-likely-files-first.md) | The model step reads the likely files first, and answers at length | Accepted; amended by 0073 |
 | [0073](0073-marked-files-smallest-first.md) | Marked files go smallest first | Accepted |
-| [0074](0074-a-number-written-with-digit-separators.md) | A number written with digit separators | Proposed |
+| [0074](0074-a-number-written-with-digit-separators.md) | A number written with digit separators | Accepted |
 
 ## Template
 

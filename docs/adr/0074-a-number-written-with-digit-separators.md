@@ -1,6 +1,6 @@
 # 0074. A number written with digit separators
 
-Status: Proposed · Date: 2026-11-20 · Amends 0049
+Status: Accepted · Date: 2026-11-20 · Amends 0049
 
 ## Context
 
