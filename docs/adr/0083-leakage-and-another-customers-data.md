@@ -1,6 +1,6 @@
 # 0083. Leakage and another customer's data (R2)
 
-Status: Proposed · Date: 2026-11-20
+Status: Accepted · Date: 2026-11-20
 
 ## Context
 
