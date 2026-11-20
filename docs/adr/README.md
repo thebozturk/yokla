@@ -84,6 +84,7 @@ old one.
 | [0069](0069-the-model-proxy-reads-an-ai-sdk-gateway.md) | The model proxy reads an AI SDK gateway | Accepted |
 | [0070](0070-v0-4-ships-with-one-criterion-partly-met.md) | v0.4 ships with one exit criterion partly met | Accepted |
 | [0071](0071-a-new-package-reserved-before-it-ships-and-a-release-that-resumes.md) | A new package reserved before it ships, and a release that resumes | Accepted |
+| [0072](0072-the-model-step-reads-the-likely-files-first.md) | The model step reads the likely files first, and answers at length | Proposed |
 
 ## Template
 
