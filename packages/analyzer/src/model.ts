@@ -53,7 +53,7 @@ export function planModelStep(
   chunkTokens: number,
   maxTokens: number,
 ): ModelPlan {
-  // The files that name a field asked go first (ADR-0072).
+  // The files that name a field asked go first, the shortest first (ADR-0072, ADR-0073).
   const sources: SourceFile[] = rankFiles(
     readableFiles(files.map((file) => ({ path: file.path, kind: file.kind, text: '' }))).map(
       (file) => ({ ...file, text: readFileSync(join(dir, file.path), 'utf8') }),

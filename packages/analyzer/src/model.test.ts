@@ -275,7 +275,7 @@ function planOf(files: Readonly<Record<string, string>>, maxTokens: number) {
   return planModelStep(dir, inventory, model, ['en'], 8_000, maxTokens);
 }
 
-describe('the files the model step reads first (ADR-0072)', () => {
+describe('the files the model step reads first (ADR-0072, ADR-0073)', () => {
   const files = {
     'docs/about.md': 'We sell tents and stoves.',
     'docs/z.md': 'A burst of 3 requests is allowed.',
@@ -283,16 +283,16 @@ describe('the files the model step reads first (ADR-0072)', () => {
     'src/throttle.ts': 'export const PER_MINUTE = 120;',
   };
 
-  it('sends the marked files first, and counts them', () => {
+  it('sends the marked files first, the shortest first, and counts them', () => {
     const whole = planOf(files, 200_000);
-    expect(whole.sent).toEqual(['docs/z.md', 'src/throttle.ts', 'docs/about.md', 'src/app.ts']);
+    expect(whole.sent).toEqual(['src/throttle.ts', 'docs/z.md', 'docs/about.md', 'src/app.ts']);
     expect(whole.marked).toEqual({ sent: 2, left: 0 });
   });
 
   it('counts the marked files a small budget leaves out', () => {
     const first = planOf(files, 40);
-    expect(first.sent).toEqual(['docs/z.md']);
-    expect(first.left).toEqual(['src/throttle.ts', 'docs/about.md', 'src/app.ts']);
+    expect(first.sent).toEqual(['src/throttle.ts']);
+    expect(first.left).toEqual(['docs/z.md', 'docs/about.md', 'src/app.ts']);
     expect(first.marked).toEqual({ sent: 1, left: 1 });
   });
 });

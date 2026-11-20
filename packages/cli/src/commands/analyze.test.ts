@@ -105,7 +105,7 @@ describe('yokla analyze options (ADR-0047)', () => {
       {},
     );
     expect(code, output.lines.join('\n')).toBe(0);
-    expect(output.lines).toContain('  left out by --max-tokens: src/throttle.ts');
+    expect(output.lines).toContain('  left out by --max-tokens: README.md');
     expect(output.lines).toContain(
       '  1 of the files sent name a field asked; 1 left out do too: raise --max-tokens to send them',
     );

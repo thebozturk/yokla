@@ -66,7 +66,7 @@ export function isTestPath(path: string): boolean {
   );
 }
 
-/** The kinds the model reads, claims first; files that name a field go before them all (ADR-0072). */
+/** The kinds the model reads, claims first; files that name a field go before them all (ADR-0072, ADR-0073). */
 export const READ_KINDS = ['doc', 'prompt', 'contract', 'manifest', 'env-example', 'code'] as const;
 
 /** The files the model may read, in the order it reads them: by kind, then by path. */
@@ -112,14 +112,17 @@ export function markedFields(file: SourceFile): MarkedField[] {
 }
 
 /**
- * The readable files, the ones that name the most fields first. Within a
- * rank, the order they came in: ADR-0049's, by kind, then by path (ADR-0072).
+ * The readable files: those that name a field first, the shortest first, so
+ * no large doc spends the budget alone (ADR-0073); then the rest. Files of
+ * one length, and the unmarked ones, keep the order they came in:
+ * ADR-0049's, by kind, then by path.
  */
 export function rankFiles(files: readonly SourceFile[]): SourceFile[] {
-  return files
-    .map((file) => ({ file, rank: markedFields(file).length }))
-    .toSorted((a, b) => b.rank - a.rank)
-    .map(({ file }) => file);
+  const isMarked = (file: SourceFile): boolean => markedFields(file).length > 0;
+  return [
+    ...files.filter(isMarked).toSorted((a, b) => a.text.length - b.text.length),
+    ...files.filter((file) => !isMarked(file)),
+  ];
 }
 
 /**

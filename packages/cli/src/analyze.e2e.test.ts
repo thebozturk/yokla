@@ -463,13 +463,13 @@ describe('yokla analyze with a model on the demo-shop (ADR-0049)', () => {
     const added = pointers(comparison?.same ?? []).filter(
       (pointer) => !pointers(report().comparison?.same ?? []).includes(pointer),
     );
-    // In the order they were read: the README before the code.
+    // In the order they were read: the marked code, shorter, before the README (ADR-0073).
     expect(added).toEqual([
+      '/target/limits/burstPerSecond',
+      '/target/limits/perMinute',
       '/target/cacheBypass/kind',
       '/target/cacheBypass/name',
       '/target/cacheBypass/value',
-      '/target/limits/burstPerSecond',
-      '/target/limits/perMinute',
       '/refusal/canonical/tr',
       '/refusal/canonical/en',
     ]);
@@ -501,7 +501,7 @@ describe('yokla analyze with a model on the demo-shop (ADR-0049)', () => {
 
   it('reads docs and code, never data, environment or test files', () => {
     const sent = modelReport().model?.sent ?? [];
-    expect(sent[0]).toBe('README.md');
+    expect(sent).toContain('README.md');
     expect(sent).toContain('src/server.ts');
     expect(sent.filter((path) => /\.test\.|^data\/|\.env/u.test(path))).toEqual([]);
     expect(modelReport().model).toMatchObject({

@@ -219,26 +219,46 @@ describe('the markers that order the files (ADR-0072)', () => {
   });
 });
 
-describe('rankFiles (ADR-0072)', () => {
-  const docs = textFile('# About\nWe sell tents.', 'doc', 'README.md');
+describe('rankFiles (ADR-0072, ADR-0073)', () => {
+  const docs = textFile('# About', 'doc', 'README.md');
   const limits = textFile('const perMinute = 120;', 'code', 'src/limits.ts');
-  const both = textFile("perMinute: 120; refusal: 'No.'", 'code', 'src/z.ts');
+  const tie = textFile('const perSecond = 300;', 'code', 'src/a.ts');
   const prompt = textFile('You help shoppers.', 'prompt', 'prompts/system.txt');
+  const big = textFile(
+    `perMinute: 120. Send the cache bypass header. Our refusal: "No."\n${'More text. '.repeat(50)}`,
+    'doc',
+    'docs/all.md',
+  );
 
-  it('puts the files that name more fields first, and keeps the order within a rank', () => {
-    const ordered = readableFiles([docs, limits, both, prompt]);
+  it('puts the marked files first, the shortest first, however many fields they name', () => {
+    expect(markedFields(big)).toEqual(['limits', 'cacheBypass', 'refusal']);
+    expect(tie.text.length).toBe(limits.text.length);
+    const ordered = readableFiles([docs, limits, tie, prompt, big]);
     expect(ordered.map((file) => file.path)).toEqual([
       'README.md',
+      'docs/all.md',
       'prompts/system.txt',
+      'src/a.ts',
       'src/limits.ts',
-      'src/z.ts',
     ]);
     expect(rankFiles(ordered).map((file) => file.path)).toEqual([
-      'src/z.ts',
       'prompts/system.txt',
+      // One length: ADR-0049's order.
+      'src/a.ts',
       'src/limits.ts',
+      'docs/all.md',
+      // Unmarked, though the shortest.
       'README.md',
     ]);
+  });
+
+  it('sends a small marked file before a large one that names every field', () => {
+    const budget = estimateTokens(`=== src/limits.ts\n1| ${limits.text}`);
+    const ranked = chunkFiles(rankFiles(readableFiles([big, limits])), 8_000, budget);
+    expect(ranked.chunks.flatMap((piece) => piece.parts.map((part) => part.path))).toEqual([
+      'src/limits.ts',
+    ]);
+    expect(ranked.left).toEqual(['docs/all.md']);
   });
 
   it('sends the marked code when the budget holds one file', () => {
