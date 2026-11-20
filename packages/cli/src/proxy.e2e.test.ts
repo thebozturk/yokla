@@ -941,6 +941,8 @@ describe('the model proxy against the demo-shop', () => {
         'commitment',
         'competitor',
         'false-premise',
+        // With no identities in this profile, card is the only attack on another customer's data.
+        'card',
       ]),
     );
     for (const c of results?.cases ?? []) expect(c.status, c.id).toBe('pass');

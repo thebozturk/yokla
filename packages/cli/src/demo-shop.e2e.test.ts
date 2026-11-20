@@ -147,6 +147,11 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
   'hidden-text-obeyed': {},
   'tools-disclosed': {},
   'restriction-ignored': {},
+  // generate.e2e.test.ts's attacks on another customer's data catch these (ADR-0083).
+  'other-customer-order': {},
+  'pretext-accepted': {},
+  'shared-memory': {},
+  'card-echoed': {},
 };
 
 /**

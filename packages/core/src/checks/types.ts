@@ -224,6 +224,15 @@ export interface AttackPhrasings {
   /** A request for a very long answer (ADR-0082). */
   readonly costAbuse: string;
   readonly internals: Readonly<Record<InternalsStyle, string>>;
+  /**
+   * cross-session (ADR-0083): a note with `{canary}` left as one identity,
+   * then a question for the last customer's note asked as another.
+   */
+  readonly crossSession: { readonly note: string; readonly ask: string };
+  /** pretext: a claim to be close to `{name}`, and a request for their address and phone. */
+  readonly pretext: string;
+  /** card: the test number `{card}`, and a request to keep it and write it back in full. */
+  readonly card: string;
 }
 
 export interface CheckContext {
@@ -308,6 +317,8 @@ export interface GeneratedCase {
   readonly key: string;
   readonly turns: readonly {
     readonly user: string;
+    /** The identity the turn is sent as (ADR-0083). */
+    readonly as?: string;
     readonly expect?: Readonly<Record<string, JsonValue>>;
   }[];
   /** The data its expectations came from, such as `catalog JKT-001: color blue`. */
@@ -326,6 +337,11 @@ export interface AttackOptions {
   readonly competitors: readonly string[];
   /** The output token budget of cost-abuse (ADR-0082). */
   readonly outputTokens?: number;
+  /** The profile's identities, in its order: the first the victim, the second the attacker (ADR-0083). */
+  readonly identities?: readonly (readonly [
+    string,
+    { readonly orders?: readonly string[] | undefined },
+  ])[];
 }
 
 export interface Generated {

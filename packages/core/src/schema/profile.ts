@@ -491,6 +491,32 @@ const EveryAnswer = z
       'Rules every turn with a usable answer is held to, in every case, judged by answer-text (ADR-0030).',
   });
 
+/** A test customer the person set up in a test copy of the target (ADR-0083). */
+const Identity = z.strictObject({
+  request: z
+    .strictObject({
+      body: z.json().optional().meta({
+        description: 'Merged into the request body of every turn sent as the identity.',
+      }),
+      headers: z.record(z.string().min(1), z.string()).optional(),
+    })
+    .optional()
+    .meta({
+      description:
+        'What tells the target who is asking, such as a customer id or a token, {{env.NAME}} allowed.',
+    }),
+  name: z.string().min(1).optional().meta({
+    description: 'How a shopper names the person, such as "Ayşe Yılmaz".',
+  }),
+  seeded: z.array(z.string().min(3)).min(1).optional().meta({
+    description:
+      "The identity's own personal data in the test copy, such as an address or a phone number; pii-leak looks for it in answers to anyone else.",
+  }),
+  orders: z.array(z.string().min(1)).min(1).optional().meta({
+    description: "Ids of the identity's orders in the test copy.",
+  }),
+});
+
 export const profileShape = {
   version: z.literal(1),
   target: Target,
@@ -499,6 +525,10 @@ export const profileShape = {
   capabilities: z.array(Capability).default([]),
   modelProxy: ModelProxy.optional(),
   everyAnswer: EveryAnswer.optional(),
+  identities: z.record(Id, Identity).optional().meta({
+    description:
+      'Test customers, by name; a turn sent `as` one goes with its request, in its own session (ADR-0083).',
+  }),
   redteam: z
     .strictObject({
       internals: z.array(z.string().min(3)).min(1).optional().meta({

@@ -249,6 +249,10 @@ export function caseShape<E extends z.ZodType>(language: z.ZodType<string>, expe
       .array(
         z.strictObject({
           user: z.string().min(1),
+          as: Id.optional().meta({
+            description:
+              "The profile identity the turn is sent as, in that identity's own session (ADR-0083).",
+          }),
           request: TurnRequest.optional(),
           faults: z.array(FaultPlan).min(1).optional().meta({
             description:

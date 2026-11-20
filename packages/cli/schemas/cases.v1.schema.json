@@ -48,6 +48,11 @@
                   "type": "string",
                   "minLength": 1
                 },
+                "as": {
+                  "description": "The profile identity the turn is sent as, in that identity's own session (ADR-0083).",
+                  "type": "string",
+                  "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+                },
                 "request": {
                   "type": "object",
                   "properties": {

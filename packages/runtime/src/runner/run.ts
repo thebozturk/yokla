@@ -56,6 +56,7 @@ import {
   type DomainPack,
   type LanguagePack,
   type TurnView,
+  mergeJson,
   type JsonValue,
   type MessageStream,
   type Profile,
@@ -432,6 +433,29 @@ export function preflight(options: RunOptions): void {
     if (!CUSTOMER_LANGUAGES.includes(c.language)) {
       problems.push(
         `case "${c.id}" is in "${c.language}", and the customer prompt is in ${CUSTOMER_LANGUAGES.join(', ')} only`,
+      );
+    }
+  }
+  // A turn sent as an identity (ADR-0083): one the profile lists, on a target whose
+  // sessions yokla gives, over HTTP.
+  for (const c of options.cases) {
+    const named = [...new Set(c.turns.flatMap((turn) => (turn.as === undefined ? [] : [turn.as])))];
+    for (const as of named) {
+      if (options.profile.identities?.[as] === undefined) {
+        problems.push(
+          `case "${c.id}" sends a turn as "${as}", which the profile's identities don't list`,
+        );
+      }
+    }
+    if (named.length === 0) continue;
+    if (options.profile.target.session.open !== undefined) {
+      problems.push(
+        `case "${c.id}" sends turns as identities, which a target with session.open can't take yet (ADR-0083)`,
+      );
+    }
+    if (options.profile.target.adapter === 'websocket') {
+      problems.push(
+        `case "${c.id}" sends turns as identities, which a WebSocket target can't take yet (ADR-0083)`,
       );
     }
   }
@@ -944,8 +968,40 @@ async function runSample(
     };
   };
 
+  // Each identity's own session and carried values, for the rest of the sample (ADR-0083).
+  const identitySessions = new Map<string, string | undefined>();
+  const identityCarry = new Map<string, Record<string, JsonValue>>();
+  const sessionOf = (as: string | undefined): string | undefined => {
+    if (as === undefined || target.session.mode !== 'client') return session;
+    if (!identitySessions.has(as)) identitySessions.set(as, ids());
+    return identitySessions.get(as);
+  };
+  const carryOf = (as: string | undefined): Record<string, JsonValue> => {
+    if (as === undefined) return carry;
+    const own = identityCarry.get(as) ?? {};
+    identityCarry.set(as, own);
+    return own;
+  };
+  /** The turn with its identity's request under its own (ADR-0083). */
+  const asIdentity = (turn: CaseTurn): CaseTurn => {
+    const who = turn.as === undefined ? undefined : options.profile.identities?.[turn.as];
+    if (who?.request === undefined) return turn;
+    const body = mergeJson(who.request.body, turn.request?.body);
+    const headers = { ...who.request.headers, ...turn.request?.headers };
+    return {
+      ...turn,
+      request: {
+        ...(body === undefined ? {} : { body }),
+        ...(Object.keys(headers).length === 0 ? {} : { headers }),
+      },
+    };
+  };
+
   /** Sends one turn, reads and keeps its answer. */
-  const runTurn = async (turn: CaseTurn, turnIndex: number, sent?: Sent): Promise<Exchange> => {
+  const runTurn = async (written: CaseTurn, turnIndex: number, sent?: Sent): Promise<Exchange> => {
+    const turn = asIdentity(written);
+    const turnSession = sessionOf(turn.as);
+    const turnCarry = carryOf(turn.as);
     {
       const requestId = sendsRequestId(target, turn.request?.body) ? ids() : undefined;
       // With a model proxy, the turn's id: marked on the proxy before the request
@@ -993,7 +1049,13 @@ async function runSample(
         }
         const result = await exchangeTurn(
           turn,
-          { message: turn.user, session, requestId, carry, env: options.env },
+          {
+            message: turn.user,
+            session: turnSession,
+            requestId,
+            carry: turnCarry,
+            env: options.env,
+          },
           {
             ...bypass.headers,
             ...identityHeaders,
@@ -1081,7 +1143,7 @@ async function runSample(
         };
         for (const entry of target.session.carry) {
           const [value] = body === undefined ? [] : queryJsonPath(body, entry.from);
-          carry[entry.name] = value === undefined ? null : toJson(value);
+          turnCarry[entry.name] = value === undefined ? null : toJson(value);
         }
       } catch (error) {
         const failure = errorMessage(error);

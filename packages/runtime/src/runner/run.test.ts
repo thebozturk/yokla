@@ -4316,3 +4316,115 @@ describe('runSuite with robustness transforms (ADR-0045)', () => {
     );
   });
 });
+
+/** A profile with two identities, a carried value and the session in its body (ADR-0083). */
+const withIdentities = (url: string, targetChange: Record<string, unknown> = {}): Profile =>
+  profileSchema.parse({
+    ...profile(url, targetChange),
+    target: {
+      ...profile(url, targetChange).target,
+      session: { mode: 'client', carry: [{ name: 'conv', from: '$.conv' }] },
+      request: {
+        url,
+        body: { message: '{{message}}', sessionId: '{{session}}', conv: '{{carry.conv}}' },
+      },
+    },
+    identities: {
+      alice: { request: { body: { customer: 'alice' }, headers: { 'x-user': 'a' } } },
+      bob: { request: { body: { customer: 'bob' } } },
+    },
+  });
+
+describe('runSuite with identities (ADR-0083)', () => {
+  it("sends each turn with its identity's request, in the identity's own session and carried values", async () => {
+    const t = await target((received, index, response) => {
+      json(response, { ...answer(), conv: `conv-${String(index)}` });
+    });
+    const results = await runSuite(
+      options(
+        withIdentities(t.url),
+        cases({
+          turns: [
+            { user: 'a1', as: 'alice' },
+            { user: 'b1', as: 'bob' },
+            { user: 'a2', as: 'alice' },
+            { user: 'n1' },
+            {
+              user: 'b2',
+              as: 'alice',
+              request: { body: { customer: 'carol' }, headers: { 'x-user': 'c' } },
+            },
+          ],
+        }),
+      ),
+    );
+    const errors = results.cases[0]?.samples[0]?.turns.flatMap((turn) => turn.error ?? []);
+    expect(errors).toEqual([]);
+    const requests = t.received.map((r) => ({
+      message: r.body['message'],
+      customer: r.body['customer'],
+      session: r.body['sessionId'],
+      conv: r.body['conv'],
+      user: r.headers['x-user'],
+    }));
+    const [a1, b1, a2, n1, b2] = requests;
+    expect([a1?.customer, b1?.customer, a2?.customer, n1?.customer, b2?.customer]).toEqual([
+      'alice',
+      'bob',
+      'alice',
+      undefined,
+      // The turn's own request comes after the identity's.
+      'carol',
+    ]);
+    expect([a1?.user, b1?.user, a2?.user, b2?.user]).toEqual(['a', undefined, 'a', 'c']);
+    // One session per identity, kept for the sample; a turn without one keeps the sample's.
+    expect(a2?.session).toBe(a1?.session);
+    expect(b2?.session).toBe(a1?.session);
+    expect(new Set([a1?.session, b1?.session, n1?.session]).size).toBe(3);
+    // Carried values, per identity: alice's second turn carries alice's first answer.
+    expect([a1?.conv, b1?.conv, a2?.conv, n1?.conv, b2?.conv]).toEqual([
+      undefined,
+      undefined,
+      'conv-0',
+      undefined,
+      'conv-2',
+    ]);
+  });
+
+  it("refuses an identity the profile doesn't list, session.open and a WebSocket target, before sending", async () => {
+    const t = await target((_r, _i, response) => {
+      json(response, answer());
+    });
+    await expect(
+      runSuite(options(withIdentities(t.url), cases({ turns: [{ user: 'x', as: 'carol' }] }))),
+    ).rejects.toThrow(
+      'case "c0" sends a turn as "carol", which the profile\'s identities don\'t list',
+    );
+    const opened = withIdentities(t.url, {});
+    const withOpen = profileSchema.parse({
+      ...opened,
+      target: {
+        ...opened.target,
+        session: {
+          mode: 'none',
+          carry: [],
+          open: { request: { url: t.url, body: {} }, carry: [{ name: 'sid', from: '$.sid' }] },
+        },
+        request: { url: t.url, body: { message: '{{message}}', sid: '{{carry.sid}}' } },
+      },
+    });
+    await expect(
+      runSuite(options(withOpen, cases({ turns: [{ user: 'x', as: 'alice' }] }))),
+    ).rejects.toThrow("which a target with session.open can't take yet (ADR-0083)");
+    const socket = profileSchema.parse({
+      ...socketProfile('ws://127.0.0.1:1'),
+      identities: { alice: {} },
+    });
+    await expect(
+      runSuite(
+        options(socket, cases({ turns: [{ user: 'x', as: 'alice' }] }), { env: { TOKEN: 't' } }),
+      ),
+    ).rejects.toThrow("which a WebSocket target can't take yet (ADR-0083)");
+    expect(t.received).toEqual([]);
+  });
+});

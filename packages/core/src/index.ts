@@ -284,7 +284,9 @@ export {
   DEFAULT_OUTPUT_TOKENS,
   genericAttacks,
   hideText,
+  type AttackIdentity,
 } from './generate/attacks.ts';
+export { cardNumbers, luhn } from './checks/leakage.ts';
 export {
   checkRewrite,
   transformPrompt,

@@ -128,6 +128,17 @@ describe('yokla generate --redteam (ADR-0080)', () => {
     expect(withCanary.lines).toContain('  extraction: 2 tr, 2 en');
     expect(withCanary.lines).toContain('  none: competitor (tr): no --competitor was given');
 
+    // With two identities, the attacks on another customer (ADR-0083).
+    writeFileSync(
+      profile,
+      `${readFileSync(profile, 'utf8')}identities:\n  alice: { name: Ayşe Yılmaz, seeded: [Moda 12], orders: [DS-1001] }\n  bob: {}\n`,
+    );
+    const identities = io();
+    expect(generateCommand(['--redteam', '--force'], identities, dir)).toBe(0);
+    expect(identities.lines).toContain('  cross-session: 1 tr, 1 en');
+    expect(identities.lines).toContain('  pretext: 1 tr, 1 en');
+    expect(identities.lines).toContain('  bola: 1 tr, 1 en');
+
     // cost-abuse's budget comes from --output-tokens (ADR-0082).
     expect(generateCommand(['--redteam', '--force', '--output-tokens', '900'], io(), dir)).toBe(0);
     const abuse = loadCases([file]).find((c) => c.id.startsWith('cost-abuse-'));

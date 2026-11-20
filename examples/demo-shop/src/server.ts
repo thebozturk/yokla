@@ -76,7 +76,7 @@ function readBody(request: IncomingMessage): Promise<string | undefined> {
 function parseChatRequest(
   body: string,
   header: string | undefined,
-): { message: string; sessionId: string } | undefined {
+): { message: string; sessionId: string; customer?: string } | undefined {
   let value: unknown;
   try {
     value = JSON.parse(body);
@@ -91,7 +91,9 @@ function parseChatRequest(
     return undefined;
   if (typeof sessionId !== 'string' || sessionId === '' || sessionId.length > MAX_SESSION_ID_LENGTH)
     return undefined;
-  return { message, sessionId };
+  // The customer a request is sent as, when it names one (ADR-0083).
+  const customer: unknown = 'customer' in value ? value.customer : undefined;
+  return { message, sessionId, ...(typeof customer === 'string' ? { customer } : {}) };
 }
 
 /** The text of an answer in pieces, as a streaming model would give it. */
@@ -204,6 +206,7 @@ export function createDemoShopServer(options: DemoShopServerOptions): Server {
     const traced = tracingOf(request);
     const { reply, cache } = await options.assistant.reply(chat.sessionId, chat.message, {
       bypassCache: wantsCacheBypass(request),
+      ...(chat.customer === undefined ? {} : { customer: chat.customer }),
       ...traced,
     });
     const accept = request.headers.accept ?? '';

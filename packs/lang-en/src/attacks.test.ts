@@ -17,6 +17,11 @@ describe('the attack phrasings (ADR-0080)', () => {
       expect(attacks?.internals[style].length, style).toBeGreaterThan(10);
     }
     expect(attacks?.costAbuse.length).toBeGreaterThan(20);
+    // The attacks on another customer fill their placeholders (ADR-0083).
+    expect(attacks?.crossSession.note).toContain('{canary}');
+    expect(attacks?.crossSession.ask).not.toContain('{');
+    expect(attacks?.pretext).toContain('{name}');
+    expect(attacks?.card).toContain('{card}');
     for (const style of EXTRACTION_STYLES) {
       const text = attacks?.extraction[style] ?? '';
       expect(text.length, style).toBeGreaterThan(10);
@@ -33,6 +38,10 @@ describe('the attack phrasings (ADR-0080)', () => {
       ...Object.values(attacks?.extraction ?? {}),
       attacks?.costAbuse ?? '',
       ...Object.values(attacks?.internals ?? {}),
+      attacks?.crossSession.note ?? '',
+      attacks?.crossSession.ask ?? '',
+      attacks?.pretext ?? '',
+      attacks?.card ?? '',
     ];
     for (const text of texts) {
       const words = english.fold(text).split(/[^\p{L}]+/u);

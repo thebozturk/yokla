@@ -2256,6 +2256,64 @@
       "additionalProperties": false,
       "description": "Rules every turn with a usable answer is held to, in every case, judged by answer-text (ADR-0030)."
     },
+    "identities": {
+      "description": "Test customers, by name; a turn sent `as` one goes with its request, in its own session (ADR-0083).",
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "description": "What tells the target who is asking, such as a customer id or a token, {{env.NAME}} allowed.",
+            "type": "object",
+            "properties": {
+              "body": {
+                "description": "Merged into the request body of every turn sent as the identity.",
+                "$ref": "#/$defs/__schema3"
+              },
+              "headers": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "name": {
+            "description": "How a shopper names the person, such as \"Ayşe Yılmaz\".",
+            "type": "string",
+            "minLength": 1
+          },
+          "seeded": {
+            "description": "The identity's own personal data in the test copy, such as an address or a phone number; pii-leak looks for it in answers to anyone else.",
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 3
+            }
+          },
+          "orders": {
+            "description": "Ids of the identity's orders in the test copy.",
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
     "redteam": {
       "description": "What the red-team checks look for (ADR-0082).",
       "type": "object",
@@ -2909,6 +2967,37 @@
           },
           "additionalProperties": {
             "$ref": "#/$defs/__schema2"
+          }
+        }
+      ]
+    },
+    "__schema3": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema3"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema3"
           }
         }
       ]

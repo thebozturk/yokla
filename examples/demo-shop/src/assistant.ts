@@ -2,6 +2,7 @@
 
 import type { Product, ShopData } from './catalog.ts';
 import type { Defect } from './defects.ts';
+import { Accounts } from './accounts.ts';
 import {
   acceptedPremise,
   asksForTools,
@@ -133,10 +134,13 @@ export class Assistant {
   /** Answers that showed products, for the flaky-price defect. */
   #shownAnswers = 0;
 
+  readonly #accounts: Accounts;
+
   constructor(options: AssistantOptions) {
     this.#data = options.data;
     this.#model = options.model;
     this.#defect = options.defect;
+    this.#accounts = new Accounts(options.defect);
   }
 
   /**
@@ -146,11 +150,20 @@ export class Assistant {
   async reply(
     sessionId: string,
     message: string,
-    options: Tracing & { readonly bypassCache?: boolean } = {},
+    options: Tracing & { readonly bypassCache?: boolean; readonly customer?: string } = {},
   ): Promise<{ reply: ChatReply; cache: CacheStatus }> {
     const bypass = options.bypassCache === true;
+    // Orders, other customers, notes and cards: answered from the accounts, never cached (ADR-0083).
+    const spoken = detectLanguage(message);
+    const account = this.#accounts.answer(message, sessionId, options.customer, spoken);
+    if (account !== undefined) {
+      return {
+        reply: { answer: account, products: [], metadata: { route: 'fallback', language: spoken } },
+        cache: bypass ? 'bypass' : 'miss',
+      };
+    }
     const context = this.#sessions.get(sessionId);
-    const cacheable = context === undefined;
+    const cacheable = context === undefined && options.customer === undefined;
 
     if (cacheable && !bypass) {
       const hit = this.#cache.get(message);

@@ -19,6 +19,7 @@ import {
   untrustedInSystem,
 } from './inspection.ts';
 import { internalsLeak } from './internals.ts';
+import { cardNumber, piiLeak } from './leakage.ts';
 import { requestHandled } from './request.ts';
 import { jsonSchemaCheck } from './schema.ts';
 import { answerSimilarity } from './similarity.ts';
@@ -43,6 +44,8 @@ export const CORE_CHECKS: readonly Check[] = [
   piiInPrompt,
   injectionCanary,
   internalsLeak,
+  piiLeak,
+  cardNumber,
   toolCalls,
   toolCallValid,
   goalReachedCheck,

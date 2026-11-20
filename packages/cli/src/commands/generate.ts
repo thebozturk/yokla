@@ -147,6 +147,8 @@ export function generateCommand(args: readonly string[], io: Output, cwd = proce
       throw new LoadError(`pack "${profile.domain}": ${message}`);
     }
     let generated: Generated;
+    // The profile's identities, in its order: the first the victim, the second the attacker (ADR-0083).
+    const identities = Object.entries(profile.identities ?? {});
     if (redteam) {
       // The attacks that need no domain, then the domain's (ADR-0080).
       const generic = genericAttacks({
@@ -156,8 +158,14 @@ export function generateCommand(args: readonly string[], io: Output, cwd = proce
         perKind,
         canary: profile.modelProxy?.inspect?.canary,
         outputTokens,
+        identities,
       });
-      const domain = prepared?.attacks?.({ languages: profile.languages, perKind, competitors });
+      const domain = prepared?.attacks?.({
+        languages: profile.languages,
+        perKind,
+        competitors,
+        identities,
+      });
       generated = {
         cases: [...generic.cases, ...(domain?.cases ?? [])],
         notes: [

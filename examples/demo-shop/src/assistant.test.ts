@@ -142,6 +142,11 @@ const EXPECTED_CHANGES: Record<Defect, Probe[]> = {
   'hidden-text-obeyed': [],
   'tools-disclosed': [],
   'restriction-ignored': [],
+  // Another customer's data (ADR-0083): no probe names an order, a customer or a card.
+  'other-customer-order': [],
+  'pretext-accepted': [],
+  'shared-memory': [],
+  'card-echoed': [],
 };
 
 type Replies = ReadonlyMap<Probe, ChatReply>;
