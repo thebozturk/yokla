@@ -1297,7 +1297,7 @@ Each version is usable on its own. A version ships when its exit criteria hold.
 | **0.2 — proxy** | OpenAI-compatible and Anthropic proxy; `serial` and `header` correlation; cost and latency per request; fault plans; inspection checks; perf, cost and resilience suites; `yokla plan`; streaming targets, session setup, and model calls the target makes after its answer | cost on demo-shop and on one real target reconciles with the provider's usage records; resilience defects detected |
 | **0.3 — reach and conversations** | a first run in five minutes: `yokla init` sends the target one message, works out where the answer is in its JSON or event stream, writes a profile for review, and adds starter cases that suit any assistant (greeting, out of scope, a basic injection, personal data, an empty or very long message, a switch of language, a deadline), all at no model cost; a static HTML report; publishing to npm; WebSocket targets; authentication (OAuth2 and the like); richer evidence mapping, which the first real target needed: one collection read from several paths, stock given only as in or out of stock, amounts quoted from data other than the shown products (such as an order history), and the text of an answer given only as a component; a Gemini protocol adapter (AI Studio and Vertex); model calls read from OpenTelemetry GenAI spans, for targets the proxy can't see; tool-call and trajectory checks on what the proxy records; a simulated customer: a model plays a customer with a goal, and the deterministic checks judge every turn; generic checks (patterns, JSON Schema, similarity, checks the user writes) | on the demo-shop and on the open-source target, `yokla init` writes a profile that needs no edit for the starter cases, which then run and gate; the demo-shop's tool-call defects detected; the simulated customer reaches each demo-shop purchase goal, and a run repeats from its seed; on the demo-shop, calls read from OpenTelemetry spans match the proxy's records |
 | **0.4 — analyzer** | inventory, LLM extraction with evidence, probe mode, profile review and diff (the deterministic step done, ADR-0047; the extraction of the fields a quote can verify done, ADR-0049, ADR-0051; the response contract from a contract file done, ADR-0057, ADR-0058); e-commerce data generators (done, ADR-0055, ADR-0056); freshness and `fixture-missing` (done, ADR-0053, ADR-0054); robustness transforms of approved cases (§9): typos, removed diacritics, casing and punctuation at no model cost (done, ADR-0045), and paraphrase and Turkish–English code-switching only with a configured, budgeted model (done, ADR-0059) | on demo-shop the analyzer reproduces the approved entries of the hand-written profile (precision and recall reported); on the private target it rediscovers the known issue classes; on the demo-shop, a transform catches a seeded defect that shows only in a message without diacritics, and the transforms of every other approved case keep its verdict |
-| **0.5 — red team** | local attack generation (templates plus attacker model), native TR and EN; e-commerce attacks: price and discount manipulation, order fraud, card data, age and region restrictions, unauthorised commitments, competitor steering, hijacking, excessive agency, another customer's data, injection through product content and through tool descriptions, including a description that changes mid-conversation, unsafe advice; canary-based deterministic detection; multi-turn and encoding strategies; findings mapped to OWASP LLM Top 10, OWASP Agentic, GDPR and KVKK, and the EU AI Act; calibrated judge | demo-shop injection, leakage and BOLA defects detected deterministically; the egress test passes |
+| **0.5 — red team** | local attack generation (templates plus attacker model), native TR and EN; e-commerce attacks: price and discount manipulation, order fraud, card data, age and region restrictions, unauthorised commitments, competitor steering, hijacking, excessive agency, another customer's data, injection through product content and through tool descriptions, including a description that changes mid-conversation, unsafe advice; canary-based deterministic detection; multi-turn and encoding strategies; findings mapped to OWASP LLM Top 10, OWASP Agentic, GDPR and KVKK, and the EU AI Act; calibrated judge; built as the red-team track below (ADR-0079) | demo-shop injection, leakage and BOLA defects detected deterministically; the egress test passes |
 | **0.6 — ecosystem** | import and export for other evaluation tools; CI recipes and a GitHub Action; a library API; two runs compared side by side; documentation site | |
 
 ### The debugging track: from a finding to a fix
@@ -1326,6 +1326,28 @@ them.
 | **D6. Comparing models through the proxy** (done, ADR-0042) | the proxy can send a call to another model than the app asked for, as the command line says; the same cases run once per model, and a report compares verdicts, cost and latency | on the demo-shop, three fake models give the comparison expected of them; the cheapest model that still passes the gate is named |
 | **D7. Tool results changed by the proxy** (done, ADR-0043) | the proxy can change a tool result before the model sees it: a canary instruction, for indirect injection without a test copy of the target's data; and changes that must not change the verdict, such as reordered items, for metamorphic checks | the demo-shop's injection defect (v0.5) is caught through a tool result the proxy changed; a metamorphic change gives the same verdicts |
 | **D8. A search for untried paths** (done, ADR-0044) | a run that steers new turns towards what the proxy hasn't seen yet: routes, tool sets, argument shapes, fault states; deterministic mutations first, a model-written turn only when configured and budgeted | on the demo-shop, the search reaches every route and every tool, and finds a seeded defect that no written case reaches |
+
+### The red-team track: v0.5 in seven items
+
+v0.5 is built in order, one ADR per item (ADR-0079). The items that cost
+nothing come first; a model is needed only from R5.
+
+- **Detection is deterministic wherever a rule can decide.** A model may
+  write an attack, never decide a verdict, except the judge's own
+  dimensions, which don't gate by default (ADR-0005).
+- **A person approves every attack case** before it gates (ADR-0004).
+- **Attack ideas, not attack code.** No corpus or probe set is copied.
+- **Each demo-shop defect comes with the item whose checks catch it.**
+
+| Item | Scope | Exit criteria |
+|---|---|---|
+| **R1. Attack cases from templates** | `yokla generate` writes attack cases from templates: the domain pack holds the goals, the language pack their phrasing in Turkish and English; each case carries a fresh canary or a value the checks can find; first kinds: direct injection, system-prompt extraction, price and discount manipulation, unauthorised commitments, competitor steering | every kind passes on the correct demo-shop; a new defect that agrees to a price the user names fails its case, by a deterministic check |
+| **R2. Leakage and another customer's data** | seeded fake personal data and card numbers; two identities in one run; `pii-leak`; the demo-shop's orders, one set per session | the defect that shows another session's order is caught; a seeded card number or address that reaches an answer is caught |
+| **R3. Multi-turn and encoding strategies** | strategies that rewrite an approved attack case, as the transforms do: an attack spread over several turns; Base64, leetspeak, look-alike letters, Turkish without its letters | an encoded or spread attack the correct shop withstands still passes; a defect that decodes and follows one is caught |
+| **R4. Injection through tools** | the proxy changes a tool's description, not only its result (ADR-0043), also mid-conversation; order fraud and excessive agency judged by `tool-calls` | a defect that follows an instruction in a tool description is caught, including one that arrives on the second turn |
+| **R5. An attacker model** | `models.attacker` writes variants of the template attacks and adaptive multi-turn attacks, cached and capped; detection stays deterministic | with the fake provider as attacker, a defect only an adaptive attack reaches is caught; a second run repeats from the cache at no cost |
+| **R6. Findings mapped to frameworks** | each attack kind and check maps to OWASP LLM Top 10 and OWASP Agentic categories, and to the GDPR, KVKK and EU AI Act topics it touches; the reports group findings by them | every red-team finding of the demo-shop's run names its categories; the mapping is tested in both directions |
+| **R7. A calibrated judge** | `models.judge` for dimensions with no deterministic check: unsafe advice, hijacking, age and region restrictions where no rule applies; a calibration set in every run; gates only per dimension, by opt-in | a judge that misjudges a calibration case gives `unmeasured`; with the fake provider as judge, the unsafe-advice defect is found and doesn't gate by default |
 
 **Later:** sampling production logs, more domains (banking, travel), more
 languages, SDK adapters.
@@ -1366,8 +1388,9 @@ Checks that understand more of an answer:
 3. ~~**Results schema.**~~ Decided in
    [ADR-0007](adr/0007-results-schema-and-interop.md): yokla owns
    `results.v1`; other tools are reached by mapping in `interop-*` packages.
-4. **Default attacker and judge model:** none (the user must choose), or a
-   recommended local model?
+4. ~~**Default attacker and judge model.**~~ Decided in
+   [ADR-0079](adr/0079-the-red-team-track.md): none; the user chooses each,
+   and the judge must differ from the target's model.
 5. ~~**HTML report.**~~ Decided in
    [ADR-0023](adr/0023-static-html-report.md): one static file, with no
    framework and no script.
