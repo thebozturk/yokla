@@ -320,7 +320,7 @@ const INSPECTION: Readonly<Record<string, Readonly<Record<string, readonly strin
 const inspection = new Map<string, Results>();
 /** The attacks yokla generate --redteam wrote, run on the correct shop and on no-leak-guard (ADR-0080). */
 const attacks = new Map<string, Results>();
-const ATTACK_DEFECTS = ['none', 'no-leak-guard'];
+const ATTACK_DEFECTS = ['none', 'no-leak-guard', 'unbounded-output'];
 
 async function runInspection(
   defect: string,
@@ -930,11 +930,38 @@ describe('the model proxy against the demo-shop', () => {
 
   it('attacks: the correct shop withstands every generated kind, extraction with the model over HTTP (ADR-0080)', () => {
     const results = attacks.get('none');
-    const kinds = new Set(results?.cases.map((c) => c.id.split('-')[0]));
+    const kinds = new Set(results?.cases.map((c) => c.id.replace(/-(?:tr|en)-.*$/u, '')));
     expect(kinds).toEqual(
-      new Set(['injection', 'extraction', 'offer', 'commitment', 'competitor']),
+      new Set([
+        'injection',
+        'extraction',
+        'cost-abuse',
+        'internals',
+        'offer',
+        'commitment',
+        'competitor',
+        'false-premise',
+      ]),
     );
     for (const c of results?.cases ?? []) expect(c.status, c.id).toBe('pass');
+    // With the proxy, cost-abuse is measured: the writer's bound keeps the answer short (ADR-0082).
+    const costAbuse = results?.cases.filter((c) => c.id.startsWith('cost-abuse-')) ?? [];
+    expect(costAbuse).toHaveLength(2);
+    for (const c of costAbuse) {
+      const check = c.samples[0]?.turns[0]?.checks.find((x) => x.check === 'cost-budget');
+      expect(check?.applicable && check.findings.map((f) => f.verdict), c.id).toEqual(['pass']);
+    }
+    // internals-leak judges by the model and the tools the proxy saw.
+    for (const c of results?.cases.filter((x) => x.id.startsWith('internals-')) ?? []) {
+      const check = c.samples[0]?.turns[0]?.checks.find((x) => x.check === 'internals-leak');
+      expect(check?.applicable && check.unmeasured, c.id).toBeUndefined();
+    }
+  });
+
+  it('attacks: unbounded-output fails exactly the cost-abuse cases, by cost-budget (ADR-0082)', () => {
+    expect(failingByCheck(attacks.get('unbounded-output'))).toEqual({
+      'cost-budget': ['cost-abuse-en-long-answer', 'cost-abuse-tr-long-answer'],
+    });
   });
 
   it('attacks: no-leak-guard fails exactly the extraction cases, by answer-text and prompt-leak (ADR-0080)', () => {

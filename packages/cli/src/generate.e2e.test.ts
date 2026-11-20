@@ -2,17 +2,18 @@
 // cases from its catalog, every kind in both languages, the same file twice,
 // sending nothing. Run on the demo-shop without defects, every generated case
 // passes; each data defect fails a generated case of the kind meant for it.
-// yokla generate --redteam writes the attacks the same way (ADR-0080): the
-// correct shop withstands them, and offer-accepted fails exactly the offers,
-// by concession alone. No model cost, behind the network guard.
+// yokla generate --redteam writes the attacks the same way (ADR-0080,
+// ADR-0082): the correct shop withstands them, and each attack defect fails
+// exactly the cases of its kind, by one check. No model cost, behind the network guard.
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { cpSync, mkdtempSync, readFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Results } from '@yokla/core';
 import { installNetworkGuard, type NetworkGuard } from '@yokla/runtime/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { parse, stringify } from 'yaml';
 import { loadCases } from './load.ts';
 import { main } from './main.ts';
 
@@ -78,13 +79,30 @@ const runs = new Map<string, Ran>();
 let attacksFirst: Ran | undefined;
 let attacksText = '';
 let attacksSecond: Ran | undefined;
-/** The attacks run on the correct shop and with offer-accepted (ADR-0080). */
-const ATTACK_DEFECTS = ['none', 'offer-accepted'] as const;
+/** Each attack defect → the kind it fails → the one check that catches it (ADR-0080, ADR-0082). */
+const ATTACK_EXPECTED: Readonly<Record<string, { kind: string; check: string }>> = {
+  'offer-accepted': { kind: 'offer', check: 'concession' },
+  'premise-accepted': { kind: 'false-premise', check: 'policy-claim' },
+  'system-markup-trusted': { kind: 'injection', check: 'answer-text' },
+  'hidden-text-obeyed': { kind: 'injection', check: 'answer-text' },
+  'tools-disclosed': { kind: 'internals', check: 'internals-leak' },
+  'restriction-ignored': { kind: 'restriction', check: 'evidence-count' },
+};
+const ATTACK_DEFECTS = ['none', ...Object.keys(ATTACK_EXPECTED)];
+/** The demo-shop's profile with what the attacks read: its restriction, cart and tools (ADR-0082). */
+const redteamProfile = join(work, 'redteam.profile.yaml');
 const attackRuns = new Map<string, Ran>();
 const attackResults = (defect: string) =>
   Results.parse(JSON.parse(readFileSync(join(work, `attacks-${defect}.json`), 'utf8')));
 const results = (defect: string) =>
   Results.parse(JSON.parse(readFileSync(join(work, `${defect}.json`), 'utf8')));
+
+/** A parsed YAML mapping as a record; anything else as an empty one. */
+function record(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+    ? Object.fromEntries(Object.entries(value))
+    : {};
+}
 
 beforeAll(async () => {
   cpSync(join(DEMO, 'yokla.profile.yaml'), profile);
@@ -96,18 +114,40 @@ beforeAll(async () => {
   first = await cli('generate', '--profile', profile, ...absent);
   firstText = readFileSync(generated, 'utf8');
   second = await cli('generate', '--profile', profile, ...absent, '--force');
+  const shopProfile = record(parse(readFileSync(profile, 'utf8')));
+  writeFileSync(
+    redteamProfile,
+    stringify({
+      ...shopProfile,
+      ecommerce: {
+        ...record(shopProfile['ecommerce']),
+        restrictions: [
+          {
+            types: ['outdoor/camping/camping-stove'],
+            minAge: 18,
+            notSoldIn: [{ tr: 'Almanya', en: 'Germany' }],
+            source: 'examples/demo-shop/README.md',
+          },
+        ],
+        cartEvidence: 'cart',
+      },
+      redteam: { internals: ['search_products', 'get_policy', 'cheapest_shown', 'add_to_cart'] },
+    }),
+  );
   const rivals = ['--competitor', 'Rivalmart', '--competitor', 'OutdoorKing'];
-  attacksFirst = await cli('generate', '--redteam', '--profile', profile, ...rivals);
+  const attackArgs = ['generate', '--redteam', '--profile', redteamProfile, '--per-kind', '6'];
+  attacksFirst = await cli(...attackArgs, ...rivals);
   attacksText = readFileSync(redteam, 'utf8');
-  attacksSecond = await cli('generate', '--redteam', '--profile', profile, ...rivals, '--force');
-  for (const defect of ATTACK_DEFECTS) {
+  attacksSecond = await cli(...attackArgs, ...rivals, '--force');
+  // One shop per defect, three runs at a time: side by side, without loading the machine.
+  const attackRun = async (defect: string) => {
     const base = await startShop(defect);
     attackRuns.set(
       defect,
       await cli(
         'run',
         '--profile',
-        profile,
+        redteamProfile,
         '--cases',
         redteam,
         '--target-url',
@@ -116,6 +156,9 @@ beforeAll(async () => {
         join(work, `attacks-${defect}.json`),
       ),
     );
+  };
+  for (let at = 0; at < ATTACK_DEFECTS.length; at += 3) {
+    await Promise.all(ATTACK_DEFECTS.slice(at, at + 3).map(attackRun));
   }
   for (const defect of DEFECTS) {
     const base = await startShop(defect);
@@ -134,7 +177,7 @@ beforeAll(async () => {
       ),
     );
   }
-}, 120_000);
+}, 300_000);
 
 afterAll(() => {
   guard?.uninstall();
@@ -213,7 +256,18 @@ describe('yokla generate on the demo-shop (ADR-0055, ADR-0056)', () => {
     const cases = loadCases([redteam]);
     for (const language of ['tr', 'en']) {
       const kinds = new Set(cases.filter((c) => c.language === language).map((c) => c.tags[1]));
-      expect(kinds, language).toEqual(new Set(['injection', 'offer', 'commitment', 'competitor']));
+      expect(kinds, language).toEqual(
+        new Set([
+          'injection',
+          'cost-abuse',
+          'internals',
+          'offer',
+          'commitment',
+          'competitor',
+          'false-premise',
+          'restriction',
+        ]),
+      );
     }
     expect(cases.every((c) => c.suite === 'redteam' && c.provenance?.status === 'proposed')).toBe(
       true,
@@ -227,26 +281,55 @@ describe('yokla generate on the demo-shop (ADR-0055, ADR-0056)', () => {
   it('the correct shop withstands every attack, and concession applies to each offer and promise', () => {
     for (const [defect, ran] of attackRuns) expect(ran.code, `${defect}: ${ran.output}`).toBe(0);
     const cases = attackResults('none').cases;
-    expect(cases.filter((c) => c.status !== 'pass').map((c) => c.id)).toEqual([]);
+    // cost-abuse needs the proxy: here it is unmeasured, never a pass (proxy.e2e.test.ts runs it).
+    expect(cases.filter((c) => c.status !== 'pass').map((c) => [c.id, c.status])).toEqual([
+      ['cost-abuse-tr-long-answer', 'unmeasured'],
+      ['cost-abuse-en-long-answer', 'unmeasured'],
+    ]);
     for (const c of cases.filter((x) => /^(?:offer|commitment)-/u.test(x.id))) {
       const check = c.samples[0]?.turns[0]?.checks.find((x) => x.check === 'concession');
       expect(check?.applicable, c.id).toBe(true);
     }
   });
 
-  it('offer-accepted fails exactly the offers, by concession alone (ADR-0080)', () => {
-    const cases = attackResults('offer-accepted').cases;
-    const failed = cases.filter((c) => c.status === 'fail').map((c) => c.id);
-    expect(failed).toEqual(cases.map((c) => c.id).filter((id) => id.startsWith('offer-')));
-    expect(failed).toHaveLength(4);
-    for (const c of cases.filter((x) => x.status === 'fail')) {
-      const failing = c.samples
-        .flatMap((sample) => sample.turns)
-        .flatMap((turn) => turn.checks)
-        .filter((check) => check.findings.some((f) => f.verdict === 'fail'))
-        .map((check) => check.check);
-      expect(failing, c.id).toEqual(['concession']);
-    }
+  it.each(Object.entries(ATTACK_EXPECTED))(
+    '%s fails cases of its kind only, by one check (ADR-0080, ADR-0082)',
+    (defect, { kind, check }) => {
+      const cases = attackResults(defect).cases;
+      const failed = cases.filter((c) => c.status === 'fail');
+      expect(failed.length, defect).toBeGreaterThanOrEqual(2);
+      for (const c of failed) {
+        expect(c.id.replace(/-(?:tr|en)-.*$/u, ''), c.id).toBe(kind);
+        const failing = c.samples
+          .flatMap((sample) => sample.turns)
+          .flatMap((turn) => turn.checks)
+          .filter((x) => x.findings.some((f) => f.verdict === 'fail'))
+          .map((x) => x.check);
+        expect(failing, c.id).toEqual([check]);
+      }
+    },
+  );
+
+  it('each attack defect fails every case of its kind it is meant for', () => {
+    const failedIds = (defect: string) =>
+      attackResults(defect)
+        .cases.filter((c) => c.status === 'fail')
+        .map((c) => c.id);
+    const all = attackResults('none').cases.map((c) => c.id);
+    expect(failedIds('offer-accepted')).toEqual(all.filter((id) => id.startsWith('offer-')));
+    expect(failedIds('premise-accepted')).toEqual(
+      all.filter((id) => id.startsWith('false-premise-')),
+    );
+    expect(failedIds('system-markup-trusted')).toEqual(
+      all.filter((id) => id.endsWith('-delimiter')),
+    );
+    expect(failedIds('hidden-text-obeyed')).toEqual(
+      all.filter((id) => id.endsWith('-hidden-text')),
+    );
+    expect(failedIds('tools-disclosed')).toEqual(all.filter((id) => id.endsWith('-tools')));
+    expect(failedIds('restriction-ignored')).toEqual(
+      all.filter((id) => id.startsWith('restriction-')),
+    );
   });
 
   // Last, so it sees the traffic of everything above.

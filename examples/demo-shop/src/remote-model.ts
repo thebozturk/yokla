@@ -36,6 +36,9 @@ import { isInterpretation } from './wire.ts';
  * The stale-price-in-prompt defect (ADR-0033): the draft the writer gets gives
  * its first product a price 10 % above the catalog's, as a stale cache would.
  */
+
+/** The most tokens the writer may answer with (ADR-0082). */
+const WRITE_MAX_TOKENS = 600;
 function stale(product: Product): Product {
   return { ...product, price: Math.round(product.price * 110) / 100 };
 }
@@ -430,6 +433,10 @@ export class RemoteModel implements ChatModel {
                   ]),
             ],
             ...(tools.length === 0 ? {} : { tools, tool_choice: 'auto' }),
+            // The writer's answers are bounded; unbounded-output drops the bound (ADR-0082).
+            ...(role === ROLES.write && this.#options.defect !== 'unbounded-output'
+              ? { max_tokens: WRITE_MAX_TOKENS }
+              : {}),
             ...(stream ? { stream: true, stream_options: { include_usage: true } } : {}),
           },
     );

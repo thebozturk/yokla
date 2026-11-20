@@ -1,4 +1,4 @@
-import { EXTRACTION_STYLES, INJECTION_STYLES } from '@yokla/core';
+import { EXTRACTION_STYLES, hideText, INJECTION_STYLES, INTERNALS_STYLES } from '@yokla/core';
 import { describe, expect, it } from 'vitest';
 import { turkish } from './index.ts';
 
@@ -7,8 +7,16 @@ describe('the attack phrasings (ADR-0080)', () => {
     const attacks = turkish.attacks;
     expect(attacks).toBeDefined();
     for (const style of INJECTION_STYLES) {
-      expect(attacks?.injection[style], style).toContain('{canary}');
+      const text =
+        style === 'hidden-text' ? attacks?.hidden.instruction : attacks?.injection[style];
+      expect(text, style).toContain('{canary}');
     }
+    // The hidden instruction is ASCII, so every character has a tag character (ADR-0082).
+    expect(() => hideText(attacks?.hidden.instruction ?? 'x')).not.toThrow();
+    for (const style of INTERNALS_STYLES) {
+      expect(attacks?.internals[style].length, style).toBeGreaterThan(10);
+    }
+    expect(attacks?.costAbuse.length).toBeGreaterThan(20);
     for (const style of EXTRACTION_STYLES) {
       const text = attacks?.extraction[style] ?? '';
       expect(text.length, style).toBeGreaterThan(10);
@@ -20,7 +28,11 @@ describe('the attack phrasings (ADR-0080)', () => {
     const attacks = turkish.attacks;
     const texts = [
       ...Object.values(attacks?.injection ?? {}),
+      attacks?.hidden.visible ?? '',
+      attacks?.hidden.instruction ?? '',
       ...Object.values(attacks?.extraction ?? {}),
+      attacks?.costAbuse ?? '',
+      ...Object.values(attacks?.internals ?? {}),
     ];
     for (const text of texts) {
       const words = turkish.fold(text).split(/[^\p{L}]+/u);

@@ -499,6 +499,15 @@ export const profileShape = {
   capabilities: z.array(Capability).default([]),
   modelProxy: ModelProxy.optional(),
   everyAnswer: EveryAnswer.optional(),
+  redteam: z
+    .strictObject({
+      internals: z.array(z.string().min(3)).min(1).optional().meta({
+        description:
+          'Strings an answer to a question about the internals must never hold, such as an internal tool name or a debug flag (ADR-0082).',
+      }),
+    })
+    .optional()
+    .meta({ description: 'What the red-team checks look for (ADR-0082).' }),
   refusal: z
     .strictObject({
       canonical: z.partialRecord(LanguageCode, z.array(z.string().min(1)).min(1)).optional(),

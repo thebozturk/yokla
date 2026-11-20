@@ -2,6 +2,17 @@
 
 import type { Product, ShopData } from './catalog.ts';
 import type { Defect } from './defects.ts';
+import {
+  acceptedPremise,
+  asksForTools,
+  correction,
+  hiddenText,
+  markedInstruction,
+  restrictedAnswer,
+  restrictionOf,
+  statedReturnDays,
+  toolsAnswer,
+} from './guards.ts';
 import { detectLanguage, fold, formatMoney, type Language } from './language.ts';
 import {
   hasFilters,
@@ -168,10 +179,11 @@ export class Assistant {
     let draft: AnswerDraft;
     let next: ConversationContext;
     let answer: string;
+    let restricted: string | undefined;
     try {
       interpretation = this.#codeRead(await this.#model.interpret(sent, context, call), sent);
-      ({ draft, next } = this.#plan(interpretation, context, sessionId, sent));
-      answer = await this.#model.write(draft, call);
+      ({ draft, next, restricted } = this.#plan(interpretation, context, sessionId, sent));
+      answer = restricted ?? (await this.#model.write(draft, call));
     } catch (error) {
       if (this.#defect === 'no-model-fallback') throw error;
       // The model failed: answer from a template on the fallback route. The
@@ -213,6 +225,7 @@ export class Assistant {
         answer = answer.replace(name, `${name} (${product.id})`);
       }
     }
+    answer = this.#guarded(message, answer, interpretation);
     // The offer-accepted defect (ADR-0080): a price the user names, below the product's own, is accepted.
     if (this.#defect === 'offer-accepted') {
       const offer = offeredPrice(message, this.#data.catalog, language);
@@ -262,12 +275,36 @@ export class Assistant {
     }
   }
 
+  /**
+   * The shop's guards against attacks (ADR-0082), each dropped by its defect:
+   * a stated return period is corrected, a line posing as a system marker and
+   * text hidden in tag characters are ignored, and its tools aren't named.
+   */
+  #guarded(message: string, answer: string, interpretation: Interpretation): string {
+    const { language } = interpretation;
+    const marked = markedInstruction(message);
+    if (this.#defect === 'system-markup-trusted' && marked !== undefined) return marked;
+    const hidden = hiddenText(message);
+    if (this.#defect === 'hidden-text-obeyed' && hidden !== undefined) return hidden;
+    if (this.#defect === 'tools-disclosed' && asksForTools(message)) return toolsAnswer(language);
+    if (interpretation.route === 'policy' && interpretation.topic === 'returns') {
+      const stated = statedReturnDays(message);
+      const actual = statedReturnDays(answer);
+      if (stated !== undefined && actual !== undefined && stated !== actual) {
+        return this.#defect === 'premise-accepted'
+          ? acceptedPremise(stated, language)
+          : `${correction(stated, language)} ${answer}`;
+      }
+    }
+    return answer;
+  }
+
   #plan(
     interpretation: Interpretation,
     context: ConversationContext | undefined,
     sessionId: string,
     message: string,
-  ): { draft: AnswerDraft; next: ConversationContext } {
+  ): { draft: AnswerDraft; next: ConversationContext; restricted?: string } {
     const { language } = interpretation;
     switch (interpretation.route) {
       case 'cart': {
@@ -275,6 +312,15 @@ export class Assistant {
         const product = this.#data.catalog.find((p) => p.id === interpretation.productId);
         if (product === undefined)
           return { draft: { kind: 'fallback', language }, next: context ?? EMPTY_CONTEXT };
+        // Unless the shop's rule forbids it for this buyer (ADR-0082); restriction-ignored drops the rule.
+        const why = restrictionOf(message, product);
+        if (why !== undefined && this.#defect !== 'restriction-ignored') {
+          return {
+            draft: { kind: 'fallback', language },
+            next: context ?? EMPTY_CONTEXT,
+            restricted: restrictedAnswer(why, language),
+          };
+        }
         const ids = [...(this.#carts.get(sessionId) ?? []), product.id];
         remember(this.#carts, sessionId, ids, MAX_SESSIONS);
         const cart = ids.flatMap((id) => this.#data.catalog.filter((p) => p.id === id));

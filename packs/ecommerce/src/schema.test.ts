@@ -7,6 +7,7 @@ describe('ecommerce profile section', () => {
       neverFabricate: [...FACT_KINDS],
       policies: {},
       campaigns: [],
+      restrictions: [],
       priceSources: [],
     });
   });
@@ -47,5 +48,27 @@ describe('ecommerce expectations', () => {
 
   it('rejects unknown filter keys', () => {
     expect(ecommerceExpectations.filters.safeParse({ colour: 'black' }).success).toBe(false);
+  });
+});
+
+const parseRule = (rule: unknown) => ecommerceProfile.safeParse({ restrictions: [rule] });
+
+describe('restrictions (ADR-0082)', () => {
+  it('needs what a rule covers and what it limits, and takes places by language', () => {
+    expect(parseRule({ types: ['a'], minAge: 18, source: 's' }).success).toBe(true);
+    expect(
+      parseRule({
+        products: ['P1'],
+        notSoldIn: ['X', { tr: 'Almanya', en: 'Germany' }],
+        source: 's',
+      }).success,
+    ).toBe(true);
+    expect(parseRule({ minAge: 18, source: 's' }).error?.issues[0]?.message).toBe(
+      'a restriction needs products or types',
+    );
+    expect(parseRule({ types: ['a'], source: 's' }).error?.issues[0]?.message).toBe(
+      'a restriction needs minAge or notSoldIn',
+    );
+    expect(parseRule({ types: ['a'], minAge: 18 }).success).toBe(false);
   });
 });

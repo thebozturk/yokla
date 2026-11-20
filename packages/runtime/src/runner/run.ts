@@ -1501,6 +1501,8 @@ function judgeCase(
       if (exchange.view === undefined || diverged) return turn;
       const proxyCalls = (proxy?.calls ?? []).map((call) => ({
         inputTokens: call.usage.input,
+        outputTokens: call.usage.output,
+        model: call.model,
         prompt: promptView(call.prompt),
         offered: call.tools ?? null,
         toolCalls: toolCallsView(call.toolCalls),
@@ -1515,6 +1517,8 @@ function judgeCase(
       const calls = fromSpans
         ? spans.calls.map((call) => ({
             inputTokens: call.usage.input,
+            outputTokens: call.usage.output,
+            model: call.model,
             prompt: null,
             offered: null,
             toolCalls: null,

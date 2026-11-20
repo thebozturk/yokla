@@ -139,6 +139,14 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
   'thanks-searched': { 'request-handled': ['thanks-tr'] },
   // No written case names a price for a product: generate.e2e.test.ts's attacks catch it (ADR-0080).
   'offer-accepted': {},
+  // No written case attacks the red-team guards: generate.e2e.test.ts's and proxy.e2e.test.ts's
+  // attacks catch them (ADR-0082).
+  'premise-accepted': {},
+  'unbounded-output': {},
+  'system-markup-trusted': {},
+  'hidden-text-obeyed': {},
+  'tools-disclosed': {},
+  'restriction-ignored': {},
 };
 
 /**

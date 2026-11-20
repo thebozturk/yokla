@@ -18,7 +18,7 @@ import {
   type MoneyMention,
 } from '@yokla/core';
 import type { EcommerceData } from '../data.ts';
-import { POLICY_TOPIC_PHRASES } from '../lexicon.ts';
+import { CORRECTION_NEGATIONS, POLICY_TOPIC_PHRASES } from '../lexicon.ts';
 import { FACT_KINDS } from '../schema.ts';
 import { notApplicable, segments } from './common.ts';
 
@@ -34,9 +34,57 @@ interface Claims {
   };
 }
 
-function claimsIn(text: string, lang: LanguagePack): Claims {
-  const durations = lang.findDurations(text);
-  const money = lang.findMoney(text);
+/** How many words on either side of a value a correction's negation may stand (ADR-0082). */
+const CORRECTION_WINDOW = 4;
+
+/**
+ * Whether a negation stands within a few words of text[start, end) in its
+ * sentence: "90 gün değil", "not 90 days" (ADR-0082).
+ */
+function negatedNear(text: string, start: number, end: number, lang: LanguagePack): boolean {
+  const negations = CORRECTION_NEGATIONS[lang.language];
+  if (negations === undefined) return false;
+  const words = (part: string) =>
+    lang
+      .fold(part)
+      .split(/\s+/u)
+      .map((word) => word.replaceAll(/^[^\p{L}']+|[^\p{L}']+$/gu, ''))
+      .filter((word) => word !== '');
+  const near = [
+    ...words(text.slice(0, start)).slice(-CORRECTION_WINDOW),
+    ...words(text.slice(end)).slice(0, CORRECTION_WINDOW),
+  ];
+  return near.some(
+    (word) =>
+      negations.words.includes(word) || negations.endings.some((ending) => word.endsWith(ending)),
+  );
+}
+
+/**
+ * The claims of a text. With the user's message, a duration or amount the
+ * user wrote that the sentence negates near it is a correction, not a claim
+ * (ADR-0082).
+ */
+function claimsIn(text: string, lang: LanguagePack, user?: string): Claims {
+  const said = user === undefined ? undefined : claimsIn(user, lang);
+  const corrected = (mention: { start: number; end: number }) =>
+    negatedNear(text, mention.start, mention.end, lang);
+  const durations = lang
+    .findDurations(text)
+    .filter(
+      (d) =>
+        said === undefined ||
+        !said.durations.includes(`${String(d.amount)} ${d.unit}`) ||
+        !corrected(d),
+    );
+  const money = lang
+    .findMoney(text)
+    .filter(
+      (m) =>
+        said === undefined ||
+        !said.amounts.some((a) => Math.abs(a - m.amount) < 0.005) ||
+        !corrected(m),
+    );
   const free = findPhrases(lang.fold(text), lang.phrases.free);
   return {
     durations: durations.map((d) => `${String(d.amount)} ${d.unit}`),
@@ -98,7 +146,7 @@ export function policyClaim(data: EcommerceData): Check {
         );
         if (topics.length > 0) mentioned = true;
         if (topics.length === 0 && declared !== undefined) topics.push(declared);
-        const claims = claimsIn(segment, lang);
+        const claims = claimsIn(segment, lang, context.turn.user);
         if (claims.raw.length === 0) continue;
 
         // A sentence may name several topics ("return within 14 days of delivery"):

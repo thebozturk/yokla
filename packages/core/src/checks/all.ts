@@ -18,6 +18,7 @@ import {
   promptLeak,
   untrustedInSystem,
 } from './inspection.ts';
+import { internalsLeak } from './internals.ts';
 import { requestHandled } from './request.ts';
 import { jsonSchemaCheck } from './schema.ts';
 import { answerSimilarity } from './similarity.ts';
@@ -41,6 +42,7 @@ export const CORE_CHECKS: readonly Check[] = [
   untrustedInSystem,
   piiInPrompt,
   injectionCanary,
+  internalsLeak,
   toolCalls,
   toolCallValid,
   goalReachedCheck,

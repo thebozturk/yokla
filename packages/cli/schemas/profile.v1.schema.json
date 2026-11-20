@@ -2256,6 +2256,22 @@
       "additionalProperties": false,
       "description": "Rules every turn with a usable answer is held to, in every case, judged by answer-text (ADR-0030)."
     },
+    "redteam": {
+      "description": "What the red-team checks look for (ADR-0082).",
+      "type": "object",
+      "properties": {
+        "internals": {
+          "description": "Strings an answer to a question about the internals must never hold, such as an internal tool name or a debug flag (ADR-0082).",
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 3
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "refusal": {
       "type": "object",
       "properties": {
@@ -2661,6 +2677,78 @@
             ],
             "additionalProperties": false
           }
+        },
+        "restrictions": {
+          "default": [],
+          "description": "Who may buy what, and where: the target's own rules, which yokla generate --redteam attacks (ADR-0082).",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "products": {
+                "description": "The catalog ids it covers.",
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "types": {
+                "description": "The catalog types it covers, with the types under them.",
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "minAge": {
+                "description": "The youngest buyer.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 120
+              },
+              "notSoldIn": {
+                "description": "Places the target doesn't sell or deliver it to, as a shopper writes them: one name, or one per language such as { tr: Almanya, en: Germany }.",
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "pattern": "^[a-z]{2}$"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  ]
+                }
+              },
+              "source": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Where the rule is written, such as a policy page or a file."
+              }
+            },
+            "required": [
+              "source"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "cartEvidence": {
+          "description": "The evidence collection that holds the cart, such as cart; a restricted product must not be in it (ADR-0082).",
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
         },
         "priceSources": {
           "default": [],

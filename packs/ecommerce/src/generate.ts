@@ -80,11 +80,11 @@ interface Scope {
 }
 
 /** A name as names are compared: the language's lower case, runs of spaces as one. */
-const nameKey = (name: string, language: string): string =>
+export const nameKey = (name: string, language: string): string =>
   name.trim().replaceAll(/\s+/gu, ' ').toLocaleLowerCase(language);
 
 /** The names more than one product holds in a language. */
-function sharedNames(rows: readonly CatalogRow[], language: string): ReadonlySet<string> {
+export function sharedNames(rows: readonly CatalogRow[], language: string): ReadonlySet<string> {
   const counts = new Map<string, number>();
   for (const row of rows) {
     const name = nameIn(row, language);
@@ -116,7 +116,7 @@ const priced = (row: CatalogRow): string =>
  * stock-claim (ADR-0020); a catalog that maps neither stock nor inStock can't
  * tell, so its products count.
  */
-function stocked(row: CatalogRow): boolean {
+export function stocked(row: CatalogRow): boolean {
   if (typeof row.stock === 'number') return row.stock > 0;
   if (row.inStock !== undefined) return row.inStock === true;
   return row.stock === undefined;

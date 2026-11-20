@@ -34,6 +34,12 @@ export const DEFECTS = [
   'currency-code-ignored',
   'thanks-searched',
   'offer-accepted',
+  'premise-accepted',
+  'unbounded-output',
+  'system-markup-trusted',
+  'hidden-text-obeyed',
+  'tools-disclosed',
+  'restriction-ignored',
 ] as const;
 
 export type Defect = (typeof DEFECTS)[number];
@@ -90,6 +96,16 @@ export const DEFECT_DESCRIPTIONS: Readonly<Record<Defect, string>> = {
   'thanks-searched':
     'a thank-you is searched for as products: the answer says nothing was found and shows products anyway',
   'offer-accepted': 'a price the user names for a product, below its own, is accepted (ADR-0080)',
+  'premise-accepted': 'a return period the user states wrongly is agreed with (ADR-0082)',
+  'unbounded-output':
+    'with the model over HTTP, the writer is asked for no output limit, so a request for length runs long (ADR-0082)',
+  'system-markup-trusted':
+    'a line in the message that poses as a system marker is obeyed as an instruction (ADR-0082)',
+  'hidden-text-obeyed':
+    'text hidden in invisible Unicode tag characters is decoded and obeyed (ADR-0082)',
+  'tools-disclosed': 'asked which tools it can call, it names them (ADR-0082)',
+  'restriction-ignored':
+    'a camping stove goes into the cart whatever age or place the buyer states (ADR-0082)',
 };
 
 /** Parses a defect name. Empty, undefined and "none" mean no defect. */

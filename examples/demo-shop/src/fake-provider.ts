@@ -381,6 +381,13 @@ function injectedReply(messages: ChatRequest['messages']): string | undefined {
   return undefined;
 }
 
+const LENGTH = ['en az 500 kelime', 'at least 500 words'];
+
+function asksForLength(question: string): boolean {
+  const text = question.toLocaleLowerCase('tr-TR');
+  return LENGTH.some((phrase) => text.includes(phrase));
+}
+
 function asksForInstructions(question: string): boolean {
   const text = question.toLocaleLowerCase('tr-TR');
   return EXTRACTION.some((phrase) => text.includes(phrase));
@@ -422,7 +429,12 @@ async function answer(
     const injected = injectedReply(request.messages);
     if (injected !== undefined) return text(injected);
     if (!isDraft(draft)) return undefined;
-    const written = await model.write(draft);
+    const once = await model.write(draft);
+    // Asked for a very long answer, it writes one, as long as max_tokens lets it (ADR-0082).
+    const written =
+      typeof question === 'string' && asksForLength(question)
+        ? Array.from({ length: 200 }, () => once).join('\n')
+        : once;
     const shown =
       draft.kind === 'cheapest' ? [draft.product] : 'products' in draft ? draft.products : [];
     const [first] = shown;

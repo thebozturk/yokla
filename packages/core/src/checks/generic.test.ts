@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { Profile } from '../schema/profile.ts';
-import { checkContext, mutate, proxyCalls, stubLanguagePack, turnView } from '../testing.ts';
+import {
+  checkContext,
+  mutate,
+  proxyCall,
+  proxyCalls,
+  stubLanguagePack,
+  turnView,
+} from '../testing.ts';
 import {
   answeredWithinDeadline,
   answerText,
@@ -452,8 +459,22 @@ describe('status-allowed', () => {
   });
 });
 
+/** evidence-count over P1 to P3, with ids that must not be there (ADR-0082). */
+const runExcludes = (excludes: string[]) =>
+  evidenceCount.run(
+    checkContext(evidenceTurn([{ id: 'P1' }, { id: 'P2' }, { id: 'P3' }], { excludes })),
+  );
+
 describe('evidence-count', () => {
   const products = [{ id: 'P1' }, { id: 'P2' }, { id: 'P3' }];
+  it('fails an excluded id that is there, and passes one that is not (ADR-0082)', () => {
+    expect(verdicts(runExcludes(['P9']))).toEqual(['pass']);
+    expect(verdicts(runExcludes(['P2', 'P9']))).toEqual(['fail', 'pass']);
+    expect(runExcludes(['P2'])).toMatchObject({
+      findings: [{ message: 'products includes P2, which it must not', severity: 'high' }],
+    });
+  });
+
   it('checks minimum, maximum and included ids', () => {
     expect(
       verdicts(
@@ -572,6 +593,12 @@ describe('answered-within-deadline', () => {
 const runBudget = (budget: unknown, proxy: TurnView['proxy']) =>
   costBudget.run(checkContext(turnView({ expect: { budget }, proxy })));
 
+/** Calls that wrote these many output tokens; null for an unreported count (ADR-0082). */
+const calls = (...outputs: (number | null)[]) => ({
+  calls: outputs.map((outputTokens) => proxyCall({ outputTokens })),
+  costUsd: 0,
+});
+
 describe('cost-budget', () => {
   it('judges the cost and the number of model calls against the budget, boundaries included', () => {
     expect(
@@ -604,6 +631,36 @@ describe('cost-budget', () => {
     });
   });
 
+  it('judges the largest output of any call against outputTokens, at the bound included (ADR-0082)', () => {
+    expect(runBudget({ outputTokens: 600 }, calls(100, 600))).toEqual({
+      applicable: true,
+      findings: [
+        {
+          dimension: 'cost',
+          verdict: 'pass',
+          severity: 'medium',
+          message: 'largest answer 600 output tokens, budget 600',
+          evidence: { outputTokens: 600, budget: 600 },
+        },
+      ],
+    });
+    expect(verdicts(runBudget({ outputTokens: 600 }, calls(601, 10)))).toEqual(['fail']);
+    // A call with no count: unmeasured, keeping a failure already seen.
+    expect(runBudget({ outputTokens: 600 }, calls(10, null))).toMatchObject({
+      findings: [],
+      unmeasured: [
+        { dimension: 'cost', reason: 'a model call of the turn has no output token count' },
+      ],
+    });
+    expect(runBudget({ outputTokens: 600 }, calls(900, null))).toMatchObject({
+      findings: [{ verdict: 'fail' }],
+      unmeasured: [{ dimension: 'cost' }],
+    });
+    expect(runBudget({ outputTokens: 600 }, undefined)).toMatchObject({
+      unmeasured: [{ reason: 'no model proxy data for this turn' }],
+    });
+  });
+
   it('does not apply without a budget, and refuses an empty one', () => {
     expect(runBudget(undefined, { calls: proxyCalls(1), costUsd: 0 })).toMatchObject({
       applicable: false,
@@ -613,7 +670,7 @@ describe('cost-budget', () => {
     });
     expect(runBudget({ inputTokens: 10 }, { calls: proxyCalls(1), costUsd: 0 })).toEqual({
       applicable: false,
-      reason: 'the budget sets no cost and no call count',
+      reason: 'the budget sets no cost, no call count and no output tokens',
     });
   });
 });

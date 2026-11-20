@@ -154,6 +154,22 @@ export const CONCESSION_PHRASES: Readonly<Record<string, ConcessionPhrases>> = {
 };
 
 /**
+ * Words that negate a value the user wrote, when they stand near it in the
+ * answer's sentence: a correction, "14 days, not 90 days", claims only what
+ * it doesn't negate (ADR-0082). Folded, matched as whole words.
+ */
+export interface CorrectionNegations {
+  readonly words: readonly string[];
+  /** Word endings that negate, such as "n't". */
+  readonly endings: readonly string[];
+}
+
+export const CORRECTION_NEGATIONS: Readonly<Record<string, CorrectionNegations>> = {
+  tr: { words: ['degil', 'degildir', 'yok', 'olmaz'], endings: [] },
+  en: { words: ['not', 'no'], endings: ["n't"] },
+};
+
+/**
  * Words that name a policy topic. A topic the profile declares but this table
  * doesn't know is only checked when a turn names it with `policyTopic`.
  */

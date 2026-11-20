@@ -6,7 +6,12 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { generatedCaseYaml, genericAttacks, type Generated } from '@yokla/core';
+import {
+  DEFAULT_OUTPUT_TOKENS,
+  generatedCaseYaml,
+  genericAttacks,
+  type Generated,
+} from '@yokla/core';
 import { LoadError, loadProfile } from '../load.ts';
 import { DOMAIN_PACKS, LANGUAGE_PACKS } from '../packs.ts';
 import type { Output } from './run.ts';
@@ -27,9 +32,11 @@ Options:
   --per-kind <n>           the most cases of each kind, in each language (default: ${String(DEFAULT_PER_KIND)})
   --absent <lang>:<words>  types a shopper may ask for that you expect absent, comma-separated,
                            such as en:hammock,kayak; repeatable
-  --redteam                write attack cases from templates: injection, extraction, offer,
-                           commitment and competitor
+  --redteam                write attack cases from templates: injection, extraction, cost-abuse,
+                           internals, offer, commitment, competitor, false-premise and restriction
   --competitor <name>      a competitor of the target's, which an answer must not name; repeatable
+  --output-tokens <n>      cost-abuse's budget: the most output tokens one model call may write
+                           (default: ${String(DEFAULT_OUTPUT_TOKENS)})
   --force                  overwrite --out`;
 
 const OPTIONS = {
@@ -39,6 +46,7 @@ const OPTIONS = {
   absent: { type: 'string', multiple: true },
   redteam: { type: 'boolean' },
   competitor: { type: 'string', multiple: true },
+  'output-tokens': { type: 'string' },
   force: { type: 'boolean' },
   help: { type: 'boolean' },
 } as const;
@@ -102,6 +110,16 @@ export function generateCommand(args: readonly string[], io: Output, cwd = proce
     if (!redteam && values.competitor !== undefined) {
       throw new LoadError('--competitor goes with --redteam');
     }
+    if (!redteam && values['output-tokens'] !== undefined) {
+      throw new LoadError('--output-tokens goes with --redteam');
+    }
+    const outputTokens =
+      values['output-tokens'] === undefined
+        ? DEFAULT_OUTPUT_TOKENS
+        : Number(values['output-tokens']);
+    if (!Number.isInteger(outputTokens) || outputTokens < 1) {
+      throw new LoadError('--output-tokens must be a positive integer');
+    }
     const competitors = [
       ...new Set(
         (values.competitor ?? []).map((name) => name.trim()).filter((name) => name !== ''),
@@ -137,6 +155,7 @@ export function generateCommand(args: readonly string[], io: Output, cwd = proce
         ),
         perKind,
         canary: profile.modelProxy?.inspect?.canary,
+        outputTokens,
       });
       const domain = prepared?.attacks?.({ languages: profile.languages, perKind, competitors });
       generated = {

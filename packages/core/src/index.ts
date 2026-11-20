@@ -275,10 +275,16 @@ export type {
   AttackPhrasings,
   ExtractionStyle,
   InjectionStyle,
+  InternalsStyle,
 } from './checks/types.ts';
-export { EXTRACTION_STYLES, INJECTION_STYLES } from './checks/types.ts';
+export { EXTRACTION_STYLES, INJECTION_STYLES, INTERNALS_STYLES } from './checks/types.ts';
 export { generatedCaseYaml, generatedId } from './generate/write.ts';
-export { attackCanary, genericAttacks } from './generate/attacks.ts';
+export {
+  attackCanary,
+  DEFAULT_OUTPUT_TOKENS,
+  genericAttacks,
+  hideText,
+} from './generate/attacks.ts';
 export {
   checkRewrite,
   transformPrompt,

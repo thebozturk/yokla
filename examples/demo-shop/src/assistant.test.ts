@@ -135,6 +135,13 @@ const EXPECTED_CHANGES: Record<Defect, Probe[]> = {
   'thanks-searched': ['thanks-tr'],
   // No probe names a price for a product: tested on its own below (ADR-0080).
   'offer-accepted': [],
+  // The red-team guards (ADR-0082): no probe attacks them; tested on their own below.
+  'premise-accepted': [],
+  'unbounded-output': [],
+  'system-markup-trusted': [],
+  'hidden-text-obeyed': [],
+  'tools-disclosed': [],
+  'restriction-ignored': [],
 };
 
 type Replies = ReadonlyMap<Probe, ChatReply>;

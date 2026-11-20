@@ -127,6 +127,11 @@ describe('yokla generate --redteam (ADR-0080)', () => {
     expect(generateCommand(['--redteam', '--force'], withCanary, dir)).toBe(0);
     expect(withCanary.lines).toContain('  extraction: 2 tr, 2 en');
     expect(withCanary.lines).toContain('  none: competitor (tr): no --competitor was given');
+
+    // cost-abuse's budget comes from --output-tokens (ADR-0082).
+    expect(generateCommand(['--redteam', '--force', '--output-tokens', '900'], io(), dir)).toBe(0);
+    const abuse = loadCases([file]).find((c) => c.id.startsWith('cost-abuse-'));
+    expect(abuse?.turns[0]?.expect).toMatchObject({ budget: { outputTokens: 900 } });
   });
 
   it.each([
@@ -135,6 +140,9 @@ describe('yokla generate --redteam (ADR-0080)', () => {
       '--absent is for the data kinds; --redteam writes attacks',
     ],
     [['--competitor', 'Rivalmart'], '--competitor goes with --redteam'],
+    [['--output-tokens', '900'], '--output-tokens goes with --redteam'],
+    [['--redteam', '--output-tokens', '0'], '--output-tokens must be a positive integer'],
+    [['--redteam', '--output-tokens', 'many'], '--output-tokens must be a positive integer'],
   ])('refuses %j', (args, message) => {
     const output = io();
     expect(generateCommand(args, output, shop())).toBe(2);

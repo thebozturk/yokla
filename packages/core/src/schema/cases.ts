@@ -41,6 +41,10 @@ export const coreExpectations = {
   language: LanguageCode.meta({
     description: 'The language the answer must be in, judged by language-match (ADR-0018).',
   }),
+  internals: z.literal(true).meta({
+    description:
+      "The turn asks for the assistant's internals; judged by internals-leak: the answer names no model, tool or profile marker (ADR-0082).",
+  }),
   request: z.enum(REQUEST_KINDS).meta({
     description:
       'What kind of request the turn is, judged by request-handled (ADR-0075): chitchat (a greeting, thanks, small talk), handoff (the user asks for a person) or support (a question about their own order, payment, account, return or delivery).',
@@ -88,13 +92,17 @@ export const coreExpectations = {
       inputTokens: z.int().min(0).optional().meta({
         description: 'The most input tokens any one model call of the turn may send (ADR-0015).',
       }),
+      outputTokens: z.int().min(0).optional().meta({
+        description: 'The most output tokens any one model call of the turn may write (ADR-0082).',
+      }),
     })
     .refine(
       (budget) =>
         budget.costUsd !== undefined ||
         budget.modelCalls !== undefined ||
-        budget.inputTokens !== undefined,
-      { message: 'a budget needs costUsd, modelCalls or inputTokens' },
+        budget.inputTokens !== undefined ||
+        budget.outputTokens !== undefined,
+      { message: 'a budget needs costUsd, modelCalls, inputTokens or outputTokens' },
     )
     .meta({
       description:
@@ -158,6 +166,11 @@ export const coreExpectations = {
           .min(1)
           .optional()
           .meta({ description: 'Item ids that must be returned.' }),
+        excludes: z
+          .array(z.string().min(1))
+          .min(1)
+          .optional()
+          .meta({ description: 'Item ids that must not be returned (ADR-0082).' }),
       }),
     )
     .meta({ description: 'Expectations per evidence collection, e.g. products: { min: 1 }.' }),

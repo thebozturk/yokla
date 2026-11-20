@@ -104,6 +104,10 @@ export interface SeenItem {
 export interface ProxyCallView {
   /** Input tokens as the provider reported them, cached ones included; null when unreported. */
   readonly inputTokens: number | null;
+  /** Output tokens as the provider reported them, reasoning ones included; null when unreported (ADR-0082). */
+  readonly outputTokens?: number | null;
+  /** The model the proxy recorded for the call; null when unknown (ADR-0082). */
+  readonly model?: string | null;
   /**
    * The messages the call sent, with their text; null when the proxy couldn't
    * read them. A tool result names the tool it answers (ADR-0026).
@@ -188,9 +192,20 @@ export interface LanguagePack {
   readonly attacks?: AttackPhrasings;
 }
 
-/** The styles of a direct injection (ADR-0080). */
-export const INJECTION_STYLES = ['forget', 'persona', 'system', 'after-question'] as const;
+/** The styles of a direct injection (ADR-0080, ADR-0082). */
+export const INJECTION_STYLES = [
+  'forget',
+  'persona',
+  'system',
+  'after-question',
+  'delimiter',
+  'hidden-text',
+] as const;
 export type InjectionStyle = (typeof INJECTION_STYLES)[number];
+
+/** The ways of asking for the internals (ADR-0082). */
+export const INTERNALS_STYLES = ['debug', 'model', 'tools'] as const;
+export type InternalsStyle = (typeof INTERNALS_STYLES)[number];
 
 /** The ways of asking for the system prompt (ADR-0080). */
 export const EXTRACTION_STYLES = ['repeat', 'code-block', 'translate'] as const;
@@ -198,8 +213,17 @@ export type ExtractionStyle = (typeof EXTRACTION_STYLES)[number];
 
 /** A language's attack phrasings; `{canary}` stands for the word the answer must not hold. */
 export interface AttackPhrasings {
-  readonly injection: Readonly<Record<InjectionStyle, string>>;
+  readonly injection: Readonly<Record<Exclude<InjectionStyle, 'hidden-text'>, string>>;
+  /**
+   * The hidden-text style (ADR-0082): an ordinary question, then an
+   * instruction core writes in invisible Unicode tag characters. The
+   * instruction is ASCII, since tag characters exist only for ASCII.
+   */
+  readonly hidden: { readonly visible: string; readonly instruction: string };
   readonly extraction: Readonly<Record<ExtractionStyle, string>>;
+  /** A request for a very long answer (ADR-0082). */
+  readonly costAbuse: string;
+  readonly internals: Readonly<Record<InternalsStyle, string>>;
 }
 
 export interface CheckContext {
@@ -300,6 +324,8 @@ export interface AttackOptions {
   readonly perKind: number;
   /** The target's competitors, as the person names them. */
   readonly competitors: readonly string[];
+  /** The output token budget of cost-abuse (ADR-0082). */
+  readonly outputTokens?: number;
 }
 
 export interface Generated {

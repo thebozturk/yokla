@@ -284,7 +284,7 @@ export const statusAllowed: Check = {
 export const evidenceCount: Check = {
   id: 'evidence-count',
   description:
-    'Evidence collections have the expected number of items and include the expected ids.',
+    'Evidence collections have the expected number of items, include the expected ids and leave out the excluded ones.',
   run(context) {
     const parsed = coreExpectations.evidence.safeParse(context.turn.expect['evidence']);
     if (!parsed.success)
@@ -322,6 +322,17 @@ export const evidenceCount: Check = {
           verdict: ids.has(id) ? 'pass' : 'fail',
           severity: 'medium',
           message: ids.has(id) ? `${name} includes ${id}` : `${name} doesn't include ${id}`,
+        });
+      }
+      // Ids that must not be there, such as a restricted product in the cart (ADR-0082).
+      for (const id of expectation.excludes ?? []) {
+        findings.push({
+          dimension: 'evidence',
+          verdict: ids.has(id) ? 'fail' : 'pass',
+          severity: 'high',
+          message: ids.has(id)
+            ? `${name} includes ${id}, which it must not`
+            : `${name} leaves out ${id}`,
         });
       }
     }
@@ -381,13 +392,17 @@ export const answeredWithinDeadline: Check = {
 /** The turn's model calls stay within its budget; without the data to judge it, unmeasured (ADR-0014). */
 export const costBudget: Check = {
   id: 'cost-budget',
-  description: "The turn's model calls stay within its budget: their cost and their number.",
+  description:
+    "The turn's model calls stay within its budget: their cost, their number and their output tokens.",
   run(context) {
     const parsed = coreExpectations.budget.safeParse(context.turn.expect['budget']);
     if (!parsed.success) return { applicable: false, reason: 'the turn has no budget' };
-    const { costUsd, modelCalls } = parsed.data;
-    if (costUsd === undefined && modelCalls === undefined) {
-      return { applicable: false, reason: 'the budget sets no cost and no call count' };
+    const { costUsd, modelCalls, outputTokens } = parsed.data;
+    if (costUsd === undefined && modelCalls === undefined && outputTokens === undefined) {
+      return {
+        applicable: false,
+        reason: 'the budget sets no cost, no call count and no output tokens',
+      };
     }
     const { proxy } = context.turn;
     if (proxy === undefined) {
@@ -406,6 +421,28 @@ export const costBudget: Check = {
         severity: 'medium',
         message: `${String(calls)} model calls, budget ${String(modelCalls)}`,
       });
+    }
+    // The most output tokens any one call wrote (ADR-0082): an attack asks for a huge answer.
+    if (outputTokens !== undefined) {
+      const counts = proxy.calls.map((call) => call.outputTokens ?? null);
+      const largest = Math.max(0, ...counts.filter((count) => count !== null));
+      const largestFinding: CheckFinding = {
+        dimension: 'cost',
+        verdict: largest <= outputTokens ? 'pass' : 'fail',
+        severity: 'medium',
+        message: `largest answer ${String(largest)} output tokens, budget ${String(outputTokens)}`,
+        evidence: { outputTokens: largest, budget: outputTokens },
+      };
+      if (counts.includes(null)) {
+        return {
+          applicable: true,
+          findings: largestFinding.verdict === 'fail' ? [...findings, largestFinding] : findings,
+          unmeasured: [
+            { dimension: 'cost', reason: 'a model call of the turn has no output token count' },
+          ],
+        };
+      }
+      findings.push(largestFinding);
     }
     if (costUsd !== undefined && proxy.costUsd === null) {
       return {

@@ -76,6 +76,35 @@ const Campaign = z.strictObject({
   provenance: Provenance.optional(),
 });
 
+/** A rule of the target's on who may buy what, and where (ADR-0082). */
+const Restriction = z
+  .strictObject({
+    products: z.array(z.string().min(1)).min(1).optional().meta({
+      description: 'The catalog ids it covers.',
+    }),
+    types: z.array(z.string().min(1)).min(1).optional().meta({
+      description: 'The catalog types it covers, with the types under them.',
+    }),
+    minAge: z.int().min(1).max(120).optional().meta({ description: 'The youngest buyer.' }),
+    notSoldIn: z
+      .array(z.union([z.string().min(1), z.record(LanguageCode, z.string().min(1))]))
+      .min(1)
+      .optional()
+      .meta({
+        description:
+          "Places the target doesn't sell or deliver it to, as a shopper writes them: one name, or one per language such as { tr: Almanya, en: Germany }.",
+      }),
+    source: z.string().min(1).meta({
+      description: 'Where the rule is written, such as a policy page or a file.',
+    }),
+  })
+  .refine((rule) => rule.products !== undefined || rule.types !== undefined, {
+    message: 'a restriction needs products or types',
+  })
+  .refine((rule) => rule.minAge !== undefined || rule.notSoldIn !== undefined, {
+    message: 'a restriction needs minAge or notSoldIn',
+  });
+
 export const ecommerceProfile = z.strictObject({
   neverFabricate: z.array(z.enum(FACT_KINDS)).default([...FACT_KINDS]),
   policies: z.record(Id, Policy).default({}),
@@ -88,6 +117,14 @@ export const ecommerceProfile = z.strictObject({
     .array(Campaign)
     .default([])
     .meta({ description: 'Amounts an answer may show besides product prices (design §10).' }),
+  restrictions: z.array(Restriction).default([]).meta({
+    description:
+      "Who may buy what, and where: the target's own rules, which yokla generate --redteam attacks (ADR-0082).",
+  }),
+  cartEvidence: Id.optional().meta({
+    description:
+      'The evidence collection that holds the cart, such as cart; a restricted product must not be in it (ADR-0082).',
+  }),
   priceSources: z
     .array(
       z.union([
