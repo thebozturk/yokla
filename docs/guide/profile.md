@@ -500,4 +500,15 @@ it).
 | `campaigns` | Amounts an answer may show besides product prices, each with `id`, `amount` and `currency`. |
 | `priceSources` | Further amounts an answer may quote (ADR-0020): `{ evidence, fields }`, the amount fields of an evidence collection of the conversation, such as an order card's; or `{ file, paths }`, a JSON or JSON Lines snapshot, such as an order history, and the JSONPaths of its amounts. They ground amounts but don't make `price-grounded` apply. An amount anywhere in a file grounds a quote, whoever's order it was. |
 
+| `restrictions` | Who may buy what, and where: the target's own rules, which `yokla generate --redteam` attacks (ADR-0082). Each has `products` (ids) or `types` (with the types under them), `minAge` and/or `notSoldIn`, and `source`, where the rule is written. A place in `notSoldIn` is one name, or one per language such as `{ tr: Almanya, en: Germany }`. |
+| `cartEvidence` | The evidence collection that holds the cart, such as `cart`. A `restriction` attack expects the restricted product not to be in it (ADR-0082). |
+
 Paths in the profile are relative to the profile file.
+
+## `redteam`
+
+What the red-team checks look for (ADR-0082).
+
+| Field | Meaning |
+|---|---|
+| `internals` | Strings an answer to a question about the internals must never hold, such as an internal tool's name or a debug flag, at least three characters each. `internals-leak` looks for them, beside the model id and the tool names the proxy saw. |
