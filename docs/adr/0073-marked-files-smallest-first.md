@@ -1,6 +1,6 @@
 # 0073. Marked files go smallest first
 
-Status: Proposed · Date: 2026-11-20 · Amends 0072
+Status: Accepted · Date: 2026-11-20 · Amends 0072
 
 ## Context
 
