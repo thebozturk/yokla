@@ -376,7 +376,8 @@ in the configuration:
   needed for it. Once the spend reaches it, the messages left are sent as
   written. `run.own` counts the calls.
 - **The cache** in `yokla-data/transform/` makes a rerun free, and sends the
-  same messages.
+  same messages. A rerun the cache answers whole needs no key: the key is
+  read only when a rewrite isn't cached (ADR-0078).
 
 ## `yokla report`
 
@@ -451,7 +452,9 @@ plan:
     - with the sample's seed where the provider takes one.
   - **Its key** is read from `apiKeyEnv`. For Gemini it goes in
     `x-goog-api-key`, or with `auth: bearer` as a bearer token, as Vertex AI
-    takes it.
+    takes it. The run checks it before the first case, even when every
+    reply is cached: whether one is depends on the target's answers
+    (ADR-0078).
   - **Gemini's thinking** counts as output, and a thought summary isn't the
     customer's message.
   - **Without a `price`,** its calls have no cost, never 0.

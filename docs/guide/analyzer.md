@@ -174,7 +174,9 @@ npx yokla analyze --dir ../shop-assistant --url http://127.0.0.1:3000/v1/chat \
   `--max-tokens` (200,000 by default). The estimate says how many marked files the budget
   leaves out; a larger `--max-tokens` reads them, at the cost the estimate
   shows.
-- **Replies are cached,** so a rerun on unchanged files costs nothing.
+- **Replies are cached,** so a rerun on unchanged files costs nothing. It
+  needs no key either: the key `apiKeyEnv` names is read only when a reply
+  isn't cached (ADR-0078).
 
 ## Cases from your catalog
 
