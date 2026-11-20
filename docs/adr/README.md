@@ -90,7 +90,7 @@ old one.
 | [0075](0075-a-turn-says-what-kind-of-request-it-is.md) | A turn says what kind of request it is | Accepted |
 | [0076](0076-a-case-carries-a-weight.md) | A case carries a weight | Accepted |
 | [0077](0077-tags-group-the-summary-and-select-a-run.md) | Tags group the summary and select a run | Accepted |
-| [0078](0078-a-cached-reply-needs-no-key.md) | A cached reply needs no key | Proposed |
+| [0078](0078-a-cached-reply-needs-no-key.md) | A cached reply needs no key | Accepted |
 
 ## Template
 

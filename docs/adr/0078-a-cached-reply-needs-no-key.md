@@ -1,6 +1,6 @@
 # 0078. A cached reply needs no key
 
-Status: Proposed · Date: 2026-11-20
+Status: Accepted · Date: 2026-11-20
 
 ## Context
 
