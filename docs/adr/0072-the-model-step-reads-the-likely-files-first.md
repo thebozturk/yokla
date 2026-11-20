@@ -1,6 +1,6 @@
 # 0072. The model step reads the likely files first, and answers at length
 
-Status: Proposed · Date: 2026-11-20 · Amends 0049
+Status: Accepted · Date: 2026-11-20 · Amends 0049
 
 ## Context
 

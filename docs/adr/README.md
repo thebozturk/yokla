@@ -61,7 +61,7 @@ old one.
 | [0046](0046-intents-that-state-what-they-ask.md) | Intents that state what they ask, across the catalog's types | Accepted; amended by 0048 |
 | [0047](0047-the-analyzer-deterministic-first.md) | The analyzer, deterministic first: inventory, data and probes | Accepted; amended by 0066, 0067, 0068 |
 | [0048](0048-intents-ask-as-a-shopper-names-things.md) | Intents ask as a shopper names things | Accepted; amended by 0050, 0052 |
-| [0049](0049-the-analyzer-reads-code-and-docs.md) | The analyzer reads code and docs: values a model finds, verified in their source | Accepted; amended by 0051 |
+| [0049](0049-the-analyzer-reads-code-and-docs.md) | The analyzer reads code and docs: values a model finds, verified in their source | Accepted; amended by 0051, 0072 |
 | [0050](0050-a-type-asked-by-its-catalog-label.md) | A type asked by its catalog label | Accepted |
 | [0051](0051-replies-the-analyzer-could-not-read.md) | Replies the analyzer couldn't read, and tokens counted as code takes them | Accepted |
 | [0052](0052-the-currency-code-turn-where-a-dropped-bound-shows.md) | The currency-code turn where a dropped bound shows | Accepted |
@@ -84,7 +84,7 @@ old one.
 | [0069](0069-the-model-proxy-reads-an-ai-sdk-gateway.md) | The model proxy reads an AI SDK gateway | Accepted |
 | [0070](0070-v0-4-ships-with-one-criterion-partly-met.md) | v0.4 ships with one exit criterion partly met | Accepted |
 | [0071](0071-a-new-package-reserved-before-it-ships-and-a-release-that-resumes.md) | A new package reserved before it ships, and a release that resumes | Accepted |
-| [0072](0072-the-model-step-reads-the-likely-files-first.md) | The model step reads the likely files first, and answers at length | Proposed |
+| [0072](0072-the-model-step-reads-the-likely-files-first.md) | The model step reads the likely files first, and answers at length | Accepted |
 
 ## Template
 
