@@ -2326,6 +2326,22 @@
             "type": "string",
             "minLength": 3
           }
+        },
+        "freeTextArguments": {
+          "description": "Per tool, the arguments meant to take the user's words, such as a search box's query, as dotted paths into its arguments. A payload marker that reaches only these is unmeasured, not a failure (ADR-0085).",
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         }
       },
       "additionalProperties": false

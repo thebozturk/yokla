@@ -44,6 +44,7 @@ import {
   type Cassette,
   type Case,
   type ModelSwap,
+  type DescriptionInjection,
   type ToolInjection,
   type ToolReversal,
   type ModelTransform,
@@ -476,15 +477,17 @@ export function preflight(options: RunOptions): void {
       problems.push(`case "${c.id}" injects faults, which needs an upstream in modelProxy`);
     }
   }
-  // Tool results are changed in calls the proxy forwards, never under a cassette (ADR-0043).
+  // Tool results and descriptions are changed in calls the proxy forwards, never under a
+  // cassette (ADR-0043, ADR-0085).
   const injecting = options.cases.filter((c) =>
-    c.turns.some((turn) => turn.toolResults !== undefined),
+    c.turns.some((turn) => turn.toolResults !== undefined || turn.toolDescriptions !== undefined),
   );
   for (const c of injecting) {
     if (!proxiesCalls(options.profile)) {
-      problems.push(
-        `case "${c.id}" injects into tool results, which needs a modelProxy with upstreams`,
-      );
+      const into = c.turns.some((turn) => turn.toolResults !== undefined)
+        ? 'tool results'
+        : 'tool descriptions';
+      problems.push(`case "${c.id}" injects into ${into}, which needs a modelProxy with upstreams`);
     }
   }
   const reversing = (options.reversals ?? []).length > 0;
@@ -493,7 +496,7 @@ export function preflight(options: RunOptions): void {
   }
   if ((injecting.length > 0 || reversing) && options.cassette !== undefined) {
     problems.push(
-      "tool results can't be changed with a cassette: a changed request no longer matches what it recorded",
+      "tool results and descriptions can't be changed with a cassette: a changed request no longer matches what it recorded",
     );
   }
   // A transformed message is the language pack's to write; a cassette holds the messages
@@ -740,6 +743,7 @@ type Arm = (
     readonly faults?: readonly FaultPlan[];
     readonly seed?: string;
     readonly toolResults?: readonly ToolInjection[];
+    readonly toolDescriptions?: readonly DescriptionInjection[];
   },
 ) => Promise<void>;
 
@@ -1072,6 +1076,7 @@ async function runSample(
       let outcome: Exchange;
       const faults = turn.faults;
       const injections = turn.toolResults;
+      const descriptions = turn.toolDescriptions;
       const started = performance.now();
       try {
         // A cassette keys each call by its turn, so every turn is armed with its key (ADR-0040).
@@ -1079,13 +1084,17 @@ async function runSample(
         if (
           tag !== undefined &&
           proxied &&
-          (correlation === 'serial' || keyed || injections !== undefined)
+          (correlation === 'serial' ||
+            keyed ||
+            injections !== undefined ||
+            descriptions !== undefined)
         ) {
           await arm?.(tag.id, {
             inFlight: correlation === 'serial',
             // The jitter seed: what identifies this turn in every run (ADR-0017).
             ...(faults === undefined ? {} : { faults }),
             ...(injections === undefined ? {} : { toolResults: injections }),
+            ...(descriptions === undefined ? {} : { toolDescriptions: descriptions }),
             ...(keyed
               ? { seed: `${testCase.id}|${String(sampleIndex)}|${String(turnIndex)}` }
               : {}),

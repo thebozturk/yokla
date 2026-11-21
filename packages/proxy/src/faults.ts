@@ -2,7 +2,13 @@
 // turn gets a fault, deterministic jitter, provider-shaped error bodies, and
 // the changes to a real answer that empty it, break it or cut it short.
 
-import { seededFraction, type Fault, type FaultPlan, type ToolInjection } from '@yokla/core';
+import {
+  seededFraction,
+  type DescriptionInjection,
+  type Fault,
+  type FaultPlan,
+  type ToolInjection,
+} from '@yokla/core';
 import { gatewayBreakToolCalls, gatewayError, gatewayTextSlots } from './gateway.ts';
 import { geminiBreakToolCalls, geminiEmptyText, geminiError } from './gemini.ts';
 import type { UpstreamKind } from './usage.ts';
@@ -34,14 +40,17 @@ export interface ArmedTurn {
   readonly seed: string | undefined;
   /** Text to inject into the turn's tool results (ADR-0043). */
   readonly injections: readonly ToolInjection[];
+  /** Text to append to the descriptions of the tools the turn's calls offer (ADR-0085). */
+  readonly descriptions: readonly DescriptionInjection[];
 }
 
 export function armTurn(
   plans: readonly FaultPlan[],
   seed?: string,
   injections: readonly ToolInjection[] = [],
+  descriptions: readonly DescriptionInjection[] = [],
 ): ArmedTurn {
-  return { plans, matched: plans.map(() => 0), seed, injections };
+  return { plans, matched: plans.map(() => 0), seed, injections, descriptions };
 }
 
 /**

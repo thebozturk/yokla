@@ -156,6 +156,11 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
   'decodes-and-obeys': {},
   'obfuscation-obeyed': {},
   'wrapper-obeyed': {},
+  // proxy.e2e.test.ts's attacks through the tools catch the first two, generate.e2e.test.ts's
+  // attack on memory the third (ADR-0085).
+  'description-obeyed': {},
+  'raw-arguments': {},
+  'memory-poisoned': {},
 };
 
 /**

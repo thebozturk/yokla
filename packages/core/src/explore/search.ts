@@ -119,6 +119,7 @@ function conversationKey(turns: readonly CaseTurn[]): string {
       turn.request ?? null,
       turn.faults ?? null,
       turn.toolResults ?? null,
+      turn.toolDescriptions ?? null,
     ]),
   );
 }

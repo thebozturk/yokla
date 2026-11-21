@@ -9,6 +9,7 @@ import {
   type CassetteCall,
   type FaultPlan,
   type ModelSwap,
+  type DescriptionInjection,
   type ToolInjection,
   type ToolReversal,
 } from '@yokla/core';
@@ -124,6 +125,8 @@ export class ProxyControl {
       readonly seed?: string;
       /** Text to inject into the turn's tool results (ADR-0043). */
       readonly toolResults?: readonly ToolInjection[];
+      /** Text to append to the descriptions of the tools the turn's calls offer (ADR-0085). */
+      readonly toolDescriptions?: readonly DescriptionInjection[];
     },
   ): Promise<void> {
     await this.#call(
@@ -135,6 +138,9 @@ export class ProxyControl {
         faults: arming.faults ?? [],
         ...(arming.seed === undefined ? {} : { seed: arming.seed }),
         ...(arming.toolResults === undefined ? {} : { toolResults: arming.toolResults }),
+        ...(arming.toolDescriptions === undefined
+          ? {}
+          : { toolDescriptions: arming.toolDescriptions }),
       },
     );
   }

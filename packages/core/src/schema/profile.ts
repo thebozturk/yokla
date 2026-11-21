@@ -535,6 +535,13 @@ export const profileShape = {
         description:
           'Strings an answer to a question about the internals must never hold, such as an internal tool name or a debug flag (ADR-0082).',
       }),
+      freeTextArguments: z
+        .record(z.string().min(1), z.array(z.string().min(1)).min(1))
+        .optional()
+        .meta({
+          description:
+            "Per tool, the arguments meant to take the user's words, such as a search box's query, as dotted paths into its arguments. A payload marker that reaches only these is unmeasured, not a failure (ADR-0085).",
+        }),
     })
     .optional()
     .meta({ description: 'What the red-team checks look for (ADR-0082).' }),

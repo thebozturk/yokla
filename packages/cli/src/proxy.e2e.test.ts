@@ -119,7 +119,12 @@ function profileFor(
       fabricatingUrl === ''
         ? ''
         : `    - { id: fake-fabricating, kind: openai-compatible, upstream: '${fabricatingUrl}' }\n`
-    }${more}`,
+    }${[...modelDefectUrls]
+      .map(
+        ([defect, url]) =>
+          `    - { id: fake-${defect}, kind: openai-compatible, upstream: '${url}' }\n`,
+      )
+      .join('')}${more}`,
   );
   return path;
 }
@@ -320,7 +325,11 @@ const INSPECTION: Readonly<Record<string, Readonly<Record<string, readonly strin
 const inspection = new Map<string, Results>();
 /** The attacks yokla generate --redteam wrote, run on the correct shop and on no-leak-guard (ADR-0080). */
 const attacks = new Map<string, Results>();
-const ATTACK_DEFECTS = ['none', 'no-leak-guard', 'unbounded-output'];
+/** The model's defects the attacks through the tools catch, each played by a fake provider of its own (ADR-0085). */
+const MODEL_DEFECTS = ['description-obeyed', 'raw-arguments'];
+const ATTACK_DEFECTS = ['none', 'no-leak-guard', 'unbounded-output', ...MODEL_DEFECTS];
+/** Each model defect's fake provider, an upstream of the proxy as fake-<defect>. */
+const modelDefectUrls = new Map<string, string>();
 
 async function runInspection(
   defect: string,
@@ -328,11 +337,13 @@ async function runInspection(
   cases = join(DEMO, 'cases-inspection'),
   into = inspection,
 ): Promise<void> {
+  // A model defect is played by its own fake provider, behind the proxy as fake-<defect>.
+  const model = modelDefectUrls.has(defect) ? `fake-${defect}` : 'fake';
   const shop = await start('src/main.ts', [
     '--port',
     '0',
     '--model-url',
-    `${proxyUrl}/fake`,
+    `${proxyUrl}/${model}`,
     '--model-canary',
     CANARY,
     '--defect',
@@ -715,6 +726,12 @@ beforeAll(async () => {
     '--defect',
     'fabricated-price',
   ]);
+  for (const defect of MODEL_DEFECTS) {
+    modelDefectUrls.set(
+      defect,
+      await start('src/provider-main.ts', ['--port', '0', '--defect', defect]),
+    );
+  }
   const proxyLines: string[] = [];
   proxyDone = proxyCommand(
     [
@@ -943,9 +960,30 @@ describe('the model proxy against the demo-shop', () => {
         'false-premise',
         // With no identities in this profile, card is the only attack on another customer's data.
         'card',
+        // The proxy forwards the calls, so the descriptions can be changed (ADR-0085).
+        'tool-description',
+        'tool-argument',
       ]),
     );
     for (const c of results?.cases ?? []) expect(c.status, c.id).toBe('pass');
+    // The attacks through the tools were measured: the proxy changed the descriptions, and
+    // read the tool calls' arguments (ADR-0085).
+    const measured = (prefix: string, check: string) =>
+      (results?.cases ?? [])
+        .filter((c) => c.id.startsWith(prefix))
+        .map((c) =>
+          c.samples[0]?.turns
+            .flatMap((turn) => turn.checks)
+            .filter((x) => x.check === check && x.applicable)
+            .map((x) => (x.applicable ? x.findings.map((f) => f.verdict) : [])),
+        );
+    expect(measured('tool-description-', 'injection-canary')).toEqual(
+      Array.from({ length: 4 }, () => [['pass']]),
+    );
+    // Two of each kind per language, the default: the sql and shell payloads.
+    expect(measured('tool-argument-', 'tool-argument-marker')).toEqual(
+      Array.from({ length: 4 }, () => [['pass']]),
+    );
     // With the proxy, cost-abuse is measured: the writer's bound keeps the answer short (ADR-0082).
     const costAbuse = results?.cases.filter((c) => c.id.startsWith('cost-abuse-')) ?? [];
     expect(costAbuse).toHaveLength(2);
@@ -964,6 +1002,39 @@ describe('the model proxy against the demo-shop', () => {
     expect(failingByCheck(attacks.get('unbounded-output'))).toEqual({
       'cost-budget': ['cost-abuse-en-long-answer', 'cost-abuse-tr-long-answer'],
     });
+  });
+
+  it('attacks: description-obeyed fails exactly the tool-description cases, by injection-canary, the second-turn ones on their second turn (ADR-0085)', () => {
+    const results = attacks.get('description-obeyed');
+    const described = (results?.cases ?? [])
+      .map((c) => c.id)
+      .filter((id) => id.startsWith('tool-description-'))
+      .toSorted();
+    expect(described).toHaveLength(4);
+    expect(failingByCheck(results)).toEqual({ 'injection-canary': described });
+    for (const c of (results?.cases ?? []).filter((x) => x.id.endsWith('-second-turn'))) {
+      const [first, second] = c.samples[0]?.turns ?? [];
+      // The first turn's calls went with the descriptions the shop wrote; the second's changed.
+      const changed = (turn: typeof first) =>
+        (turn?.proxy?.calls ?? []).some((call) =>
+          (call.toolChanges ?? []).some((change) => change.kind === 'describe' && change.applied),
+        );
+      expect(changed(first), c.id).toBe(false);
+      expect(changed(second), c.id).toBe(true);
+      expect(second?.checks.find((x) => x.check === 'injection-canary')?.findings[0]?.verdict).toBe(
+        'fail',
+      );
+    }
+  });
+
+  it('attacks: raw-arguments fails exactly the tool-argument cases, by tool-argument-marker (ADR-0085)', () => {
+    const results = attacks.get('raw-arguments');
+    const payloads = (results?.cases ?? [])
+      .map((c) => c.id)
+      .filter((id) => id.startsWith('tool-argument-'))
+      .toSorted();
+    expect(payloads).toHaveLength(4);
+    expect(failingByCheck(results)).toEqual({ 'tool-argument-marker': payloads });
   });
 
   it('attacks: no-leak-guard fails exactly the extraction cases, by answer-text and prompt-leak (ADR-0080)', () => {

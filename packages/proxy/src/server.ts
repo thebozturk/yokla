@@ -21,6 +21,7 @@ import { request as httpsRequest } from 'node:https';
 import { brotliDecompressSync, gunzipSync, inflateSync } from 'node:zlib';
 import {
   CassetteCall,
+  DescriptionInjection,
   FaultPlan,
   ModelSwap,
   ToolInjection,
@@ -49,6 +50,7 @@ import { GATEWAY_MODEL_HEADER, gatewayFacts } from './gateway.ts';
 import { geminiFacts } from './gemini.ts';
 import { readPrompt } from './prompts.ts';
 import { readOutputText } from './output.ts';
+import { changeToolDescriptions } from './tool-descriptions.ts';
 import { changeToolResults, type ToolChange } from './tool-results.ts';
 import { readOffered, readToolCalls } from './tools.ts';
 import { readUsage, UNMEASURED, type UpstreamKind } from './usage.ts';
@@ -160,6 +162,8 @@ const TurnArming = z.object({
   faults: z.array(FaultPlan).default([]),
   /** Text to inject into the turn's tool results (ADR-0043). */
   toolResults: z.array(ToolInjection).default([]),
+  /** Text to append to the descriptions of the tools the turn's calls offer (ADR-0085). */
+  toolDescriptions: z.array(DescriptionInjection).default([]),
   /** What identifies the turn across runs, for repeatable jitter (ADR-0017). */
   seed: z.string().min(1).max(1024).optional(),
 });
@@ -240,7 +244,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /**
  * The call the proxy makes of an app's call within a recording: its tool
  * results changed by the turn's injections and the run's reversals (ADR-0043),
- * and its model's name changed by the first swap of the called upstream for
+ * its tools' descriptions by the turn's (ADR-0085), and its model's name changed by the first swap of the called upstream for
  * the model it asks for, in the body, a Gemini call's path or a gateway
  * call's header (ADR-0069), and sent to the swap's upstream (ADR-0042).
  * Undefined when nothing applies.
@@ -248,6 +252,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function rewriteRequest(
   swaps: readonly ModelSwap[],
   changes: readonly ToolChange[],
+  descriptions: readonly DescriptionInjection[],
   upstreams: ReadonlyMap<string, ProxyUpstream>,
   called: ProxyUpstream,
   rest: string,
@@ -265,7 +270,7 @@ function rewriteRequest(
       readonly toolChanges: readonly ToolResultChange[];
     }
   | undefined {
-  if (swaps.length === 0 && changes.length === 0) return undefined;
+  if (swaps.length === 0 && changes.length === 0 && descriptions.length === 0) return undefined;
   let value: unknown;
   try {
     value = JSON.parse(decoded(body, headers['content-encoding']) ?? '');
@@ -285,7 +290,13 @@ function rewriteRequest(
     typeof asked === 'string' && (outside || json !== undefined)
       ? swaps.find((s) => s.upstream === called.id && s.asked === asked)
       : undefined;
-  const toolChanges = json === undefined ? [] : changeToolResults(called.kind, json, changes);
+  const toolChanges =
+    json === undefined
+      ? []
+      : [
+          ...changeToolResults(called.kind, json, changes),
+          ...changeToolDescriptions(called.kind, json, descriptions),
+        ];
   if (swap === undefined && toolChanges.length === 0) return undefined;
   const renamed = swap !== undefined && !outside;
   if (renamed && json !== undefined) json['model'] = swap.model;
@@ -449,7 +460,15 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
       }
       const turn = decodeURIComponent(turned[2] ?? '');
       if (parsed.data.inFlight) open.mark = turn;
-      open.turns.set(turn, armTurn(parsed.data.faults, parsed.data.seed, parsed.data.toolResults));
+      open.turns.set(
+        turn,
+        armTurn(
+          parsed.data.faults,
+          parsed.data.seed,
+          parsed.data.toolResults,
+          parsed.data.toolDescriptions,
+        ),
+      );
       sendJson(response, 200, {
         id: open.id,
         turn,
@@ -637,6 +656,7 @@ export async function startProxy(options: ProxyOptions): Promise<RunningProxy> {
         : rewriteRequest(
             open.swaps,
             changes,
+            armed?.descriptions ?? [],
             upstreams,
             called,
             calledRest,

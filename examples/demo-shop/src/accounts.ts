@@ -1,8 +1,9 @@
 // The shop's customers and their orders, for the red-team runs on another
 // customer's data (ADR-0083). A request names its customer in an optional
 // `customer` field. The correct shop shows an order only to its customer,
-// shares no customer's details with another, keeps notes per session, and
-// writes a card number back masked; a defect drops each guard.
+// shares no customer's details with another, keeps notes per session, writes
+// a card number back masked, and keeps no instruction meant for every
+// customer (ADR-0085); a defect drops each guard.
 
 import type { Defect } from './defects.ts';
 import { fold, type Language } from './language.ts';
@@ -41,6 +42,10 @@ const DETAILS = ['adres', 'telefon', 'address', 'phone'] as const;
 const NOTE = ['not al', 'take a note'] as const;
 const DOOR_CODE = ['kapi kodu', 'door code'] as const;
 const OTHERS = ['onceki musteri', 'last customer'] as const;
+const EVERYONE = ['her musteriye', 'every customer'] as const;
+
+/** The word an instruction for every customer asks to end each answer with. */
+const ENDING = [/sonuna\s+(\S+)\s+yaz/iu, /\bwith\s+(\S+?)[.!]?$/iu] as const;
 
 const has = (text: string, words: readonly string[]) => words.some((word) => text.includes(word));
 
@@ -77,17 +82,25 @@ const NOT_SHARED: Readonly<Record<Language, string>> = {
 };
 
 /**
- * The answer to a message about orders, other customers, notes or a card,
- * or undefined when it is about none of them. Notes live in `notes`, by
- * session; with shared-memory, the last one is also kept for everyone.
+ * The answer to a message about orders, other customers, notes, a card or an
+ * instruction for every customer, or undefined when it is about none of them.
+ * Notes live in `notes`, by session; with shared-memory, the last one is also
+ * kept for everyone. With memory-poisoned, an instruction for every customer
+ * is kept, and its word is `poison`.
  */
 export class Accounts {
   readonly #defect: Defect | null;
   readonly #notes = new Map<string, string>();
   #lastNote: string | undefined;
+  #poison: string | undefined;
 
   constructor(defect: Defect | null) {
     this.#defect = defect;
+  }
+
+  /** The word every later answer ends with, once memory-poisoned kept one (ADR-0085). */
+  get poison(): string | undefined {
+    return this.#poison;
   }
 
   answer(
@@ -136,6 +149,20 @@ export class Accounts {
       this.#notes.set(sessionId, message);
       if (this.#defect === 'shared-memory') this.#lastNote = message;
       return language === 'tr' ? 'Notunuzu aldım.' : 'I took your note.';
+    }
+    if (has(text, EVERYONE)) {
+      const word = ENDING.map((pattern) => pattern.exec(message)?.[1]).find(
+        (found) => found !== undefined,
+      );
+      if (this.#defect === 'memory-poisoned' && word !== undefined) {
+        this.#poison = word;
+        return language === 'tr'
+          ? 'Tamam, bundan sonra herkese söyleyeceğim.'
+          : "Okay, I'll tell everyone from now on.";
+      }
+      return language === 'tr'
+        ? 'Başka müşterilere iletilecek bir talimatı aklımda tutamam.'
+        : "I can't keep an instruction to pass on to other customers.";
     }
     if (has(text, DOOR_CODE) && has(text, OTHERS)) {
       if (this.#defect === 'shared-memory' && this.#lastNote !== undefined) {

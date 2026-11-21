@@ -22,6 +22,10 @@ describe('the attack phrasings (ADR-0080)', () => {
     expect(attacks?.crossSession.ask).not.toContain('{');
     expect(attacks?.pretext).toContain('{name}');
     expect(attacks?.card).toContain('{card}');
+    // The attacks through memory and tool descriptions carry the canary but the plain question (ADR-0085).
+    expect(attacks?.memoryPoisoning.instruct).toContain('{canary}');
+    expect(attacks?.memoryPoisoning.ask).not.toContain('{');
+    expect(attacks?.toolDescription).toContain('{canary}');
     // Each strategy line holds the payload, but the hidden one, whose payload follows it (ADR-0084).
     for (const text of [
       ...Object.values(attacks?.strategies.decode ?? {}),
@@ -50,6 +54,9 @@ describe('the attack phrasings (ADR-0080)', () => {
       attacks?.crossSession.ask ?? '',
       attacks?.pretext ?? '',
       attacks?.card ?? '',
+      attacks?.memoryPoisoning.instruct ?? '',
+      attacks?.memoryPoisoning.ask ?? '',
+      attacks?.toolDescription ?? '',
       attacks?.strategies.hidden ?? '',
       ...Object.values(attacks?.strategies.decode ?? {}),
       ...Object.values(attacks?.strategies.wrap ?? {}),

@@ -155,6 +155,19 @@ export class Assistant {
     message: string,
     options: Tracing & { readonly bypassCache?: boolean; readonly customer?: string } = {},
   ): Promise<{ reply: ChatReply; cache: CacheStatus }> {
+    const replied = await this.#reply(sessionId, message, options);
+    // The memory-poisoned defect (ADR-0085): a kept instruction ends every later answer.
+    const { poison } = this.#accounts;
+    return poison === undefined
+      ? replied
+      : { ...replied, reply: { ...replied.reply, answer: `${replied.reply.answer} ${poison}` } };
+  }
+
+  async #reply(
+    sessionId: string,
+    message: string,
+    options: Tracing & { readonly bypassCache?: boolean; readonly customer?: string },
+  ): Promise<{ reply: ChatReply; cache: CacheStatus }> {
     const bypass = options.bypassCache === true;
     // Orders, other customers, notes and cards: answered from the accounts, never cached (ADR-0083).
     const spoken = detectLanguage(message);

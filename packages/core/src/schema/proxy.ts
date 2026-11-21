@@ -132,13 +132,28 @@ export const ToolInjection = z.strictObject({
 });
 export type ToolInjection = z.output<typeof ToolInjection>;
 
+/**
+ * Text a turn appends to a tool's description in the calls that offer it
+ * (ADR-0085): the named tool's, or every tool's when `tool` is left out.
+ * `canary` is what the answer must not contain.
+ */
+export const DescriptionInjection = z.strictObject({
+  tool: z.string().min(1).optional(),
+  inject: z.string().min(1),
+  canary: z.string().min(1).optional(),
+});
+export type DescriptionInjection = z.output<typeof DescriptionInjection>;
+
 /** A run's change to every result of a tool: each array `at` selects, reversed (ADR-0043). */
 export const ToolReversal = z.strictObject({ tool: z.string().min(1), at: JsonPath });
 export type ToolReversal = z.output<typeof ToolReversal>;
 
-/** A change the proxy made to a tool result a call sent, or couldn't make (ADR-0043). */
+/**
+ * A change the proxy made to a tool result a call sent, or to the description
+ * of a tool it offered (ADR-0043, ADR-0085), or couldn't make.
+ */
 export const ToolResultChange = z.object({
-  kind: z.enum(['inject', 'reverse']),
+  kind: z.enum(['inject', 'reverse', 'describe']),
   tool: z.string(),
   applied: z.boolean(),
 });

@@ -10,6 +10,9 @@
 // and :streamGenerateContent, answering the same, with thinking tokens. A call
 // that asks for demo-writer-nano gets a model that invents a price, as
 // fabricated-price does, so swapping models shows a difference (ADR-0042).
+// Given description-obeyed, it writes the word an instruction in a tool's
+// description asks for; given raw-arguments, it copies the message into its
+// search's arguments (ADR-0085).
 
 import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
@@ -55,6 +58,8 @@ interface ChatRequest {
   readonly includeUsage: boolean;
   /** The names of the tools the request offers. */
   readonly offered: readonly string[];
+  /** The descriptions of the tools the request offers (ADR-0085). */
+  readonly descriptions: readonly string[];
   /** Every message, as role and text. */
   readonly messages: readonly { readonly role: string; readonly content: string }[];
   /** The most tokens the reply may take, when the request says. */
@@ -256,6 +261,7 @@ function parse(body: string): ChatRequest | undefined {
   });
   return {
     offered,
+    descriptions: descriptionsOf(Array.isArray(tools) ? tools : [], 'function'),
     messages: contents.map((content, index) => ({ role: roles[index] ?? '', content })),
     model,
     role: (contents[0] ?? '').split('\n')[0] ?? '',
@@ -269,6 +275,15 @@ function parse(body: string): ChatRequest | undefined {
       Reflect.get(options, 'include_usage') === true,
     ...(typeof maxTokens === 'number' ? { maxTokens } : {}),
   };
+}
+
+/** The descriptions of offered tools: each one's own, or its `inner` object's. */
+function descriptionsOf(tools: readonly unknown[], inner?: string): string[] {
+  return tools.flatMap((tool: unknown) => {
+    const description =
+      inner === undefined ? field(tool, 'description') : field(tool, inner, 'description');
+    return typeof description === 'string' ? [description] : [];
+  });
 }
 
 /** A reply cut at max_tokens, as providers cut one; undefined when it fits (ADR-0051). */
@@ -328,15 +343,19 @@ function parseGemini(body: string, model: string, stream: boolean): ChatRequest 
     }),
   ];
   const tools = field(value, 'tools');
-  const offered = (Array.isArray(tools) ? tools : []).flatMap((tool: unknown) => {
+  const declared = (Array.isArray(tools) ? tools : []).flatMap((tool: unknown): unknown[] => {
     const declarations = field(tool, 'functionDeclarations');
-    return (Array.isArray(declarations) ? declarations : []).flatMap((declaration: unknown) => {
-      const name = field(declaration, 'name');
-      return typeof name === 'string' ? [name] : [];
-    });
+    return Array.isArray(declarations)
+      ? declarations.map((declaration: unknown) => declaration)
+      : [];
+  });
+  const offered = declared.flatMap((declaration: unknown) => {
+    const name = field(declaration, 'name');
+    return typeof name === 'string' ? [name] : [];
   });
   return {
     offered,
+    descriptions: descriptionsOf(declared),
     messages,
     model,
     role: system.split('\n')[0] ?? '',
@@ -366,6 +385,23 @@ function unfenced(text: string): string {
     // Not JSON: a text result, fenced by tags if at all.
   }
   return text.replaceAll(/<data[^>]*>[\s\S]*?<\/data>/gu, '');
+}
+
+/** An instruction in a tool's description to reply only with a word, in English or Turkish. */
+const DESCRIBED = [INJECTED, /yaln[ıi]zca ([A-Za-z0-9-]+) yaz/iu] as const;
+
+/**
+ * The word an instruction in a tool's description asks the model to reply
+ * with: like a model that follows its tools' descriptions (ADR-0085).
+ */
+function describedReply(descriptions: readonly string[]): string | undefined {
+  for (const description of descriptions) {
+    for (const pattern of DESCRIBED) {
+      const asked = pattern.exec(description)?.[1];
+      if (asked !== undefined) return asked;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -399,6 +435,7 @@ async function answer(
   model: ScriptedModel,
   request: ChatRequest,
   catalog: readonly Product[],
+  defect: Defect | null,
 ): Promise<Answer | undefined> {
   if (request.role === CUSTOMER_MARK) return text(customerReply(request, catalog));
   if (request.role === ANALYZER_MARK) return text(analyzerReply(request));
@@ -413,9 +450,18 @@ async function answer(
     const interpretation = await model.interpret(message, context ?? undefined);
     // Offered the tool the message needs, the model asks for it instead of answering.
     const call = toolCallOf(interpretation);
-    return call !== undefined && request.offered.includes(call.name)
-      ? { content: null, toolCalls: [call] }
-      : text(JSON.stringify(interpretation));
+    if (call === undefined || !request.offered.includes(call.name)) {
+      return text(JSON.stringify(interpretation));
+    }
+    // The raw-arguments defect (ADR-0085): the message goes into the search as it is.
+    const raw =
+      defect === 'raw-arguments' && call.name === TOOL.search
+        ? {
+            name: call.name,
+            arguments: JSON.stringify({ ...JSON.parse(call.arguments), query: message }),
+          }
+        : call;
+    return { content: null, toolCalls: [raw] };
   }
   if (request.role === ROLES.summarize) {
     const written: unknown = Reflect.get(payload, 'answer');
@@ -428,6 +474,10 @@ async function answer(
     if (typeof question === 'string' && asksForInstructions(question)) return text(request.system);
     const injected = injectedReply(request.messages);
     if (injected !== undefined) return text(injected);
+    // The description-obeyed defect (ADR-0085): an instruction in a tool's description is followed.
+    const described =
+      defect === 'description-obeyed' ? describedReply(request.descriptions) : undefined;
+    if (described !== undefined) return text(described);
     if (!isDraft(draft)) return undefined;
     const once = await model.write(draft);
     // Asked for a very long answer, it writes one, as long as max_tokens lets it (ADR-0082).
@@ -502,7 +552,9 @@ export function createFakeProvider(options: FakeProviderOptions): Server {
     const answered =
       chat === undefined
         ? undefined
-        : await answer(named(chat.model), chat, catalog).catch(() => undefined);
+        : await answer(named(chat.model), chat, catalog, options.defect ?? null).catch(
+            () => undefined,
+          );
     if (chat === undefined || answered === undefined) {
       send(response, 400, {
         error: { code: 400, message: 'invalid request', status: 'INVALID_ARGUMENT' },
@@ -587,7 +639,9 @@ export function createFakeProvider(options: FakeProviderOptions): Server {
     const answered =
       chat === undefined
         ? undefined
-        : await answer(named(chat.model), chat, catalog).catch(() => undefined);
+        : await answer(named(chat.model), chat, catalog, options.defect ?? null).catch(
+            () => undefined,
+          );
     if (chat === undefined || answered === undefined) {
       send(response, 400, { error: { message: 'invalid request' } });
       return;

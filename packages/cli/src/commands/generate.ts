@@ -151,10 +151,11 @@ export function generateCommand(args: readonly string[], io: Output, cwd = proce
     const identities = Object.entries(profile.identities ?? {});
     if (redteam) {
       // The attacks that need no domain, then the domain's (ADR-0080).
+      const packs = profile.languages.flatMap((language) =>
+        LANGUAGE_PACKS.filter((candidate) => candidate.language === language),
+      );
       const generic = genericAttacks({
-        packs: profile.languages.flatMap((language) =>
-          LANGUAGE_PACKS.filter((candidate) => candidate.language === language),
-        ),
+        packs,
         perKind,
         canary: profile.modelProxy?.inspect?.canary,
         outputTokens,
@@ -165,6 +166,14 @@ export function generateCommand(args: readonly string[], io: Output, cwd = proce
         perKind,
         competitors,
         identities,
+        proxied: (profile.modelProxy?.upstreams.length ?? 0) > 0,
+        phrasings: new Map(
+          packs.flatMap((languagePack) =>
+            languagePack.attacks === undefined
+              ? []
+              : [[languagePack.language, languagePack.attacks] as const],
+          ),
+        ),
       });
       generated = {
         cases: [...generic.cases, ...(domain?.cases ?? [])],

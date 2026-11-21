@@ -1214,7 +1214,8 @@
                                         "type": "string",
                                         "enum": [
                                           "inject",
-                                          "reverse"
+                                          "reverse",
+                                          "describe"
                                         ]
                                       },
                                       "tool": {

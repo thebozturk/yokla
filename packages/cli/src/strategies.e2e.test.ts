@@ -72,8 +72,8 @@ const RESISTS: Readonly<Record<string, readonly string[]>> = {
 };
 /** The kinds whose own message, followed, breaks a check. */
 const FOLLOWED = new Set(['injection', 'false-premise', 'card', 'offer']);
-/** Unmeasured without the proxy (cost-abuse) or without internals to look for. */
-const UNMEASURED = new Set(['cost-abuse', 'internals']);
+/** Unmeasured without the proxy (cost-abuse, tool-argument) or without internals to look for. */
+const UNMEASURED = new Set(['cost-abuse', 'internals', 'tool-argument']);
 
 const runs = new Map<string, { code: number; output: string }>();
 const results = (defect: string, strategy: string) =>

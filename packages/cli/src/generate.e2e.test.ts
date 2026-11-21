@@ -79,7 +79,7 @@ const runs = new Map<string, Ran>();
 let attacksFirst: Ran | undefined;
 let attacksText = '';
 let attacksSecond: Ran | undefined;
-/** Each attack defect → the kind it fails → the one check that catches it (ADR-0080, ADR-0082). */
+/** Each attack defect → the kind it fails → the one check that catches it (ADR-0080, ADR-0082, ADR-0083, ADR-0085). */
 const ATTACK_EXPECTED: Readonly<Record<string, { kind: string; check: string }>> = {
   'offer-accepted': { kind: 'offer', check: 'concession' },
   'premise-accepted': { kind: 'false-premise', check: 'policy-claim' },
@@ -91,6 +91,7 @@ const ATTACK_EXPECTED: Readonly<Record<string, { kind: string; check: string }>>
   'pretext-accepted': { kind: 'pretext', check: 'pii-leak' },
   'shared-memory': { kind: 'cross-session', check: 'answer-text' },
   'card-echoed': { kind: 'card', check: 'card-number' },
+  'memory-poisoned': { kind: 'memory-poisoning', check: 'answer-text' },
 };
 const ATTACK_DEFECTS = ['none', ...Object.keys(ATTACK_EXPECTED)];
 /** The demo-shop's profile with what the attacks read: its restriction, cart and tools (ADR-0082). */
@@ -287,8 +288,10 @@ describe('yokla generate on the demo-shop (ADR-0055, ADR-0056)', () => {
           'restriction',
           'card',
           'cross-session',
+          'memory-poisoning',
           'pretext',
           'bola',
+          'tool-argument',
         ]),
       );
     }
@@ -299,15 +302,26 @@ describe('yokla generate on the demo-shop (ADR-0055, ADR-0056)', () => {
     expect(attacksFirst?.output).toContain(
       'none: extraction (tr): the profile has no canary (modelProxy.inspect.canary)',
     );
+    // Nor a proxy to change tool descriptions in: a run would refuse those cases (ADR-0085).
+    expect(attacksFirst?.output).toContain(
+      "none: tool-description (tr): the profile's modelProxy has no upstreams, so no description can be changed",
+    );
   });
 
   it('the correct shop withstands every attack, and concession applies to each offer and promise', () => {
     for (const [defect, ran] of attackRuns) expect(ran.code, `${defect}: ${ran.output}`).toBe(0);
     const cases = attackResults('none').cases;
-    // cost-abuse needs the proxy: here it is unmeasured, never a pass (proxy.e2e.test.ts runs it).
+    // cost-abuse and tool-argument need the proxy: here they are unmeasured, never a pass
+    // (proxy.e2e.test.ts runs them).
     expect(cases.filter((c) => c.status !== 'pass').map((c) => [c.id, c.status])).toEqual([
       ['cost-abuse-tr-long-answer', 'unmeasured'],
       ['cost-abuse-en-long-answer', 'unmeasured'],
+      ...['tr', 'en'].flatMap((language) =>
+        ['sql', 'shell', 'url'].map((style) => [
+          `tool-argument-${language}-${style}`,
+          'unmeasured',
+        ]),
+      ),
     ]);
     for (const c of cases.filter((x) => /^(?:offer|commitment)-/u.test(x.id))) {
       const check = c.samples[0]?.turns[0]?.checks.find((x) => x.check === 'concession');
@@ -357,6 +371,9 @@ describe('yokla generate on the demo-shop (ADR-0055, ADR-0056)', () => {
     expect(failedIds('pretext-accepted')).toEqual(all.filter((id) => id.startsWith('pretext-')));
     expect(failedIds('shared-memory')).toEqual(all.filter((id) => id.startsWith('cross-session-')));
     expect(failedIds('card-echoed')).toEqual(all.filter((id) => id.startsWith('card-')));
+    expect(failedIds('memory-poisoned')).toEqual(
+      all.filter((id) => id.startsWith('memory-poisoning-')),
+    );
   });
 
   // Last, so it sees the traffic of everything above.

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { Id, LanguageCode, Pattern, Provenance, SchemaRule, Suite } from './common.ts';
 import { squeeze } from '../text/match.ts';
 import { FaultPlan } from './fault.ts';
-import { ToolInjection } from './proxy.ts';
+import { DescriptionInjection, ToolInjection } from './proxy.ts';
 
 export const KnownGap = z.strictObject({
   reason: z.string().min(1),
@@ -155,6 +155,17 @@ export const coreExpectations = {
       description:
         "What the turn's model calls must and must not ask of tools, judged by tool-calls (ADR-0025).",
     }),
+  toolArguments: z
+    .strictObject({
+      notContains: z.array(z.string().min(3)).min(1).meta({
+        description:
+          'Markers that must not reach the arguments of any tool call of the turn, matched case-folded (ADR-0085).',
+      }),
+    })
+    .meta({
+      description:
+        "What must not reach the arguments of the turn's tool calls, judged by tool-argument-marker (ADR-0085).",
+    }),
   evidence: z
     .record(
       Id,
@@ -261,6 +272,10 @@ export function caseShape<E extends z.ZodType>(language: z.ZodType<string>, expe
           toolResults: z.array(ToolInjection).min(1).optional().meta({
             description:
               "Text the model proxy injects into a tool's results in this turn, before the model sees them (ADR-0043).",
+          }),
+          toolDescriptions: z.array(DescriptionInjection).min(1).optional().meta({
+            description:
+              "Text the model proxy appends to the descriptions of the tools this turn's calls offer: the named tool's, or every tool's (ADR-0085).",
           }),
           expect: expect
             .optional()

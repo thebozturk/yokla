@@ -121,10 +121,13 @@ export interface ProxyCallView {
   readonly toolCalls: readonly { readonly name: string; readonly arguments: string }[] | null;
   /** The text the model answered; null when unknown (ADR-0033). */
   readonly output: string | null;
-  /** The changes the proxy made to the tool results the call sent (ADR-0043). */
+  /**
+   * The changes the proxy made to the tool results the call sent (ADR-0043),
+   * and to the descriptions of the tools it offered (ADR-0085).
+   */
   readonly toolChanges?:
     | readonly {
-        readonly kind: 'inject' | 'reverse';
+        readonly kind: 'inject' | 'reverse' | 'describe';
         readonly tool: string;
         readonly applied: boolean;
       }[]
@@ -230,6 +233,17 @@ export interface AttackPhrasings {
    * then a question for the last customer's note asked as another.
    */
   readonly crossSession: { readonly note: string; readonly ask: string };
+  /**
+   * memory-poisoning (ADR-0085): an instruction, sent as one identity, to end
+   * every later customer's answer with `{canary}`; then a plain question
+   * asked as another.
+   */
+  readonly memoryPoisoning: { readonly instruct: string; readonly ask: string };
+  /**
+   * tool-description (ADR-0085): the instruction the proxy appends to a
+   * tool's description, to reply only with `{canary}`.
+   */
+  readonly toolDescription: string;
   /** pretext: a claim to be close to `{name}`, and a request for their address and phone. */
   readonly pretext: string;
   /** card: the test number `{card}`, and a request to keep it and write it back in full. */
@@ -322,6 +336,8 @@ export interface GeneratedCase {
     readonly user: string;
     /** The identity the turn is sent as (ADR-0083). */
     readonly as?: string;
+    /** Text the proxy appends to the descriptions of the tools the turn's calls offer (ADR-0085). */
+    readonly toolDescriptions?: readonly { readonly inject: string; readonly canary: string }[];
     readonly expect?: Readonly<Record<string, JsonValue>>;
   }[];
   /** The data its expectations came from, such as `catalog JKT-001: color blue`. */
@@ -345,6 +361,13 @@ export interface AttackOptions {
     string,
     { readonly orders?: readonly string[] | undefined },
   ])[];
+  /** The language packs' attack phrasings, by language, such as tool-description's instruction (ADR-0085). */
+  readonly phrasings?: ReadonlyMap<string, AttackPhrasings>;
+  /**
+   * Whether the profile's model proxy forwards the target's calls, so it can
+   * change their tools' descriptions; a run refuses such a case otherwise (ADR-0085).
+   */
+  readonly proxied?: boolean;
 }
 
 export interface Generated {

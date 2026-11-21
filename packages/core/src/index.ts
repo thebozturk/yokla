@@ -124,6 +124,7 @@ export {
 export { Cassette, CASSETTE_SCHEMA_ID } from './schema/cassette.ts';
 export {
   CassetteCall,
+  DescriptionInjection,
   ModelSwap,
   ToolInjection,
   ToolResultChange,

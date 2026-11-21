@@ -288,6 +288,32 @@
                     "additionalProperties": false
                   }
                 },
+                "toolDescriptions": {
+                  "description": "Text the model proxy appends to the descriptions of the tools this turn's calls offer: the named tool's, or every tool's (ADR-0085).",
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "tool": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "inject": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "canary": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "inject"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
                 "expect": {
                   "description": "Expectations for the response to this turn.",
                   "type": "object",
@@ -610,6 +636,25 @@
                       },
                       "additionalProperties": false,
                       "description": "What the turn's model calls must and must not ask of tools, judged by tool-calls (ADR-0025)."
+                    },
+                    "toolArguments": {
+                      "type": "object",
+                      "properties": {
+                        "notContains": {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 3
+                          },
+                          "description": "Markers that must not reach the arguments of any tool call of the turn, matched case-folded (ADR-0085)."
+                        }
+                      },
+                      "required": [
+                        "notContains"
+                      ],
+                      "additionalProperties": false,
+                      "description": "What must not reach the arguments of the turn's tool calls, judged by tool-argument-marker (ADR-0085)."
                     },
                     "evidence": {
                       "type": "object",
@@ -1234,6 +1279,25 @@
                     },
                     "additionalProperties": false,
                     "description": "What the turn's model calls must and must not ask of tools, judged by tool-calls (ADR-0025)."
+                  },
+                  "toolArguments": {
+                    "type": "object",
+                    "properties": {
+                      "notContains": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 3
+                        },
+                        "description": "Markers that must not reach the arguments of any tool call of the turn, matched case-folded (ADR-0085)."
+                      }
+                    },
+                    "required": [
+                      "notContains"
+                    ],
+                    "additionalProperties": false,
+                    "description": "What must not reach the arguments of the turn's tool calls, judged by tool-argument-marker (ADR-0085)."
                   },
                   "evidence": {
                     "type": "object",
