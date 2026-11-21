@@ -500,8 +500,9 @@ it).
 | `campaigns` | Amounts an answer may show besides product prices, each with `id`, `amount` and `currency`. |
 | `priceSources` | Further amounts an answer may quote (ADR-0020): `{ evidence, fields }`, the amount fields of an evidence collection of the conversation, such as an order card's; or `{ file, paths }`, a JSON or JSON Lines snapshot, such as an order history, and the JSONPaths of its amounts. They ground amounts but don't make `price-grounded` apply. An amount anywhere in a file grounds a quote, whoever's order it was. |
 
-| `restrictions` | Who may buy what, and where: the target's own rules, which `yokla generate --redteam` attacks (ADR-0082). Each has `products` (ids) or `types` (with the types under them), `minAge` and/or `notSoldIn`, and `source`, where the rule is written. A place in `notSoldIn` is one name, or one per language such as `{ tr: Almanya, en: Germany }`. |
+| `restrictions` | Who may buy what, where and how many: the target's own rules, which `yokla generate --redteam` attacks (ADR-0082, ADR-0086). Each has `products` (ids) or `types` (with the types under them); `minAge`, `notSoldIn` and/or `maxQuantity`, the most of a covered product one order may hold; and `source`, where the rule is written. A place in `notSoldIn` is one name, or one per language such as `{ tr: Almanya, en: Germany }`. |
 | `cartEvidence` | The evidence collection that holds the cart, such as `cart`. A `restriction` attack expects the restricted product not to be in it (ADR-0082). |
+| `cartQuantity` | Where a cart call holds its quantity: `{ tool: add_to_cart, path: quantity }`, the tool and a dotted path into its arguments. The `quantity` attack judges it against a restriction's `maxQuantity` (ADR-0086). |
 
 Paths in the profile are relative to the profile file.
 
@@ -528,12 +529,33 @@ identities:
 | `request` | `body` merged into, and `headers` added to, every request sent as the identity: what tells the target who is asking. `{{env.NAME}}` is allowed. |
 | `name` | How a shopper names the person: the `pretext` attack names them. |
 | `seeded` | The identity's own personal data in the test copy, at least three characters each. `pii-leak` fails an answer to anyone else that holds one. |
-| `orders` | Ids of the identity's orders: the `bola` attack asks for them as another identity. |
+| `orders` | Ids of the identity's orders: the `bola` and `order-fraud` attacks ask for them as another identity, `excessive-agency` as the identity itself. |
+| `role` | A role listed in `roles`, such as `customer` (ADR-0086). |
 
 - **The order matters** for `yokla generate --redteam`: the first identity
   is the victim, the second the attacker.
 - **Not yet:** an identity on a target with `session.open`, over
   WebSocket, or with a token of its own from `target.auth`.
+
+## `roles`
+
+What each role an identity has may not do (ADR-0086).
+
+```yaml
+roles:
+  customer:
+    forbiddenTools: [refund_order]
+```
+
+| Field | Meaning |
+|---|---|
+| `forbiddenTools` | Tools the model must never call for someone with this role, such as a refund only staff may give. The `privilege` attack, sent as an identity with the role, expects none of them called. |
+
+- **An identity's role must be listed here;** an unknown one is a profile
+  error.
+- **Judged per case:** a role's tools are an attack's `tools.notCalled`,
+  or any case's that a person writes, not a rule over every turn sent as
+  the identity.
 
 ## `redteam`
 
@@ -542,4 +564,5 @@ What the red-team checks look for (ADR-0082, ADR-0085).
 | Field | Meaning |
 |---|---|
 | `internals` | Strings an answer to a question about the internals must never hold, such as an internal tool's name or a debug flag, at least three characters each. `internals-leak` looks for them, beside the model id and the tool names the proxy saw. |
+| `actionTools` | Tools that act on an order, an account or a payment, such as `[cancel_order, refund_order]`. The `order-fraud` and `excessive-agency` attacks expect none of them called (ADR-0086). |
 | `freeTextArguments` | Per tool, the arguments meant to take the user's words, such as a search box's query, as dotted paths into its arguments: `{ search_products: [query] }`. A payload marker that reaches only these is unmeasured by `tool-argument-marker`, not a failure: whether the tool treats the text as data happens behind it. |

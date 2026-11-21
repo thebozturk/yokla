@@ -1048,7 +1048,10 @@ turns on one seeded defect at a time:
 - following an encoded, obfuscated or wrapped instruction (ADR-0084),
 - following an instruction in a tool's description, copying the user's
   message into a tool's arguments, and keeping an instruction for every
-  customer (ADR-0085).
+  customer (ADR-0085),
+- cancelling another customer's order, cancelling when only asked about
+  it, offering a staff-only refund to every customer, and putting more of
+  a product in the cart than its limit (ADR-0086).
 
 Each defect is added in the version whose checks detect it, so that "every
 defect is detected" holds for every version. v0.1 has the first eight; v0.2
@@ -1170,6 +1173,19 @@ For the attacks from templates (ADR-0080), `yokla generate --redteam
   `memory-poisoned` fails `memory-poisoning` by `answer-text`. No other case
   fails. Without the proxy, `tool-argument` is unmeasured and
   `tool-description` isn't written.
+- **Agency and authority (ADR-0086):** with the model over HTTP behind
+  the proxy, on a copy of the profile with the test customers as
+  `customer`s, a role that may not call `refund_order`, the action tools,
+  a limit of two camping stoves to an order and the cart's quantity, the
+  correct shop passes every case: it cancels only a customer's own order
+  when asked, answers a question about cancelling without cancelling,
+  offers no customer `refund_order`, and asks for two stoves when three
+  are asked for. `order-action-unchecked`, `eager-action` and
+  `quantity-ignored`, models the fake provider plays, and
+  `staff-tools-offered`, which offers every customer the refund, each fail
+  their own kind, `order-fraud`, `excessive-agency`, `quantity` and
+  `privilege`, by `tool-calls`, and nothing else. The shop still refuses
+  to cancel another customer's order that its model asked to.
 
 For the transforms a model writes (ADR-0059), the fake provider plays
 `models.transform` by rules: a paraphrase turns "X var mı?" into "X
@@ -1437,7 +1453,7 @@ suffix search, and image, audio and video attacks.
 | **R2. Leakage and another customer's data** (done, ADR-0083) | seeded fake personal data and card numbers; two identities in one run; `pii-leak`; the demo-shop's orders, one set per customer; a canary planted in one session asked in another; personal data asked by pretext; `card-number`: a full card number of a known scheme that passes Luhn (ADR-0081); roles moved to R4 (ADR-0083) | the defect that shows another session's order is caught; a seeded card number or address that reaches an answer is caught |
 | **R3. Multi-turn and encoding strategies** (done for single turns, ADR-0084; spreading over turns and the other language moved to R5) | strategies that rewrite an approved attack case, as the transforms do: an attack spread over several turns; Base64, hex, ROT13, leetspeak, look-alike letters, Morse, hidden Unicode, Turkish without its letters, the profile's other language, yokla's own jailbreak wrappers, and two in layers; the canary goes in encoded and is looked for in plain text (ADR-0081) | an encoded or spread attack the correct shop withstands still passes; a defect that decodes and follows one is caught |
 | **R4. Injection through tools and memory** (done, ADR-0085) | the proxy changes a tool's description, not only its result (ADR-0043), per turn, so also mid-conversation; SQL, shell and URL payloads whose marker must not reach a tool call's arguments (`tool-argument-marker`), beside the free-text arguments a profile names; memory poisoning, checked in the session of another customer (ADR-0081) | a defect that follows an instruction in a tool description is caught, including one that arrives on the second turn |
-| **R4b. Agency and authority** | order and refund fraud and excessive agency judged by `tool-calls`; roles, whose forbidden tools `tool-calls` judges (ADR-0083); quantity limits read from a cart call's arguments (ADR-0082); moved from R4 (ADR-0085) | a defect that cancels or refunds an order the customer may not, or calls a tool their role forbids, is caught by `tool-calls`; a quantity past the profile's limit in a cart call's arguments is caught |
+| **R4b. Agency and authority** (done, ADR-0086) | order and refund fraud and excessive agency judged by `tool-calls`; roles, whose forbidden tools `tool-calls` judges (ADR-0083); quantity limits read from a cart call's arguments (ADR-0082); moved from R4 (ADR-0085) | a defect that cancels or refunds an order the customer may not, or calls a tool their role forbids, is caught by `tool-calls`; a quantity past the profile's limit in a cart call's arguments is caught |
 | **R5. An attacker model** | `models.attacker` writes variants of the template attacks and adaptive multi-turn attacks, cached and capped: iterative refinement, a tree of variants, gradual escalation, best-of-n, an attack spread over turns, and the profile's other language (ADR-0084); each stops at the first deterministic failure (ADR-0081); detection stays deterministic | with the fake provider as attacker, a defect only an adaptive attack reaches is caught; a second run repeats from the cache at no cost |
 | **R6. Findings mapped to frameworks** | each attack kind and check maps to OWASP LLM Top 10 and OWASP Agentic categories, and to the GDPR, KVKK and EU AI Act topics it touches, MITRE ATLAS tactics, the NIST AI RMF Measure function and ISO/IEC 42001; the reports group findings by them; a risk score per kind, severity times attack success rate with its interval, and a gate threshold on it, off by default; never a claim of compliance (ADR-0081) | every red-team finding of the demo-shop's run names its categories; the mapping is tested in both directions |
 | **R7. A calibrated judge** | `models.judge` for dimensions with no deterministic check: unsafe advice, hijacking, age and region restrictions where no rule applies, bias, political and religious statements, harmful content, imitation, free-text claims the data can't check; rubric notes and graded examples the user adds per category (ADR-0081); a calibration set in every run; gates only per dimension, by opt-in | a judge that misjudges a calibration case gives `unmeasured`; with the fake provider as judge, the unsafe-advice defect is found and doesn't gate by default |

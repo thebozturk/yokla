@@ -61,7 +61,7 @@ order the calls started.
 
 | Check | Dimension | Applies when | Judges |
 |---|---|---|---|
-| `tool-calls` | tool-use | the turn sets `tools` | Each tool in `called` was asked for, none in `notCalled` was, some call of each tool in `args` has those argument values, the tools in `order` came in that order, and there were at most `maxCalls` tool calls. |
+| `tool-calls` | tool-use | the turn sets `tools` | Each tool in `called` was asked for, none in `notCalled` was, some call of each tool in `args` has those argument values, the tools in `order` came in that order, there were at most `maxCalls` tool calls, and no call of a tool in `atMost` has a number above its limit at the path, or a value there that isn't one; a call without the path isn't judged by it (ADR-0086). |
 | `tool-call-valid` | tool-use | a model call of the turn offered tools | Every tool a call asked for was offered by that same call, and its arguments are valid JSON. Empty arguments count as none. |
 
 ### Simulated customers (ADR-0028)
