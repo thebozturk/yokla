@@ -98,6 +98,7 @@ old one.
 | [0083](0083-leakage-and-another-customers-data.md) | Leakage and another customer's data (R2) | Accepted |
 | [0084](0084-encoding-and-wrapping-strategies.md) | Encoding and wrapping strategies (R3) | Accepted |
 | [0085](0085-injection-through-tools-and-memory.md) | Injection through tools and memory (R4) | Accepted |
+| [0086](0086-agency-and-authority.md) | Agency and authority (R4b) | Proposed |
 
 ## Template
 
