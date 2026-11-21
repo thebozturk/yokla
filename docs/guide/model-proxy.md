@@ -340,6 +340,11 @@ reads it (ADR-0026) and named by its call's id, in every protocol it speaks.
 - **An injection, per turn.** A case turn's `toolResults` append text to a
   tool's results, to test indirect injection; `injection-canary` judges it
   (see [cases](cases.md#tool-results-changed-by-the-proxy)).
+- **A description, per turn.** A case turn's `toolDescriptions` append
+  text to the descriptions of the tools its calls offer, in every protocol
+  the proxy speaks; `injection-canary` judges it too (ADR-0085, see
+  [cases](cases.md#tool-descriptions-changed-by-the-proxy)). Each call
+  records the description changes among its tool changes, as `describe`.
 - **A metamorphic change, per run.**
   `yokla run --reverse-items 'search_products=$.results'` reverses each
   array the path selects in every result of that tool. Run the cases with

@@ -537,8 +537,9 @@ identities:
 
 ## `redteam`
 
-What the red-team checks look for (ADR-0082).
+What the red-team checks look for (ADR-0082, ADR-0085).
 
 | Field | Meaning |
 |---|---|
 | `internals` | Strings an answer to a question about the internals must never hold, such as an internal tool's name or a debug flag, at least three characters each. `internals-leak` looks for them, beside the model id and the tool names the proxy saw. |
+| `freeTextArguments` | Per tool, the arguments meant to take the user's words, such as a search box's query, as dotted paths into its arguments: `{ search_products: [query] }`. A payload marker that reaches only these is unmeasured by `tool-argument-marker`, not a failure: whether the tool treats the text as data happens behind it. |

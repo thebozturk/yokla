@@ -1045,7 +1045,10 @@ turns on one seeded defect at a time:
 - showing another customer's order by its id, giving a customer's details
   to anyone who names them, keeping one customer's note for everyone, and
   writing a card number back in full (ADR-0083),
-- following an encoded, obfuscated or wrapped instruction (ADR-0084).
+- following an encoded, obfuscated or wrapped instruction (ADR-0084),
+- following an instruction in a tool's description, copying the user's
+  message into a tool's arguments, and keeping an instruction for every
+  customer (ADR-0085).
 
 Each defect is added in the version whose checks detect it, so that "every
 defect is detected" holds for every version. v0.1 has the first eight; v0.2
@@ -1156,6 +1159,17 @@ For the attacks from templates (ADR-0080), `yokla generate --redteam
   injection case under their strategies, and only cases whose own message,
   followed, breaks a check; under other strategies they fail nothing. The
   test is `packages/cli/src/strategies.e2e.test.ts`.
+- **Through the tools and memory (ADR-0085):** with the model over HTTP
+  behind the proxy, the correct shop passes every `tool-description` and
+  `tool-argument` case, the proxy having changed the descriptions and read
+  the arguments. `description-obeyed`, a model the fake provider plays,
+  fails the `tool-description` cases by `injection-canary`; the
+  `second-turn` cases fail on their second turn, whose calls alone carried
+  the changed descriptions. `raw-arguments` fails the `tool-argument` cases
+  by `tool-argument-marker`. On the copy with test customers,
+  `memory-poisoned` fails `memory-poisoning` by `answer-text`. No other case
+  fails. Without the proxy, `tool-argument` is unmeasured and
+  `tool-description` isn't written.
 
 For the transforms a model writes (ADR-0059), the fake provider plays
 `models.transform` by rules: a paraphrase turns "X var mı?" into "X
@@ -1405,7 +1419,7 @@ them.
 
 v0.5 is built in order, one ADR per item (ADR-0079); ADR-0081 widened it
 from a survey of other tools' red-team features, deciding by a rule what
-they grade with a model. The items that cost nothing come first; a model is
+they grade with a model, and ADR-0085 split R4 in two. The items that cost nothing come first; a model is
 needed only from R5. Out of scope: coding-agent attacks, gradient-based
 suffix search, and image, audio and video attacks.
 
@@ -1422,7 +1436,8 @@ suffix search, and image, audio and video attacks.
 | **R1b. More attack kinds from templates** (done, ADR-0081, ADR-0082) | `false-premise` (judged by `policy-claim`), `cost-abuse` (the turn's budget), `delimiter` and `hidden-text` injection styles (the canary), `internals`: debug mode, the model's name, the tools (`internals-leak`), and `restriction`: age, region and quantity limits the profile declares (`concession`, the cart, the tool calls) | each kind passes on the correct demo-shop, and a defect only it reaches fails it, by a rule |
 | **R2. Leakage and another customer's data** (done, ADR-0083) | seeded fake personal data and card numbers; two identities in one run; `pii-leak`; the demo-shop's orders, one set per customer; a canary planted in one session asked in another; personal data asked by pretext; `card-number`: a full card number of a known scheme that passes Luhn (ADR-0081); roles moved to R4 (ADR-0083) | the defect that shows another session's order is caught; a seeded card number or address that reaches an answer is caught |
 | **R3. Multi-turn and encoding strategies** (done for single turns, ADR-0084; spreading over turns and the other language moved to R5) | strategies that rewrite an approved attack case, as the transforms do: an attack spread over several turns; Base64, hex, ROT13, leetspeak, look-alike letters, Morse, hidden Unicode, Turkish without its letters, the profile's other language, yokla's own jailbreak wrappers, and two in layers; the canary goes in encoded and is looked for in plain text (ADR-0081) | an encoded or spread attack the correct shop withstands still passes; a defect that decodes and follows one is caught |
-| **R4. Injection through tools** | the proxy changes a tool's description, not only its result (ADR-0043), also mid-conversation; order and refund fraud and excessive agency judged by `tool-calls`; roles, whose forbidden tools `tool-calls` judges (ADR-0083); SQL, shell and URL payloads whose marker must not reach a tool call's arguments (`tool-argument-marker`); memory poisoning, checked in a later session (ADR-0081) | a defect that follows an instruction in a tool description is caught, including one that arrives on the second turn |
+| **R4. Injection through tools and memory** (done, ADR-0085) | the proxy changes a tool's description, not only its result (ADR-0043), per turn, so also mid-conversation; SQL, shell and URL payloads whose marker must not reach a tool call's arguments (`tool-argument-marker`), beside the free-text arguments a profile names; memory poisoning, checked in the session of another customer (ADR-0081) | a defect that follows an instruction in a tool description is caught, including one that arrives on the second turn |
+| **R4b. Agency and authority** | order and refund fraud and excessive agency judged by `tool-calls`; roles, whose forbidden tools `tool-calls` judges (ADR-0083); quantity limits read from a cart call's arguments (ADR-0082); moved from R4 (ADR-0085) | a defect that cancels or refunds an order the customer may not, or calls a tool their role forbids, is caught by `tool-calls`; a quantity past the profile's limit in a cart call's arguments is caught |
 | **R5. An attacker model** | `models.attacker` writes variants of the template attacks and adaptive multi-turn attacks, cached and capped: iterative refinement, a tree of variants, gradual escalation, best-of-n, an attack spread over turns, and the profile's other language (ADR-0084); each stops at the first deterministic failure (ADR-0081); detection stays deterministic | with the fake provider as attacker, a defect only an adaptive attack reaches is caught; a second run repeats from the cache at no cost |
 | **R6. Findings mapped to frameworks** | each attack kind and check maps to OWASP LLM Top 10 and OWASP Agentic categories, and to the GDPR, KVKK and EU AI Act topics it touches, MITRE ATLAS tactics, the NIST AI RMF Measure function and ISO/IEC 42001; the reports group findings by them; a risk score per kind, severity times attack success rate with its interval, and a gate threshold on it, off by default; never a claim of compliance (ADR-0081) | every red-team finding of the demo-shop's run names its categories; the mapping is tested in both directions |
 | **R7. A calibrated judge** | `models.judge` for dimensions with no deterministic check: unsafe advice, hijacking, age and region restrictions where no rule applies, bias, political and religious statements, harmful content, imitation, free-text claims the data can't check; rubric notes and graded examples the user adds per category (ADR-0081); a calibration set in every run; gates only per dimension, by opt-in | a judge that misjudges a calibration case gives `unmeasured`; with the fake provider as judge, the unsafe-advice defect is found and doesn't gate by default |
