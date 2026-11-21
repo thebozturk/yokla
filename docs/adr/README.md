@@ -97,6 +97,7 @@ old one.
 | [0082](0082-more-attack-kinds-from-templates.md) | More attack kinds from templates (R1b) | Accepted |
 | [0083](0083-leakage-and-another-customers-data.md) | Leakage and another customer's data (R2) | Accepted |
 | [0084](0084-encoding-and-wrapping-strategies.md) | Encoding and wrapping strategies (R3) | Accepted |
+| [0085](0085-injection-through-tools-and-memory.md) | Injection through tools and memory (R4) | Proposed |
 
 ## Template
 
