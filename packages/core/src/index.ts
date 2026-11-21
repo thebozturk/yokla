@@ -288,6 +288,18 @@ export {
 } from './generate/attacks.ts';
 export { cardNumbers, luhn } from './checks/leakage.ts';
 export {
+  applyStrategies,
+  base64,
+  ENCODINGS,
+  parseStrategy,
+  STRATEGIES,
+  WRAPPERS,
+  type Encoding,
+  type Strategy,
+  type StrategyPhrasings,
+  type Wrapper,
+} from './strategy/strategies.ts';
+export {
   checkRewrite,
   transformPrompt,
   TRANSFORM_MARK,

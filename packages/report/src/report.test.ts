@@ -884,6 +884,13 @@ describe('transformed messages (ADR-0045)', () => {
     expect(htmlReport(transformed)).toContain('no-diacritics: 1 message; typos: 0 messages');
   });
 
+  it('names the strategy and how many messages it rewrote (ADR-0084)', () => {
+    const encoded = results([], { strategy: { name: 'base64+roleplay', messages: 2 } });
+    expect(terminalSummary(encoded).out).toContain('strategy: base64+roleplay (2 messages)');
+    expect(htmlReport(encoded)).toContain('base64+roleplay: 2 messages');
+    expect(terminalSummary(transformed).out.join('\n')).not.toContain('strategy:');
+  });
+
   it('shows the message as the case wrote it under the one sent', () => {
     const page = htmlReport(transformed);
     const sent = page.indexOf('Cadir onerir misin?');

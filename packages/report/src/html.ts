@@ -187,6 +187,11 @@ function runSection(results: Results): Html {
       ),
     );
   }
+  // The strategy the run sent its redteam cases with (ADR-0084).
+  const { strategy } = run;
+  if (strategy !== undefined) {
+    items.push(item('Strategy', `${strategy.name}: ${counted(strategy.messages, 'message')}`));
+  }
   const { proxy, observation } = run;
   if (proxy !== undefined) {
     const { calls: _calls, ...sums } = proxy.totals;

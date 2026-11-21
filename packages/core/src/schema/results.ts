@@ -348,6 +348,8 @@ export const Results = z
       transforms: z
         .array(z.object({ kind: TransformKind, messages: z.int().nonnegative() }))
         .optional(),
+      /** The run's strategy for its redteam cases, and how many messages it rewrote (ADR-0084). */
+      strategy: z.object({ name: z.string().min(1), messages: z.int().nonnegative() }).optional(),
       /** What the run reached, when asked to measure it (ADR-0044). */
       coverage: RunCoverage.optional(),
       /** Every candidate yokla explore ran, kept or not (ADR-0046). */

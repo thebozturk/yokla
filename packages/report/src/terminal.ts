@@ -134,6 +134,10 @@ export function terminalSummary(results: Results): TerminalSummary {
         .join(', ')}`,
     );
   }
+  const { strategy } = results.run;
+  if (strategy !== undefined) {
+    out.push(`strategy: ${strategy.name} (${counted(strategy.messages, 'message')})`);
+  }
   for (const issue of results.run.issues ?? []) err.push(`  run: ${issue}`);
   return { out, err };
 }

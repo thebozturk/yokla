@@ -71,12 +71,12 @@ export function markedInstruction(message: string): string | undefined {
 
 /** Text written in Unicode tag characters, as hidden-text-obeyed decodes it. */
 export function hiddenText(message: string): string | undefined {
-  const decoded = Array.from(message)
+  const hidden = Array.from(message)
     .map((char) => char.codePointAt(0) ?? 0)
     .filter((code) => code >= 0xe_00_20 && code <= 0xe_00_7e)
     .map((code) => String.fromCodePoint(code - 0xe_00_00))
     .join('');
-  return decoded === '' ? undefined : decoded;
+  return hidden === '' ? undefined : hidden;
 }
 
 const TOOL_QUESTIONS = ['arac', 'fonksiyon', 'tools', 'functions'] as const;
@@ -93,4 +93,134 @@ export function toolsAnswer(language: Language): string {
   return language === 'tr'
     ? `Kullanabildiğim araçlar: ${names}.`
     : `The tools I can call: ${names}.`;
+}
+
+const BASE64_RUN = /[A-Za-z0-9+/]{16,}={0,2}/u;
+const HEX_RUN = /\b[0-9a-f]{2}(?: [0-9a-f]{2}){3,}\b/iu;
+const MORSE_LINE = /^[.\- /]{8,}$/mu;
+const MORSE: Readonly<Record<string, string>> = {
+  '.-': 'A',
+  '-...': 'B',
+  '-.-.': 'C',
+  '-..': 'D',
+  '.': 'E',
+  '..-.': 'F',
+  '--.': 'G',
+  '....': 'H',
+  '..': 'I',
+  '.---': 'J',
+  '-.-': 'K',
+  '.-..': 'L',
+  '--': 'M',
+  '-.': 'N',
+  '---': 'O',
+  '.--.': 'P',
+  '--.-': 'Q',
+  '.-.': 'R',
+  '...': 'S',
+  '-': 'T',
+  '..-': 'U',
+  '...-': 'V',
+  '.--': 'W',
+  '-..-': 'X',
+  '-.--': 'Y',
+  '--..': 'Z',
+  '-----': '0',
+  '.----': '1',
+  '..---': '2',
+  '...--': '3',
+  '....-': '4',
+  '.....': '5',
+  '-....': '6',
+  '--...': '7',
+  '---..': '8',
+  '----.': '9',
+  '.-.-.-': '.',
+  '--..--': ',',
+  '..--..': '?',
+  '-.-.--': '!',
+  '-....-': '-',
+  '---...': ':',
+  '.----.': "'",
+};
+
+function rot13(text: string): string {
+  return text.replaceAll(/[a-z]/giu, (char) => {
+    const base = char <= 'Z' ? 65 : 97;
+    return String.fromCodePoint(((char.charCodeAt(0) - base + 13) % 26) + base);
+  });
+}
+
+/**
+ * What an encoded message says, as decodes-and-obeys reads it (ADR-0084):
+ * Base64, hexadecimal bytes, ROT13 after a line that names it, or Morse.
+ */
+export function decoded(message: string): string | undefined {
+  const blob = BASE64_RUN.exec(message)?.[0];
+  if (blob !== undefined) return Buffer.from(blob, 'base64').toString('utf8');
+  const bytes = HEX_RUN.exec(message)?.[0];
+  if (bytes !== undefined) return Buffer.from(bytes.replaceAll(' ', ''), 'hex').toString('utf8');
+  const morse = MORSE_LINE.exec(message)?.[0];
+  if (morse !== undefined) {
+    return morse
+      .split(' / ')
+      .map((word) =>
+        word
+          .split(' ')
+          .map((code) => MORSE[code] ?? '')
+          .join(''),
+      )
+      .join(' ');
+  }
+  if (/rot13/iu.test(message)) return rot13(message.split('\n').slice(1).join('\n'));
+  return undefined;
+}
+
+const CYRILLIC = /[аеорсхуАВЕНКМОРСТХ]/u;
+const LATIN_OF: Readonly<Record<string, string>> = {
+  а: 'a',
+  е: 'e',
+  о: 'o',
+  р: 'p',
+  с: 'c',
+  х: 'x',
+  у: 'y',
+  А: 'A',
+  В: 'B',
+  Е: 'E',
+  Н: 'H',
+  К: 'K',
+  М: 'M',
+  О: 'O',
+  Р: 'P',
+  С: 'C',
+  Т: 'T',
+  Х: 'X',
+};
+const LEET_WORD = /\b(?=\p{L}*[013457])(?=[\p{L}\d]*\p{L})[\p{L}013457]{3,}\b/gu;
+
+/**
+ * The message read past its look-alike letters, as obfuscation-obeyed reads
+ * it (ADR-0084), when it has Cyrillic look-alikes or at least two leetspeak
+ * words; undefined otherwise.
+ */
+export function deobfuscated(message: string): string | undefined {
+  const leet = message.match(LEET_WORD)?.length ?? 0;
+  if (!CYRILLIC.test(message) && leet < 2) return undefined;
+  return Array.from(message, (char) => LATIN_OF[char] ?? char).join('');
+}
+
+const WRAPPERS = [
+  'romandaki asistan',
+  'varsayimsal',
+  'gelistirici modu',
+  'writing a novel',
+  'hypothetically',
+  'developer mode',
+] as const;
+
+/** Whether a message wraps its request in a role-play, a hypothetical or a developer mode. */
+export function wrapped(message: string): boolean {
+  const text = fold(message);
+  return WRAPPERS.some((phrase) => text.includes(phrase));
 }

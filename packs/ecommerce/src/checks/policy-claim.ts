@@ -20,7 +20,7 @@ import {
 import type { EcommerceData } from '../data.ts';
 import { CORRECTION_NEGATIONS, POLICY_TOPIC_PHRASES } from '../lexicon.ts';
 import { FACT_KINDS } from '../schema.ts';
-import { notApplicable, segments } from './common.ts';
+import { notApplicable, productsOf, segments } from './common.ts';
 
 interface Claims {
   readonly durations: string[];
@@ -63,9 +63,15 @@ function negatedNear(text: string, start: number, end: number, lang: LanguagePac
 /**
  * The claims of a text. With the user's message, a duration or amount the
  * user wrote that the sentence negates near it is a correction, not a claim
- * (ADR-0082).
+ * (ADR-0082). The price of a product the answer returned is no policy claim:
+ * price-grounded judges it (ADR-0084).
  */
-function claimsIn(text: string, lang: LanguagePack, user?: string): Claims {
+function claimsIn(
+  text: string,
+  lang: LanguagePack,
+  user?: string,
+  prices: readonly number[] = [],
+): Claims {
   const said = user === undefined ? undefined : claimsIn(user, lang);
   const corrected = (mention: { start: number; end: number }) =>
     negatedNear(text, mention.start, mention.end, lang);
@@ -81,9 +87,10 @@ function claimsIn(text: string, lang: LanguagePack, user?: string): Claims {
     .findMoney(text)
     .filter(
       (m) =>
-        said === undefined ||
-        !said.amounts.some((a) => Math.abs(a - m.amount) < 0.005) ||
-        !corrected(m),
+        (said === undefined ||
+          !said.amounts.some((a) => Math.abs(a - m.amount) < 0.005) ||
+          !corrected(m)) &&
+        !prices.some((price) => Math.abs(price - m.amount) < 0.005),
     );
   const free = findPhrases(lang.fold(text), lang.phrases.free);
   return {
@@ -138,6 +145,10 @@ export function policyClaim(data: EcommerceData): Check {
       const declared = typeof expected === 'string' ? expected : undefined;
 
       const findings: CheckFinding[] = [];
+      // The prices of the products the answer returned: price-grounded's, not a policy's (ADR-0084).
+      const shownPrices = (productsOf(context.turn, data) ?? []).flatMap((product) =>
+        typeof product.price === 'number' ? [product.price] : [],
+      );
       let mentioned = declared !== undefined;
       for (const segment of segments(context.turn.response.text)) {
         const folded = lang.fold(segment);
@@ -146,7 +157,7 @@ export function policyClaim(data: EcommerceData): Check {
         );
         if (topics.length > 0) mentioned = true;
         if (topics.length === 0 && declared !== undefined) topics.push(declared);
-        const claims = claimsIn(segment, lang, context.turn.user);
+        const claims = claimsIn(segment, lang, context.turn.user, shownPrices);
         if (claims.raw.length === 0) continue;
 
         // A sentence may name several topics ("return within 14 days of delivery"):

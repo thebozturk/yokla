@@ -89,3 +89,21 @@ describe('the correction negations, in both directions (ADR-0082)', () => {
     });
   }
 });
+
+describe("policy-claim leaves a shown product's price to price-grounded (ADR-0084)", () => {
+  it("doesn't count the price of a product the answer returned as a policy claim", () => {
+    const shown = [{ id: 'TNT-1', name: 'Kubbe Çadır', price: 2499.9 }];
+    const run = (text: string) =>
+      verdicts(
+        check.run(
+          checkContext(
+            { ...answer(text, shown, USER_TR), expect: { policyTopic: 'returns' } },
+            { lang: fakeTurkish },
+          ),
+        ),
+      );
+    expect(run('Kubbe Çadır: 2.499,90 TL.')).toEqual(['pass']);
+    // An amount no returned product costs is still a claim about the topic.
+    expect(run('Kubbe Çadır: 2.400,00 TL.')).toEqual(['fail']);
+  });
+});

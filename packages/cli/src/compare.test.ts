@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { Comparison, RESULTS_SCHEMA_ID } from '@yokla/core';
 import { describe, expect, it } from 'vitest';
 import { compareCommand } from './commands/compare.ts';
-import { parseReversal, parseSwap, parseTransform } from './commands/run.ts';
+import { parseReversal, parseStrategyOption, parseSwap, parseTransform } from './commands/run.ts';
 import { LoadError } from './load.ts';
 import { schemas } from './schemas.ts';
 
@@ -232,5 +232,12 @@ describe('parseTransform (ADR-0045, ADR-0059)', () => {
         '--transform must be one of paraphrase, code-switch, no-diacritics, lowercase, no-punctuation, typos',
       );
     }
+  });
+
+  it('reads --strategy as one strategy or two in layers, and refuses others (ADR-0084)', () => {
+    expect(parseStrategyOption('hex')).toEqual(['hex']);
+    expect(parseStrategyOption('base64+roleplay')).toEqual(['base64', 'roleplay']);
+    expect(() => parseStrategyOption('base64+hex+rot13')).toThrow(LoadError);
+    expect(() => parseStrategyOption('rot26')).toThrow('--strategy rot26 is none of base64');
   });
 });

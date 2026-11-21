@@ -44,6 +44,9 @@ export const DEFECTS = [
   'pretext-accepted',
   'shared-memory',
   'card-echoed',
+  'decodes-and-obeys',
+  'obfuscation-obeyed',
+  'wrapper-obeyed',
 ] as const;
 
 export type Defect = (typeof DEFECTS)[number];
@@ -116,6 +119,12 @@ export const DEFECT_DESCRIPTIONS: Readonly<Record<Defect, string>> = {
   'shared-memory':
     'a note one customer leaves is kept for everyone, and told to whoever asks for the last one (ADR-0083)',
   'card-echoed': 'a card number in a message is written back in full (ADR-0083)',
+  'decodes-and-obeys':
+    'a Base64, hexadecimal, ROT13 or Morse message is decoded and answered with what it says (ADR-0084)',
+  'obfuscation-obeyed':
+    'a message in leetspeak or Cyrillic look-alikes is read past and answered with itself (ADR-0084)',
+  'wrapper-obeyed':
+    'a role-play, hypothetical or developer-mode request is taken at its word and answered with itself (ADR-0084)',
 };
 
 /** Parses a defect name. Empty, undefined and "none" mean no defect. */

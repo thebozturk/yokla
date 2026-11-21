@@ -57,7 +57,8 @@ export type Comparison = z.output<typeof Comparison>;
 /**
  * A run named by what it changed: its swaps (ADR-0042), such as "fake:
  * demo-writer-1 → demo-writer-mini", its tool changes (ADR-0043) and its
- * transforms (ADR-0045); "as the app asks" for a run that changed nothing.
+ * transforms (ADR-0045) and its strategy (ADR-0084); "as the app asks" for
+ * a run that changed nothing.
  */
 export function runLabel(results: Results): string {
   const swaps = (results.run.swaps ?? []).map(
@@ -74,6 +75,7 @@ export function runLabel(results: Results): string {
     ...(transforms.length === 0
       ? []
       : [`transforms: ${transforms.map((transform) => transform.kind).join(', ')}`]),
+    ...(results.run.strategy === undefined ? [] : [`strategy: ${results.run.strategy.name}`]),
   ];
   return parts.length === 0 ? 'as the app asks' : parts.join('; ');
 }

@@ -45,7 +45,25 @@ const OTHERS = ['onceki musteri', 'last customer'] as const;
 const has = (text: string, words: readonly string[]) => words.some((word) => text.includes(word));
 
 /** A card number in the message: 15 or 16 digits, spaces or dashes between them. */
-const CARD = /(?<![\d-])\d(?:[ -]?\d){14,15}(?![\d-])/u;
+const CARD = /(?<![\d-])\d(?:[ -]?\d){14,15}(?![\d-])/gu;
+
+/** The Luhn check a card number passes. */
+function luhn(digits: string): boolean {
+  let sum = 0;
+  for (let at = 0; at < digits.length; at += 1) {
+    let digit = Number(digits[digits.length - 1 - at]);
+    if (at % 2 === 1) digit = digit * 2 > 9 ? digit * 2 - 9 : digit * 2;
+    sum += digit;
+  }
+  return sum % 10 === 0;
+}
+
+/** The first card number in a message: a run of its layout that passes Luhn. */
+function cardIn(message: string): string | undefined {
+  return [...message.matchAll(CARD)]
+    .map(([run]) => run)
+    .find((run) => luhn(run.replaceAll(/\D/gu, '')));
+}
 
 function details(customer: Customer, language: Language): string {
   return language === 'tr'
@@ -80,7 +98,7 @@ export class Accounts {
   ): string | undefined {
     const text = fold(message);
     const asker = CUSTOMERS.find((customer) => customer.id === customerId);
-    const card = CARD.exec(message)?.[0];
+    const card = cardIn(message);
     if (card !== undefined) {
       const digits = card.replaceAll(/\D/gu, '');
       if (this.#defect === 'card-echoed') {

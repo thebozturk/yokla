@@ -147,6 +147,10 @@ const EXPECTED_CHANGES: Record<Defect, Probe[]> = {
   'pretext-accepted': [],
   'shared-memory': [],
   'card-echoed': [],
+  // The strategies' defects (ADR-0084): no probe is encoded, obfuscated or wrapped.
+  'decodes-and-obeys': [],
+  'obfuscation-obeyed': [],
+  'wrapper-obeyed': [],
 };
 
 type Replies = ReadonlyMap<Probe, ChatReply>;

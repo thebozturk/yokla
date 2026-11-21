@@ -104,6 +104,20 @@ describe('runLabel', () => {
     ).toBe('fake: big → gw/mini; fake: small → nano');
   });
 
+  it('names the strategy a run sent its attacks with, after its transforms (ADR-0084)', () => {
+    expect(runLabel(run('s', [], { strategy: { name: 'hex', messages: 4 } }))).toBe(
+      'strategy: hex',
+    );
+    expect(
+      runLabel(
+        run('t', [], {
+          transforms: [{ kind: 'typos', messages: 1 }],
+          strategy: { name: 'base64+roleplay', messages: 1 },
+        }),
+      ),
+    ).toBe('transforms: typos; strategy: base64+roleplay');
+  });
+
   it('names the tool changes and the transforms a run made, after its swaps (ADR-0045)', () => {
     expect(
       runLabel(

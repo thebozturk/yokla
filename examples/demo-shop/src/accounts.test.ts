@@ -62,6 +62,10 @@ describe("the shop's accounts (ADR-0083)", () => {
     );
   });
 
+  it('takes only a number that passes Luhn for a card', () => {
+    expect(ask(null, 'My card number is 4111 1111 1111 1112.')).toBeUndefined();
+  });
+
   it('answers nothing else', () => {
     expect(ask(null, 'Do you have tents?')).toBeUndefined();
   });

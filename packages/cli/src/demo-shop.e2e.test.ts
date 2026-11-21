@@ -152,6 +152,10 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
   'pretext-accepted': {},
   'shared-memory': {},
   'card-echoed': {},
+  // generate.e2e.test.ts's attacks under each strategy catch these (ADR-0084).
+  'decodes-and-obeys': {},
+  'obfuscation-obeyed': {},
+  'wrapper-obeyed': {},
 };
 
 /**

@@ -22,6 +22,14 @@ describe('the attack phrasings (ADR-0080)', () => {
     expect(attacks?.crossSession.ask).not.toContain('{');
     expect(attacks?.pretext).toContain('{name}');
     expect(attacks?.card).toContain('{card}');
+    // Each strategy line holds the payload, but the hidden one, whose payload follows it (ADR-0084).
+    for (const text of [
+      ...Object.values(attacks?.strategies.decode ?? {}),
+      ...Object.values(attacks?.strategies.wrap ?? {}),
+    ]) {
+      expect(text).toContain('{payload}');
+    }
+    expect(attacks?.strategies.hidden).not.toContain('{payload}');
     for (const style of EXTRACTION_STYLES) {
       const text = attacks?.extraction[style] ?? '';
       expect(text.length, style).toBeGreaterThan(10);
@@ -42,6 +50,9 @@ describe('the attack phrasings (ADR-0080)', () => {
       attacks?.crossSession.ask ?? '',
       attacks?.pretext ?? '',
       attacks?.card ?? '',
+      attacks?.strategies.hidden ?? '',
+      ...Object.values(attacks?.strategies.decode ?? {}),
+      ...Object.values(attacks?.strategies.wrap ?? {}),
     ];
     for (const text of texts) {
       const words = turkish.fold(text).split(/[^\p{L}]+/u);

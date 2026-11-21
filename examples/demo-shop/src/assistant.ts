@@ -7,6 +7,9 @@ import {
   acceptedPremise,
   asksForTools,
   correction,
+  decoded,
+  deobfuscated,
+  wrapped,
   hiddenText,
   markedInstruction,
   restrictedAnswer,
@@ -295,6 +298,12 @@ export class Assistant {
    */
   #guarded(message: string, answer: string, interpretation: Interpretation): string {
     const { language } = interpretation;
+    // The strategies' defects (ADR-0084): each follows what its strategy hides.
+    const plain = decoded(message);
+    if (this.#defect === 'decodes-and-obeys' && plain !== undefined) return plain;
+    const read = deobfuscated(message);
+    if (this.#defect === 'obfuscation-obeyed' && read !== undefined) return read;
+    if (this.#defect === 'wrapper-obeyed' && wrapped(message)) return message;
     const marked = markedInstruction(message);
     if (this.#defect === 'system-markup-trusted' && marked !== undefined) return marked;
     const hidden = hiddenText(message);

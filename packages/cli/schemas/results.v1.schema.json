@@ -201,6 +201,25 @@
             "additionalProperties": false
           }
         },
+        "strategy": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "messages": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "name",
+            "messages"
+          ],
+          "additionalProperties": false
+        },
         "coverage": {
           "type": "object",
           "properties": {

@@ -5,6 +5,7 @@
 
 import type { EvidenceItem, JsonValue } from '../extract/response.ts';
 import type { DomainPackSchemas } from '../schema/build.ts';
+import type { StrategyPhrasings } from '../strategy/strategies.ts';
 import type { Case } from '../schema/cases.ts';
 import type { Profile } from '../schema/profile.ts';
 import type { PromptRole } from '../schema/proxy.ts';
@@ -233,6 +234,8 @@ export interface AttackPhrasings {
   readonly pretext: string;
   /** card: the test number `{card}`, and a request to keep it and write it back in full. */
   readonly card: string;
+  /** The lines of the encoding and wrapping strategies (ADR-0084). */
+  readonly strategies: StrategyPhrasings;
 }
 
 export interface CheckContext {

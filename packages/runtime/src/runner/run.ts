@@ -48,6 +48,8 @@ import {
   type ToolReversal,
   type ModelTransform,
   type TransformKind,
+  applyStrategies,
+  type Strategy,
   type CaseCustomer,
   type CaseTurn,
   type Check,
@@ -127,6 +129,8 @@ export interface RunOptions {
   readonly reversals?: readonly ToolReversal[];
   /** Each written message sent as these transforms change it (ADR-0045). */
   readonly transforms?: readonly TransformKind[];
+  /** Each message of a redteam case sent as these strategies rewrite it, in order (ADR-0084). */
+  readonly strategy?: readonly Strategy[];
   /** Measure what the run reached into `run.coverage`, as yokla explore does (ADR-0044). */
   readonly coverage?: boolean;
   /** Cases run in parallel. Default 1. */
@@ -504,6 +508,15 @@ export function preflight(options: RunOptions): void {
       problems.push(`--transform needs the language pack of "${language}", which isn't loaded`);
     }
   }
+  // A strategy goes alone: not with a transform, nor with a cassette, for now (ADR-0084).
+  if ((options.strategy?.length ?? 0) > 0) {
+    if (transforms.length > 0) {
+      problems.push("--strategy can't go with --transform yet: one changes what the other wrote");
+    }
+    if (options.cassette !== undefined) {
+      problems.push("--strategy can't go with a cassette yet: it records the messages as written");
+    }
+  }
   if (options.cassette !== undefined && 'replay' in options.cassette) {
     const recorded = orderedTransforms(options.cassette.replay.transforms);
     if (recorded.join(',') !== transforms.join(',')) {
@@ -543,13 +556,44 @@ interface Exchange {
   readonly tag?: TurnTag;
   /** The transforms that changed the turn's message (ADR-0045). */
   readonly changedBy?: readonly TransformKind[];
+  /** Whether the run's strategy rewrote the turn's message (ADR-0084). */
+  readonly strategied?: boolean;
 }
 
-/** A turn's message as the run's transforms changed it (ADR-0045). */
+/** A turn's message as the run's transforms or strategy changed it (ADR-0045, ADR-0084). */
 interface Sent {
   /** The message as the case wrote it. */
   readonly written: string;
   readonly changedBy: readonly TransformKind[];
+  readonly strategied?: boolean;
+}
+
+/**
+ * A redteam case's turn as the run's strategy sends it (ADR-0084): encodings
+ * rewrite the whole message, obfuscations and wrappers keep the values its
+ * expectations quote. Other suites, and a language whose pack words no
+ * strategy, go as written.
+ */
+function strategyTurn(
+  options: Running,
+  testCase: Case,
+  turn: CaseTurn,
+): { readonly turn: CaseTurn; readonly sent?: Sent } {
+  const strategies = options.strategy ?? [];
+  if (strategies.length === 0 || testCase.suite !== 'redteam') return { turn };
+  const lang = options.languages?.find((pack) => pack.language === testCase.language);
+  const phrasings = lang?.attacks?.strategies;
+  if (lang === undefined || phrasings === undefined) return { turn };
+  const text = applyStrategies(turn.user, strategies, {
+    lang,
+    phrasings,
+    keep: quotedValues(turn.expect),
+  });
+  if (text === turn.user) return { turn };
+  return {
+    turn: { ...turn, user: text },
+    sent: { written: turn.user, changedBy: [], strategied: true },
+  };
 }
 
 /** The run's transforms, each once, in the order they apply (ADR-0045). */
@@ -1202,7 +1246,13 @@ async function runSample(
           };
         }
       }
-      if (sent !== undefined) outcome = { ...outcome, changedBy: sent.changedBy };
+      if (sent !== undefined) {
+        outcome = {
+          ...outcome,
+          changedBy: sent.changedBy,
+          ...(sent.strategied === true ? { strategied: true } : {}),
+        };
+      }
       exchanges.push(outcome);
       options.onTurn?.({
         caseId: testCase.id,
@@ -1218,7 +1268,9 @@ async function runSample(
   try {
     if (testCase.customer === undefined) {
       for (const [turnIndex, written] of testCase.turns.entries()) {
-        const { turn, sent } = transformTurn(options, testCase, sampleIndex, turnIndex, written);
+        const transformed = transformTurn(options, testCase, sampleIndex, turnIndex, written);
+        const { turn, sent } =
+          transformed.sent === undefined ? strategyTurn(options, testCase, written) : transformed;
         const outcome = await runTurn(turn, turnIndex, sent);
         if (outcome.turn.error !== undefined) break;
       }
@@ -2135,6 +2187,21 @@ export async function runSuite(input: RunOptions): Promise<Results> {
     kind,
     messages: sentTurns.filter((exchange) => exchange.changedBy?.includes(kind) === true).length,
   }));
+  // How many messages the strategy rewrote; none means the run measured the cases as written (ADR-0084).
+  const strategy = options.strategy ?? [];
+  const strategyCount =
+    strategy.length === 0
+      ? undefined
+      : {
+          name: strategy.join('+'),
+          messages: sentTurns.filter((exchange) => exchange.strategied === true).length,
+        };
+  const strategyIssues =
+    strategyCount?.messages === 0
+      ? [
+          `--strategy ${strategyCount.name} changed no message: the run has no redteam case its language pack words a strategy for`,
+        ]
+      : [];
   const simulatedLeft =
     transformed.length === 0 ? 0 : options.cases.filter((c) => c.customer !== undefined).length;
   const transformIssues = [
@@ -2157,6 +2224,7 @@ export async function runSuite(input: RunOptions): Promise<Results> {
     ...swapIssues,
     ...reversalIssues,
     ...transformIssues,
+    ...strategyIssues,
     ...capIssues,
     ...(stop === undefined ? [] : [stop]),
   ];
@@ -2185,6 +2253,7 @@ export async function runSuite(input: RunOptions): Promise<Results> {
       ...(swapped.length === 0 ? {} : { swaps: swapped }),
       ...(reversed.length === 0 ? {} : { toolChanges: reversed }),
       ...(transformCounts.length === 0 ? {} : { transforms: transformCounts }),
+      ...(strategyCount === undefined ? {} : { strategy: strategyCount }),
       ...(coverage === undefined ? {} : { coverage }),
       ...(prepared.data.length === 0 ? {} : { data: prepared.data.map((file) => ({ ...file })) }),
       ...(replay === undefined

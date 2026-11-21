@@ -7,8 +7,10 @@ import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import {
   JsonPath,
+  parseStrategy,
   TRANSFORM_KINDS,
   TransformKind,
+  type Strategy,
   type Cassette,
   type ModelSwap,
   type Profile,
@@ -49,6 +51,9 @@ Options:
                         don't move: no-diacritics, lowercase, no-punctuation or typos (one,
                         seeded by case, sample and turn); paraphrase or code-switch, written
                         by models.transform before the run (ADR-0059); repeatable
+  --strategy <name>     send each message of each redteam case encoded or wrapped (ADR-0084):
+                        base64, hex, rot13, morse, hidden, leetspeak, homoglyph, roleplay,
+                        hypothetical or developer-mode; two in layers as <a>+<b>
   --concurrency <n>     cases run in parallel (default: 1)
   --target-url <url>    use this url instead of the profile's request url
   --junit <file>        also write a JUnit XML report
@@ -102,6 +107,13 @@ export function parseReversal(text: string): ToolReversal {
     );
   }
   return { tool: text.slice(0, equals), at };
+}
+
+/** An attack strategy from the command line: one, or two joined by "+" (ADR-0084). */
+export function parseStrategyOption(text: string): readonly Strategy[] {
+  const parsed = parseStrategy(text);
+  if (typeof parsed === 'string') throw new LoadError(parsed);
+  return parsed;
 }
 
 /** A robustness transform from the command line (ADR-0045). */
@@ -167,6 +179,7 @@ const RUN_OPTIONS = {
   'swap-model': { type: 'string', multiple: true },
   'reverse-items': { type: 'string', multiple: true },
   transform: { type: 'string', multiple: true },
+  strategy: { type: 'string' },
   concurrency: { type: 'string' },
   'target-url': { type: 'string' },
   junit: { type: 'string' },
@@ -232,6 +245,9 @@ export async function runCommand(
     const reversals = (values['reverse-items'] ?? []).map(parseReversal);
     // Each written message as users write it (ADR-0045).
     const transforms = (values.transform ?? []).map(parseTransform);
+    // Each message of a redteam case, encoded or wrapped (ADR-0084).
+    const strategy =
+      values.strategy === undefined ? undefined : parseStrategyOption(values.strategy);
     const results = await runSuite({
       ...prepared.base,
       // Only the cases with one of the tags asked for (ADR-0077).
@@ -261,6 +277,7 @@ export async function runCommand(
       ...(swaps.length === 0 ? {} : { swaps }),
       ...(reversals.length === 0 ? {} : { reversals }),
       ...(transforms.length === 0 ? {} : { transforms }),
+      ...(strategy === undefined ? {} : { strategy }),
       // What the model's transforms will take, before any is asked (ADR-0059).
       onTransformPlan: (plan: RewritePlan) => {
         io.out(
