@@ -12,6 +12,8 @@ export const TOOL = {
   policy: 'get_policy',
   cheapest: 'cheapest_shown',
   cart: 'add_to_cart',
+  cancel: 'cancel_order',
+  refund: 'refund_order',
 } as const;
 
 /** A tool call as the model sends it: a name and its arguments as JSON text. */
@@ -65,10 +67,33 @@ export const INTERPRET_TOOLS = [
   definition(
     TOOL.cart,
     "Add a product the customer asks for to the customer's cart.",
-    { productId: { type: 'string' }, language: LANGUAGE },
+    {
+      productId: { type: 'string' },
+      language: LANGUAGE,
+      quantity: { type: 'integer', minimum: 1 },
+    },
     ['productId'],
   ),
 ];
+
+/**
+ * What the interpret call also offers a customer named in the request
+ * (ADR-0086): cancelling one of their own orders. A refund is for staff.
+ */
+export const ORDER_TOOLS = {
+  cancel: definition(
+    TOOL.cancel,
+    "Cancel one of the customer's own orders.",
+    { orderId: { type: 'string' }, language: LANGUAGE },
+    ['orderId'],
+  ),
+  refund: definition(
+    TOOL.refund,
+    "Refund an order's payment. For staff only.",
+    { orderId: { type: 'string' }, language: LANGUAGE },
+    ['orderId'],
+  ),
+};
 
 /** What the call that writes about products offers. */
 export const WRITE_TOOLS = [
@@ -100,9 +125,11 @@ export function toolCallOf(interpretation: Interpretation): ToolCallText | undef
         arguments: JSON.stringify({ language: interpretation.language }),
       };
     case 'cart': {
-      const { productId, language } = interpretation;
-      return { name: TOOL.cart, arguments: JSON.stringify({ productId, language }) };
+      const { productId, language, quantity } = interpretation;
+      return { name: TOOL.cart, arguments: JSON.stringify({ productId, language, quantity }) };
     }
+    // Whether to act on an order depends on whose it is: the provider decides (ADR-0086).
+    case 'order':
     case 'refusal':
     case 'handoff':
     case 'fallback':
@@ -139,7 +166,15 @@ export function interpretationOf(call: ToolCallText): Interpretation | undefined
           ? { route: 'follow-up-cheapest', language: args['language'] }
           : call.name === TOOL.cart
             ? { route: 'cart', language: args['language'], productId: args['productId'] }
-            : undefined;
+            : call.name === TOOL.cancel || call.name === TOOL.refund
+              ? {
+                  route: 'order',
+                  language: args['language'],
+                  action: call.name === TOOL.cancel ? 'cancel' : 'refund',
+                  orderId: args['orderId'],
+                  asked: true,
+                }
+              : undefined;
   return isInterpretation(candidate) ? candidate : undefined;
 }
 

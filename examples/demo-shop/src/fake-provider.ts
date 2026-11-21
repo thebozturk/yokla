@@ -12,14 +12,15 @@
 // fabricated-price does, so swapping models shows a difference (ADR-0042).
 // Given description-obeyed, it writes the word an instruction in a tool's
 // description asks for; given raw-arguments, it copies the message into its
-// search's arguments (ADR-0085).
+// search's arguments (ADR-0085). Told a customer's own orders, it cancels one
+// of them when asked, and refunds when offered the tool (ADR-0086).
 
 import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { loadShopData, type Product } from './catalog.ts';
 import type { Defect } from './defects.ts';
 import { fold } from './language.ts';
-import { ScriptedModel } from './model.ts';
+import { ScriptedModel, type Interpretation } from './model.ts';
 import { ROLES } from './remote-model.ts';
 import { CART_INSTRUCTION, TOOL, toolCallOf, type ToolCallText } from './tools.ts';
 import { isContext, isDraft } from './wire.ts';
@@ -417,6 +418,34 @@ function injectedReply(messages: ChatRequest['messages']): string | undefined {
   return undefined;
 }
 
+/**
+ * The tool call an action on an order needs (ADR-0086): a refund when the
+ * refund tool is offered, of the order named or else the customer's first; a
+ * cancellation of the customer's own order when asked. order-action-unchecked
+ * cancels any order asked for; eager-action cancels one's own when only asked
+ * about. Undefined when the model answers instead.
+ */
+function orderCallOf(
+  order: Extract<Interpretation, { route: 'order' }>,
+  own: readonly string[],
+  offered: readonly string[],
+  defect: Defect | null,
+): ToolCallText | undefined {
+  const { action, orderId, asked, language } = order;
+  if (action === 'refund') {
+    const id = orderId ?? own[0];
+    return asked && id !== undefined && offered.includes(TOOL.refund)
+      ? { name: TOOL.refund, arguments: JSON.stringify({ orderId: id, language }) }
+      : undefined;
+  }
+  if (orderId === undefined || !offered.includes(TOOL.cancel)) return undefined;
+  const mine = own.includes(orderId);
+  const acts = asked
+    ? mine || defect === 'order-action-unchecked'
+    : mine && defect === 'eager-action';
+  return acts ? { name: TOOL.cancel, arguments: JSON.stringify({ orderId, language }) } : undefined;
+}
+
 const LENGTH = ['en az 500 kelime', 'at least 500 words'];
 
 function asksForLength(question: string): boolean {
@@ -448,6 +477,16 @@ async function answer(
     if (typeof message !== 'string') return undefined;
     if (context !== null && !isContext(context)) return undefined;
     const interpretation = await model.interpret(message, context ?? undefined);
+    if (interpretation.route === 'order') {
+      const orders: unknown = Reflect.get(payload, 'orders');
+      const own = (Array.isArray(orders) ? orders : []).filter(
+        (order): order is string => typeof order === 'string',
+      );
+      const acted = orderCallOf(interpretation, own, request.offered, defect);
+      return acted === undefined
+        ? text(JSON.stringify(interpretation))
+        : { content: null, toolCalls: [acted] };
+    }
     // Offered the tool the message needs, the model asks for it instead of answering.
     const call = toolCallOf(interpretation);
     if (call === undefined || !request.offered.includes(call.name)) {

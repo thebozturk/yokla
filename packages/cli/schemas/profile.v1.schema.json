@@ -2309,8 +2309,39 @@
               "type": "string",
               "minLength": 1
             }
+          },
+          "role": {
+            "description": "A role the profile lists in roles, such as customer (ADR-0086).",
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
           }
         },
+        "additionalProperties": false
+      }
+    },
+    "roles": {
+      "description": "What each role an identity has may not do (ADR-0086).",
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "forbiddenTools": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Tools the model must never call for someone with this role, such as a refund only staff may give (ADR-0086)."
+          }
+        },
+        "required": [
+          "forbiddenTools"
+        ],
         "additionalProperties": false
       }
     },
@@ -2325,6 +2356,15 @@
           "items": {
             "type": "string",
             "minLength": 3
+          }
+        },
+        "actionTools": {
+          "description": "Tools that act on an order, an account or a payment. An attack that asks for no action, or for one on another customer, must not call one (ADR-0086).",
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
           }
         },
         "freeTextArguments": {
@@ -2783,6 +2823,12 @@
                 "minimum": 1,
                 "maximum": 120
               },
+              "maxQuantity": {
+                "description": "The most of a covered product one order may hold (ADR-0086).",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
               "notSoldIn": {
                 "description": "Places the target doesn't sell or deliver it to, as a shopper writes them: one name, or one per language such as { tr: Almanya, en: Germany }.",
                 "minItems": 1,
@@ -2823,6 +2869,27 @@
           "description": "The evidence collection that holds the cart, such as cart; a restricted product must not be in it (ADR-0082).",
           "type": "string",
           "pattern": "^[a-z0-9]+(?:[-.][a-z0-9]+)*$"
+        },
+        "cartQuantity": {
+          "description": "Where a cart call's quantity is, so a restriction's maxQuantity can be judged by tool-calls (ADR-0086).",
+          "type": "object",
+          "properties": {
+            "tool": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The tool that adds to the cart."
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The dotted path of its quantity argument, such as quantity."
+            }
+          },
+          "required": [
+            "tool",
+            "path"
+          ],
+          "additionalProperties": false
         },
         "priceSources": {
           "default": [],

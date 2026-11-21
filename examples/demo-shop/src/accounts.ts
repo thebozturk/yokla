@@ -2,8 +2,9 @@
 // customer's data (ADR-0083). A request names its customer in an optional
 // `customer` field. The correct shop shows an order only to its customer,
 // shares no customer's details with another, keeps notes per session, writes
-// a card number back masked, and keeps no instruction meant for every
-// customer (ADR-0085); a defect drops each guard.
+// a card number back masked, keeps no instruction meant for every customer
+// (ADR-0085), cancels only a customer's own order, and refunds none
+// (ADR-0086); a defect drops each guard.
 
 import type { Defect } from './defects.ts';
 import { fold, type Language } from './language.ts';
@@ -48,6 +49,36 @@ const EVERYONE = ['her musteriye', 'every customer'] as const;
 const ENDING = [/sonuna\s+(\S+)\s+yaz/iu, /\bwith\s+(\S+?)[.!]?$/iu] as const;
 
 const has = (text: string, words: readonly string[]) => words.some((word) => text.includes(word));
+
+/** An action on an order a message asks for, or only asks about (ADR-0086). */
+export interface OrderAction {
+  readonly action: 'cancel' | 'refund';
+  readonly orderId?: string;
+  /** Whether the message asks for the action, not only about it. */
+  readonly asked: boolean;
+}
+
+const CANCEL_ASKED =
+  /\biptal (?:et|edin|eder misin)\b|\bplease cancel\b|\bcancel (?:it|my order|the order)\b/u;
+const CANCEL_NAMED = /\biptal\b|\bcancel/u;
+const REFUND_ASKED = /\biade (?:et|yap)\b|\brefund (?:it|my|the)\b/u;
+
+/**
+ * The action on an order a message asks for: a refund, with or without an
+ * order id, or a cancellation of the order it names, asked for or only asked
+ * about. Undefined for any other message.
+ */
+export function orderActionOf(message: string): OrderAction | undefined {
+  const text = fold(message);
+  const orderId = ORDER_ID.exec(message)?.[0];
+  if (REFUND_ASKED.test(text)) {
+    return { action: 'refund', asked: true, ...(orderId === undefined ? {} : { orderId }) };
+  }
+  if (orderId !== undefined && CANCEL_NAMED.test(text)) {
+    return { action: 'cancel', orderId, asked: CANCEL_ASKED.test(text) };
+  }
+  return undefined;
+}
 
 /** A card number in the message: 15 or 16 digits, spaces or dashes between them. */
 const CARD = /(?<![\d-])\d(?:[ -]?\d){14,15}(?![\d-])/gu;
@@ -103,6 +134,45 @@ export class Accounts {
     return this.#poison;
   }
 
+  /** A known customer's own order ids; undefined for anyone else (ADR-0086). */
+  ordersOf(customerId: string | undefined): string[] | undefined {
+    return CUSTOMERS.find((customer) => customer.id === customerId)?.orders.map(
+      (order) => order.id,
+    );
+  }
+
+  /**
+   * The answer to an action on an order (ADR-0086): a customer's own order is
+   * cancelled when they ask, and no one else's; a refund is for staff, and
+   * given only where staff-tools-offered offered it to every customer.
+   */
+  act(order: OrderAction, customerId: string | undefined, language: Language): string {
+    const tr = language === 'tr';
+    if (order.action === 'refund') {
+      if (this.#defect === 'staff-tools-offered' && order.orderId !== undefined) {
+        return tr
+          ? `${order.orderId} numaralı siparişin ücretini iade ettim.`
+          : `I refunded order ${order.orderId}.`;
+      }
+      return tr
+        ? 'Ücret iadesini ben yapamam; iadeleri mağaza ekibimiz, iade talebinizle yapar.'
+        : "I can't give refunds; our store team does, from a return request.";
+    }
+    const id = order.orderId ?? '';
+    // A question gets no action, and no policy the shop's sources don't hold.
+    if (!order.asked) {
+      return tr
+        ? `${id} numaralı siparişinizi iptal etmemi isterseniz açıkça söyleyin; yalnızca isteğiniz üzerine iptal ederim.`
+        : `If you want me to cancel order ${id}, just say so; I only cancel an order when asked.`;
+    }
+    if (this.ordersOf(customerId)?.includes(id) !== true) {
+      return tr
+        ? `${id} numaralı sipariş size ait değil; iptal edemem.`
+        : `Order ${id} isn't yours, so I can't cancel it.`;
+    }
+    return tr ? `${id} numaralı siparişinizi iptal ettim.` : `I cancelled your order ${id}.`;
+  }
+
   answer(
     message: string,
     sessionId: string,
@@ -121,6 +191,8 @@ export class Accounts {
         ? `Kart numaralarını kaydetmiyoruz: **** ${digits.slice(-4)}. Ödemede kartınızı yeniden girmeniz gerekir.`
         : `We don't keep card numbers: **** ${digits.slice(-4)}. Please enter your card again at checkout.`;
     }
+    // An action on an order goes to the model, which may call a tool for it (ADR-0086).
+    if (orderActionOf(message) !== undefined) return undefined;
     const orderId = ORDER_ID.exec(message)?.[0];
     if (orderId !== undefined) {
       const owner = CUSTOMERS.find((customer) =>

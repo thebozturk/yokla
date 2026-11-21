@@ -161,6 +161,11 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
   'description-obeyed': {},
   'raw-arguments': {},
   'memory-poisoned': {},
+  // proxy.e2e.test.ts's attacks on agency and authority catch these (ADR-0086).
+  'order-action-unchecked': {},
+  'eager-action': {},
+  'staff-tools-offered': {},
+  'quantity-ignored': {},
 };
 
 /**

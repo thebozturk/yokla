@@ -3,6 +3,7 @@
 // interpret() turns the message into a structured request, and write() turns
 // the app's structured answer into text.
 
+import { orderActionOf, type OrderAction } from './accounts.ts';
 import type { Product } from './catalog.ts';
 import type { Defect } from './defects.ts';
 import {
@@ -13,6 +14,7 @@ import {
   parseAmount,
   type Language,
 } from './language.ts';
+import { MAX_QUANTITY, RESTRICTED_TYPE } from './guards.ts';
 import { correctTypos } from './typos.ts';
 import {
   ABSENT_TYPES,
@@ -39,7 +41,14 @@ export interface Filters {
 }
 
 export type Route =
-  'product-search' | 'policy' | 'follow-up-cheapest' | 'cart' | 'refusal' | 'handoff' | 'fallback';
+  | 'product-search'
+  | 'policy'
+  | 'follow-up-cheapest'
+  | 'cart'
+  | 'order'
+  | 'refusal'
+  | 'handoff'
+  | 'fallback';
 
 export type Interpretation =
   | {
@@ -49,7 +58,14 @@ export type Interpretation =
       readonly filters: Filters;
     }
   | { readonly route: 'policy'; readonly language: Language; readonly topic: PolicyTopic }
-  | { readonly route: 'cart'; readonly language: Language; readonly productId: string }
+  | {
+      readonly route: 'cart';
+      readonly language: Language;
+      readonly productId: string;
+      /** How many the user asks for, when they say (ADR-0086). */
+      readonly quantity?: number;
+    }
+  | ({ readonly route: 'order'; readonly language: Language } & OrderAction)
   | {
       readonly route: 'follow-up-cheapest' | 'refusal' | 'handoff' | 'fallback';
       readonly language: Language;
@@ -114,6 +130,8 @@ export interface ModelCall {
   readonly reference?: readonly Product[];
   /** Adds a product to the session's cart, when the model asks for it (ADR-0025). */
   readonly addToCart?: (productId: string) => void;
+  /** The ids of the customer's own orders, when the request names a customer (ADR-0086). */
+  readonly orders?: readonly string[];
 }
 
 export interface ChatModel {
@@ -309,6 +327,17 @@ export function unavailableAnswer(language: Language): string {
   return TEXT[language].unavailable;
 }
 
+const QUANTITY = [/(\d{1,3})\s*(?:adet|tane)\b/u, /\b(\d{1,3}) of (?:these|them|it)\b/u] as const;
+
+/** How many of a product a folded message asks for, when it says (ADR-0086). */
+function quantityIn(text: string): number | undefined {
+  for (const pattern of QUANTITY) {
+    const count = Number(pattern.exec(text)?.[1]);
+    if (Number.isInteger(count) && count > 0) return count;
+  }
+  return undefined;
+}
+
 export class ScriptedModel implements ChatModel {
   readonly #defect: Defect | null;
 
@@ -343,6 +372,10 @@ export class ScriptedModel implements ChatModel {
     // Asking for a person comes before the topic: "customer service about a return" (ADR-0075).
     if (longestMatch(text, HANDOFF_TERMS) > 0) return { route: 'handoff', language };
 
+    // An action on an order comes before the topic too: "cancel my order" asks for no policy (ADR-0086).
+    const order = orderActionOf(message);
+    if (order !== undefined) return { route: 'order', language, ...order };
+
     const topic = bestKey(text, POLICY_TOPICS);
     if (topic !== undefined) return { route: 'policy', language, topic };
 
@@ -354,7 +387,23 @@ export class ScriptedModel implements ChatModel {
         (product) => text.includes(fold(product.name.tr)) || text.includes(fold(product.name.en)),
       );
       const chosen = named ?? shown[0];
-      if (chosen !== undefined) return { route: 'cart', language, productId: chosen.id };
+      if (chosen !== undefined) {
+        // The shop's limit caps how many go in (ADR-0086); quantity-ignored asks for what was said.
+        const asked = quantityIn(text);
+        const quantity =
+          asked !== undefined &&
+          asked > MAX_QUANTITY &&
+          chosen.type === RESTRICTED_TYPE &&
+          this.#defect !== 'quantity-ignored'
+            ? MAX_QUANTITY
+            : asked;
+        return {
+          route: 'cart',
+          language,
+          productId: chosen.id,
+          ...(quantity === undefined ? {} : { quantity }),
+        };
+      }
     }
 
     const filters = parseFilters(text, language);

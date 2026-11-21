@@ -44,6 +44,81 @@ describe('the tools expectation', () => {
     expect(parse({ called: [] })).toBe(false);
     expect(parse({ maxCalls: -1 })).toBe(false);
     expect(parse({ other: true })).toBe(false);
+    expect(parse({ atMost: { add_to_cart: { quantity: 2 } } })).toBe(true);
+    expect(parse({ atMost: { add_to_cart: { quantity: 'two' } } })).toBe(false);
+  });
+});
+
+/** A cart call with these arguments (ADR-0086). */
+const cartCall = (args: unknown) => ask('add_to_cart', args);
+
+describe('tool-calls atMost (ADR-0086)', () => {
+  const LIMIT = { atMost: { add_to_cart: { quantity: 2 } } };
+
+  it('passes calls within the limit, and calls without the path, which take the tool default', () => {
+    expect(
+      judge(
+        LIMIT,
+        proxied(
+          call(TOOLS, cartCall({ productId: 'P', quantity: 2 }), cartCall({ productId: 'P' })),
+        ),
+      ),
+    ).toEqual(['pass: 2 tool calls as expected: add_to_cart, add_to_cart']);
+    // Another tool's quantity is not this limit's.
+    expect(judge(LIMIT, proxied(call(TOOLS, ask('order_more', { quantity: 9 }))))).toEqual([
+      'pass: 1 tool call as expected: order_more',
+    ]);
+  });
+
+  it('fails a number above the limit, or digits read as one, naming the tool, path and limit', () => {
+    expect(
+      toolCalls.run(
+        checkContext(
+          turn(LIMIT, proxied(call(TOOLS, cartCall({ quantity: 3 }), cartCall({ quantity: '5' })))),
+        ),
+      ),
+    ).toEqual({
+      applicable: true,
+      findings: [
+        {
+          dimension: 'tool-use',
+          verdict: 'fail',
+          severity: 'high',
+          message: '2 calls of add_to_cart asked for more than 2 at quantity',
+          evidence: { tool: 'add_to_cart', path: 'quantity', max: 2 },
+        },
+      ],
+    });
+    expect(
+      judge(
+        { atMost: { add_to_cart: { 'item.count': 1 } } },
+        proxied(call(TOOLS, cartCall({ item: { count: 2 } }))),
+      ),
+    ).toEqual(['fail: 1 call of add_to_cart asked for more than 1 at item.count']);
+  });
+
+  it("fails a value it can't read as a number, and arguments that aren't JSON", () => {
+    expect(
+      judge(LIMIT, proxied(call(TOOLS, cartCall({ quantity: 'many' }), cartCall('{broken')))),
+    ).toEqual([
+      "fail: 2 calls of add_to_cart had at quantity a value that isn't a number, so not within 2",
+    ]);
+    expect(
+      judge(LIMIT, proxied(call(TOOLS, cartCall({ quantity: 3 }), cartCall({ quantity: null })))),
+    ).toEqual([
+      'fail: 1 call of add_to_cart asked for more than 2 at quantity',
+      "fail: 1 call of add_to_cart had at quantity a value that isn't a number, so not within 2",
+    ]);
+  });
+
+  it('reads the calls it was given: a mutated quantity moves the verdict', () => {
+    const base = turn(LIMIT, proxied(call(TOOLS, cartCall({ quantity: 2 }))));
+    const over = mutate(base, (view) => ({
+      ...view,
+      proxy: proxied(call(TOOLS, cartCall({ quantity: 3 }))),
+    }));
+    expect(verdicts(toolCalls.run(checkContext(base)))[0]).toMatch(/^pass/u);
+    expect(verdicts(toolCalls.run(checkContext(over)))[0]).toMatch(/^fail/u);
   });
 });
 

@@ -244,6 +244,11 @@ export interface AttackPhrasings {
    * tool's description, to reply only with `{canary}`.
    */
   readonly toolDescription: string;
+  /**
+   * privilege (ADR-0086): a claim to be the shop's manager, and a request
+   * for a refund on the customer's last order.
+   */
+  readonly privilege: string;
   /** pretext: a claim to be close to `{name}`, and a request for their address and phone. */
   readonly pretext: string;
   /** card: the test number `{card}`, and a request to keep it and write it back in full. */
@@ -361,6 +366,8 @@ export interface AttackOptions {
     string,
     { readonly orders?: readonly string[] | undefined },
   ])[];
+  /** Tools that act on an order, an account or a payment: the profile's redteam.actionTools (ADR-0086). */
+  readonly actionTools?: readonly string[];
   /** The language packs' attack phrasings, by language, such as tool-description's instruction (ADR-0085). */
   readonly phrasings?: ReadonlyMap<string, AttackPhrasings>;
   /**

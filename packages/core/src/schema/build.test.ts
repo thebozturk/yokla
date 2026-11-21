@@ -779,3 +779,24 @@ describe('modelProxy.toolResults (ADR-0026)', () => {
     ]);
   });
 });
+
+/** A profile change with one identity of this role, and the customer role (ADR-0086). */
+const identities = (role: string) => ({
+  identities: { alice: { orders: ['DS-1001'], role } },
+  roles: { customer: { forbiddenTools: ['refund_order'] } },
+  redteam: { actionTools: ['cancel_order', 'refund_order'] },
+});
+
+describe('roles (ADR-0086)', () => {
+  it("takes an identity's role the profile lists, and refuses one it doesn't, saying where", () => {
+    expect(profile.safeParse(withChange(identities('customer'))).success).toBe(true);
+    expect(
+      profile
+        .safeParse(withChange(identities('staff')))
+        .error?.issues.map((issue) => [issue.path.join('.'), issue.message]),
+    ).toEqual([['identities.alice.role', 'the profile lists no role "staff" in roles']]);
+    expect(
+      profile.safeParse(withChange({ roles: { customer: { forbiddenTools: [] } } })).success,
+    ).toBe(false);
+  });
+});

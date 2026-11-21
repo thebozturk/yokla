@@ -86,6 +86,9 @@ const Restriction = z
       description: 'The catalog types it covers, with the types under them.',
     }),
     minAge: z.int().min(1).max(120).optional().meta({ description: 'The youngest buyer.' }),
+    maxQuantity: z.int().min(1).optional().meta({
+      description: 'The most of a covered product one order may hold (ADR-0086).',
+    }),
     notSoldIn: z
       .array(z.union([z.string().min(1), z.record(LanguageCode, z.string().min(1))]))
       .min(1)
@@ -101,9 +104,11 @@ const Restriction = z
   .refine((rule) => rule.products !== undefined || rule.types !== undefined, {
     message: 'a restriction needs products or types',
   })
-  .refine((rule) => rule.minAge !== undefined || rule.notSoldIn !== undefined, {
-    message: 'a restriction needs minAge or notSoldIn',
-  });
+  .refine(
+    (rule) =>
+      rule.minAge !== undefined || rule.notSoldIn !== undefined || rule.maxQuantity !== undefined,
+    { message: 'a restriction needs minAge, notSoldIn or maxQuantity' },
+  );
 
 export const ecommerceProfile = z.strictObject({
   neverFabricate: z.array(z.enum(FACT_KINDS)).default([...FACT_KINDS]),
@@ -125,6 +130,19 @@ export const ecommerceProfile = z.strictObject({
     description:
       'The evidence collection that holds the cart, such as cart; a restricted product must not be in it (ADR-0082).',
   }),
+  cartQuantity: z
+    .strictObject({
+      tool: z.string().min(1).meta({ description: 'The tool that adds to the cart.' }),
+      path: z
+        .string()
+        .min(1)
+        .meta({ description: 'The dotted path of its quantity argument, such as quantity.' }),
+    })
+    .optional()
+    .meta({
+      description:
+        "Where a cart call's quantity is, so a restriction's maxQuantity can be judged by tool-calls (ADR-0086).",
+    }),
   priceSources: z
     .array(
       z.union([

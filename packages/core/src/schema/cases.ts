@@ -147,9 +147,16 @@ export const coreExpectations = {
         .min(0)
         .optional()
         .meta({ description: 'The most tool calls the turn may ask for.' }),
+      atMost: z
+        .record(z.string().min(1), z.record(z.string().min(1), z.number()))
+        .optional()
+        .meta({
+          description:
+            'Per tool, the highest number a call of it may have at a dotted path into its arguments, such as a quantity (ADR-0086).',
+        }),
     })
     .refine((tools) => Object.values(tools).some((value) => value !== undefined), {
-      message: 'tools needs called, notCalled, args, order or maxCalls',
+      message: 'tools needs called, notCalled, args, order, maxCalls or atMost',
     })
     .meta({
       description:

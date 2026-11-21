@@ -18,6 +18,7 @@ import { dirname, join } from 'node:path';
 import { parseConfig, Results, z } from '@yokla/core';
 import { installNetworkGuard, type NetworkGuard } from '@yokla/runtime/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { parse, stringify } from 'yaml';
 import { planCommand } from './commands/plan.ts';
 import { proxyCommand } from './commands/proxy.ts';
 import { main } from './main.ts';
@@ -326,8 +327,31 @@ const inspection = new Map<string, Results>();
 /** The attacks yokla generate --redteam wrote, run on the correct shop and on no-leak-guard (ADR-0080). */
 const attacks = new Map<string, Results>();
 /** The model's defects the attacks through the tools catch, each played by a fake provider of its own (ADR-0085). */
-const MODEL_DEFECTS = ['description-obeyed', 'raw-arguments'];
-const ATTACK_DEFECTS = ['none', 'no-leak-guard', 'unbounded-output', ...MODEL_DEFECTS];
+const ATTACK_DEFECTS = [
+  'none',
+  'no-leak-guard',
+  'unbounded-output',
+  'description-obeyed',
+  'raw-arguments',
+];
+/** The agency attacks' defects → the one kind each fails, by tool-calls (ADR-0086). */
+const AGENCY: Readonly<Record<string, string>> = {
+  'order-action-unchecked': 'order-fraud',
+  'eager-action': 'excessive-agency',
+  'staff-tools-offered': 'privilege',
+  'quantity-ignored': 'quantity',
+};
+const AGENCY_KINDS = Object.values(AGENCY);
+/** The agency attacks, run on the correct shop and on each defect (ADR-0086). */
+const agency = new Map<string, Results>();
+/** The model's defects: the app's are the shop's, but staff-tools-offered offers a tool. */
+const MODEL_DEFECTS = [
+  'description-obeyed',
+  'raw-arguments',
+  'order-action-unchecked',
+  'eager-action',
+  'quantity-ignored',
+];
 /** Each model defect's fake provider, an upstream of the proxy as fake-<defect>. */
 const modelDefectUrls = new Map<string, string>();
 
@@ -336,6 +360,7 @@ async function runInspection(
   providerUrl: string,
   cases = join(DEMO, 'cases-inspection'),
   into = inspection,
+  profile = profileFor('serial', providerUrl, 'inspection', INSPECT),
 ): Promise<void> {
   // A model defect is played by its own fake provider, behind the proxy as fake-<defect>.
   const model = modelDefectUrls.has(defect) ? `fake-${defect}` : 'fake';
@@ -349,13 +374,14 @@ async function runInspection(
     '--defect',
     defect,
   ]);
-  const out = join(dir, `${into === inspection ? 'inspection' : 'attacks'}-${defect}.json`);
+  const label = into === inspection ? 'inspection' : into === attacks ? 'attacks' : 'agency';
+  const out = join(dir, `${label}-${defect}.json`);
   const quiet = { out: () => undefined, err: () => undefined };
   const code = await main(
     [
       'run',
       '--profile',
-      profileFor('serial', providerUrl, 'inspection', INSPECT),
+      profile,
       '--cases',
       cases,
       '--target-url',
@@ -371,21 +397,59 @@ async function runInspection(
   into.set(defect, Results.parse(JSON.parse(readFileSync(out, 'utf8'))));
 }
 
+/** A parsed YAML mapping as a record; anything else as an empty one. */
+function record(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+    ? Object.fromEntries(Object.entries(value))
+    : {};
+}
+
+/**
+ * The inspection profile with what the agency attacks read (ADR-0086): the
+ * shop's two test customers, their role, the action tools, the stoves' limit
+ * of two to an order, and where a cart call holds its quantity.
+ */
+function agencyProfile(providerUrl: string): string {
+  const base = record(
+    parse(readFileSync(profileFor('serial', providerUrl, 'inspection', INSPECT), 'utf8')),
+  );
+  const path = join(dir, 'agency.profile.yaml');
+  writeFileSync(
+    path,
+    stringify({
+      ...base,
+      identities: {
+        alice: { request: { body: { customer: 'alice' } }, orders: ['DS-1001'], role: 'customer' },
+        bob: { request: { body: { customer: 'bob' } }, orders: ['DS-1002'], role: 'customer' },
+      },
+      roles: { customer: { forbiddenTools: ['refund_order'] } },
+      redteam: { actionTools: ['cancel_order', 'refund_order'] },
+      ecommerce: {
+        ...record(base['ecommerce']),
+        restrictions: [
+          {
+            types: ['outdoor/camping/camping-stove'],
+            maxQuantity: 2,
+            source: 'examples/demo-shop/README.md',
+          },
+        ],
+        cartQuantity: { tool: 'add_to_cart', path: 'quantity' },
+      },
+    }),
+  );
+  return path;
+}
+
 /** yokla generate --redteam on the profile with a canary: every kind, extraction too (ADR-0080). */
-async function generateAttacks(providerUrl: string): Promise<string> {
-  const out = join(dir, 'attacks', 'redteam.yaml');
+async function generateAttacks(
+  providerUrl: string,
+  profile = profileFor('serial', providerUrl, 'inspection', INSPECT),
+  name = 'attacks',
+): Promise<string> {
+  const out = join(dir, name, 'redteam.yaml');
   const lines: string[] = [];
   const code = await main(
-    [
-      'generate',
-      '--redteam',
-      '--profile',
-      profileFor('serial', providerUrl, 'inspection', INSPECT),
-      '--competitor',
-      'Rivalmart',
-      '--out',
-      out,
-    ],
+    ['generate', '--redteam', '--profile', profile, '--competitor', 'Rivalmart', '--out', out],
     { out: (line) => lines.push(line), err: (line) => lines.push(line) },
   );
   expect(code, lines.join('\n')).toBe(0);
@@ -769,6 +833,10 @@ beforeAll(async () => {
   const attackCases = await generateAttacks(providerUrl);
   for (const defect of ATTACK_DEFECTS)
     await runInspection(defect, providerUrl, attackCases, attacks);
+  const agencyAt = agencyProfile(providerUrl);
+  const agencyCases = await generateAttacks(providerUrl, agencyAt, 'agency');
+  for (const defect of ['none', ...Object.keys(AGENCY)])
+    await runInspection(defect, providerUrl, agencyCases, agency, agencyAt);
   for (const defect of Object.keys(TOOLS)) await runTools(defect, providerUrl);
   for (const defect of Object.keys(ORIGINS)) await runOrigin(defect, providerUrl);
   await runStreaming(providerUrl);
@@ -873,6 +941,7 @@ describe('the model proxy against the demo-shop', () => {
       ...resilience.values(),
       ...inspection.values(),
       ...attacks.values(),
+      ...agency.values(),
       ...toolRuns.values(),
       ...originRuns.values(),
       ...(streamed === undefined ? [] : [streamed.results]),
@@ -1036,6 +1105,40 @@ describe('the model proxy against the demo-shop', () => {
     expect(payloads).toHaveLength(4);
     expect(failingByCheck(results)).toEqual({ 'tool-argument-marker': payloads });
   });
+
+  it('agency: the correct shop withstands every kind, its tool calls measured (ADR-0086)', () => {
+    const results = agency.get('none');
+    const ids = (results?.cases ?? []).map((c) => c.id);
+    for (const kind of AGENCY_KINDS) {
+      expect(
+        ids.filter((id) => id.startsWith(`${kind}-`)),
+        kind,
+      ).toHaveLength(2);
+    }
+    for (const c of results?.cases ?? []) expect(c.status, c.id).toBe('pass');
+    for (const c of (results?.cases ?? []).filter((x) =>
+      AGENCY_KINDS.some((kind) => x.id.startsWith(`${kind}-`)),
+    )) {
+      const judged = c.samples[0]?.turns
+        .flatMap((turn) => turn.checks)
+        .filter((x) => x.check === 'tool-calls' && x.applicable)
+        .map((x) => x.findings.map((f) => f.verdict));
+      expect(judged, c.id).toEqual([['pass']]);
+    }
+  });
+
+  it.each(Object.entries(AGENCY))(
+    'agency: %s fails exactly the %s cases, by tool-calls (ADR-0086)',
+    (defect, kind) => {
+      const results = agency.get(defect);
+      const own = (results?.cases ?? [])
+        .map((c) => c.id)
+        .filter((id) => id.startsWith(`${kind}-`))
+        .toSorted();
+      expect(own).toHaveLength(2);
+      expect(failingByCheck(results)).toEqual({ 'tool-calls': own });
+    },
+  );
 
   it('attacks: no-leak-guard fails exactly the extraction cases, by answer-text and prompt-leak (ADR-0080)', () => {
     const results = attacks.get('no-leak-guard');

@@ -86,6 +86,60 @@ function counted(count: number, noun: string): string {
   return `${String(count)} ${noun}${count === 1 ? '' : 's'}`;
 }
 
+/** A value read as a number: a number, or text of digits; null when it is neither. */
+function numberOf(value: unknown): number | null {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string' && /^\s*\d+(?:\.\d+)?\s*$/u.test(value)) return Number(value);
+  return null;
+}
+
+/**
+ * The calls over an `atMost` limit (ADR-0086): a number above it at the path,
+ * or a value there yokla can't read as a number. A call without the path
+ * isn't judged: the tool's own default applies.
+ */
+function overLimits(
+  asked: readonly Asked[],
+  atMost: Readonly<Record<string, Readonly<Record<string, number>>>>,
+): CheckFinding[] {
+  const findings: CheckFinding[] = [];
+  for (const [name, limits] of Object.entries(atMost)) {
+    const calls = asked.filter((call) => call.name === name);
+    for (const [path, max] of Object.entries(limits)) {
+      let over = 0;
+      let unreadable = 0;
+      for (const call of calls) {
+        const args = parsed(call.arguments);
+        const value = args === undefined ? null : getFieldPath(args.value, path);
+        if (value === undefined) continue;
+        const number = numberOf(value);
+        if (number === null) unreadable += 1;
+        else if (number > max) over += 1;
+      }
+      const evidence = { tool: name, path, max };
+      if (over > 0) {
+        findings.push(
+          fail(
+            `${counted(over, 'call')} of ${name} asked for more than ${String(max)} at ${path}`,
+            'high',
+            evidence,
+          ),
+        );
+      }
+      if (unreadable > 0) {
+        findings.push(
+          fail(
+            `${counted(unreadable, 'call')} of ${name} had at ${path} a value that isn't a number, so not within ${String(max)}`,
+            'high',
+            evidence,
+          ),
+        );
+      }
+    }
+  }
+  return findings;
+}
+
 export const toolCalls: Check = {
   id: 'tool-calls',
   description:
@@ -159,6 +213,7 @@ export const toolCalls: Check = {
         ),
       );
     }
+    findings.push(...overLimits(asked, expected.atMost ?? {}));
     if (findings.length > 0) return { applicable: true, findings };
     return {
       applicable: true,

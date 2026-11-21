@@ -160,6 +160,7 @@ export function generateCommand(args: readonly string[], io: Output, cwd = proce
         canary: profile.modelProxy?.inspect?.canary,
         outputTokens,
         identities,
+        ...(profile.roles === undefined ? {} : { roles: profile.roles }),
       });
       const domain = prepared?.attacks?.({
         languages: profile.languages,
@@ -167,6 +168,9 @@ export function generateCommand(args: readonly string[], io: Output, cwd = proce
         competitors,
         identities,
         proxied: (profile.modelProxy?.upstreams.length ?? 0) > 0,
+        ...(profile.redteam?.actionTools === undefined
+          ? {}
+          : { actionTools: profile.redteam.actionTools }),
         phrasings: new Map(
           packs.flatMap((languagePack) =>
             languagePack.attacks === undefined

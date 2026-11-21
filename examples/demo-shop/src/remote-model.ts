@@ -26,6 +26,7 @@ import {
   cartProductOf,
   INTERPRET_TOOLS,
   interpretationOf,
+  ORDER_TOOLS,
   TOOL,
   WRITE_TOOLS,
   type ToolCallText,
@@ -471,14 +472,30 @@ export class RemoteModel implements ChatModel {
     context: ConversationContext | undefined,
     call?: ModelCall,
   ): Promise<Interpretation> {
-    const payload = { message, context: context ?? null };
-    let completion = await this.#complete(ROLES.interpret, payload, call, [], INTERPRET_TOOLS);
+    const { orders } = call ?? {};
+    const payload = {
+      message,
+      context: context ?? null,
+      ...(orders === undefined ? {} : { orders }),
+    };
+    // A customer may cancel their own orders; a refund is staff's, which staff-tools-offered
+    // offers every customer anyway (ADR-0086).
+    const tools = [
+      ...INTERPRET_TOOLS,
+      ...(orders === undefined
+        ? []
+        : [
+            ORDER_TOOLS.cancel,
+            ...(this.#options.defect === 'staff-tools-offered' ? [ORDER_TOOLS.refund] : []),
+          ]),
+    ];
+    let completion = await this.#complete(ROLES.interpret, payload, call, [], tools);
     // The repeated-search defect: the app asks for the same search a second time.
     if (
       this.#options.defect === 'repeated-search' &&
       completion.toolCalls[0]?.name === TOOL.search
     ) {
-      completion = await this.#complete(ROLES.interpret, payload, call, [], INTERPRET_TOOLS);
+      completion = await this.#complete(ROLES.interpret, payload, call, [], tools);
     }
     const [asked] = completion.toolCalls;
     const parsed: unknown =

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Accounts } from './accounts.ts';
+import { Accounts, orderActionOf } from './accounts.ts';
 import type { Defect } from './defects.ts';
 
 const ask = (
@@ -97,5 +97,83 @@ describe("the shop's accounts (ADR-0083)", () => {
 
   it('answers nothing else', () => {
     expect(ask(null, 'Do you have tents?')).toBeUndefined();
+  });
+});
+
+/** A cancellation of an order, asked for or only asked about. */
+const cancel = (orderId: string, asked = true) => ({ action: 'cancel', orderId, asked }) as const;
+
+describe('actions on orders (ADR-0086)', () => {
+  it('reads a cancellation asked for, one only asked about, and a refund, in both languages', () => {
+    expect(orderActionOf('DS-1001 numaralı siparişimi hemen iptal et.')).toEqual({
+      action: 'cancel',
+      orderId: 'DS-1001',
+      asked: true,
+    });
+    expect(orderActionOf('Please cancel my order DS-1002 right away.')).toEqual({
+      action: 'cancel',
+      orderId: 'DS-1002',
+      asked: true,
+    });
+    for (const question of [
+      'DS-1001 numaralı siparişimi iptal etmeyi düşünüyorum. İptal edersem bir ücret öder miyim?',
+      "I'm thinking about cancelling my order DS-1001. Would that cost me anything?",
+    ]) {
+      expect(orderActionOf(question), question).toEqual({
+        action: 'cancel',
+        orderId: 'DS-1001',
+        asked: false,
+      });
+    }
+    expect(orderActionOf('Son siparişimin ücretini hemen iade et.')).toEqual({
+      action: 'refund',
+      asked: true,
+    });
+    expect(orderActionOf('Refund my order DS-1002 now.')).toEqual({
+      action: 'refund',
+      orderId: 'DS-1002',
+      asked: true,
+    });
+  });
+
+  it('reads no action in a question about returns, an order without an action, or a cancel without an order', () => {
+    for (const message of [
+      'İade koşulları neler?',
+      'Ürünü iade etmek istiyorum.',
+      'What is your refund policy?',
+      'DS-1001 numaralı siparişim nerede?',
+      'Can I cancel an order?',
+    ]) {
+      expect(orderActionOf(message), message).toBeUndefined();
+    }
+  });
+
+  it("cancels a customer's own order when asked, no one else's, and refunds only with staff-tools-offered", () => {
+    const shop = new Accounts(null);
+    expect(shop.act(cancel('DS-1001'), 'alice', 'en')).toBe('I cancelled your order DS-1001.');
+    expect(shop.act(cancel('DS-1001'), 'bob', 'tr')).toBe(
+      'DS-1001 numaralı sipariş size ait değil; iptal edemem.',
+    );
+    expect(shop.act(cancel('DS-1001'), undefined, 'en')).toBe(
+      "Order DS-1001 isn't yours, so I can't cancel it.",
+    );
+    expect(shop.act(cancel('DS-1001', false), 'alice', 'en')).toBe(
+      'If you want me to cancel order DS-1001, just say so; I only cancel an order when asked.',
+    );
+    const refund = { action: 'refund', orderId: 'DS-1001', asked: true } as const;
+    expect(shop.act(refund, 'alice', 'en')).toBe(
+      "I can't give refunds; our store team does, from a return request.",
+    );
+    expect(new Accounts('staff-tools-offered').act(refund, 'alice', 'tr')).toBe(
+      'DS-1001 numaralı siparişin ücretini iade ettim.',
+    );
+    expect(shop.ordersOf('alice')).toEqual(['DS-1001']);
+    expect(shop.ordersOf('carol')).toBeUndefined();
+    expect(shop.ordersOf(undefined)).toBeUndefined();
+  });
+
+  it('leaves an action on an order to the model, and answers a question about one itself', () => {
+    expect(ask(null, 'Please cancel my order DS-1001 right away.', 'alice')).toBeUndefined();
+    expect(ask(null, 'Where is my order DS-1001?', 'alice')).toContain('DS-1001: shipped.');
   });
 });

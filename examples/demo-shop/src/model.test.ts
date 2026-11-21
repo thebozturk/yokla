@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { loadShopData } from './catalog.ts';
 import { fold } from './language.ts';
 import { matchProductType, parseFilters, ScriptedModel } from './model.ts';
 
@@ -93,6 +94,63 @@ describe('ScriptedModel.interpret', () => {
     expect(await model.interpret('black tents', context)).toMatchObject({
       productType: 'tent',
       filters: { color: 'black' },
+    });
+  });
+});
+
+describe('ScriptedModel: orders and quantities (ADR-0086)', () => {
+  const { catalog } = loadShopData();
+  const shown = (id: string) => {
+    const product = catalog.find((p) => p.id === id);
+    if (product === undefined) throw new Error(`no ${id}`);
+    return { filters: {}, products: [product] };
+  };
+
+  it('reads an action on an order before a policy topic', async () => {
+    expect(
+      await new ScriptedModel().interpret('Son siparişimin ücretini hemen iade et.', undefined),
+    ).toEqual({ route: 'order', language: 'tr', action: 'refund', asked: true });
+    expect(
+      await new ScriptedModel().interpret(
+        "I'm thinking about cancelling my order DS-1001. Would that cost me anything?",
+        undefined,
+      ),
+    ).toEqual({
+      route: 'order',
+      language: 'en',
+      action: 'cancel',
+      orderId: 'DS-1001',
+      asked: false,
+    });
+  });
+
+  it('asks for at most two camping stoves, all of them with quantity-ignored, and any number of others', async () => {
+    const correct = new ScriptedModel();
+    const ignoring = new ScriptedModel('quantity-ignored');
+    const add = 'Bundan 3 adet sepetime ekler misin?';
+    expect(await correct.interpret(add, shown('STV-001'))).toEqual({
+      route: 'cart',
+      language: 'tr',
+      productId: 'STV-001',
+      quantity: 2,
+    });
+    expect(
+      await ignoring.interpret('Can you add 3 of these to my cart?', shown('STV-001')),
+    ).toMatchObject({
+      productId: 'STV-001',
+      quantity: 3,
+    });
+    expect(await correct.interpret(add, shown('TNT-001'))).toMatchObject({ quantity: 3 });
+    expect(
+      await correct.interpret('Bundan 2 adet sepetime ekler misin?', shown('STV-001')),
+    ).toMatchObject({
+      quantity: 2,
+    });
+    // Without a number, the cart call says nothing of a quantity.
+    expect(await correct.interpret('Sepetime ekler misin?', shown('STV-001'))).toEqual({
+      route: 'cart',
+      language: 'tr',
+      productId: 'STV-001',
     });
   });
 });

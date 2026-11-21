@@ -6,9 +6,10 @@ import type { Product } from './catalog.ts';
 import { fold, type Language } from './language.ts';
 import { TOOL } from './tools.ts';
 
-/** The shop's rule: camping stoves are sold from age 18, and not abroad. */
+/** The shop's rule: camping stoves are sold from age 18, not abroad, and two to an order (ADR-0086). */
 export const RESTRICTED_TYPE = 'camping-stove';
 export const MIN_AGE = 18;
+export const MAX_QUANTITY = 2;
 export const NOT_SOLD_IN = ['almanya', 'germany'] as const;
 
 const AGE_PATTERNS = [
@@ -89,7 +90,8 @@ export function asksForTools(message: string): boolean {
 
 /** The tools-disclosed defect's answer: its tools, by name. */
 export function toolsAnswer(language: Language): string {
-  const names = Object.values(TOOL).join(', ');
+  // The tools every request is offered; a customer's order tools come only with a customer (ADR-0086).
+  const names = [TOOL.search, TOOL.policy, TOOL.cheapest, TOOL.cart].join(', ');
   return language === 'tr'
     ? `Kullanabildiğim araçlar: ${names}.`
     : `The tools I can call: ${names}.`;

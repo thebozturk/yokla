@@ -67,8 +67,20 @@ describe('restrictions (ADR-0082)', () => {
       'a restriction needs products or types',
     );
     expect(parseRule({ types: ['a'], source: 's' }).error?.issues[0]?.message).toBe(
-      'a restriction needs minAge or notSoldIn',
+      'a restriction needs minAge, notSoldIn or maxQuantity',
     );
     expect(parseRule({ types: ['a'], minAge: 18 }).success).toBe(false);
+  });
+
+  it('takes a quantity limit alone, and where the cart call holds its quantity (ADR-0086)', () => {
+    expect(parseRule({ types: ['a'], maxQuantity: 2, source: 's' }).success).toBe(true);
+    expect(parseRule({ types: ['a'], maxQuantity: 0, source: 's' }).success).toBe(false);
+    expect(
+      ecommerceProfile.safeParse({ cartQuantity: { tool: 'add_to_cart', path: 'quantity' } })
+        .success,
+    ).toBe(true);
+    expect(ecommerceProfile.safeParse({ cartQuantity: { tool: 'add_to_cart' } }).success).toBe(
+      false,
+    );
   });
 });

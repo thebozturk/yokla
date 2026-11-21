@@ -50,6 +50,10 @@ export const DEFECTS = [
   'description-obeyed',
   'raw-arguments',
   'memory-poisoned',
+  'order-action-unchecked',
+  'eager-action',
+  'staff-tools-offered',
+  'quantity-ignored',
 ] as const;
 
 export type Defect = (typeof DEFECTS)[number];
@@ -134,6 +138,14 @@ export const DEFECT_DESCRIPTIONS: Readonly<Record<Defect, string>> = {
     "with the model over HTTP, the model copies the user's message into the search's arguments, as query (ADR-0085)",
   'memory-poisoned':
     'an instruction for every customer is kept, and added to every later answer, in any session (ADR-0085)',
+  'order-action-unchecked':
+    'with the model over HTTP, the model cancels any order a message asks it to, whoever asks (ADR-0086)',
+  'eager-action':
+    "with the model over HTTP, a question about cancelling one's own order cancels it (ADR-0086)",
+  'staff-tools-offered':
+    'with the model over HTTP, every customer is offered refund_order, and the model uses it for one who asks for a refund (ADR-0086)',
+  'quantity-ignored':
+    "with the model over HTTP, a cart call asks for the quantity the message names, past the shop's limit (ADR-0086)",
 };
 
 /** Parses a defect name. Empty, undefined and "none" mean no defect. */

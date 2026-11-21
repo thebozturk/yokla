@@ -191,10 +191,13 @@ export class Assistant {
 
     // The model sees the message with personal data masked, and only the data it needs.
     const sent = this.#defect === 'unmasked-pii' ? message : maskPersonalData(message);
+    const orders = this.#accounts.ordersOf(options.customer);
     const call: ModelCall = {
       ...tracing(options),
       question: sent,
       ...(this.#defect === 'prompt-bloat' ? { reference: this.#data.catalog } : {}),
+      // A known customer's own orders: the model may act on these alone (ADR-0086).
+      ...(orders === undefined ? {} : { orders }),
       addToCart: (productId) => {
         remember(
           this.#carts,
@@ -208,11 +211,18 @@ export class Assistant {
     let draft: AnswerDraft;
     let next: ConversationContext;
     let answer: string;
-    let restricted: string | undefined;
+    // An answer the app gives itself, without the writer: a restriction, or an order's action.
+    let direct: string | undefined;
     try {
       interpretation = this.#codeRead(await this.#model.interpret(sent, context, call), sent);
-      ({ draft, next, restricted } = this.#plan(interpretation, context, sessionId, sent));
-      answer = restricted ?? (await this.#model.write(draft, call));
+      ({ draft, next, direct } = this.#plan(
+        interpretation,
+        context,
+        sessionId,
+        sent,
+        options.customer,
+      ));
+      answer = direct ?? (await this.#model.write(draft, call));
     } catch (error) {
       if (this.#defect === 'no-model-fallback') throw error;
       // The model failed: answer from a template on the fallback route. The
@@ -339,7 +349,8 @@ export class Assistant {
     context: ConversationContext | undefined,
     sessionId: string,
     message: string,
-  ): { draft: AnswerDraft; next: ConversationContext; restricted?: string } {
+    customer?: string,
+  ): { draft: AnswerDraft; next: ConversationContext; direct?: string } {
     const { language } = interpretation;
     switch (interpretation.route) {
       case 'cart': {
@@ -353,7 +364,7 @@ export class Assistant {
           return {
             draft: { kind: 'fallback', language },
             next: context ?? EMPTY_CONTEXT,
-            restricted: restrictedAnswer(why, language),
+            direct: restrictedAnswer(why, language),
           };
         }
         const ids = [...(this.#carts.get(sessionId) ?? []), product.id];
@@ -368,6 +379,13 @@ export class Assistant {
           next: context ?? EMPTY_CONTEXT,
         };
       }
+      // An action on an order: the app guards it, whatever the model asked (ADR-0086).
+      case 'order':
+        return {
+          draft: { kind: 'fallback', language },
+          next: context ?? EMPTY_CONTEXT,
+          direct: this.#accounts.act(interpretation, customer, language),
+        };
       case 'product-search':
         return this.#search(interpretation.productType, interpretation.filters, language, message);
       case 'policy': {

@@ -18,8 +18,20 @@ export function isInterpretation(value: unknown): value is Interpretation {
       return typeof value['productType'] === 'string' && isRecord(value['filters']);
     case 'policy':
       return typeof value['topic'] === 'string';
-    case 'cart':
-      return typeof value['productId'] === 'string' && value['productId'] !== '';
+    case 'cart': {
+      const quantity = value['quantity'];
+      return (
+        typeof value['productId'] === 'string' &&
+        value['productId'] !== '' &&
+        (quantity === undefined || (Number.isInteger(quantity) && Number(quantity) >= 1))
+      );
+    }
+    case 'order':
+      return (
+        (value['action'] === 'cancel' || value['action'] === 'refund') &&
+        typeof value['asked'] === 'boolean' &&
+        (value['orderId'] === undefined || typeof value['orderId'] === 'string')
+      );
     case 'follow-up-cheapest':
     case 'refusal':
     case 'handoff':

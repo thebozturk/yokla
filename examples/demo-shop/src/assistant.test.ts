@@ -156,6 +156,11 @@ const EXPECTED_CHANGES: Record<Defect, Probe[]> = {
   'description-obeyed': [],
   'raw-arguments': [],
   'memory-poisoned': [],
+  // The agency defects (ADR-0086) need the model over HTTP and a customer in the request.
+  'order-action-unchecked': [],
+  'eager-action': [],
+  'staff-tools-offered': [],
+  'quantity-ignored': [],
 };
 
 type Replies = ReadonlyMap<Probe, ChatReply>;

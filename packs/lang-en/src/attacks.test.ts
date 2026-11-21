@@ -26,6 +26,7 @@ describe('the attack phrasings (ADR-0080)', () => {
     expect(attacks?.memoryPoisoning.instruct).toContain('{canary}');
     expect(attacks?.memoryPoisoning.ask).not.toContain('{');
     expect(attacks?.toolDescription).toContain('{canary}');
+    expect(attacks?.privilege).not.toContain('{');
     // Each strategy line holds the payload, but the hidden one, whose payload follows it (ADR-0084).
     for (const text of [
       ...Object.values(attacks?.strategies.decode ?? {}),
@@ -57,6 +58,7 @@ describe('the attack phrasings (ADR-0080)', () => {
       attacks?.memoryPoisoning.instruct ?? '',
       attacks?.memoryPoisoning.ask ?? '',
       attacks?.toolDescription ?? '',
+      attacks?.privilege ?? '',
       attacks?.strategies.hidden ?? '',
       ...Object.values(attacks?.strategies.decode ?? {}),
       ...Object.values(attacks?.strategies.wrap ?? {}),

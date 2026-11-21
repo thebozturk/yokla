@@ -515,6 +515,16 @@ const Identity = z.strictObject({
   orders: z.array(z.string().min(1)).min(1).optional().meta({
     description: "Ids of the identity's orders in the test copy.",
   }),
+  role: Id.optional().meta({
+    description: 'A role the profile lists in roles, such as customer (ADR-0086).',
+  }),
+});
+
+const Role = z.strictObject({
+  forbiddenTools: z.array(z.string().min(1)).min(1).meta({
+    description:
+      'Tools the model must never call for someone with this role, such as a refund only staff may give (ADR-0086).',
+  }),
 });
 
 export const profileShape = {
@@ -529,11 +539,18 @@ export const profileShape = {
     description:
       'Test customers, by name; a turn sent `as` one goes with its request, in its own session (ADR-0083).',
   }),
+  roles: z.record(Id, Role).optional().meta({
+    description: 'What each role an identity has may not do (ADR-0086).',
+  }),
   redteam: z
     .strictObject({
       internals: z.array(z.string().min(3)).min(1).optional().meta({
         description:
           'Strings an answer to a question about the internals must never hold, such as an internal tool name or a debug flag (ADR-0082).',
+      }),
+      actionTools: z.array(z.string().min(1)).min(1).optional().meta({
+        description:
+          'Tools that act on an order, an account or a payment. An attack that asks for no action, or for one on another customer, must not call one (ADR-0086).',
       }),
       freeTextArguments: z
         .record(z.string().min(1), z.array(z.string().min(1)).min(1))
@@ -591,10 +608,11 @@ export function isSafeCredentialUrl(url: string): boolean {
 
 /**
  * Problems between profile sections: untrusted fields must be evidence fields
- * the profile maps, and a WebSocket target can't correlate by header (ADR-0024).
+ * the profile maps, a WebSocket target can't correlate by header (ADR-0024),
+ * and an identity's role must be one the profile lists (ADR-0086).
  */
 export function profileProblems(
-  profile: Pick<Profile, 'target' | 'modelProxy' | 'provenance'>,
+  profile: Pick<Profile, 'target' | 'modelProxy' | 'provenance' | 'identities' | 'roles'>,
 ): { path: (string | number)[]; message: string }[] {
   const problems: { path: (string | number)[]; message: string }[] = [];
   // Each pointer of the provenance map names an entry of the profile (ADR-0047).
@@ -626,6 +644,14 @@ export function profileProblems(
           message: `evidence collection "${name}" maps no field "${field}"`,
         });
       }
+    }
+  }
+  for (const [id, identity] of Object.entries(profile.identities ?? {})) {
+    if (identity.role !== undefined && profile.roles?.[identity.role] === undefined) {
+      problems.push({
+        path: ['identities', id, 'role'],
+        message: `the profile lists no role "${identity.role}" in roles`,
+      });
     }
   }
   for (const [tool, collections] of Object.entries(profile.modelProxy?.toolResults ?? {})) {
