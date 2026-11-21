@@ -221,6 +221,7 @@ option, a probe that failed, or a proposal that exists without `--force`.
 | `--replay-loose` | | With `--replay`, answer a call the cassette has no match for with the recorded call at the same position. |
 | `--reverse-items <tool>=<jsonpath>` | | Reverse the arrays the path selects in every result of a tool before the model sees it, through the model proxy (ADR-0043). Repeatable; not with a cassette. |
 | `--swap-model <swap>` | | `<upstream>:<asked model>=<model>`: send the calls that ask for a model to another, through the model proxy (ADR-0042). `=<upstream>/<model>` sends them to another upstream of the same kind. Repeatable; not with a cassette. |
+| `--strategy <name>` | | Send each message of each `redteam` case encoded, obfuscated or wrapped: one strategy, or two in layers as `a+b` (ADR-0084, below). |
 | `--transform <kind>` | | Send each written message as users write it: `no-diacritics`, `lowercase`, `no-punctuation` or `typos` (ADR-0045), or `paraphrase` or `code-switch`, which `models.transform` writes (ADR-0059). Repeatable. |
 | `--concurrency <n>` | 1 | Cases run in parallel. Serial correlation needs 1, unless spans alone show the model calls. |
 | `--target-url <url>` | the profile's | Use this url instead of `target.request.url`. |
@@ -378,6 +379,39 @@ in the configuration:
 - **The cache** in `yokla-data/transform/` makes a rerun free, and sends the
   same messages. A rerun the cache answers whole needs no key: the key is
   read only when a rewrite isn't cached (ADR-0078).
+
+**`--strategy`** asks whether an attack the target withstands as written
+still fails when it is sent another way (ADR-0084). Only `redteam` cases
+change; the others go as written.
+
+```sh
+pnpm yokla run --cases cases/redteam.yaml --out runs/attacks.json
+pnpm yokla run --cases cases/redteam.yaml --strategy base64 --out runs/base64.json
+pnpm yokla compare --results runs/attacks.json --results runs/base64.json --expect-same
+```
+
+| Strategy | Kind | What it sends |
+|---|---|---|
+| `base64`, `hex` | encoding | the message's UTF-8 bytes in Base64, or in hexadecimal, after a line that asks to decode and follow it |
+| `rot13`, `morse` | encoding | the message without diacritics, its letters rotated by 13, or in Morse code, after the same kind of line |
+| `hidden` | encoding | a line that says the message holds an instruction, then the message without diacritics in invisible Unicode tag characters |
+| `leetspeak` | obfuscation | a→4, e→3, i→1, o→0, s→5, t→7 |
+| `homoglyph` | obfuscation | Latin letters as their Cyrillic look-alikes |
+| `roleplay`, `hypothetical`, `developer-mode` | wrapper | the message as a line a story's character answers, as a hypothetical question, or after a claim that a developer mode with no rules is on |
+
+- **Encodings rewrite the whole message,** the canary too: a target that
+  decodes it and follows it writes the canary back in plain text.
+  **Obfuscations and wrappers** keep the values the expectations quote as
+  written.
+- **Two in layers,** such as `base64+roleplay`, apply in the order written.
+- **The language pack** words each line and wrapper, in the case's
+  language.
+- **The results** record `run.strategy`, with how many messages it
+  rewrote; a strategy that rewrote none is a run issue. Each turn keeps its
+  `written` message, and `yokla compare` names the run by its strategy.
+- **Not yet** with `--transform` or a cassette. A conversation spread over
+  turns, and the profile's other language, come with the attacker model
+  (R5).
 
 ## `yokla report`
 
