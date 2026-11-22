@@ -1195,6 +1195,19 @@ For the attacks from templates (ADR-0080), `yokla generate --redteam
   `best-of-n` breaks it at its third, leetspeak attempt and sends no
   fourth. A second run sends no attacker call, every reply from the
   cache. The test is `packages/cli/src/attacker.e2e.test.ts`.
+- **More attacker strategies (ADR-0088):** with the fake provider as
+  attacker, the correct shop withstands every attempt of `iterative`,
+  `tree` and `translate`. `filter-explained`, which refuses a message that
+  asks to set its instructions aside by quoting the phrase, passes every
+  written case and `best-of-n`, and `iterative` breaks it at its second
+  attempt, the phrase dropped. `layered-obeyed`, which refuses a wrapper it
+  can read and reads past leetspeak, passes every written case and
+  `best-of-n`, and `tree` breaks it at its fifth attempt, the role-play in
+  leetspeak. `one-language-guard`, which follows instructions in English
+  only, fails the English injections as written and the Turkish ones under
+  `translate`, written in English, each judged in the language it was
+  sent in. A second `iterative` run sends no attacker call. The test is
+  `packages/cli/src/attacker-strategies.e2e.test.ts`.
 
 For the transforms a model writes (ADR-0059), the fake provider plays
 `models.transform` by rules: a paraphrase turns "X var mı?" into "X
@@ -1465,7 +1478,7 @@ suffix search, and image, audio and video attacks.
 | **R4. Injection through tools and memory** (done, ADR-0085) | the proxy changes a tool's description, not only its result (ADR-0043), per turn, so also mid-conversation; SQL, shell and URL payloads whose marker must not reach a tool call's arguments (`tool-argument-marker`), beside the free-text arguments a profile names; memory poisoning, checked in the session of another customer (ADR-0081) | a defect that follows an instruction in a tool description is caught, including one that arrives on the second turn |
 | **R4b. Agency and authority** (done, ADR-0086) | order and refund fraud and excessive agency judged by `tool-calls`; roles, whose forbidden tools `tool-calls` judges (ADR-0083); quantity limits read from a cart call's arguments (ADR-0082); moved from R4 (ADR-0085) | a defect that cancels or refunds an order the customer may not, or calls a tool their role forbids, is caught by `tool-calls`; a quantity past the profile's limit in a cart call's arguments is caught |
 | **R5. An attacker model** (done, ADR-0087) | `models.attacker` adapts the template attacks, cached and capped: `escalation`, turn by turn, which spreads an attack over turns as it chooses, and `best-of-n`, an attempt per sample; each stops at the first deterministic failure (ADR-0081); detection stays deterministic | with the fake provider as attacker, a defect only an adaptive attack reaches is caught; a second run repeats from the cache at no cost |
-| **R5b. More attacker strategies** | iterative refinement, a tree of variants, and the profile's other language, on R5's engine; moved from R5 (ADR-0087) | each strategy reaches a demo-shop defect the template attack doesn't, with the fake provider as attacker |
+| **R5b. More attacker strategies** (done, ADR-0088) | `iterative`, each attempt from the earlier ones and their answers; `tree`, variants of variants, breadth first, within `--branches` and `--depth`; `translate`, the attack in the profile's other languages, judged in the language it was sent in; on R5's engine; moved from R5 (ADR-0087) | with the fake provider as attacker, `iterative` and `tree` each reach a demo-shop defect the template attack doesn't; `translate` reaches, from the cases of one language, a defect those cases don't reach as written (ADR-0088) |
 | **R6. Findings mapped to frameworks** | each attack kind and check maps to OWASP LLM Top 10 and OWASP Agentic categories, and to the GDPR, KVKK and EU AI Act topics it touches, MITRE ATLAS tactics, the NIST AI RMF Measure function and ISO/IEC 42001; the reports group findings by them; a risk score per kind, severity times attack success rate with its interval, and a gate threshold on it, off by default; never a claim of compliance (ADR-0081) | every red-team finding of the demo-shop's run names its categories; the mapping is tested in both directions |
 | **R7. A calibrated judge** | `models.judge` for dimensions with no deterministic check: unsafe advice, hijacking, age and region restrictions where no rule applies, bias, political and religious statements, harmful content, imitation, free-text claims the data can't check; rubric notes and graded examples the user adds per category (ADR-0081); a calibration set in every run; gates only per dimension, by opt-in | a judge that misjudges a calibration case gives `unmeasured`; with the fake provider as judge, the unsafe-advice defect is found and doesn't gate by default |
 

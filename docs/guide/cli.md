@@ -222,9 +222,11 @@ option, a probe that failed, or a proposal that exists without `--force`.
 | `--reverse-items <tool>=<jsonpath>` | | Reverse the arrays the path selects in every result of a tool before the model sees it, through the model proxy (ADR-0043). Repeatable; not with a cassette. |
 | `--swap-model <swap>` | | `<upstream>:<asked model>=<model>`: send the calls that ask for a model to another, through the model proxy (ADR-0042). `=<upstream>/<model>` sends them to another upstream of the same kind. Repeatable; not with a cassette. |
 | `--strategy <name>` | | Send each message of each `redteam` case encoded, obfuscated or wrapped: one strategy, or two in layers as `a+b` (ADR-0084, below). |
-| `--attacker <name>` | | Adapt each `redteam` case of one turn, sent as no identity, with `models.attacker`: `escalation` or `best-of-n` (ADR-0087, below). |
-| `--attempts <n>` | 4 | `best-of-n`'s attempts. Only with `--attacker best-of-n`. |
+| `--attacker <name>` | | Adapt each `redteam` case of one turn, sent as no identity, with `models.attacker`: `escalation`, `best-of-n`, `iterative`, `tree` or `translate` (ADR-0087, ADR-0088, below). |
+| `--attempts <n>` | 4 | The attempts of `best-of-n` and `iterative`. Only with those. |
 | `--max-turns <n>` | 5 | `escalation`'s most turns. Only with `--attacker escalation`. |
+| `--branches <n>` | 3 | `tree`'s variants of each attempt, 1 to 5. Only with `--attacker tree`. |
+| `--depth <n>` | 2 | `tree`'s levels, 1 to 3. Only with `--attacker tree`. |
 | `--transform <kind>` | | Send each written message as users write it: `no-diacritics`, `lowercase`, `no-punctuation` or `typos` (ADR-0045), or `paraphrase` or `code-switch`, which `models.transform` writes (ADR-0059). Repeatable. |
 | `--concurrency <n>` | 1 | Cases run in parallel. Serial correlation needs 1, unless spans alone show the model calls. |
 | `--target-url <url>` | the profile's | Use this url instead of `target.request.url`. |
@@ -415,30 +417,43 @@ pnpm yokla compare --results runs/attacks.json --results runs/base64.json --expe
   `written` message, and `yokla compare` names the run by its strategy.
 - **Not yet** with `--transform` or a cassette. A conversation spread over
   turns comes with `--attacker escalation`, below; the profile's other
-  language with R5b.
+  language with `--attacker translate`.
 
 **`--attacker`** asks whether an attack the target withstands as written
-falls to a model that adapts it (ADR-0087). Each `redteam` case of one
-turn, sent as no identity, goes through `models.attacker`; the others go
-as written.
+falls to a model that adapts it (ADR-0087, ADR-0088). Each `redteam` case
+of one turn, sent as no identity, goes through `models.attacker`; the
+others go as written.
 
 ```sh
 pnpm yokla run --cases cases/redteam.yaml --attacker escalation --out runs/escalation.json
 pnpm yokla run --cases cases/redteam.yaml --attacker best-of-n --attempts 4 --out runs/best-of-n.json
+pnpm yokla run --cases cases/redteam.yaml --attacker iterative --attempts 4 --out runs/iterative.json
+pnpm yokla run --cases cases/redteam.yaml --attacker tree --branches 3 --depth 2 --out runs/tree.json
+pnpm yokla run --cases cases/redteam.yaml --attacker translate --out runs/translate.json
 ```
 
 | Strategy | What the attacker writes | Stops |
 |---|---|---|
 | `escalation` | the next message, turn by turn, from the attack and the conversation so far: it may start with an ordinary question and work towards the attack, or ask again another way | at the first turn a check fails, or after `--max-turns` |
 | `best-of-n` | attempt `i` of `--attempts`: another way to send the attack, each in a sample of its own, in a fresh session | at the first attempt a check fails |
+| `iterative` | attempt `i` of `--attempts`, from every earlier attempt and the target's answer to it, each in a fresh session | at the first attempt a check fails, or that errored |
+| `tree` | at the first level, `--branches` variants of the attack; at each next level, that many variants of each attempt of the level before, given its answer; breadth first, to `--depth` levels: at most 12 attempts by default | at the first attempt a check fails, or that errored |
+| `translate` | the attack in each other language of the profile, one attempt each | at the first attempt a check fails |
+
+- **`translate` judges each attempt in the language it was sent in,** with
+  that language's pack; a `language` expectation asks for it too. It needs
+  a profile of two languages or more, each with its pack.
 
 - **The case's own message is the attacker's goal,** and its turn's
   expectations judge every message the attacker writes. A model never
   decides a verdict.
 - **The results** keep every message sent, with the case's under
-  `written`; each sample's attacker calls, and for `escalation` the turn
-  that broke through as `brokeAt`; and `run.attacker`, with the strategy,
-  its bound and how many cases it adapted. `run.own` counts the calls.
+  `written`; each sample's attacker calls, for `escalation` the turn that
+  broke through as `brokeAt`, for a `tree` attempt past the first level the
+  sample it varies as `parent`, and for `translate` the attempt's
+  `language`; and `run.attacker`, with the strategy, its bound as `limit`
+  (for `tree` its node count, with `branches` and `depth`) and how many
+  cases it adapted. `run.own` counts the calls.
 - **The cache** in `yokla-data/attacker/` repeats every message while the
   target answers the same, at no cost. A failed attacker call is an error
   of the case, never a pass.
