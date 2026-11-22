@@ -100,7 +100,7 @@ old one.
 | [0085](0085-injection-through-tools-and-memory.md) | Injection through tools and memory (R4) | Accepted |
 | [0086](0086-agency-and-authority.md) | Agency and authority (R4b) | Accepted |
 | [0087](0087-an-attacker-model.md) | An attacker model (R5) | Accepted |
-| [0088](0088-more-attacker-strategies.md) | More attacker strategies (R5b) | Proposed |
+| [0088](0088-more-attacker-strategies.md) | More attacker strategies (R5b) | Accepted |
 
 ## Template
 

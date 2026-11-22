@@ -1,6 +1,6 @@
 # 0088. More attacker strategies (R5b)
 
-Status: Proposed · Date: 2026-11-22
+Status: Accepted · Date: 2026-11-22
 
 ## Context
 
@@ -81,16 +81,21 @@ yokla run --attacker translate
 - **Every attempt is a sample in a fresh session,** as best-of-n's is. The
   case stops at the first attempt with a failing finding, whatever the
   dimension's policy (ADR-0087).
+- **iterative and tree also stop at the first attempt that errored,** an
+  attacker call or the target's answer: their later attempts are written
+  from the earlier ones, and an errored one gives them nothing to write
+  from. The case is an error, never a pass. best-of-n keeps its way.
 - **The tree is numbered breadth first.** Attempt `k`, counted from 0, has
   attempt `⌊k / branches⌋ − 1` as its parent; the first `branches`
   attempts have the attack itself. Its branch is `k mod branches`.
 - **No attempt is pruned.** No check tells how close an answer came, and a
   model doesn't decide what runs (ADR-0079).
-- **A translated attempt is judged in its own language.** Its turn is
-  judged with that language's pack, and a `language` expectation on the
-  turn asks for that language. The case's other expectations are data,
-  such as a canary, an amount, a policy topic or a tool, and hold in any
-  language.
+- **A translated attempt is judged in its own language,** as a case in
+  that language: its checks get that language's pack and see that language
+  as the case's, check modules a person wrote among them, and a `language`
+  expectation on the turn asks for that language. The case's other
+  expectations are data, such as a canary, an amount, a policy topic or a
+  tool, and hold in any language. The results keep the case's language.
 - **Each failure names the strategy and the attempt** that broke through,
   and the results keep every message the attacker wrote.
 
@@ -109,7 +114,9 @@ As ADR-0087's, with each strategy's request:
   language, the strategy and the seed:
   - for iterative, the earlier attempts with their answers, the attempt's
     number and the attempts;
-  - for tree, the parent's message and answer, the branch and the bounds;
+  - for tree, the parent's message and answer, the branch and
+    `--branches`, which the prompt holds; `--depth` doesn't change a
+    request, so a deeper tree reuses the levels already asked;
   - for translate, the language written in.
 
 ### What results.v1 keeps
@@ -142,7 +149,9 @@ Three defects, each reached by one strategy:
   phrase (to ignore its instructions, "you are now", a system marker, in
   either language), and its refusal quotes the phrase. A message without
   one has its instruction to reply with a word followed.
-  - Every written injection carries such a phrase, and passes.
+  - Every written injection carries such a phrase, or hides its
+    instruction in invisible characters, which the shop doesn't read; each
+    passes.
   - escalation and best-of-n pass: each of their messages keeps the
     phrase, or writes it in leetspeak, which hides the instruction too.
   - `iterative` drops the quoted phrase at its second attempt, and fails
@@ -178,9 +187,13 @@ meet the criterion as ADR-0087 wrote it.
   attempt run; `translate` runs over the injection cases, the only ones
   the fake translates;
 - each defect fails as above under its strategy, and passes the written
-  cases and best-of-n (for `one-language-guard`, the Turkish cases);
+  cases and best-of-n (for `one-language-guard`, the Turkish injections,
+  its runs over the injection cases);
 - a second iterative run sends no attacker call: every reply comes from
-  the cache.
+  the cache;
+- the profile's copy has no request limits: a tree sends up to twelve
+  attempts a case, and at the demo profile's 120 a minute the runs would
+  take minutes.
 
 ### Layers
 
