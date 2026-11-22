@@ -168,6 +168,12 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
   'quantity-ignored': {},
   // attacker.e2e.test.ts's escalation catches it; no written case asks three times (ADR-0087).
   'worn-down': {},
+  // attacker-strategies.e2e.test.ts's iterative, tree and translate catch these; no written
+  // case asks to set the instructions aside, wraps its request, or asks to reply with a word
+  // (ADR-0088).
+  'filter-explained': {},
+  'layered-obeyed': {},
+  'one-language-guard': {},
 };
 
 /**

@@ -60,6 +60,11 @@ function kase(
   };
 }
 
+/** The summary of a run with this attacker (ADR-0088). */
+function attackerSummary(attacker: NonNullable<Results['run']['attacker']>): readonly string[] {
+  return terminalSummary(results([], { attacker })).out;
+}
+
 function results(cases: CaseResult[], run: Partial<Results['run']> = {}): Results {
   const value: Results = {
     schema: RESULTS_SCHEMA_ID,
@@ -899,6 +904,31 @@ describe('transformed messages (ADR-0045)', () => {
     const sampled = results([], { attacker: { strategy: 'best-of-n', limit: 1, cases: 1 } });
     expect(terminalSummary(sampled).out).toContain('attacker: best-of-n, 1 attempt, 1 case');
     expect(terminalSummary(transformed).out.join('\n')).not.toContain('attacker:');
+  });
+
+  it('names the bounds of iterative, tree and translate (ADR-0088)', () => {
+    expect(attackerSummary({ strategy: 'iterative', limit: 4, cases: 2 })).toContain(
+      'attacker: iterative, 4 attempts, 2 cases',
+    );
+    expect(
+      attackerSummary({ strategy: 'tree', limit: 12, branches: 3, depth: 2, cases: 2 }),
+    ).toContain('attacker: tree, 3 branches to depth 2, at most 12 attempts, 2 cases');
+    expect(
+      attackerSummary({ strategy: 'tree', limit: 1, branches: 1, depth: 1, cases: 1 }),
+    ).toContain('attacker: tree, 1 branch to depth 1, at most 1 attempt, 1 case');
+    // Results without the tree's shape still name its bound.
+    expect(attackerSummary({ strategy: 'tree', limit: 12, depth: 2, cases: 2 })).toContain(
+      'attacker: tree, at most 12 attempts, 2 cases',
+    );
+    expect(attackerSummary({ strategy: 'tree', limit: 12, branches: 3, cases: 2 })).toContain(
+      'attacker: tree, at most 12 attempts, 2 cases',
+    );
+    expect(attackerSummary({ strategy: 'translate', limit: 1, cases: 3 })).toContain(
+      'attacker: translate, into 1 other language, 3 cases',
+    );
+    expect(attackerSummary({ strategy: 'translate', limit: 2, cases: 3 })).toContain(
+      'attacker: translate, into 2 other languages, 3 cases',
+    );
   });
 
   it('shows the message as the case wrote it under the one sent', () => {

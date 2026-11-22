@@ -2,6 +2,7 @@
 // fields added later in v1, so unknown keys are allowed, unlike config files.
 
 import { z } from 'zod';
+import { ATTACKER_STRATEGIES } from '../attacker/attacker.ts';
 import { RunCoverage } from '../explore/coverage.ts';
 import { Exploration } from '../explore/trace.ts';
 import { Id, LanguageCode, Suite, TransformKind } from './common.ts';
@@ -209,7 +210,7 @@ export const Sample = z.object({
   /** cold samples bypassed the target's cache; warm samples did not (design §11). */
   cache: z.enum(['cold', 'warm']),
   turns: z.array(TurnResult),
-  /** The attacker's calls for this sample, and the turn that broke through (ADR-0087). */
+  /** The attacker's calls for this sample, and the turn that broke through (ADR-0087, ADR-0088). */
   attacker: z
     .object({
       calls: z.array(OwnCall),
@@ -217,6 +218,10 @@ export const Sample = z.object({
       costUsd: z.number().nonnegative().nullable(),
       /** escalation: the turn, from 0, whose answer failed a check, which ended it. */
       brokeAt: z.int().nonnegative().optional(),
+      /** tree: the sample whose attempt this one varies; absent at the first level. */
+      parent: z.int().nonnegative().optional(),
+      /** translate: the language the attempt was written in, and judged in. */
+      language: LanguageCode.optional(),
     })
     .optional(),
   /** A simulated customer's conversation (ADR-0028). */
@@ -360,12 +365,15 @@ export const Results = z
         .optional(),
       /** The run's strategy for its redteam cases, and how many messages it rewrote (ADR-0084). */
       strategy: z.object({ name: z.string().min(1), messages: z.int().nonnegative() }).optional(),
-      /** The run's attacker strategy, its bound, and how many cases it attacked (ADR-0087). */
+      /** The run's attacker strategy, its bound, and how many cases it attacked (ADR-0087, ADR-0088). */
       attacker: z
         .object({
-          strategy: z.enum(['escalation', 'best-of-n']),
-          /** best-of-n's attempts, or escalation's most turns. */
+          strategy: z.enum(ATTACKER_STRATEGIES),
+          /** escalation's most turns, or the most attempts: a tree's node count, translate's other languages. */
           limit: z.int().min(1),
+          /** tree: the branches per node and the levels. */
+          branches: z.int().min(1).optional(),
+          depth: z.int().min(1).optional(),
           cases: z.int().nonnegative(),
         })
         .optional(),

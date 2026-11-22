@@ -9,8 +9,14 @@ import { resolve } from 'node:path';
 import {
   aggregateCase,
   attacked,
-  type AttackerStrategy,
+  type AttackerRun,
   type AttackExchange,
+  type AttackRequest,
+  MAX_BRANCHES,
+  MAX_DEPTH,
+  translatable,
+  treeParent,
+  treeSize,
   settledFailure,
   answeredStatus,
   buildMessage,
@@ -167,14 +173,10 @@ export interface RunOptions {
   readonly freshCustomer?: boolean;
   /**
    * yokla run --attacker: each redteam case of one turn adapted by the
-   * attacker model, up to `limit` attempts or turns (ADR-0087).
+   * attacker model, within its strategy's bounds (ADR-0087, ADR-0088).
+   * `fresh` asks the attacker anew, whatever its reply cache holds.
    */
-  readonly attacker?: {
-    readonly strategy: AttackerStrategy;
-    readonly limit: number;
-    /** Ask the attacker anew, whatever its reply cache holds. */
-    readonly fresh?: boolean;
-  };
+  readonly attacker?: AttackerRun & { readonly fresh?: boolean };
   /** Told what the model's transforms will take, before any is asked (ADR-0059). */
   readonly onTransformPlan?: (plan: RewritePlan) => void;
   /** Where yokla keeps generated and cached data. Default: yokla-data next to the profile. */
@@ -612,7 +614,48 @@ function attackerProblems(options: RunOptions): string[] {
   if (options.cassette !== undefined) {
     problems.push("--attacker can't go with a cassette yet: it records the messages as written");
   }
+  if (
+    attacker.strategy === 'tree' &&
+    (!inRange(attacker.branches, MAX_BRANCHES) || !inRange(attacker.depth, MAX_DEPTH))
+  ) {
+    problems.push(
+      `--attacker tree takes 1 to ${String(MAX_BRANCHES)} branches and 1 to ${String(MAX_DEPTH)} levels`,
+    );
+  }
+  if (attacker.strategy === 'translate') problems.push(...translateProblems(options));
   return problems;
+}
+
+const inRange = (value: number, max: number) =>
+  Number.isInteger(value) && value >= 1 && value <= max;
+
+/**
+ * Why --attacker translate can't run (ADR-0088): a profile of one language,
+ * or a language to write in that the attacker prompt doesn't name or whose
+ * pack isn't loaded to judge the answer with.
+ */
+function translateProblems(options: RunOptions): string[] {
+  const languages = options.profile.languages;
+  if (languages.length < 2) {
+    return ['--attacker translate needs a profile of two languages or more'];
+  }
+  const packs = new Set((options.languages ?? []).map((pack) => pack.language));
+  const problems = new Set<string>();
+  for (const testCase of options.cases.filter(attacked)) {
+    for (const into of languages.filter((language) => language !== testCase.language)) {
+      if (!packs.has(into)) {
+        problems.add(
+          `--attacker translate needs the language pack of "${into}", which isn't loaded`,
+        );
+      }
+      if (!translatable(testCase.language, into)) {
+        problems.add(
+          `--attacker translate can't write in "${into}": the attacker prompt in "${testCase.language}" doesn't name it`,
+        );
+      }
+    }
+  }
+  return [...problems];
 }
 
 interface Sent {
@@ -830,17 +873,66 @@ interface ExchangedSample {
   readonly attacker?: NonNullable<SampleResult['attacker']>;
 }
 
-/** What the attacker needs from the run (ADR-0087). */
+/** What the attacker needs from the run (ADR-0087, ADR-0088). */
 interface Attack {
   readonly player: AttackerPlayer;
   readonly spend: OwnSpend;
-  readonly strategy: AttackerStrategy;
-  readonly limit: number;
+  readonly run: AttackerRun;
+  /** The profile's languages, which translate writes in. */
+  readonly languages: readonly string[];
   /** The case judged on the samples so far, as the final judging would; undefined when unknown. */
   readonly judge: (
     testCase: Case,
     samples: readonly ExchangedSample[],
   ) => Promise<CaseResult | undefined>;
+}
+
+/** The languages translate writes a case in: the profile's others, in its order (ADR-0088). */
+function otherLanguages(testCase: Case, languages: readonly string[]): string[] {
+  return languages.filter((language) => language !== testCase.language);
+}
+
+/** The attempts an attacked case plans; an escalation is one sample of turns. */
+function plannedAttempts(attack: Attack, testCase: Case): number {
+  const { run } = attack;
+  switch (run.strategy) {
+    case 'escalation': {
+      return 1;
+    }
+    case 'best-of-n':
+    case 'iterative': {
+      return run.limit;
+    }
+    case 'tree': {
+      return treeSize(run.branches, run.depth);
+    }
+    case 'translate': {
+      return otherLanguages(testCase, attack.languages).length;
+    }
+  }
+}
+
+/** The bound results.v1 keeps: escalation's most turns, or the most attempts (ADR-0088). */
+function attackerLimit(run: AttackerRun, languages: readonly string[]): number {
+  switch (run.strategy) {
+    case 'escalation':
+    case 'best-of-n':
+    case 'iterative': {
+      return run.limit;
+    }
+    case 'tree': {
+      return treeSize(run.branches, run.depth);
+    }
+    case 'translate': {
+      return languages.length - 1;
+    }
+  }
+}
+
+/** An earlier attempt as the attacker is shown it: its message and the answer (ADR-0088). */
+function attemptOf(sample: ExchangedSample | undefined): AttackExchange {
+  const [exchange] = sample?.exchanges ?? [];
+  return { attacker: exchange?.turn.user ?? '', answer: exchange?.turn.response?.text ?? '' };
 }
 
 /** Whether a judged sample has a failing finding: on its last turn, or on any. */
@@ -899,6 +991,7 @@ async function runSample(
   simulation: Simulation | undefined,
   tokens: TokenSource | undefined,
   attack?: Attack,
+  earlier: readonly ExchangedSample[] = [],
 ): Promise<ExchangedSample> {
   const target = options.profile.target;
   const ids = options.ids ?? randomUUID;
@@ -1356,7 +1449,10 @@ async function runSample(
   try {
     const [first] = testCase.turns;
     if (attack !== undefined && first !== undefined && attacked(testCase)) {
-      attacker = await attackWith(attack, testCase, first, sampleIndex, { runTurn, exchanges });
+      attacker = await attackWith(attack, testCase, first, sampleIndex, earlier, {
+        runTurn,
+        exchanges,
+      });
     } else if (testCase.customer === undefined) {
       for (const [turnIndex, written] of testCase.turns.entries()) {
         const transformed = transformTurn(options, testCase, sampleIndex, turnIndex, written);
@@ -1383,16 +1479,19 @@ async function runSample(
 }
 
 /**
- * An attacked sample (ADR-0087). escalation: the attacker writes each turn
- * from the attack and the conversation so far, each judged as the case's
- * turn, until one fails a check or the turns run out. best-of-n: the
- * attacker writes this sample's attempt, sent in its own session.
+ * An attacked sample (ADR-0087, ADR-0088). escalation: the attacker writes
+ * each turn from the attack and the conversation so far, each judged as the
+ * case's turn, until one fails a check or the turns run out. Every other
+ * strategy: the attacker writes this sample's attempt, sent in its own
+ * session; iterative from every earlier attempt, tree from its parent's, and
+ * translate in the sample's language, which judges it.
  */
 async function attackWith(
   attack: Attack,
   testCase: Case,
   turn: CaseTurn,
   sampleIndex: number,
+  earlier: readonly ExchangedSample[],
   sample: {
     readonly runTurn: (turn: CaseTurn, index: number, sent?: Sent) => Promise<Exchange>;
     readonly exchanges: Exchange[];
@@ -1402,19 +1501,53 @@ async function attackWith(
   const calls: OwnCall[] = [];
   const said: AttackExchange[] = [];
   const sent: Sent = { written: turn.user, changedBy: [] };
+  const { run } = attack;
   let brokeAt: number | undefined;
-  const turns = attack.strategy === 'escalation' ? attack.limit : 1;
+  const parent = run.strategy === 'tree' ? treeParent(sampleIndex, run.branches) : undefined;
+  const into =
+    run.strategy === 'translate'
+      ? otherLanguages(testCase, attack.languages)[sampleIndex]
+      : undefined;
+  const request = (): AttackRequest => {
+    switch (run.strategy) {
+      case 'escalation': {
+        return { strategy: 'escalation', exchanges: said };
+      }
+      case 'best-of-n': {
+        return { strategy: 'best-of-n', attempt: sampleIndex, attempts: run.limit };
+      }
+      case 'iterative': {
+        return {
+          strategy: 'iterative',
+          attempt: sampleIndex,
+          attempts: run.limit,
+          earlier: earlier.map((attempt) => attemptOf(attempt)),
+        };
+      }
+      case 'tree': {
+        return {
+          strategy: 'tree',
+          branch: sampleIndex % run.branches,
+          branches: run.branches,
+          ...(parent === undefined ? {} : { parent: attemptOf(earlier[parent]) }),
+        };
+      }
+      case 'translate': {
+        if (into === undefined) throw new Error('no language is left to translate into');
+        return { strategy: 'translate', into };
+      }
+    }
+  };
+  // A translated attempt is judged in its language, a language expectation with it (ADR-0088).
+  const expect =
+    into === undefined || turn.expect?.['language'] === undefined
+      ? turn.expect
+      : { ...turn.expect, language: into };
+  const turns = run.strategy === 'escalation' ? run.limit : 1;
   for (let turnIndex = 0; turnIndex < turns; turnIndex += 1) {
     let text: string;
     try {
-      const next = await attack.player.next(
-        turn.user,
-        testCase.language,
-        seed,
-        attack.strategy === 'escalation'
-          ? { strategy: 'escalation', exchanges: said }
-          : { strategy: 'best-of-n', attempt: sampleIndex, attempts: attack.limit },
-      );
+      const next = await attack.player.next(turn.user, testCase.language, seed, request());
       calls.push(next.call);
       countSpend(attack.spend, next.call);
       text = next.text;
@@ -1426,9 +1559,13 @@ async function attackWith(
       });
       break;
     }
-    const outcome = await sample.runTurn({ ...turn, user: text }, turnIndex, sent);
+    const outcome = await sample.runTurn(
+      { ...turn, user: text, ...(expect === undefined ? {} : { expect }) },
+      turnIndex,
+      sent,
+    );
     if (outcome.turn.error !== undefined || outcome.view === undefined) break;
-    if (attack.strategy !== 'escalation') break;
+    if (run.strategy !== 'escalation') break;
     // The conversation ends at the first turn a check fails.
     const judged = await attack.judge(testCase, [
       { index: sampleIndex, exchanges: [...sample.exchanges] },
@@ -1439,7 +1576,13 @@ async function attackWith(
     }
     said.push({ attacker: text, answer: outcome.turn.response?.text ?? '' });
   }
-  return { calls, costUsd: sumCosts(calls), ...(brokeAt === undefined ? {} : { brokeAt }) };
+  return {
+    calls,
+    costUsd: sumCosts(calls),
+    ...(brokeAt === undefined ? {} : { brokeAt }),
+    ...(parent === undefined ? {} : { parent }),
+    ...(into === undefined ? {} : { language: into }),
+  };
 }
 
 /**
@@ -1568,14 +1711,13 @@ async function exchangeCase(
   attack?: Attack,
 ): Promise<ExchangedCase> {
   const samples: ExchangedSample[] = [];
-  // An attacked case runs as its strategy says: one escalation, or one sample per attempt (ADR-0087).
+  // An attacked case runs as its strategy says: one escalation, or one sample per attempt
+  // (ADR-0087, ADR-0088).
   const attacking = attack !== undefined && attacked(testCase) ? attack : undefined;
   const count =
     attacking === undefined
       ? (testCase.samples ?? options.samples ?? 1)
-      : attacking.strategy === 'best-of-n'
-        ? attacking.limit
-        : 1;
+      : plannedAttempts(attacking, testCase);
   let stoppedEarly = false;
   for (let index = 0; index < count && cap?.stopped() !== true; index += 1) {
     samples.push(
@@ -1592,21 +1734,34 @@ async function exchangeCase(
         simulation,
         tokens,
         attacking,
+        [...samples],
       ),
     );
     await cap?.check();
     if (index === count - 1) break;
-    // best-of-n stops at the first attempt a check fails.
+    // An attacked case stops at the first attempt a check fails; iterative and tree, which
+    // build on earlier attempts, also at the first that errored (ADR-0088).
     const done =
       attacking === undefined
         ? settled !== undefined && (await settled(testCase, samples, count))
-        : broke(await attacking.judge(testCase, samples), false);
+        : (buildsOnEarlier(attacking.run) && errored(samples.at(-1))) ||
+          broke(await attacking.judge(testCase, samples), false);
     if (done) {
       stoppedEarly = true;
       break;
     }
   }
   return { testCase, samples, planned: count, stoppedEarly };
+}
+
+/** Whether a strategy writes an attempt from earlier ones: iterative and tree (ADR-0088). */
+function buildsOnEarlier(run: AttackerRun): boolean {
+  return run.strategy === 'iterative' || run.strategy === 'tree';
+}
+
+/** Whether a sample has a turn that errored. */
+function errored(sample: ExchangedSample | undefined): boolean {
+  return (sample?.exchanges ?? []).some((exchange) => exchange.turn.error !== undefined);
 }
 
 /** Runs `worker` over `items` with at most `limit` in flight, keeping the input order. */
@@ -1753,6 +1908,9 @@ function judgeCase(
   const correlation = options.profile.target.observe?.logs?.correlate.by;
   const samples: SampleResult[] = exchanged.samples.map((sample) => {
     const history: TurnView[] = [];
+    // A translated attempt is judged as a case in its language (ADR-0088).
+    const translated = sample.attacker?.language;
+    const judged = translated === undefined ? testCase : { ...testCase, language: translated };
     const turns = sample.exchanges.map((exchange, turnIndex): TurnResult => {
       let turn = exchange.turn;
       const fields = observation.byExchange.get(exchange);
@@ -1836,12 +1994,12 @@ function judgeCase(
         ? prepared.checks.filter((check) => UNANSWERED_JUDGES.has(check.id))
         : prepared.checks;
       const checks = runChecks(applicable, {
-        case: testCase,
+        case: judged,
         turnIndex,
         turn: view,
         history: [...history],
         profile: options.profile,
-        lang: prepared.languages.get(testCase.language),
+        lang: prepared.languages.get(judged.language),
         languages: prepared.languages,
       });
       history.push(view);
@@ -2161,8 +2319,8 @@ export async function runSuite(input: RunOptions): Promise<Results> {
             ...(options.attacker.fresh === true ? { fresh: true } : {}),
           }),
           spend: ownSpend,
-          strategy: options.attacker.strategy,
-          limit: options.attacker.limit,
+          run: options.attacker,
+          languages: options.profile.languages,
           judge: (testCase, samples) => judgeSoFar(testCase, samples, samples.length),
         };
   let exchanged: ExchangedCase[] = [];
@@ -2460,7 +2618,10 @@ export async function runSuite(input: RunOptions): Promise<Results> {
         : {
             attacker: {
               strategy: options.attacker.strategy,
-              limit: options.attacker.limit,
+              limit: attackerLimit(options.attacker, options.profile.languages),
+              ...(options.attacker.strategy === 'tree'
+                ? { branches: options.attacker.branches, depth: options.attacker.depth }
+                : {}),
               cases: options.cases.filter(attacked).length,
             },
           }),

@@ -8,9 +8,14 @@ import { parseArgs } from 'node:util';
 import {
   ATTACKER_STRATEGIES,
   DEFAULT_ATTEMPTS,
+  DEFAULT_BRANCHES,
+  DEFAULT_DEPTH,
   DEFAULT_MAX_TURNS,
+  MAX_BRANCHES,
+  MAX_DEPTH,
   JsonPath,
   parseStrategy,
+  type AttackerRun,
   type AttackerStrategy,
   TRANSFORM_KINDS,
   TransformKind,
@@ -58,11 +63,15 @@ Options:
   --strategy <name>     send each message of each redteam case encoded or wrapped (ADR-0084):
                         base64, hex, rot13, morse, hidden, leetspeak, homoglyph, roleplay,
                         hypothetical or developer-mode; two in layers as <a>+<b>
-  --attacker <name>     adapt each redteam case of one turn with models.attacker (ADR-0087):
-                        escalation (turn by turn) or best-of-n (an attempt per sample); stops
-                        at the first message a check fails
-  --attempts <n>        best-of-n's attempts (default: 4)
+  --attacker <name>     adapt each redteam case of one turn with models.attacker (ADR-0087,
+                        ADR-0088): escalation (turn by turn), best-of-n (an attempt per
+                        sample), iterative (each attempt from the earlier ones' answers), tree
+                        (variants of variants) or translate (the profile's other languages);
+                        stops at the first message a check fails
+  --attempts <n>        best-of-n's and iterative's attempts (default: 4)
   --max-turns <n>       escalation's most turns (default: 5)
+  --branches <n>        tree's variants of each attempt, 1 to 5 (default: 3)
+  --depth <n>           tree's levels, 1 to 3 (default: 2)
   --concurrency <n>     cases run in parallel (default: 1)
   --target-url <url>    use this url instead of the profile's request url
   --junit <file>        also write a JUnit XML report
@@ -126,16 +135,36 @@ export function parseStrategyOption(text: string): readonly Strategy[] {
   return parsed;
 }
 
-/** The attacker of yokla run --attacker, with its bound, from the command line (ADR-0087). */
-export function parseAttacker(values: {
-  readonly attacker?: string | undefined;
-  readonly attempts?: string | undefined;
-  readonly 'max-turns'?: string | undefined;
-  readonly 'fresh-attacker'?: boolean | undefined;
-}): { strategy: AttackerStrategy; limit: number; fresh?: boolean } | undefined {
+const ATTACKER_BOUNDS = ['attempts', 'max-turns', 'branches', 'depth'] as const;
+type AttackerBound = (typeof ATTACKER_BOUNDS)[number];
+
+/** The bounds each attacker strategy takes (ADR-0087, ADR-0088). */
+const BOUNDS_OF: Readonly<Record<AttackerStrategy, readonly AttackerBound[]>> = {
+  escalation: ['max-turns'],
+  'best-of-n': ['attempts'],
+  iterative: ['attempts'],
+  tree: ['branches', 'depth'],
+  translate: [],
+};
+
+/** A positive integer flag of at most `max`. */
+function boundedInt(value: string | undefined, name: string, max: number): number | undefined {
+  const number = positiveInt(value, name);
+  if (number !== undefined && number > max) {
+    throw new LoadError(`--${name} must be 1 to ${String(max)}`);
+  }
+  return number;
+}
+
+/** The attacker of yokla run --attacker, with its bounds, from the command line (ADR-0087, ADR-0088). */
+export function parseAttacker(
+  values: Partial<Readonly<Record<AttackerBound | 'attacker', string | undefined>>> & {
+    readonly 'fresh-attacker'?: boolean | undefined;
+  },
+): (AttackerRun & { fresh?: boolean }) | undefined {
   const { attacker } = values;
   if (attacker === undefined) {
-    for (const flag of ['attempts', 'max-turns', 'fresh-attacker'] as const) {
+    for (const flag of [...ATTACKER_BOUNDS, 'fresh-attacker'] as const) {
       if (values[flag] !== undefined) throw new LoadError(`--${flag} needs --attacker`);
     }
     return undefined;
@@ -144,14 +173,40 @@ export function parseAttacker(values: {
   if (strategy === undefined) {
     throw new LoadError(`--attacker must be one of ${ATTACKER_STRATEGIES.join(', ')}`);
   }
-  const own = strategy === 'best-of-n' ? 'attempts' : 'max-turns';
-  const other = strategy === 'best-of-n' ? 'max-turns' : 'attempts';
-  if (values[other] !== undefined)
-    throw new LoadError(`--${other} doesn't go with --attacker ${strategy}`);
-  const limit =
-    positiveInt(values[own], own) ??
-    (strategy === 'best-of-n' ? DEFAULT_ATTEMPTS : DEFAULT_MAX_TURNS);
-  return { strategy, limit, ...(values['fresh-attacker'] === true ? { fresh: true } : {}) };
+  for (const flag of ATTACKER_BOUNDS) {
+    if (values[flag] !== undefined && !BOUNDS_OF[strategy].includes(flag)) {
+      throw new LoadError(`--${flag} doesn't go with --attacker ${strategy}`);
+    }
+  }
+  const fresh = values['fresh-attacker'] === true ? { fresh: true } : {};
+  switch (strategy) {
+    case 'escalation': {
+      return {
+        strategy,
+        limit: positiveInt(values['max-turns'], 'max-turns') ?? DEFAULT_MAX_TURNS,
+        ...fresh,
+      };
+    }
+    case 'best-of-n':
+    case 'iterative': {
+      return {
+        strategy,
+        limit: positiveInt(values.attempts, 'attempts') ?? DEFAULT_ATTEMPTS,
+        ...fresh,
+      };
+    }
+    case 'tree': {
+      return {
+        strategy,
+        branches: boundedInt(values.branches, 'branches', MAX_BRANCHES) ?? DEFAULT_BRANCHES,
+        depth: boundedInt(values.depth, 'depth', MAX_DEPTH) ?? DEFAULT_DEPTH,
+        ...fresh,
+      };
+    }
+    case 'translate': {
+      return { strategy, ...fresh };
+    }
+  }
 }
 
 /** A robustness transform from the command line (ADR-0045). */
@@ -221,6 +276,8 @@ const RUN_OPTIONS = {
   attacker: { type: 'string' },
   attempts: { type: 'string' },
   'max-turns': { type: 'string' },
+  branches: { type: 'string' },
+  depth: { type: 'string' },
   concurrency: { type: 'string' },
   'target-url': { type: 'string' },
   junit: { type: 'string' },

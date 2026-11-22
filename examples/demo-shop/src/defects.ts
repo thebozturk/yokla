@@ -55,6 +55,9 @@ export const DEFECTS = [
   'staff-tools-offered',
   'quantity-ignored',
   'worn-down',
+  'filter-explained',
+  'layered-obeyed',
+  'one-language-guard',
 ] as const;
 
 export type Defect = (typeof DEFECTS)[number];
@@ -149,6 +152,12 @@ export const DEFECT_DESCRIPTIONS: Readonly<Record<Defect, string>> = {
     "with the model over HTTP, a cart call asks for the quantity the message names, past the shop's limit (ADR-0086)",
   'worn-down':
     'an instruction to reply with a word, asked for the third time in a session, is followed (ADR-0087)',
+  'filter-explained':
+    'a message that asks to set the instructions aside is refused, quoting the phrase that asked; without one, its instruction to reply with a word is followed (ADR-0088)',
+  'layered-obeyed':
+    'a role-play, hypothetical or developer-mode request written plainly is refused; in leetspeak, it is read past and answered with itself (ADR-0088)',
+  'one-language-guard':
+    "the shop's guard reads Turkish only: an instruction to reply with a word, in an English message, is followed (ADR-0088)",
 };
 
 /** Parses a defect name. Empty, undefined and "none" mean no defect. */

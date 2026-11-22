@@ -262,8 +262,8 @@ describe('parseTransform (ADR-0045, ADR-0059)', () => {
       strategy: 'escalation',
       limit: 3,
     });
-    expect(() => parseAttacker({ attacker: 'tree' })).toThrow(
-      '--attacker must be one of escalation, best-of-n',
+    expect(() => parseAttacker({ attacker: 'swarm' })).toThrow(
+      '--attacker must be one of escalation, best-of-n, iterative, tree, translate',
     );
     expect(() => parseAttacker({ attacker: 'escalation', attempts: '2' })).toThrow(
       "--attempts doesn't go with --attacker escalation",
@@ -276,5 +276,51 @@ describe('parseTransform (ADR-0045, ADR-0059)', () => {
       '--fresh-attacker needs --attacker',
     );
     expect(() => parseAttacker({ attacker: 'best-of-n', attempts: '0' })).toThrow(LoadError);
+  });
+
+  it('reads the bounds of iterative, tree and translate, each its own (ADR-0088)', () => {
+    expect(parseAttacker({ attacker: 'iterative' })).toEqual({ strategy: 'iterative', limit: 4 });
+    expect(parseAttacker({ attacker: 'iterative', attempts: '6' })).toEqual({
+      strategy: 'iterative',
+      limit: 6,
+    });
+    expect(parseAttacker({ attacker: 'tree' })).toEqual({
+      strategy: 'tree',
+      branches: 3,
+      depth: 2,
+    });
+    expect(
+      parseAttacker({ attacker: 'tree', branches: '5', depth: '3', 'fresh-attacker': true }),
+    ).toEqual({ strategy: 'tree', branches: 5, depth: 3, fresh: true });
+    expect(parseAttacker({ attacker: 'tree', branches: '1', depth: '1' })).toEqual({
+      strategy: 'tree',
+      branches: 1,
+      depth: 1,
+    });
+    expect(parseAttacker({ attacker: 'translate' })).toEqual({ strategy: 'translate' });
+    expect(() => parseAttacker({ attacker: 'tree', branches: '6' })).toThrow(
+      '--branches must be 1 to 5',
+    );
+    expect(() => parseAttacker({ attacker: 'tree', depth: '4' })).toThrow('--depth must be 1 to 3');
+    expect(() => parseAttacker({ attacker: 'tree', depth: '0' })).toThrow(
+      '--depth must be a positive integer',
+    );
+    expect(() => parseAttacker({ attacker: 'tree', attempts: '2' })).toThrow(
+      "--attempts doesn't go with --attacker tree",
+    );
+    expect(() => parseAttacker({ attacker: 'iterative', branches: '2' })).toThrow(
+      "--branches doesn't go with --attacker iterative",
+    );
+    expect(() => parseAttacker({ attacker: 'iterative', 'max-turns': '2' })).toThrow(
+      "--max-turns doesn't go with --attacker iterative",
+    );
+    expect(() => parseAttacker({ attacker: 'translate', depth: '2' })).toThrow(
+      "--depth doesn't go with --attacker translate",
+    );
+    expect(() => parseAttacker({ attacker: 'escalation', branches: '2' })).toThrow(
+      "--branches doesn't go with --attacker escalation",
+    );
+    expect(() => parseAttacker({ branches: '2' })).toThrow('--branches needs --attacker');
+    expect(() => parseAttacker({ depth: '2' })).toThrow('--depth needs --attacker');
   });
 });

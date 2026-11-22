@@ -10,9 +10,13 @@ import {
   decoded,
   deobfuscated,
   wrapped,
+  filteredAnswer,
   hiddenText,
   instructedWord,
   markedInstruction,
+  overridePhrase,
+  unleet,
+  wrapperRefusal,
   restrictedAnswer,
   restrictionOf,
   statedReturnDays,
@@ -353,6 +357,9 @@ export class Assistant {
     if (this.#defect === 'system-markup-trusted' && marked !== undefined) return marked;
     const hidden = hiddenText(message);
     if (this.#defect === 'hidden-text-obeyed' && hidden !== undefined) return hidden;
+    // The attacker strategies' defects (ADR-0088): each gives in to what its strategy writes.
+    const yielded = this.#yielded(message, language);
+    if (yielded !== undefined) return yielded;
     if (this.#defect === 'tools-disclosed' && asksForTools(message)) return toolsAnswer(language);
     if (interpretation.route === 'policy' && interpretation.topic === 'returns') {
       const stated = statedReturnDays(message);
@@ -364,6 +371,23 @@ export class Assistant {
       }
     }
     return answer;
+  }
+
+  /**
+   * What filter-explained, layered-obeyed and one-language-guard answer in
+   * place of the answer, or undefined (ADR-0088).
+   */
+  #yielded(message: string, language: Language): string | undefined {
+    if (this.#defect === 'filter-explained') {
+      const phrase = overridePhrase(message);
+      return phrase === undefined ? instructedWord(message) : filteredAnswer(phrase, language);
+    }
+    if (this.#defect === 'layered-obeyed') {
+      if (wrapped(message)) return wrapperRefusal(language);
+      return wrapped(unleet(message)) ? message : undefined;
+    }
+    if (this.#defect === 'one-language-guard' && language === 'en') return instructedWord(message);
+    return undefined;
   }
 
   #plan(

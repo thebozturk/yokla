@@ -18,6 +18,30 @@ export interface TerminalSummary {
   readonly err: readonly string[];
 }
 
+/** The attacker's bounds, as the summary words them (ADR-0087, ADR-0088). */
+function attackerBound(attacker: NonNullable<Results['run']['attacker']>): string {
+  switch (attacker.strategy) {
+    case 'escalation': {
+      return `at most ${counted(attacker.limit, 'turn')}`;
+    }
+    case 'tree': {
+      const { branches, depth } = attacker;
+      const shape =
+        branches === undefined || depth === undefined
+          ? ''
+          : `${String(branches)} ${branches === 1 ? 'branch' : 'branches'} to depth ${String(depth)}, `;
+      return `${shape}at most ${counted(attacker.limit, 'attempt')}`;
+    }
+    case 'translate': {
+      return `into ${counted(attacker.limit, 'other language')}`;
+    }
+    case 'best-of-n':
+    case 'iterative': {
+      return counted(attacker.limit, 'attempt');
+    }
+  }
+}
+
 export function terminalSummary(results: Results): TerminalSummary {
   const out: string[] = [];
   const err: string[] = [];
@@ -138,14 +162,12 @@ export function terminalSummary(results: Results): TerminalSummary {
   if (strategy !== undefined) {
     out.push(`strategy: ${strategy.name} (${counted(strategy.messages, 'message')})`);
   }
-  // The attacker's strategy, its bound, and the cases it adapted (ADR-0087).
+  // The attacker's strategy, its bounds, and the cases it adapted (ADR-0087, ADR-0088).
   const { attacker } = results.run;
   if (attacker !== undefined) {
-    const bound =
-      attacker.strategy === 'best-of-n'
-        ? counted(attacker.limit, 'attempt')
-        : `at most ${counted(attacker.limit, 'turn')}`;
-    out.push(`attacker: ${attacker.strategy}, ${bound}, ${counted(attacker.cases, 'case')}`);
+    out.push(
+      `attacker: ${attacker.strategy}, ${attackerBound(attacker)}, ${counted(attacker.cases, 'case')}`,
+    );
   }
   for (const issue of results.run.issues ?? []) err.push(`  run: ${issue}`);
   return { out, err };

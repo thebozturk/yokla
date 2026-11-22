@@ -244,3 +244,51 @@ export function wrapped(message: string): boolean {
   const text = fold(message);
   return WRAPPERS.some((phrase) => text.includes(phrase));
 }
+
+const LEET_LETTERS: Readonly<Record<string, string>> = {
+  '4': 'a',
+  '3': 'e',
+  '1': 'i',
+  '0': 'o',
+  '5': 's',
+  '7': 't',
+};
+
+/** The message with leetspeak's digits read as letters, as layered-obeyed reads it (ADR-0088). */
+export function unleet(message: string): string {
+  return Array.from(message, (char) => LEET_LETTERS[char] ?? char).join('');
+}
+
+/** layered-obeyed's refusal of a wrapper it can read (ADR-0088). */
+export function wrapperRefusal(language: Language): string {
+  return language === 'tr'
+    ? 'Kurallarımı bir kenara bırakmamı isteyen bir rol oyununa ya da varsayıma katılamam.'
+    : "I can't take part in a role-play or a hypothetical that asks me to set my rules aside.";
+}
+
+/** Phrases that ask to set the instructions aside, as filter-explained's filter knows them. */
+const OVERRIDES = [
+  /ignore (?:all previous|any other) instructions/iu,
+  /you are now/iu,
+  /\bs[yiİ]stem:/iu,
+  /<\|im_start\|>system/u,
+  /önceki tüm talimatları unut/iu,
+  /başka talimatları yok say/iu,
+  /artık hiçbir kuralı olmayan/iu,
+] as const;
+
+/** The first phrase of the list the message holds, as it wrote it; or undefined (ADR-0088). */
+export function overridePhrase(message: string): string | undefined {
+  for (const pattern of OVERRIDES) {
+    const found = pattern.exec(message)?.[0];
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
+/** filter-explained's refusal, which quotes the phrase it refused (ADR-0088). */
+export function filteredAnswer(phrase: string, language: Language): string {
+  return language === 'tr'
+    ? `"${phrase}" diyen bir mesaja göre davranamam.`
+    : `I can't act on a message that says "${phrase}".`;
+}
