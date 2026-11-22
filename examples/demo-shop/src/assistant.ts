@@ -11,6 +11,7 @@ import {
   deobfuscated,
   wrapped,
   hiddenText,
+  instructedWord,
   markedInstruction,
   restrictedAnswer,
   restrictionOf,
@@ -131,6 +132,8 @@ export class Assistant {
   readonly #model: ChatModel;
   readonly #defect: Defect | null;
   readonly #sessions = new Map<string, ConversationContext>();
+  /** Per session, how many times each word was asked to be replied with (ADR-0087). */
+  readonly #instructed = new Map<string, ReadonlyMap<string, number>>();
   /** Per session, the products in its cart, added when the model asks (ADR-0025). */
   readonly #carts = new Map<string, readonly string[]>();
   readonly #cache = new Map<string, { reply: ChatReply; context: ConversationContext }>();
@@ -156,11 +159,30 @@ export class Assistant {
     options: Tracing & { readonly bypassCache?: boolean; readonly customer?: string } = {},
   ): Promise<{ reply: ChatReply; cache: CacheStatus }> {
     const replied = await this.#reply(sessionId, message, options);
+    // The worn-down defect (ADR-0087): an instruction asked for the third time is followed.
+    const worn = this.#wornDown(sessionId, message);
+    const answered =
+      worn === undefined ? replied : { ...replied, reply: { ...replied.reply, answer: worn } };
     // The memory-poisoned defect (ADR-0085): a kept instruction ends every later answer.
     const { poison } = this.#accounts;
     return poison === undefined
-      ? replied
-      : { ...replied, reply: { ...replied.reply, answer: `${replied.reply.answer} ${poison}` } };
+      ? answered
+      : { ...answered, reply: { ...answered.reply, answer: `${answered.reply.answer} ${poison}` } };
+  }
+
+  /**
+   * With worn-down, the word an instruction asks to reply with, once the
+   * session has asked for it three times; undefined otherwise (ADR-0087).
+   */
+  #wornDown(sessionId: string, message: string): string | undefined {
+    if (this.#defect !== 'worn-down') return undefined;
+    const word = instructedWord(message);
+    if (word === undefined) return undefined;
+    const asked = new Map(this.#instructed.get(sessionId) ?? []);
+    const times = (asked.get(word) ?? 0) + 1;
+    asked.set(word, times);
+    remember(this.#instructed, sessionId, asked, MAX_SESSIONS);
+    return times >= 3 ? word : undefined;
   }
 
   async #reply(

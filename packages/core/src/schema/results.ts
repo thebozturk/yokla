@@ -209,6 +209,16 @@ export const Sample = z.object({
   /** cold samples bypassed the target's cache; warm samples did not (design §11). */
   cache: z.enum(['cold', 'warm']),
   turns: z.array(TurnResult),
+  /** The attacker's calls for this sample, and the turn that broke through (ADR-0087). */
+  attacker: z
+    .object({
+      calls: z.array(OwnCall),
+      /** The sum of the calls' cost; null when any call has none. */
+      costUsd: z.number().nonnegative().nullable(),
+      /** escalation: the turn, from 0, whose answer failed a check, which ended it. */
+      brokeAt: z.int().nonnegative().optional(),
+    })
+    .optional(),
   /** A simulated customer's conversation (ADR-0028). */
   customer: z
     .object({
@@ -350,6 +360,15 @@ export const Results = z
         .optional(),
       /** The run's strategy for its redteam cases, and how many messages it rewrote (ADR-0084). */
       strategy: z.object({ name: z.string().min(1), messages: z.int().nonnegative() }).optional(),
+      /** The run's attacker strategy, its bound, and how many cases it attacked (ADR-0087). */
+      attacker: z
+        .object({
+          strategy: z.enum(['escalation', 'best-of-n']),
+          /** best-of-n's attempts, or escalation's most turns. */
+          limit: z.int().min(1),
+          cases: z.int().nonnegative(),
+        })
+        .optional(),
       /** What the run reached, when asked to measure it (ADR-0044). */
       coverage: RunCoverage.optional(),
       /** Every candidate yokla explore ran, kept or not (ADR-0046). */

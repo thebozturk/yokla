@@ -6,8 +6,12 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import {
+  ATTACKER_STRATEGIES,
+  DEFAULT_ATTEMPTS,
+  DEFAULT_MAX_TURNS,
   JsonPath,
   parseStrategy,
+  type AttackerStrategy,
   TRANSFORM_KINDS,
   TransformKind,
   type Strategy,
@@ -54,6 +58,11 @@ Options:
   --strategy <name>     send each message of each redteam case encoded or wrapped (ADR-0084):
                         base64, hex, rot13, morse, hidden, leetspeak, homoglyph, roleplay,
                         hypothetical or developer-mode; two in layers as <a>+<b>
+  --attacker <name>     adapt each redteam case of one turn with models.attacker (ADR-0087):
+                        escalation (turn by turn) or best-of-n (an attempt per sample); stops
+                        at the first message a check fails
+  --attempts <n>        best-of-n's attempts (default: 4)
+  --max-turns <n>       escalation's most turns (default: 5)
   --concurrency <n>     cases run in parallel (default: 1)
   --target-url <url>    use this url instead of the profile's request url
   --junit <file>        also write a JUnit XML report
@@ -62,7 +71,8 @@ Options:
   --proxy-url <url>     the model proxy, instead of 127.0.0.1 on modelProxy.port
   --max-cost <usd>      stop starting samples once the model cost, the target's and yokla's own,
                         reaches this
-  --fresh-customer      ask the customer model anew, whatever its reply cache holds`;
+  --fresh-customer      ask the customer model anew, whatever its reply cache holds
+  --fresh-attacker      ask the attacker model anew, whatever its reply cache holds`;
 
 const SWAP_USAGE =
   '--swap-model must be <upstream>:<asked model>=<model>, or <upstream>:<asked model>=<other upstream>/<model>';
@@ -114,6 +124,34 @@ export function parseStrategyOption(text: string): readonly Strategy[] {
   const parsed = parseStrategy(text);
   if (typeof parsed === 'string') throw new LoadError(parsed);
   return parsed;
+}
+
+/** The attacker of yokla run --attacker, with its bound, from the command line (ADR-0087). */
+export function parseAttacker(values: {
+  readonly attacker?: string | undefined;
+  readonly attempts?: string | undefined;
+  readonly 'max-turns'?: string | undefined;
+  readonly 'fresh-attacker'?: boolean | undefined;
+}): { strategy: AttackerStrategy; limit: number; fresh?: boolean } | undefined {
+  const { attacker } = values;
+  if (attacker === undefined) {
+    for (const flag of ['attempts', 'max-turns', 'fresh-attacker'] as const) {
+      if (values[flag] !== undefined) throw new LoadError(`--${flag} needs --attacker`);
+    }
+    return undefined;
+  }
+  const strategy = ATTACKER_STRATEGIES.find((name) => name === attacker);
+  if (strategy === undefined) {
+    throw new LoadError(`--attacker must be one of ${ATTACKER_STRATEGIES.join(', ')}`);
+  }
+  const own = strategy === 'best-of-n' ? 'attempts' : 'max-turns';
+  const other = strategy === 'best-of-n' ? 'max-turns' : 'attempts';
+  if (values[other] !== undefined)
+    throw new LoadError(`--${other} doesn't go with --attacker ${strategy}`);
+  const limit =
+    positiveInt(values[own], own) ??
+    (strategy === 'best-of-n' ? DEFAULT_ATTEMPTS : DEFAULT_MAX_TURNS);
+  return { strategy, limit, ...(values['fresh-attacker'] === true ? { fresh: true } : {}) };
 }
 
 /** A robustness transform from the command line (ADR-0045). */
@@ -180,6 +218,9 @@ const RUN_OPTIONS = {
   'reverse-items': { type: 'string', multiple: true },
   transform: { type: 'string', multiple: true },
   strategy: { type: 'string' },
+  attacker: { type: 'string' },
+  attempts: { type: 'string' },
+  'max-turns': { type: 'string' },
   concurrency: { type: 'string' },
   'target-url': { type: 'string' },
   junit: { type: 'string' },
@@ -188,6 +229,7 @@ const RUN_OPTIONS = {
   'proxy-url': { type: 'string' },
   'max-cost': { type: 'string' },
   'fresh-customer': { type: 'boolean' },
+  'fresh-attacker': { type: 'boolean' },
   help: { type: 'boolean' },
 } as const;
 
@@ -248,6 +290,8 @@ export async function runCommand(
     // Each message of a redteam case, encoded or wrapped (ADR-0084).
     const strategy =
       values.strategy === undefined ? undefined : parseStrategyOption(values.strategy);
+    // Each redteam case of one turn, adapted by the attacker model (ADR-0087).
+    const attacker = parseAttacker(values);
     const results = await runSuite({
       ...prepared.base,
       // Only the cases with one of the tags asked for (ADR-0077).
@@ -278,6 +322,7 @@ export async function runCommand(
       ...(reversals.length === 0 ? {} : { reversals }),
       ...(transforms.length === 0 ? {} : { transforms }),
       ...(strategy === undefined ? {} : { strategy }),
+      ...(attacker === undefined ? {} : { attacker }),
       // What the model's transforms will take, before any is asked (ADR-0059).
       onTransformPlan: (plan: RewritePlan) => {
         io.out(

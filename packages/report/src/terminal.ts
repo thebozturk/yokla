@@ -138,6 +138,15 @@ export function terminalSummary(results: Results): TerminalSummary {
   if (strategy !== undefined) {
     out.push(`strategy: ${strategy.name} (${counted(strategy.messages, 'message')})`);
   }
+  // The attacker's strategy, its bound, and the cases it adapted (ADR-0087).
+  const { attacker } = results.run;
+  if (attacker !== undefined) {
+    const bound =
+      attacker.strategy === 'best-of-n'
+        ? counted(attacker.limit, 'attempt')
+        : `at most ${counted(attacker.limit, 'turn')}`;
+    out.push(`attacker: ${attacker.strategy}, ${bound}, ${counted(attacker.cases, 'case')}`);
+  }
   for (const issue of results.run.issues ?? []) err.push(`  run: ${issue}`);
   return { out, err };
 }

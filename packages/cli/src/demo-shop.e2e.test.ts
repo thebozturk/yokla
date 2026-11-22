@@ -166,6 +166,8 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
   'eager-action': {},
   'staff-tools-offered': {},
   'quantity-ignored': {},
+  // attacker.e2e.test.ts's escalation catches it; no written case asks three times (ADR-0087).
+  'worn-down': {},
 };
 
 /**

@@ -1,26 +1,19 @@
 // The simulated customer's next message (ADR-0028): from the reply cache when
 // the same request was answered before, else from the customer model. Each
 // reply is cached under the SHA-256 of its request, so a rerun repeats every
-// message while the target answers the same. The cache holds the target's
-// answers: it lives in yokla-data/, out of version control.
+// message while the target answers the same.
 
-import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import {
-  callCost,
   customerCacheKey,
   customerPrompt,
   type CaseCustomer,
   type Exchanged,
   type OwnModel,
-  type Results,
 } from '@yokla/core';
-import { ModelClient, ModelClientError, type OwnReply } from './client.ts';
+import { cachedReply, replyFile, storedReply, type OwnCall } from './cached.ts';
+import { ModelClient, ModelClientError } from './client.ts';
 
-export type OwnCall = NonNullable<
-  Results['cases'][number]['samples'][number]['customer']
->['calls'][number];
+export type { OwnCall } from './cached.ts';
 
 export interface CustomerOptions {
   readonly model: OwnModel;
@@ -31,15 +24,6 @@ export interface CustomerOptions {
   readonly fresh?: boolean;
   /** Replaces the model client, for tests. */
   readonly client?: { complete: ModelClient['complete'] };
-}
-
-function isReply(value: unknown): value is OwnReply {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof Reflect.get(value, 'text') === 'string' &&
-    typeof Reflect.get(value, 'model') === 'string'
-  );
 }
 
 export class CustomerPlayer {
@@ -59,52 +43,15 @@ export class CustomerPlayer {
     exchanges: readonly Exchanged[],
   ): Promise<{ readonly text: string; readonly call: OwnCall }> {
     const { model } = this.#options;
-    const key = createHash('sha256')
-      .update(customerCacheKey({ model, customer, language, seed, exchanges }))
-      .digest('hex');
-    const file = join(this.#options.cacheDir, `${key}.json`);
-    if (this.#options.fresh !== true) {
-      const cached = this.#read(file);
-      if (cached !== undefined) {
-        return {
-          text: cached.text,
-          call: {
-            model: cached.model,
-            durationMs: 0,
-            usage: cached.usage,
-            costUsd: 0,
-            cached: true,
-          },
-        };
-      }
-    }
+    const file = replyFile(
+      this.#options.cacheDir,
+      customerCacheKey({ model, customer, language, seed, exchanges }),
+    );
+    const cached = this.#options.fresh === true ? undefined : cachedReply(file);
+    if (cached !== undefined) return cached;
     const reply = await this.#client.complete(customerPrompt(customer, language, exchanges), seed);
     // A reply cut at maxTokens may be empty; a customer's turn can't be (ADR-0051).
     if (reply.text === '') throw new ModelClientError('the customer model answered with no text');
-    mkdirSync(this.#options.cacheDir, { recursive: true });
-    writeFileSync(file, `${JSON.stringify(reply)}\n`);
-    const costUsd = callCost(
-      { ...reply.usage, cachedInput: null, cacheWrite: null, reasoning: null },
-      model.price,
-    );
-    return {
-      text: reply.text,
-      call: {
-        model: reply.model,
-        durationMs: reply.durationMs,
-        usage: reply.usage,
-        costUsd,
-        cached: false,
-      },
-    };
-  }
-
-  #read(file: string): OwnReply | undefined {
-    try {
-      const value: unknown = JSON.parse(readFileSync(file, 'utf8'));
-      return isReply(value) ? value : undefined;
-    } catch {
-      return undefined;
-    }
+    return storedReply(file, reply, model.price);
   }
 }

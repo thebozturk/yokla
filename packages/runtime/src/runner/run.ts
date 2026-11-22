@@ -8,6 +8,9 @@ import { readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   aggregateCase,
+  attacked,
+  type AttackerStrategy,
+  type AttackExchange,
   settledFailure,
   answeredStatus,
   buildMessage,
@@ -82,6 +85,7 @@ import { CommandError } from '../process/command.ts';
 import { correlate, observedFields, parseLogLines, readLogText } from '../observe/logs.ts';
 import { ProxyControl, ProxyControlError } from '../proxy/control.ts';
 import { ModelClientError } from '../models/client.ts';
+import { AttackerPlayer } from '../models/attacker.ts';
 import { CustomerPlayer, type OwnCall } from '../models/customer.ts';
 import { Rewriter, type RewritePlan, type RewriteResult } from '../models/rewrite.ts';
 import {
@@ -161,6 +165,16 @@ export interface RunOptions {
   readonly models?: YoklaConfig['models'];
   /** Ask the customer model anew, whatever its reply cache holds (ADR-0028). */
   readonly freshCustomer?: boolean;
+  /**
+   * yokla run --attacker: each redteam case of one turn adapted by the
+   * attacker model, up to `limit` attempts or turns (ADR-0087).
+   */
+  readonly attacker?: {
+    readonly strategy: AttackerStrategy;
+    readonly limit: number;
+    /** Ask the attacker anew, whatever its reply cache holds. */
+    readonly fresh?: boolean;
+  };
   /** Told what the model's transforms will take, before any is asked (ADR-0059). */
   readonly onTransformPlan?: (plan: RewritePlan) => void;
   /** Where yokla keeps generated and cached data. Default: yokla-data next to the profile. */
@@ -420,10 +434,12 @@ export function preflight(options: RunOptions): void {
     problems.push('modelProxy correlates serially, which needs a concurrency of 1');
   }
   const simulated = options.cases.filter((c) => c.customer !== undefined);
-  // Without a proxy, the cap holds yokla's own spend: the customer's and the model's
-  // transforms (ADR-0028, ADR-0059).
+  // Without a proxy, the cap holds yokla's own spend: the customer's, the model's
+  // transforms and the attacker's (ADR-0028, ADR-0059, ADR-0087).
   const ownSpends =
-    simulated.length > 0 || orderedTransforms(options.transforms).some(isModelTransform);
+    simulated.length > 0 ||
+    orderedTransforms(options.transforms).some(isModelTransform) ||
+    options.attacker !== undefined;
   if (options.maxCostUsd !== undefined && options.profile.modelProxy === undefined && !ownSpends) {
     problems.push('a cost cap needs a modelProxy in the profile: without one, spend is unknown');
   }
@@ -468,6 +484,7 @@ export function preflight(options: RunOptions): void {
   if (simulated.length > 0 && keyEnv !== undefined && options.env[keyEnv] === undefined) {
     problems.push(`environment variable ${keyEnv} is not set`);
   }
+  problems.push(...attackerProblems(options));
   for (const c of options.cases) {
     if (!c.turns.some((turn) => turn.faults !== undefined)) continue;
     if (options.profile.modelProxy === undefined) {
@@ -564,6 +581,40 @@ interface Exchange {
 }
 
 /** A turn's message as the run's transforms or strategy changed it (ADR-0045, ADR-0084). */
+/**
+ * Why yokla run --attacker can't run (ADR-0087): no attacker model, or one
+ * without a price, or without its key; another change to the messages, or a
+ * cassette. Every case language has an attacker prompt.
+ */
+function attackerProblems(options: RunOptions): string[] {
+  const { attacker } = options;
+  if (attacker === undefined) return [];
+  const problems: string[] = [];
+  const model = options.models?.attacker;
+  if (model === undefined) {
+    problems.push(`--attacker ${attacker.strategy} needs models.attacker in the configuration`);
+  } else {
+    if (model.price === undefined) {
+      problems.push(
+        'models.attacker has no price, so --max-cost could not be enforced: give it one, 0 for a local model',
+      );
+    }
+    if (model.apiKeyEnv !== undefined && options.env[model.apiKeyEnv] === undefined) {
+      problems.push(`environment variable ${model.apiKeyEnv} is not set`);
+    }
+  }
+  if ((options.strategy ?? []).length > 0) {
+    problems.push("--attacker can't go with --strategy yet: one rewrites what the other writes");
+  }
+  if (orderedTransforms(options.transforms).length > 0) {
+    problems.push("--attacker can't go with --transform yet: one rewrites what the other writes");
+  }
+  if (options.cassette !== undefined) {
+    problems.push("--attacker can't go with a cassette yet: it records the messages as written");
+  }
+  return problems;
+}
+
 interface Sent {
   /** The message as the case wrote it. */
   readonly written: string;
@@ -775,6 +826,32 @@ interface ExchangedSample {
   readonly exchanges: Exchange[];
   /** A simulated customer's conversation (ADR-0028). */
   readonly customer?: NonNullable<SampleResult['customer']>;
+  /** The attacker's calls for the sample (ADR-0087). */
+  readonly attacker?: NonNullable<SampleResult['attacker']>;
+}
+
+/** What the attacker needs from the run (ADR-0087). */
+interface Attack {
+  readonly player: AttackerPlayer;
+  readonly spend: OwnSpend;
+  readonly strategy: AttackerStrategy;
+  readonly limit: number;
+  /** The case judged on the samples so far, as the final judging would; undefined when unknown. */
+  readonly judge: (
+    testCase: Case,
+    samples: readonly ExchangedSample[],
+  ) => Promise<CaseResult | undefined>;
+}
+
+/** Whether a judged sample has a failing finding: on its last turn, or on any. */
+function broke(result: CaseResult | undefined, lastTurnOnly: boolean): boolean {
+  const sample = result?.samples.at(-1);
+  const turns = lastTurnOnly
+    ? (sample?.turns.slice(-1) ?? [])
+    : (result?.samples ?? []).flatMap((s) => s.turns);
+  return turns.some((turn) =>
+    turn.checks.some((check) => check.findings.some((finding) => finding.verdict === 'fail')),
+  );
 }
 
 /** yokla's own spend over the run (ADR-0028), for the cap and the results. */
@@ -821,6 +898,7 @@ async function runSample(
   socket: SocketSetup | undefined,
   simulation: Simulation | undefined,
   tokens: TokenSource | undefined,
+  attack?: Attack,
 ): Promise<ExchangedSample> {
   const target = options.profile.target;
   const ids = options.ids ?? randomUUID;
@@ -1274,8 +1352,12 @@ async function runSample(
   };
 
   let customer: ExchangedSample['customer'];
+  let attacker: ExchangedSample['attacker'];
   try {
-    if (testCase.customer === undefined) {
+    const [first] = testCase.turns;
+    if (attack !== undefined && first !== undefined && attacked(testCase)) {
+      attacker = await attackWith(attack, testCase, first, sampleIndex, { runTurn, exchanges });
+    } else if (testCase.customer === undefined) {
       for (const [turnIndex, written] of testCase.turns.entries()) {
         const transformed = transformTurn(options, testCase, sampleIndex, turnIndex, written);
         const { turn, sent } =
@@ -1292,7 +1374,72 @@ async function runSample(
   } finally {
     await connection?.close();
   }
-  return { index: sampleIndex, exchanges, ...(customer === undefined ? {} : { customer }) };
+  return {
+    index: sampleIndex,
+    exchanges,
+    ...(customer === undefined ? {} : { customer }),
+    ...(attacker === undefined ? {} : { attacker }),
+  };
+}
+
+/**
+ * An attacked sample (ADR-0087). escalation: the attacker writes each turn
+ * from the attack and the conversation so far, each judged as the case's
+ * turn, until one fails a check or the turns run out. best-of-n: the
+ * attacker writes this sample's attempt, sent in its own session.
+ */
+async function attackWith(
+  attack: Attack,
+  testCase: Case,
+  turn: CaseTurn,
+  sampleIndex: number,
+  sample: {
+    readonly runTurn: (turn: CaseTurn, index: number, sent?: Sent) => Promise<Exchange>;
+    readonly exchanges: Exchange[];
+  },
+): Promise<NonNullable<ExchangedSample['attacker']>> {
+  const seed = `${testCase.id}|${String(sampleIndex)}`;
+  const calls: OwnCall[] = [];
+  const said: AttackExchange[] = [];
+  const sent: Sent = { written: turn.user, changedBy: [] };
+  let brokeAt: number | undefined;
+  const turns = attack.strategy === 'escalation' ? attack.limit : 1;
+  for (let turnIndex = 0; turnIndex < turns; turnIndex += 1) {
+    let text: string;
+    try {
+      const next = await attack.player.next(
+        turn.user,
+        testCase.language,
+        seed,
+        attack.strategy === 'escalation'
+          ? { strategy: 'escalation', exchanges: said }
+          : { strategy: 'best-of-n', attempt: sampleIndex, attempts: attack.limit },
+      );
+      calls.push(next.call);
+      countSpend(attack.spend, next.call);
+      text = next.text;
+    } catch (error) {
+      const why = error instanceof ModelClientError ? error.message : errorMessage(error);
+      sample.exchanges.push({
+        turn: { user: '', error: `the attacker model failed: ${why}`, checks: [] },
+        view: undefined,
+      });
+      break;
+    }
+    const outcome = await sample.runTurn({ ...turn, user: text }, turnIndex, sent);
+    if (outcome.turn.error !== undefined || outcome.view === undefined) break;
+    if (attack.strategy !== 'escalation') break;
+    // The conversation ends at the first turn a check fails.
+    const judged = await attack.judge(testCase, [
+      { index: sampleIndex, exchanges: [...sample.exchanges] },
+    ]);
+    if (broke(judged, true)) {
+      brokeAt = turnIndex;
+      break;
+    }
+    said.push({ attacker: text, answer: outcome.turn.response?.text ?? '' });
+  }
+  return { calls, costUsd: sumCosts(calls), ...(brokeAt === undefined ? {} : { brokeAt }) };
 }
 
 /**
@@ -1418,9 +1565,17 @@ async function exchangeCase(
   simulation: Simulation | undefined,
   tokens: TokenSource | undefined,
   settled?: Settled,
+  attack?: Attack,
 ): Promise<ExchangedCase> {
   const samples: ExchangedSample[] = [];
-  const count = testCase.samples ?? options.samples ?? 1;
+  // An attacked case runs as its strategy says: one escalation, or one sample per attempt (ADR-0087).
+  const attacking = attack !== undefined && attacked(testCase) ? attack : undefined;
+  const count =
+    attacking === undefined
+      ? (testCase.samples ?? options.samples ?? 1)
+      : attacking.strategy === 'best-of-n'
+        ? attacking.limit
+        : 1;
   let stoppedEarly = false;
   for (let index = 0; index < count && cap?.stopped() !== true; index += 1) {
     samples.push(
@@ -1436,10 +1591,17 @@ async function exchangeCase(
         socket,
         simulation,
         tokens,
+        attacking,
       ),
     );
     await cap?.check();
-    if (settled !== undefined && index < count - 1 && (await settled(testCase, samples, count))) {
+    if (index === count - 1) break;
+    // best-of-n stops at the first attempt a check fails.
+    const done =
+      attacking === undefined
+        ? settled !== undefined && (await settled(testCase, samples, count))
+        : broke(await attacking.judge(testCase, samples), false);
+    if (done) {
       stoppedEarly = true;
       break;
     }
@@ -1690,6 +1852,7 @@ function judgeCase(
       cache: 'cold',
       turns,
       ...(sample.customer === undefined ? {} : { customer: sample.customer }),
+      ...(sample.attacker === undefined ? {} : { attacker: sample.attacker }),
     };
   });
   const aggregate = aggregateCase(samples, prepared.policies, testCase.knownGap !== undefined);
@@ -1930,7 +2093,7 @@ export async function runSuite(input: RunOptions): Promise<Results> {
           languages: prepared.languages,
         };
   const cap =
-    recording === undefined && simulation === undefined
+    recording === undefined && simulation === undefined && options.attacker === undefined
       ? undefined
       : costCap(options, recording, ownSpend);
   const arm: Arm | undefined =
@@ -1939,44 +2102,69 @@ export async function runSuite(input: RunOptions): Promise<Results> {
       : (turn, arming) => recording.control.turn(recording.id, turn, arming);
   const settle: Settle | undefined =
     recording === undefined ? undefined : () => settleRecording(recording);
+  // The case judged on its samples so far, as the final judging would; undefined when
+  // the proxy's records can't be read yet, which is never a verdict (ADR-0038, ADR-0087).
+  const judgeSoFar = async (
+    testCase: Case,
+    samples: readonly ExchangedSample[],
+    planned: number,
+  ): Promise<CaseResult | undefined> => {
+    let proxied: ProxiedCalls | undefined;
+    if (recording !== undefined && proxiesCalls(options.profile)) {
+      // Calls after the last answer count: settle first.
+      if ((await settleRecording(recording)) !== undefined) return undefined;
+      let sofar: ProxyRecord[];
+      try {
+        sofar = await recording.control.records(recording.id);
+      } catch {
+        return undefined;
+      }
+      const tags = samples
+        .flatMap((sample) => sample.exchanges)
+        .flatMap((exchange) =>
+          exchange.tag === undefined ? [] : [{ key: exchange, tag: exchange.tag }],
+        );
+      proxied = {
+        byTurn: attributeCalls(sofar, tags, recording.correlation, options.prices ?? {}).byTurn,
+        prompts: recording.prompts,
+      };
+    }
+    const sofarCase: ExchangedCase = {
+      testCase,
+      samples: [...samples],
+      planned,
+      stoppedEarly: false,
+    };
+    return judgeCase(options, prepared, sofarCase, NOTHING_OBSERVED, proxied, undefined);
+  };
   // With --stop-early, each sample is judged as the final judging would (ADR-0038).
   const settled: Settled | undefined =
     options.stopEarly === true
       ? async (testCase, samples, planned) => {
-          let proxied: ProxiedCalls | undefined;
-          if (recording !== undefined && proxiesCalls(options.profile)) {
-            // Calls after the last answer count: settle first.
-            if ((await settleRecording(recording)) !== undefined) return false;
-            let sofar: ProxyRecord[];
-            try {
-              sofar = await recording.control.records(recording.id);
-            } catch {
-              // Unknown is never settled: the case runs on.
-              return false;
-            }
-            const tags = samples
-              .flatMap((sample) => sample.exchanges)
-              .flatMap((exchange) =>
-                exchange.tag === undefined ? [] : [{ key: exchange, tag: exchange.tag }],
-              );
-            proxied = {
-              byTurn: attributeCalls(sofar, tags, recording.correlation, options.prices ?? {})
-                .byTurn,
-              prompts: recording.prompts,
-            };
-          }
-          const sofarCase: ExchangedCase = {
-            testCase,
-            samples: [...samples],
-            planned,
-            stoppedEarly: false,
-          };
-          return settledFailure(
-            judgeCase(options, prepared, sofarCase, NOTHING_OBSERVED, proxied, undefined),
-            planned,
-          );
+          const judged = await judgeSoFar(testCase, samples, planned);
+          // Unknown is never settled: the case runs on.
+          return judged !== undefined && settledFailure(judged, planned);
         }
       : undefined;
+  const attackModel = options.models?.attacker;
+  const attack: Attack | undefined =
+    options.attacker === undefined || attackModel === undefined
+      ? undefined
+      : {
+          player: new AttackerPlayer({
+            model: attackModel,
+            env: options.env,
+            cacheDir: resolve(
+              options.dataDir ?? resolve(options.profileDir, 'yokla-data'),
+              'attacker',
+            ),
+            ...(options.attacker.fresh === true ? { fresh: true } : {}),
+          }),
+          spend: ownSpend,
+          strategy: options.attacker.strategy,
+          limit: options.attacker.limit,
+          judge: (testCase, samples) => judgeSoFar(testCase, samples, samples.length),
+        };
   let exchanged: ExchangedCase[] = [];
   let recordedCalls: number | undefined;
   // Undefined when there is no proxy, or its records couldn't be read.
@@ -2002,6 +2190,7 @@ export async function runSuite(input: RunOptions): Promise<Results> {
           simulation,
           tokens,
           settled,
+          attack,
         ),
       () => cap?.stopped() === true,
     );
@@ -2237,7 +2426,10 @@ export async function runSuite(input: RunOptions): Promise<Results> {
     ...capIssues,
     ...(stop === undefined ? [] : [stop]),
   ];
-  const own = simulation === undefined && rewrites === undefined ? undefined : ownSpend;
+  const own =
+    simulation === undefined && rewrites === undefined && attack === undefined
+      ? undefined
+      : ownSpend;
   const finishedAt = new Date();
   const results: Results = {
     schema: RESULTS_SCHEMA_ID,
@@ -2263,6 +2455,15 @@ export async function runSuite(input: RunOptions): Promise<Results> {
       ...(reversed.length === 0 ? {} : { toolChanges: reversed }),
       ...(transformCounts.length === 0 ? {} : { transforms: transformCounts }),
       ...(strategyCount === undefined ? {} : { strategy: strategyCount }),
+      ...(options.attacker === undefined
+        ? {}
+        : {
+            attacker: {
+              strategy: options.attacker.strategy,
+              limit: options.attacker.limit,
+              cases: options.cases.filter(attacked).length,
+            },
+          }),
       ...(coverage === undefined ? {} : { coverage }),
       ...(prepared.data.length === 0 ? {} : { data: prepared.data.map((file) => ({ ...file })) }),
       ...(replay === undefined

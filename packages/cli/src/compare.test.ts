@@ -4,7 +4,13 @@ import { join } from 'node:path';
 import { Comparison, RESULTS_SCHEMA_ID } from '@yokla/core';
 import { describe, expect, it } from 'vitest';
 import { compareCommand } from './commands/compare.ts';
-import { parseReversal, parseStrategyOption, parseSwap, parseTransform } from './commands/run.ts';
+import {
+  parseAttacker,
+  parseReversal,
+  parseStrategyOption,
+  parseSwap,
+  parseTransform,
+} from './commands/run.ts';
 import { LoadError } from './load.ts';
 import { schemas } from './schemas.ts';
 
@@ -239,5 +245,36 @@ describe('parseTransform (ADR-0045, ADR-0059)', () => {
     expect(parseStrategyOption('base64+roleplay')).toEqual(['base64', 'roleplay']);
     expect(() => parseStrategyOption('base64+hex+rot13')).toThrow(LoadError);
     expect(() => parseStrategyOption('rot26')).toThrow('--strategy rot26 is none of base64');
+  });
+
+  it('reads --attacker with its own bound, and refuses a bound without it or of the other (ADR-0087)', () => {
+    expect(parseAttacker({})).toBeUndefined();
+    expect(parseAttacker({ attacker: 'escalation' })).toEqual({ strategy: 'escalation', limit: 5 });
+    expect(parseAttacker({ attacker: 'best-of-n' })).toEqual({ strategy: 'best-of-n', limit: 4 });
+    expect(parseAttacker({ attacker: 'best-of-n', attempts: '8', 'fresh-attacker': true })).toEqual(
+      {
+        strategy: 'best-of-n',
+        limit: 8,
+        fresh: true,
+      },
+    );
+    expect(parseAttacker({ attacker: 'escalation', 'max-turns': '3' })).toEqual({
+      strategy: 'escalation',
+      limit: 3,
+    });
+    expect(() => parseAttacker({ attacker: 'tree' })).toThrow(
+      '--attacker must be one of escalation, best-of-n',
+    );
+    expect(() => parseAttacker({ attacker: 'escalation', attempts: '2' })).toThrow(
+      "--attempts doesn't go with --attacker escalation",
+    );
+    expect(() => parseAttacker({ attacker: 'best-of-n', 'max-turns': '2' })).toThrow(
+      "--max-turns doesn't go with --attacker best-of-n",
+    );
+    expect(() => parseAttacker({ attempts: '2' })).toThrow('--attempts needs --attacker');
+    expect(() => parseAttacker({ 'fresh-attacker': true })).toThrow(
+      '--fresh-attacker needs --attacker',
+    );
+    expect(() => parseAttacker({ attacker: 'best-of-n', attempts: '0' })).toThrow(LoadError);
   });
 });

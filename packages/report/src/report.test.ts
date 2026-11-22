@@ -891,6 +891,16 @@ describe('transformed messages (ADR-0045)', () => {
     expect(terminalSummary(transformed).out.join('\n')).not.toContain('strategy:');
   });
 
+  it('names the attacker, its bound and the cases it adapted (ADR-0087)', () => {
+    const escalated = results([], { attacker: { strategy: 'escalation', limit: 5, cases: 12 } });
+    expect(terminalSummary(escalated).out).toContain(
+      'attacker: escalation, at most 5 turns, 12 cases',
+    );
+    const sampled = results([], { attacker: { strategy: 'best-of-n', limit: 1, cases: 1 } });
+    expect(terminalSummary(sampled).out).toContain('attacker: best-of-n, 1 attempt, 1 case');
+    expect(terminalSummary(transformed).out.join('\n')).not.toContain('attacker:');
+  });
+
   it('shows the message as the case wrote it under the one sent', () => {
     const page = htmlReport(transformed);
     const sent = page.indexOf('Cadir onerir misin?');

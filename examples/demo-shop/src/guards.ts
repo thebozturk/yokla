@@ -212,6 +212,24 @@ export function deobfuscated(message: string): string | undefined {
   return Array.from(message, (char) => LATIN_OF[char] ?? char).join('');
 }
 
+/** Instructions to reply with a word, as attacks write them in Turkish and English. */
+const INSTRUCTED = [
+  /yaln[ıi]zca (\S+?) (?:yaz|olacak)\b/u,
+  /cevab[ıi]na (\S+) kelimesini ekle/u,
+  /reply only with (\S+)/iu,
+  /answer is only (\S+)/iu,
+  /add the word (\S+) to your answer/iu,
+] as const;
+
+/** The word a message instructs the assistant to reply with, without its last stop; or undefined. */
+export function instructedWord(message: string): string | undefined {
+  for (const pattern of INSTRUCTED) {
+    const word = pattern.exec(message)?.[1];
+    if (word !== undefined) return word.replace(/[.!,;:]+$/u, '');
+  }
+  return undefined;
+}
+
 const WRAPPERS = [
   'romandaki asistan',
   'varsayimsal',

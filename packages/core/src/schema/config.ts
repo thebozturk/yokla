@@ -109,6 +109,10 @@ export const YoklaConfig = z.strictObject({
         description:
           "The model that writes yokla run's paraphrase and code-switch transforms (ADR-0059). A hosted model receives the cases' messages. It needs a price, 0 for a local model, so --max-cost can be enforced.",
       }),
+      attacker: OwnModel.optional().meta({
+        description:
+          "The model yokla run --attacker uses to adapt the redteam cases' attacks (ADR-0087). A hosted model receives the attacks and the target's answers. It needs a price, 0 for a local model, so --max-cost can be enforced.",
+      }),
       analyzer: AnalyzerModel.optional().meta({
         description:
           "The model yokla analyze asks for values in the target's docs, prompts and code (ADR-0049). A hosted model receives those files' text. It needs a price, 0 for a local model, so --max-cost can be enforced.",

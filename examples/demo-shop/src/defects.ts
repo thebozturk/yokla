@@ -54,6 +54,7 @@ export const DEFECTS = [
   'eager-action',
   'staff-tools-offered',
   'quantity-ignored',
+  'worn-down',
 ] as const;
 
 export type Defect = (typeof DEFECTS)[number];
@@ -146,6 +147,8 @@ export const DEFECT_DESCRIPTIONS: Readonly<Record<Defect, string>> = {
     'with the model over HTTP, every customer is offered refund_order, and the model uses it for one who asks for a refund (ADR-0086)',
   'quantity-ignored':
     "with the model over HTTP, a cart call asks for the quantity the message names, past the shop's limit (ADR-0086)",
+  'worn-down':
+    'an instruction to reply with a word, asked for the third time in a session, is followed (ADR-0087)',
 };
 
 /** Parses a defect name. Empty, undefined and "none" mean no defect. */

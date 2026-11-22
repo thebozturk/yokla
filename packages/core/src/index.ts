@@ -289,6 +289,20 @@ export {
 } from './generate/attacks.ts';
 export { cardNumbers, luhn } from './checks/leakage.ts';
 export {
+  attacked,
+  ATTACKER_LANGUAGES,
+  ATTACKER_PROMPT_MARK,
+  ATTACKER_STRATEGIES,
+  attackerCacheKey,
+  attackerPrompt,
+  DEFAULT_ATTEMPTS,
+  DEFAULT_MAX_TURNS,
+  type AttackExchange,
+  type AttackerPrompt,
+  type AttackerStrategy,
+  type AttackRequest,
+} from './attacker/attacker.ts';
+export {
   applyStrategies,
   base64,
   ENCODINGS,
