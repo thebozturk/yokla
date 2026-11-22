@@ -474,3 +474,127 @@ describe('a run limited by tag (ADR-0077)', () => {
     });
   });
 });
+
+/** A redteam case of a kind, its one sample failing or passing one finding (ADR-0089). */
+function attack(id: string, kind: string, verdict: 'pass' | 'fail' | undefined, review = false) {
+  return {
+    ...kase(
+      id,
+      verdict === 'fail' ? 'fail' : verdict === 'pass' ? 'pass' : 'unmeasured',
+      'redteam',
+    ),
+    kinds: [kind],
+    ...(review ? { review: 'proposed' as const } : {}),
+    samples: [
+      {
+        index: 0,
+        cache: 'cold' as const,
+        turns: [
+          {
+            user: 'x',
+            checks: [
+              {
+                check: 'answer-text',
+                applicable: verdict !== undefined,
+                findings:
+                  verdict === undefined
+                    ? []
+                    : [{ dimension: 'd', verdict, severity: 'high' as const, message: 'm' }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  } satisfies CaseResult;
+}
+
+const TAXONOMY = {
+  frameworks: [],
+  kinds: {
+    injection: { severity: 'high' as const, categories: [] },
+    card: { severity: 'critical' as const, categories: [] },
+  },
+  checks: {},
+};
+
+/** Results of these cases with the mapping of their kinds. */
+const mapped = (cases: CaseResult[]) => ({ ...run(cases), taxonomy: TAXONOMY });
+
+/** A configuration with this gate, parsed. */
+const parse = (gateConfig: unknown) => YoklaConfig.safeParse({ version: 1, gate: gateConfig });
+
+describe('evaluateGate with gate.maxRisk (ADR-0089)', () => {
+  // Failures are allowed here, so that only the risk decides.
+  const loose = { maxFailures: 10, allowUnmeasured: false };
+
+  it('breaks on a kind of the approved cases that scores above it, naming its failing cases', () => {
+    const results = mapped([
+      attack('a', 'injection', 'fail'),
+      attack('b', 'injection', 'pass'),
+      attack('c', 'card', 'pass'),
+    ]);
+    expect(gate(results, { ...loose, maxRisk: 3 })).toMatchObject({
+      verdict: 'broken',
+      breaches: [
+        {
+          rule: 'risk',
+          suite: 'redteam',
+          cases: ['a'],
+          message: 'redteam: injection scores 3.75 (1 of 2 trials), above gate.maxRisk 3: a',
+        },
+      ],
+    });
+    // A score at the threshold is within it; without it, nothing is scored.
+    expect(gate(results, { ...loose, maxRisk: 3.75 }).verdict).toBe('pass');
+    expect(gate(results, loose).verdict).toBe('pass');
+  });
+
+  it('scores only the approved cases: a proposed case waits for a person', () => {
+    const results = mapped([
+      attack('a', 'injection', 'fail', true),
+      attack('b', 'injection', 'pass'),
+    ]);
+    expect(gate(results, { ...loose, maxRisk: 0 }).breaches).toEqual([]);
+  });
+
+  it('counts a kind with no judged trial, or results without kinds, as unmeasured', () => {
+    const unjudged = mapped([attack('a', 'card', undefined)]);
+    expect(gate(unjudged, { ...loose, allowUnmeasured: true, maxRisk: 5 }).breaches).toEqual([]);
+    // The case is unmeasured too, which the suite counts on its own.
+    expect(gate(unjudged, { maxFailures: 10, maxRisk: 5 }).breaches).toContainEqual({
+      rule: 'unmeasured',
+      suite: 'redteam',
+      cases: ['a'],
+      message:
+        'redteam: gate.maxRisk is set, but no trial of card was judged; unmeasured never counts as a pass',
+    });
+    // The redteam suite's own allowance counts too.
+    expect(
+      gate(unjudged, {
+        maxFailures: 10,
+        maxRisk: 5,
+        suites: { redteam: { allowUnmeasured: true } },
+      }).breaches,
+    ).toEqual([]);
+    for (const results of [run([attack('a', 'card', 'fail')]), mapped([kase('b', 'pass')])]) {
+      expect(gate(results, { maxFailures: 10, maxRisk: 5 }).breaches).toEqual([
+        {
+          rule: 'unmeasured',
+          suite: 'redteam',
+          cases: [],
+          message:
+            'redteam: gate.maxRisk is set, but no approved case has an attack kind; unmeasured never counts as a pass',
+        },
+      ]);
+    }
+  });
+
+  it('takes a threshold from 0 to 10, at the top of gate only', () => {
+    expect(parse({ maxRisk: 0 }).success).toBe(true);
+    expect(parse({ maxRisk: 10 }).success).toBe(true);
+    expect(parse({ maxRisk: 10.5 }).success).toBe(false);
+    expect(parse({ maxRisk: -1 }).success).toBe(false);
+    expect(parse({ suites: { redteam: { maxRisk: 5 } } }).success).toBe(false);
+  });
+});

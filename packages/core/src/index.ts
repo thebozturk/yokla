@@ -213,9 +213,11 @@ export {
   Finding,
   FindingOrigin,
   FindingSubject,
+  KindRisk,
   ORIGIN_STAGES,
   Results,
   RESULTS_SCHEMA_ID,
+  RunTaxonomy,
   Sample,
   Severity,
   TurnResult,
@@ -288,6 +290,21 @@ export {
   type AttackIdentity,
 } from './generate/attacks.ts';
 export { cardNumbers, luhn } from './checks/leakage.ts';
+export {
+  caseKinds,
+  CATEGORY,
+  CORE_TAXONOMY,
+  failingCategories,
+  findingCategories,
+  FRAMEWORKS,
+  KIND_SEVERITIES,
+  mergeTaxonomies,
+  runTaxonomy,
+  type Framework,
+  type KindSeverity,
+  type Taxonomy,
+} from './taxonomy/taxonomy.ts';
+export { kindRisks, SEVERITY_WEIGHTS } from './taxonomy/risk.ts';
 export {
   attacked,
   ATTACKER_LANGUAGES,

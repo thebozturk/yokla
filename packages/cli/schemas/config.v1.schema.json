@@ -90,6 +90,12 @@
             },
             "additionalProperties": false
           }
+        },
+        "maxRisk": {
+          "description": "The highest risk score an attack kind of the approved cases may have, from 0 to 10: 10 × its severity's weight × its attack success rate (ADR-0089). Off by default.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
         }
       },
       "additionalProperties": false

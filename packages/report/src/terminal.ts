@@ -2,10 +2,13 @@
 // case that did not plainly pass, advisory findings, and what the target's
 // logs observed. Errors and run issues go to stderr.
 
-import { CASE_STATUSES, type Results } from '@yokla/core';
+import { CASE_STATUSES, failingCategories, type Results } from '@yokla/core';
 import {
   byWeight,
+  categoryCode,
   counted,
+  MAPPING_NOTE,
+  scoreText,
   observedTotals,
   passRateText,
   tagsByFailures,
@@ -40,6 +43,37 @@ function attackerBound(attacker: NonNullable<Results['run']['attacker']>): strin
       return counted(attacker.limit, 'attempt');
     }
   }
+}
+
+/**
+ * What the failing findings map to, per framework, and each attack kind
+ * that scored above 0 (ADR-0089); nothing when no finding failed.
+ */
+function frameworkLines(results: Results): string[] {
+  const failing = new Map(failingCategories(results).map((row) => [row.category, row.cases]));
+  if (failing.size === 0) return [];
+  const lines = [`frameworks, ${MAPPING_NOTE}:`];
+  for (const framework of results.taxonomy?.frameworks ?? []) {
+    const named = framework.categories.flatMap((category) => {
+      const cases = failing.get(category.id);
+      return cases === undefined
+        ? []
+        : [
+            `${categoryCode(framework.id, category.id)} ${category.name} (${counted(cases.length, 'case')})`,
+          ];
+    });
+    if (named.length > 0) {
+      lines.push(`  ${framework.name} ${framework.version}: ${named.join(', ')}`);
+    }
+  }
+  const scored = (results.summary.risk ?? []).filter((risk) => (risk.score ?? 0) > 0);
+  if (scored.length > 0) lines.push('risk by attack kind, from 0 to 10:');
+  for (const risk of scored) {
+    lines.push(
+      `  ${risk.kind} (${risk.severity}): ${scoreText(risk) ?? ''}; ${String(risk.succeeded)} of ${counted(risk.trials, 'trial')} succeeded`,
+    );
+  }
+  return lines;
 }
 
 export function terminalSummary(results: Results): TerminalSummary {
@@ -169,6 +203,7 @@ export function terminalSummary(results: Results): TerminalSummary {
       `attacker: ${attacker.strategy}, ${attackerBound(attacker)}, ${counted(attacker.cases, 'case')}`,
     );
   }
+  out.push(...frameworkLines(results));
   for (const issue of results.run.issues ?? []) err.push(`  run: ${issue}`);
   return { out, err };
 }

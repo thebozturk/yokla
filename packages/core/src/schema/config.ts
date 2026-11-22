@@ -37,6 +37,10 @@ export const GateConfig = Thresholds.extend({
     .partialRecord(Suite, Thresholds)
     .optional()
     .meta({ description: 'Overrides per suite of the thresholds above.' }),
+  maxRisk: z.number().min(0).max(10).optional().meta({
+    description:
+      "The highest risk score an attack kind of the approved cases may have, from 0 to 10: 10 × its severity's weight × its attack success rate (ADR-0089). Off by default.",
+  }),
 });
 export type GateConfig = z.output<typeof GateConfig>;
 

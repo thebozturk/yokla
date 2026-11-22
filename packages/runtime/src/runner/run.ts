@@ -8,6 +8,12 @@ import { readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   aggregateCase,
+  caseKinds,
+  CORE_TAXONOMY,
+  kindRisks,
+  mergeTaxonomies,
+  runTaxonomy,
+  type Taxonomy,
   attacked,
   type AttackerRun,
   type AttackExchange,
@@ -214,6 +220,8 @@ interface Prepared {
   readonly unmetFacts: UnmetFacts | undefined;
   /** The files the pack read, in the order it read them (ADR-0053). */
   readonly data: readonly DataFile[];
+  /** What the attack kinds and checks map to: core's and the domain pack's (ADR-0089). */
+  readonly taxonomy: Taxonomy;
 }
 
 type DataFile = NonNullable<Results['run']['data']>[number];
@@ -268,13 +276,29 @@ function prepare(options: RunOptions): Prepared {
   const ids = checks.map((check) => check.id);
   const duplicate = ids.find((id, index) => ids.indexOf(id) !== index);
   if (duplicate !== undefined) throw new ConfigError(`check "${duplicate}" is defined twice`);
+  let taxonomy: Taxonomy;
+  try {
+    taxonomy =
+      pack?.taxonomy === undefined ? CORE_TAXONOMY : mergeTaxonomies(CORE_TAXONOMY, pack.taxonomy);
+  } catch (error) {
+    throw new ConfigError(
+      `pack "${profile.domain}": ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   return {
     checks,
     policies: { ...options.policies, ...pack?.dimensions },
     languages: new Map((options.languages ?? []).map((lang) => [lang.language, lang])),
     unmetFacts,
     data: [...data.values()],
+    taxonomy,
   };
+}
+
+/** A case result with its attack kinds, when it has any (ADR-0089). */
+function withKinds(result: CaseResult, taxonomy: Taxonomy): CaseResult {
+  const kinds = caseKinds(result, taxonomy);
+  return kinds.length === 0 ? result : { ...result, kinds };
 }
 
 /** What the summary groups and weighs a case by: its tags (ADR-0077) and weight (ADR-0076). */
@@ -2455,18 +2479,22 @@ export async function runSuite(input: RunOptions): Promise<Results> {
   }));
   // The cases in the order they were given, with those the data no longer holds in
   // their places: the cases that ran keep their own order (ADR-0053).
-  const cases: CaseResult[] = [];
+  const ordered: CaseResult[] = [];
   let next = 0;
   for (const c of accepted.cases) {
     const unmet = stale.get(c);
     const ran = judged[next];
-    if (unmet !== undefined) cases.push(fixtureMissing(c, unmet));
+    if (unmet !== undefined) ordered.push(fixtureMissing(c, unmet));
     else if (ran !== undefined) {
-      cases.push(ran);
+      ordered.push(ran);
       next += 1;
     }
   }
-  cases.push(...judged.slice(next));
+  ordered.push(...judged.slice(next));
+  const cases = ordered.map((c) => withKinds(c, prepared.taxonomy));
+  // Each attack kind's risk, and what the run's kinds and checks map to (ADR-0089).
+  const risk = kindRisks(cases, prepared.taxonomy.kinds);
+  const taxonomy = runTaxonomy(prepared.taxonomy, cases);
   const coverage =
     options.coverage === true
       ? measureCoverage(
@@ -2650,7 +2678,8 @@ export async function runSuite(input: RunOptions): Promise<Results> {
     },
     cases,
     checks: summariseChecks(cases),
-    summary: summariseCases(cases),
+    summary: { ...summariseCases(cases), ...(risk.length === 0 ? {} : { risk }) },
+    ...(taxonomy === undefined ? {} : { taxonomy }),
   };
   // No secret of the run leaves it: not in the results, nor what is made of them (ADR-0031).
   return tokens === undefined ? results : masked(results, tokens.secrets());

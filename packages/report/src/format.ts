@@ -1,4 +1,4 @@
-import type { FindingOrigin, Results } from '@yokla/core';
+import type { FindingOrigin, KindRisk, Results } from '@yokla/core';
 
 // Number formatting the reports share. It never depends on the locale, so the
 // same results give the same report everywhere (ADR-0023).
@@ -113,4 +113,19 @@ export function tagsByFailures(results: Results): NonNullable<Results['summary']
   return (results.summary.tags ?? []).toSorted(
     (a, b) => (b.statuses.fail ?? 0) - (a.statuses.fail ?? 0) || a.tag.localeCompare(b.tag),
   );
+}
+
+/** What the reports say of the frameworks' mapping (ADR-0089). */
+export const MAPPING_NOTE = 'mapped by yokla, not a compliance assessment';
+
+/** A category's code: its id without its framework's (ADR-0089). */
+export function categoryCode(framework: string, category: string): string {
+  return category.slice(framework.length + 1);
+}
+
+/** "7.5 of 10, 95 % 4.1 to 9" (ADR-0089); undefined for a kind without a score. */
+export function scoreText(risk: KindRisk): string | undefined {
+  const { score, scoreInterval } = risk;
+  if (score === undefined || scoreInterval === undefined) return undefined;
+  return `${String(score)} of 10, 95 % ${String(scoreInterval.lower)} to ${String(scoreInterval.upper)}`;
 }

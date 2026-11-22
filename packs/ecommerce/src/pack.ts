@@ -17,6 +17,7 @@ import { catalogUnmetFacts } from './facts.ts';
 import { ecommerceGenerate } from './generate.ts';
 import { ecommerceIntents } from './intents.ts';
 import { ecommerceExpectations, ecommerceProfile } from './schema.ts';
+import { ecommerceTaxonomy } from './taxonomy.ts';
 
 export const ecommercePack: DomainPack = {
   id: 'ecommerce',
@@ -24,6 +25,8 @@ export const ecommercePack: DomainPack = {
   expectations: ecommerceExpectations,
   // What the pack proposes from the target's data, for yokla analyze (ADR-0047).
   analyzer: ecommerceAnalyzer,
+  // What its attack kinds and checks map to (ADR-0089).
+  taxonomy: ecommerceTaxonomy,
   // Design §13: one bad sample fails these dimensions.
   dimensions: {
     fabrication: 'worst-of-n',

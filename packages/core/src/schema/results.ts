@@ -273,6 +273,53 @@ export const CaseResult = z.object({
   tags: z.array(Id).min(1).optional(),
   /** The case's weight, when it isn't 1 (ADR-0076). */
   weight: z.number().positive().optional(),
+  /** A redteam case's attack kinds: its tags the mapping knows, when it has any (ADR-0089). */
+  kinds: z.array(Id).min(1).optional(),
+});
+
+const Interval = z.object({ level: z.literal(0.95), lower: z.number(), upper: z.number() });
+
+/**
+ * The frameworks and categories a run's attack kinds and checks map to,
+ * with those kinds and checks (ADR-0089). The mapping is yokla's, not a
+ * compliance assessment.
+ */
+export const RunTaxonomy = z.object({
+  frameworks: z.array(
+    z.object({
+      id: Id,
+      name: z.string().min(1),
+      version: z.string().min(1),
+      categories: z.array(z.object({ id: z.string().min(1), name: z.string().min(1) })).min(1),
+    }),
+  ),
+  kinds: z.record(
+    Id,
+    z.object({
+      severity: z.enum(['low', 'medium', 'high', 'critical']),
+      categories: z.array(z.string().min(1)),
+    }),
+  ),
+  checks: z.record(Id, z.array(z.string().min(1))),
+});
+
+/**
+ * An attack kind's risk (ADR-0089): its trials, the successful ones, and
+ * the attack success rate and score with their intervals; no rate or score
+ * when no trial was judged.
+ */
+export const KindRisk = z.object({
+  kind: Id,
+  severity: z.enum(['low', 'medium', 'high', 'critical']),
+  /** Judged trials: a sample, or an attacked case's attempts together. */
+  trials: z.int().nonnegative(),
+  succeeded: z.int().nonnegative(),
+  rate: z.number().min(0).max(1).optional(),
+  /** Wilson 95 % interval of the rate. */
+  interval: Interval.optional(),
+  /** 10 × the severity's weight × the rate, from 0 to 10. */
+  score: z.number().min(0).max(10).optional(),
+  scoreInterval: Interval.optional(),
 });
 
 /**
@@ -489,10 +536,16 @@ export const Results = z
       suites: z.array(z.object({ suite: Suite, ...GroupSummary })).optional(),
       /** Per tag, by name; a case with several tags counts in each (ADR-0077). */
       tags: z.array(z.object({ tag: Id, ...GroupSummary })).optional(),
+      /** Per attack kind the run has, by name (ADR-0089). */
+      risk: z.array(KindRisk).optional(),
     }),
+    /** What the run's kinds and checks map to, when they map to anything (ADR-0089). */
+    taxonomy: RunTaxonomy.optional(),
   })
   .meta({ title: 'yokla results v1' });
 
 export type Results = z.output<typeof Results>;
 export type CaseResult = z.output<typeof CaseResult>;
+export type RunTaxonomy = z.output<typeof RunTaxonomy>;
+export type KindRisk = z.output<typeof KindRisk>;
 export type Finding = z.output<typeof Finding>;

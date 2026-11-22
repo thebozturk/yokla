@@ -8,10 +8,13 @@
 // - The same results give the same bytes: no render time, no locale formatting.
 // - A model call's prompt is shown by role and size only (ADR-0015).
 
-import { CASE_STATUSES, type Results } from '@yokla/core';
+import { CASE_STATUSES, failingCategories, type Results } from '@yokla/core';
 import {
   byWeight,
+  categoryCode,
   counted,
+  MAPPING_NOTE,
+  scoreText,
   observedTotals,
   passRateText,
   rate,
@@ -334,6 +337,45 @@ function tagsSection(results: Results): Html | undefined {
   )}</section>`;
 }
 
+/**
+ * What the run's attack kinds and checks map to (ADR-0089): per framework,
+ * each category with the cases a failing finding names it in, and every
+ * attack kind's risk.
+ */
+function frameworksSection(results: Results): Html | undefined {
+  const { taxonomy } = results;
+  if (taxonomy === undefined) return undefined;
+  const failing = new Map(failingCategories(results).map((row) => [row.category, row.cases]));
+  const frameworks = taxonomy.frameworks.map((framework) => {
+    const rows = framework.categories.map((category) => {
+      const cases = failing.get(category.id) ?? [];
+      return h`<tr><td><code>${categoryCode(framework.id, category.id)}</code></td><td>${category.name}</td><td class="num">${cases.length}</td><td>${cases.join(', ')}</td></tr>`;
+    });
+    return h`<h3>${framework.name} ${framework.version}</h3>${table(
+      ['Category', 'Name', 'Failing cases', 'Cases'],
+      rows,
+      [2],
+    )}`;
+  });
+  const risks = (results.summary.risk ?? []).map(
+    (risk) =>
+      h`<tr><td><code>${risk.kind}</code></td><td>${risk.severity}</td><td class="num">${risk.succeeded} of ${risk.trials}</td><td class="num">${
+        risk.rate === undefined || risk.interval === undefined
+          ? 'unmeasured'
+          : `${rate(risk.rate)} (95 % ${rate(risk.interval.lower)} to ${rate(risk.interval.upper)})`
+      }</td><td class="num">${scoreText(risk) ?? 'unmeasured'}</td></tr>`,
+  );
+  return h`<section id="frameworks"><h2>Frameworks</h2><p class="muted">The categories are ${MAPPING_NOTE}.</p>${frameworks}${
+    risks.length === 0
+      ? undefined
+      : h`<h3>Risk by attack kind</h3><p class="muted">10 × the severity's weight (critical 1, high 0.75, medium 0.5, low 0.25) × the attack success rate.</p>${table(
+          ['Kind', 'Severity', 'Succeeded', 'Success rate', 'Score'],
+          risks,
+          [2, 3, 4],
+        )}`
+  }</section>`;
+}
+
 function checksSection(results: Results): Html | undefined {
   if (results.checks.length === 0) return undefined;
   const rows = results.checks.map(
@@ -587,7 +629,7 @@ export function htmlReport(results: Results): string {
 ${runSection(results)}
 ${casesSection(results, ordered)}
 ${tagsSection(results)}
-${checksSection(results)}
+${frameworksSection(results)}${checksSection(results)}
 <section id="details"><h2>Case details</h2>
 ${ordered.map((c) => h`${caseBlock(c)}\n`)}</section>
 </body>

@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import {
   buildSchemas,
   CORE_CHECKS,
+  CORE_TAXONOMY,
   Results,
   z,
   type Case,
@@ -4923,5 +4924,81 @@ describe('runSuite with the attackers of R5b (ADR-0088)', () => {
     // With what it needs, the run goes on: here to an attacker that can't be reached.
     const ran = await run({ attacker: { strategy: 'translate' } });
     expect(ran.cases[0]?.samples[0]?.turns[0]?.error).toMatch(/^the attacker model failed: /u);
+  });
+});
+
+/** A redteam case with these tags, and a quality case tagged with a kind (ADR-0089). */
+const kinded = (tags: string[]) =>
+  cases(
+    { ...ATTACK_CASE, tags },
+    { id: 'plain', suite: 'quality', tags: ['injection'], turns: [{ user: 'Merhaba' }] },
+  );
+
+/** A domain pack that maps these kinds and checks (ADR-0089). */
+const mappingPack = (taxonomy: DomainPack['taxonomy']): DomainPack => ({
+  id: 'shop',
+  dimensions: {},
+  prepare: () => ({ checks: [] }),
+  ...(taxonomy === undefined ? {} : { taxonomy }),
+});
+
+describe('runSuite with the mapping to frameworks (ADR-0089)', () => {
+  it("keeps a redteam case's kinds, what they map to, and each kind's risk", async () => {
+    const t = await target((_r, _i, response) => {
+      json(response, answer({ answer: 'YK-1A2B3C' }));
+    });
+    const results = await runSuite(
+      options(profile(t.url), kinded(['generated', 'injection']), { checks: CORE_CHECKS }),
+    );
+    expect(Results.safeParse(results).success).toBe(true);
+    const [attack, plain] = results.cases;
+    expect(attack?.kinds).toEqual(['injection']);
+    // A case of another suite has no attack kind, whatever its tags.
+    expect(plain?.kinds).toBeUndefined();
+    expect(results.taxonomy?.kinds).toEqual({ injection: CORE_TAXONOMY.kinds['injection'] });
+    expect(results.taxonomy?.frameworks.map((framework) => framework.id)).toContain('owasp-llm');
+    expect(results.summary.risk).toEqual([
+      expect.objectContaining({ kind: 'injection', trials: 1, succeeded: 1, score: 7.5 }),
+    ]);
+  });
+
+  it('keeps no mapping and no risk when no case has a kind and no mapped check judged a turn', async () => {
+    const t = await target((_r, _i, response) => {
+      json(response, answer());
+    });
+    const results = await runSuite(options(profile(t.url), cases({ turns: [{ user: 'a' }] })));
+    expect(results.taxonomy).toBeUndefined();
+    expect(results.summary.risk).toBeUndefined();
+    expect(results.cases[0]?.kinds).toBeUndefined();
+  });
+
+  it("merges the domain pack's mapping, and refuses one that maps a kind core maps", async () => {
+    const t = await target((_r, _i, response) => {
+      json(response, answer({ answer: 'Tamam.' }));
+    });
+    const offers: DomainPack['taxonomy'] = {
+      kinds: { offer: { severity: 'medium', categories: ['owasp-llm:LLM09'] } },
+      checks: {},
+    };
+    const results = await runSuite(
+      options(profile(t.url), kinded(['offer']), {
+        checks: CORE_CHECKS,
+        packs: [mappingPack(offers)],
+      }),
+    );
+    expect(results.cases[0]?.kinds).toEqual(['offer']);
+    expect(results.summary.risk?.map((risk) => [risk.kind, risk.score])).toEqual([['offer', 0]]);
+    await expect(
+      runSuite(
+        options(profile(t.url), kinded(['offer']), {
+          packs: [
+            mappingPack({
+              kinds: { injection: { severity: 'low', categories: [] } },
+              checks: {},
+            }),
+          ],
+        }),
+      ),
+    ).rejects.toThrow('pack "shop": attack kind "injection" is mapped twice');
   });
 });

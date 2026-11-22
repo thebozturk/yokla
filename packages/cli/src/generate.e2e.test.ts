@@ -4,13 +4,16 @@
 // passes; each data defect fails a generated case of the kind meant for it.
 // yokla generate --redteam writes the attacks the same way (ADR-0080,
 // ADR-0082): the correct shop withstands them, and each attack defect fails
-// exactly the cases of its kind, by one check. No model cost, behind the network guard.
+// exactly the cases of its kind, by one check. Every failing finding of an
+// attack names the categories it maps to, each defect's kind scores a risk
+// above 0, and gate.maxRisk breaks on it (ADR-0089). No model cost, behind the
+// network guard.
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Results } from '@yokla/core';
+import { findingCategories, Results } from '@yokla/core';
 import { installNetworkGuard, type NetworkGuard } from '@yokla/runtime/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parse, stringify } from 'yaml';
@@ -374,6 +377,67 @@ describe('yokla generate on the demo-shop (ADR-0055, ADR-0056)', () => {
     expect(failedIds('memory-poisoned')).toEqual(
       all.filter((id) => id.startsWith('memory-poisoning-')),
     );
+  });
+
+  it('names the categories of every failing finding of an attack, and scores each kind (ADR-0089)', () => {
+    const none = attackResults('none');
+    expect(none.cases.filter((c) => c.kinds === undefined).map((c) => c.id)).toEqual([]);
+    const scored = none.summary.risk ?? [];
+    expect(scored.length).toBeGreaterThan(10);
+    // The correct shop withstands every trial of every kind.
+    expect(scored.filter((risk) => risk.score !== 0).map((risk) => risk.kind)).toEqual([]);
+    for (const [defect, { kind }] of Object.entries(ATTACK_EXPECTED)) {
+      const ran = attackResults(defect);
+      const taxonomy = ran.taxonomy ?? { frameworks: [], kinds: {}, checks: {} };
+      for (const c of ran.cases) {
+        for (const check of c.samples.flatMap((sample) => sample.turns).flatMap((t) => t.checks)) {
+          if (!check.findings.some((finding) => finding.verdict === 'fail')) continue;
+          expect(
+            findingCategories(c.kinds ?? [], check.check, taxonomy).length,
+            `${defect}: ${c.id} ${check.check}`,
+          ).toBeGreaterThan(0);
+        }
+      }
+      const risk = ran.summary.risk?.find((own) => own.kind === kind);
+      expect(risk?.score, defect).toBeGreaterThan(0);
+    }
+    expect(attackRuns.get('card-echoed')?.output).toContain('risk by attack kind, from 0 to 10:');
+    expect(attackRuns.get('card-echoed')?.output).toContain(
+      'frameworks, mapped by yokla, not a compliance assessment:',
+    );
+  });
+
+  it('breaks the gate on a kind above gate.maxRisk, over the approved cases, and passes the correct shop (ADR-0089)', async () => {
+    const config = join(work, 'risk.config.yaml');
+    // Failures and unmeasured cases are allowed here, so that only the risk decides.
+    writeFileSync(
+      config,
+      stringify({ version: 1, gate: { maxRisk: 5, maxFailures: 1000, allowUnmeasured: true } }),
+    );
+    const gate = async (defect: string) => {
+      const approved = join(work, `approved-${defect}.json`);
+      const ran = attackResults(defect);
+      // A person approved every generated case.
+      const cases = ran.cases.map(({ review: _review, ...c }) => c);
+      writeFileSync(approved, JSON.stringify({ ...ran, cases }));
+      return cli('gate', '--results', approved, '--config', config);
+    };
+    const correct = await gate('none');
+    expect(correct.code, correct.output).toBe(0);
+    const broken = await gate('card-echoed');
+    expect(broken.code, broken.output).toBe(1);
+    expect(broken.output).toMatch(
+      /redteam: card scores 10 \(\d+ of \d+ trials?\), above gate\.maxRisk 5/u,
+    );
+    // As proposed cases, they don't gate, and no kind is measured.
+    const proposed = await cli(
+      'gate',
+      '--results',
+      join(work, 'attacks-card-echoed.json'),
+      '--config',
+      config,
+    );
+    expect(proposed.output).not.toContain('card scores');
   });
 
   // Last, so it sees the traffic of everything above.

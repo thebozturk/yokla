@@ -5,11 +5,12 @@
 import type { Baseline } from '../schema/baseline.ts';
 import type { GateConfig } from '../schema/config.ts';
 import type { Results } from '../schema/results.ts';
+import { kindRisks } from '../taxonomy/risk.ts';
 
 type CaseResult = Results['cases'][number];
 
 export interface GateBreach {
-  readonly rule: 'failures' | 'unmeasured' | 'regression' | 'latency' | 'cost';
+  readonly rule: 'failures' | 'unmeasured' | 'regression' | 'latency' | 'cost' | 'risk';
   readonly suite: string;
   readonly cases: readonly string[];
   readonly message: string;
@@ -125,6 +126,51 @@ function ids(cases: readonly CaseResult[]): string {
   return cases.map((c) => c.id).join(', ');
 }
 
+/**
+ * gate.maxRisk over the approved cases (ADR-0089): an attack kind scoring
+ * above it breaks the gate, and one without a score is unmeasured, as are
+ * results that map no kind.
+ */
+function riskBreaches(
+  results: Results,
+  judged: readonly CaseResult[],
+  config: GateConfig,
+  max: number,
+): GateBreach[] {
+  const allowUnmeasured =
+    config.suites?.redteam?.allowUnmeasured ?? config.allowUnmeasured ?? false;
+  const unmeasured = (cases: readonly CaseResult[], why: string): GateBreach[] =>
+    allowUnmeasured
+      ? []
+      : [
+          {
+            rule: 'unmeasured',
+            suite: 'redteam',
+            cases: cases.map((c) => c.id),
+            message: `redteam: gate.maxRisk is set, but ${why}; unmeasured never counts as a pass`,
+          },
+        ];
+  const kinds = results.taxonomy?.kinds;
+  const risks = kinds === undefined ? [] : kindRisks(judged, kinds);
+  if (risks.length === 0) return unmeasured([], 'no approved case has an attack kind');
+  return risks.flatMap((risk) => {
+    const cases = judged.filter((c) => c.kinds?.includes(risk.kind) === true);
+    if (risk.score === undefined) {
+      return unmeasured(cases, `no trial of ${risk.kind} was judged`);
+    }
+    if (risk.score <= max) return [];
+    const failing = cases.filter((c) => c.status === 'fail');
+    return [
+      {
+        rule: 'risk',
+        suite: 'redteam',
+        cases: failing.map((c) => c.id),
+        message: `redteam: ${risk.kind} scores ${String(risk.score)} (${String(risk.succeeded)} of ${counted(risk.trials, 'trial')}), above gate.maxRisk ${String(max)}: ${ids(failing)}`,
+      },
+    ];
+  });
+}
+
 export function evaluateGate(
   results: Results,
   config: GateConfig = {},
@@ -183,6 +229,9 @@ export function evaluateGate(
         results.run.replay !== undefined,
       ),
     );
+  }
+  if (config.maxRisk !== undefined) {
+    breaches.push(...riskBreaches(results, judged, config, config.maxRisk));
   }
   for (const c of judged) {
     if (c.status === 'gap-closed')

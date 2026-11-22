@@ -1,4 +1,11 @@
-import { Results, RESULTS_SCHEMA_ID, summariseCases } from '@yokla/core';
+import {
+  CORE_TAXONOMY,
+  kindRisks,
+  Results,
+  RESULTS_SCHEMA_ID,
+  runTaxonomy,
+  summariseCases,
+} from '@yokla/core';
 import { describe, expect, it, vi } from 'vitest';
 import {
   CONTENT_SECURITY_POLICY,
@@ -1044,5 +1051,137 @@ describe('weights and tags (ADR-0076, ADR-0077)', () => {
 
   it('matches its snapshot with weights and tags', async () => {
     await expect(htmlReport(heavy)).toMatchFileSnapshot('./__snapshots__/report-weighted.html');
+  });
+});
+
+/** A redteam case of these kinds, its one turn judged by these checks (ADR-0089). */
+function attackCase(
+  id: string,
+  kinds: readonly string[],
+  checks: TurnResult['checks'],
+): CaseResult {
+  const fails = checks.some((check) => check.findings.some((f) => f.verdict === 'fail'));
+  return kase(id, fails ? 'fail' : 'pass', {
+    suite: 'redteam',
+    kinds: [...kinds],
+    samples: [{ index: 0, cache: 'cold', turns: [turn({ checks })] }],
+  });
+}
+
+const passing = (check: string): TurnResult['checks'][number] => ({
+  check,
+  applicable: true,
+  findings: [{ dimension: 'd', verdict: 'pass', severity: 'high', message: 'ok' }],
+});
+
+/** Results of these cases with the mapping and the risk a run writes (ADR-0089). */
+function mappedResults(cases: CaseResult[]): Results {
+  const base = results(cases);
+  const taxonomy = runTaxonomy(CORE_TAXONOMY, cases);
+  const risk = kindRisks(cases, CORE_TAXONOMY.kinds);
+  return {
+    ...base,
+    summary: { ...base.summary, ...(risk.length === 0 ? {} : { risk }) },
+    ...(taxonomy === undefined ? {} : { taxonomy }),
+  };
+}
+
+describe('the frameworks and the risk in the reports (ADR-0089)', () => {
+  const mappedRun = mappedResults([
+    attackCase('inj', ['injection'], [failing('answer-text', 'd', 'canary')]),
+    attackCase('card', ['card'], [failing('card-number', 'd', 'card'), passing('pii-leak')]),
+    attackCase('safe', ['internals'], [passing('internals-leak')]),
+  ]);
+
+  it('names, per framework, each category a failing finding names, and each kind that scored', () => {
+    const out = terminalSummary(mappedRun).out;
+    const at = out.indexOf('frameworks, mapped by yokla, not a compliance assessment:');
+    expect(at).toBeGreaterThan(-1);
+    expect(out.slice(at)).toEqual([
+      'frameworks, mapped by yokla, not a compliance assessment:',
+      '  OWASP Top 10 for LLM Applications 2025: LLM01 Prompt Injection (1 case), LLM02 Sensitive Information Disclosure (1 case)',
+      '  OWASP Top 10 for Agentic Applications 2026: ASI01 Agent Goal Hijack (1 case)',
+      '  MITRE ATLAS 2026.07: AML.TA0005 Execution (1 case), AML.TA0010 Exfiltration (1 case)',
+      '  NIST AI RMF 1.0: MEASURE 2.7 Security and resilience (1 case), MEASURE 2.10 Privacy (1 case)',
+      '  ISO/IEC 42001 2023: A.6.2.4 AI system verification and validation (2 cases)',
+      '  GDPR Regulation (EU) 2016/679: Article 32 Security of processing (1 case)',
+      '  KVKK Law No. 6698: Article 12 Obligations on data security (1 case)',
+      '  EU AI Act Regulation (EU) 2024/1689: Article 15 Accuracy, robustness and cybersecurity (1 case)',
+      'risk by attack kind, from 0 to 10:',
+      `  card (critical): 10 of 10, 95 % ${String(mappedRun.summary.risk?.[0]?.scoreInterval?.lower)} to 10; 1 of 1 trial succeeded`,
+      `  injection (high): 7.5 of 10, 95 % ${String(mappedRun.summary.risk?.[1]?.scoreInterval?.lower)} to 7.5; 1 of 1 trial succeeded`,
+    ]);
+  });
+
+  it('says nothing of the frameworks when no finding failed', () => {
+    const quiet = mappedResults([attackCase('safe', ['internals'], [passing('internals-leak')])]);
+    expect(quiet.taxonomy).toBeDefined();
+    expect(terminalSummary(quiet).out.join('\n')).not.toContain('frameworks');
+    expect(terminalSummary(results([kase('a', 'pass')])).out.join('\n')).not.toContain('risk');
+  });
+
+  it("shows each framework with its categories, and every kind's risk, in the HTML report", () => {
+    const page = htmlReport(mappedRun);
+    expect(page).toContain('<section id="frameworks"><h2>Frameworks</h2>');
+    expect(page).toContain('The categories are mapped by yokla, not a compliance assessment.');
+    expect(page).toContain('<h3>OWASP Top 10 for LLM Applications 2025</h3>');
+    expect(page).toContain(
+      '<tr><td><code>LLM02</code></td><td>Sensitive Information Disclosure</td><td class="num">1</td><td>card</td></tr>',
+    );
+    // A category the run tested and no finding failed shows no case.
+    expect(page).toContain(
+      '<tr><td><code>LLM07</code></td><td>System Prompt Leakage</td><td class="num">0</td><td></td></tr>',
+    );
+    expect(page).toContain('<h3>Risk by attack kind</h3>');
+    expect(page).toContain(
+      '<tr><td><code>internals</code></td><td>low</td><td class="num">0 of 1</td>',
+    );
+    expect(page).toContain('0 of 10, 95 % 0 to');
+    expect(htmlReport(results([kase('a', 'pass')]))).not.toContain('id="frameworks"');
+  });
+
+  it('names only the frameworks a failing finding names, and the risk only of kinds that scored', () => {
+    // The injection passed: its frameworks are in the mapping, with no failing category.
+    const cardOnly = mappedResults([
+      attackCase('card', ['card'], [failing('card-number', 'd', 'card')]),
+      attackCase('inj', ['injection'], [passing('injection-canary')]),
+    ]);
+    expect(cardOnly.taxonomy?.frameworks.map((framework) => framework.id)).toContain(
+      'owasp-agentic',
+    );
+    const lines = terminalSummary(cardOnly).out.join('\n');
+    expect(lines).toContain('OWASP Top 10 for LLM Applications 2025: LLM02');
+    expect(lines).not.toContain('Agentic');
+    expect(lines).not.toContain('EU AI Act');
+    // A mapped check failing a case of no kind names its categories, and scores no kind.
+    const claim = mappedResults([
+      kase('price', 'fail', {
+        samples: [
+          {
+            index: 0,
+            cache: 'cold',
+            turns: [turn({ checks: [failing('pii-leak', 'd', 'leak')] })],
+          },
+        ],
+      }),
+    ]);
+    const out = terminalSummary(claim).out;
+    expect(out).toContain(
+      '  OWASP Top 10 for LLM Applications 2025: LLM02 Sensitive Information Disclosure (1 case)',
+    );
+    expect(out.join('\n')).not.toContain('risk by attack kind');
+    expect(htmlReport(claim)).not.toContain('Risk by attack kind');
+  });
+
+  it('shows a kind without a judged trial as unmeasured', () => {
+    const unjudged = mappedResults([
+      attackCase('a', ['card'], [{ check: 'card-number', applicable: false, findings: [] }]),
+      attackCase('b', ['injection'], [failing('answer-text', 'd', 'canary')]),
+    ]);
+    const page = htmlReport(unjudged);
+    expect(page).toContain(
+      '<tr><td><code>card</code></td><td>critical</td><td class="num">0 of 0</td><td class="num">unmeasured</td><td class="num">unmeasured</td></tr>',
+    );
+    expect(terminalSummary(unjudged).out.join('\n')).not.toContain('card (critical)');
   });
 });
