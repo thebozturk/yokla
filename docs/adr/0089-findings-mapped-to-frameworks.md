@@ -1,6 +1,6 @@
 # 0089. Findings mapped to frameworks (R6)
 
-Status: Proposed · Date: 2026-11-22
+Status: Accepted · Date: 2026-11-22
 
 ## Context
 
@@ -60,7 +60,8 @@ ADR-0081 asks for tactics.
 - **Core holds the frameworks,** each with its version and the categories
   yokla uses, and the mapping of core's attack kinds and core's checks.
 - **A domain pack maps its own kinds and checks,** as `taxonomy` on the
-  pack. Pack data stays pure (ADR-0006).
+  pack. Pack data stays pure (ADR-0006). A kind or check that core and the
+  pack both map is an error of the run, before any request.
 - **A kind maps to a framework only where the framework has a category
   for it.** No kind is forced into every framework.
 - **Each kind has a severity,** from the mapping: what a success of that
@@ -105,7 +106,7 @@ The checks that judge security, privacy or the truth of a claim:
 | `pii-leak`, `pii-in-prompt`, `card-number` | LLM02, NIST 2.10, GDPR 32, KVKK 12 |
 | `tool-argument-marker` | LLM05, ASI02 |
 | `tool-calls` | LLM06, ASI02 |
-| `budget`, `prompt-budget`, `cost-budget` | LLM10 |
+| `prompt-budget`, `cost-budget` | LLM10 |
 | `concession`, `policy-claim`, `price-grounded`, `stock-claim` | LLM09, NIST 2.5 |
 
 The other checks, such as `language-match` or `json-schema`, map to
@@ -127,7 +128,8 @@ Additive (ADR-0007), so the report and the gate need no pack:
 - **`taxonomy`:** the frameworks and categories the run's kinds and
   checks use, with each framework's name and version, each category's
   name, and those kinds with their severity and categories and those
-  checks with theirs. Absent when the run used none.
+  checks with theirs. A check counts when it judged a turn of the run.
+  Absent when the run used none.
 - **On a case:** `kinds`, when it has any.
 - **In the summary:** `risk`, one entry per kind the run has.
 
@@ -154,10 +156,13 @@ Additive (ADR-0007), so the report and the gate need no pack:
   naming the kind and its cases.
 - **A kind without a score breaks it too,** unless `allowUnmeasured` is
   set (ADR-0010).
-- **It reads `summary.risk`;** results without it, with `gate.maxRisk`
-  set, are unmeasured.
+- **It scores the approved cases only** (ADR-0004), from the results'
+  cases and `taxonomy`; `summary.risk` scores every case, proposed ones
+  among them. Results with no approved case of a kind, with
+  `gate.maxRisk` set, are unmeasured.
 - **One threshold for every kind,** at the top of `gate` only: risk is
-  per kind, across suites.
+  per kind, across suites. Its unmeasured kinds follow the `redteam`
+  suite's `allowUnmeasured`, else the gate-wide one.
 
 ### The reports
 
@@ -178,11 +183,13 @@ Additive (ADR-0007), so the report and the gate need no pack:
   in its framework's list, and every listed category is named by one.
 - **The risk score:** unit tests for the rate, the interval, the weights,
   an attacked case as one trial, and an unmeasured kind.
-- **The end-to-end test, at no model cost:** the attack cases on the
-  correct shop give every kind a score of 0; on a shop with defects, every
-  failing finding of a `redteam` case names its categories, the defects'
-  kinds score above 0, and `gate.maxRisk` breaks the gate there and passes
-  the correct shop.
+- **The end-to-end test, at no model cost,** in
+  `packages/cli/src/generate.e2e.test.ts`, over its attack runs: the
+  attack cases on the correct shop give every kind a score of 0; on a shop
+  with defects, every failing finding of a `redteam` case names its
+  categories, the defects' kinds score above 0, and `gate.maxRisk` breaks
+  the gate there and passes the correct shop, the results' cases approved
+  as a person would.
 
 ### Layers
 
