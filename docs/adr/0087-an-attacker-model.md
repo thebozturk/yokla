@@ -1,6 +1,6 @@
 # 0087. An attacker model (R5)
 
-Status: Proposed · Date: 2026-11-22
+Status: Accepted · Date: 2026-11-22
 
 ## Context
 
@@ -76,7 +76,8 @@ yokla run --attacker best-of-n --attempts 4
   customer's (ADR-0028). The gate and `yokla compare` judge the run as for
   a strategy (ADR-0084).
 - **Not with `--strategy`, `--transform` or a cassette,** for now: the run
-  is refused, saying so.
+  is refused, saying so. `--attempts` goes with `best-of-n` only,
+  `--max-turns` with `escalation` only.
 - **`models.attacker`** in `yokla.config.yaml` names the model, as
   `models.transform` does, with a price, 0 for a local model. Without it,
   the run is refused before any request.
@@ -94,9 +95,11 @@ yokla run --attacker best-of-n --attempts 4
   (P9).
 - **Escalation is one sample.** Its turns are the sample's turns, each
   judged as the case's turn.
-- **Best-of-n is one sample per attempt,** worst of N, stopping at the
-  first failure as `--stop-early` does (ADR-0038). Each attempt is its own
-  session.
+- **Best-of-n is one sample per attempt,** each its own session. It stops
+  at the first attempt with a failing finding, whatever the dimension's
+  policy: an attempt that broke through is the finding, as `--stop-early`
+  stops once a failure is settled (ADR-0038). Both judge the samples so far
+  as the final judging would, with the proxy's records when there are.
 - **Each failure names the strategy and the turn or attempt** that broke
   through, and the results keep every message the attacker wrote.
 
@@ -112,15 +115,21 @@ As ADR-0028's, with the attacker's name in place of the customer's:
   ignores the cache.
 - **The cost is counted** with yokla's other spend, and `--max-cost` caps
   it. A model without a price is refused, as for `models.transform`.
-- **A failed attacker call** is an error of the case, never a pass.
+- **A failed attacker call** is an error of the case, never a pass. Every
+  language a case may be in has an attacker prompt; one without would be
+  such an error.
+- **The reply cache is the customer's,** shared code under another
+  directory: what keys a reply differs, how it is kept doesn't.
 - **What leaves the machine:** a hosted attacker receives the attack and
   the target's answers. The guide says so.
 
 ### What results.v1 keeps
 
-Additive (ADR-0007): `run.attacker`, the strategy and its settings; on a
-sample, the attacker's calls, their cost and how many came from the cache,
-and the attempt or turn that broke through.
+Additive (ADR-0007): `run.attacker`, the strategy, its bound as `limit`
+(the attempts or the most turns) and how many cases it adapted; on a
+sample, the attacker's calls and their cost, and for `escalation` the turn
+that broke through as `brokeAt`. For `best-of-n`, the attempt that broke
+through is the sample that failed, the last one run.
 
 ### The demo-shop
 
@@ -130,11 +139,16 @@ and the attempt or turn that broke through.
   - `best-of-n`: attempt 0 as written; then the attack wrapped as a
     role-play, in leetspeak, and as a hypothetical, in that order.
 - **A new defect, `worn-down`:** the shop follows an instruction a session
-  has asked for three times. A template attack, asked once, passes on it;
-  `escalation` fails it, by the check that judges the attack.
+  has asked for three times: the same word to reply with, read from the
+  instruction. A template attack, asked once, passes on it; `escalation`
+  fails it on its fourth turn, the attack's third, by the check that
+  judges the attack. An instruction hidden in invisible characters isn't
+  read, so its case passes.
 - **An R3 defect shows `best-of-n`:** with `obfuscation-obeyed`, the
   written injection passes, and `best-of-n` fails it at the leetspeak
-  attempt and runs no further attempt.
+  attempt and runs no further attempt. As under the leetspeak strategy
+  (ADR-0084), the other cases whose own message, followed, breaks a check
+  fail there too.
 - **The end-to-end test, at no model cost:** the attack cases on the
   correct shop under each strategy pass, every attempt and turn run; the
   two defects fail as above, and nothing else does; a second run sends no

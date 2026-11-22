@@ -99,7 +99,7 @@ old one.
 | [0084](0084-encoding-and-wrapping-strategies.md) | Encoding and wrapping strategies (R3) | Accepted |
 | [0085](0085-injection-through-tools-and-memory.md) | Injection through tools and memory (R4) | Accepted |
 | [0086](0086-agency-and-authority.md) | Agency and authority (R4b) | Accepted |
-| [0087](0087-an-attacker-model.md) | An attacker model (R5) | Proposed |
+| [0087](0087-an-attacker-model.md) | An attacker model (R5) | Accepted |
 
 ## Template
 
