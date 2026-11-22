@@ -1208,6 +1208,15 @@ For the attacks from templates (ADR-0080), `yokla generate --redteam
   `translate`, written in English, each judged in the language it was
   sent in. A second `iterative` run sends no attacker call. The test is
   `packages/cli/src/attacker-strategies.e2e.test.ts`.
+- **Findings mapped to frameworks (ADR-0089):** on the generated attack
+  cases, the correct shop scores 0 for every kind; under each attack
+  defect, every failing finding names the categories it maps to, and the
+  defect's kind scores above 0. With every case approved, `gate.maxRisk`
+  breaks the gate on `card-echoed` and passes the correct shop. Unit tests
+  check the mapping both ways: every kind a generator writes is mapped, and
+  every mapped kind is written; every mapped check exists; every category
+  named is listed, and every listed category is named. The test is
+  `packages/cli/src/generate.e2e.test.ts`.
 
 For the transforms a model writes (ADR-0059), the fake provider plays
 `models.transform` by rules: a paraphrase turns "X var mı?" into "X
@@ -1479,7 +1488,7 @@ suffix search, and image, audio and video attacks.
 | **R4b. Agency and authority** (done, ADR-0086) | order and refund fraud and excessive agency judged by `tool-calls`; roles, whose forbidden tools `tool-calls` judges (ADR-0083); quantity limits read from a cart call's arguments (ADR-0082); moved from R4 (ADR-0085) | a defect that cancels or refunds an order the customer may not, or calls a tool their role forbids, is caught by `tool-calls`; a quantity past the profile's limit in a cart call's arguments is caught |
 | **R5. An attacker model** (done, ADR-0087) | `models.attacker` adapts the template attacks, cached and capped: `escalation`, turn by turn, which spreads an attack over turns as it chooses, and `best-of-n`, an attempt per sample; each stops at the first deterministic failure (ADR-0081); detection stays deterministic | with the fake provider as attacker, a defect only an adaptive attack reaches is caught; a second run repeats from the cache at no cost |
 | **R5b. More attacker strategies** (done, ADR-0088) | `iterative`, each attempt from the earlier ones and their answers; `tree`, variants of variants, breadth first, within `--branches` and `--depth`; `translate`, the attack in the profile's other languages, judged in the language it was sent in; on R5's engine; moved from R5 (ADR-0087) | with the fake provider as attacker, `iterative` and `tree` each reach a demo-shop defect the template attack doesn't; `translate` reaches, from the cases of one language, a defect those cases don't reach as written (ADR-0088) |
-| **R6. Findings mapped to frameworks** | each attack kind and check maps to OWASP LLM Top 10 and OWASP Agentic categories, and to the GDPR, KVKK and EU AI Act topics it touches, MITRE ATLAS tactics, the NIST AI RMF Measure function and ISO/IEC 42001; the reports group findings by them; a risk score per kind, severity times attack success rate with its interval, and a gate threshold on it, off by default; never a claim of compliance (ADR-0081) | every red-team finding of the demo-shop's run names its categories; the mapping is tested in both directions |
+| **R6. Findings mapped to frameworks** (done, ADR-0089) | each attack kind and check maps to OWASP LLM Top 10 and OWASP Agentic categories, and to the GDPR, KVKK and EU AI Act topics it touches, MITRE ATLAS tactics, the NIST AI RMF Measure function and ISO/IEC 42001; the reports group findings by them; a risk score per kind, severity times attack success rate with its interval, and a gate threshold on it, off by default; never a claim of compliance (ADR-0081) | every red-team finding of the demo-shop's run names its categories; the mapping is tested in both directions |
 | **R7. A calibrated judge** | `models.judge` for dimensions with no deterministic check: unsafe advice, hijacking, age and region restrictions where no rule applies, bias, political and religious statements, harmful content, imitation, free-text claims the data can't check; rubric notes and graded examples the user adds per category (ADR-0081); a calibration set in every run; gates only per dimension, by opt-in | a judge that misjudges a calibration case gives `unmeasured`; with the fake provider as judge, the unsafe-advice defect is found and doesn't gate by default |
 
 **Later:** sampling production logs, more domains (banking, travel), more
