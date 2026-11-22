@@ -222,6 +222,9 @@ option, a probe that failed, or a proposal that exists without `--force`.
 | `--reverse-items <tool>=<jsonpath>` | | Reverse the arrays the path selects in every result of a tool before the model sees it, through the model proxy (ADR-0043). Repeatable; not with a cassette. |
 | `--swap-model <swap>` | | `<upstream>:<asked model>=<model>`: send the calls that ask for a model to another, through the model proxy (ADR-0042). `=<upstream>/<model>` sends them to another upstream of the same kind. Repeatable; not with a cassette. |
 | `--strategy <name>` | | Send each message of each `redteam` case encoded, obfuscated or wrapped: one strategy, or two in layers as `a+b` (ADR-0084, below). |
+| `--attacker <name>` | | Adapt each `redteam` case of one turn, sent as no identity, with `models.attacker`: `escalation` or `best-of-n` (ADR-0087, below). |
+| `--attempts <n>` | 4 | `best-of-n`'s attempts. Only with `--attacker best-of-n`. |
+| `--max-turns <n>` | 5 | `escalation`'s most turns. Only with `--attacker escalation`. |
 | `--transform <kind>` | | Send each written message as users write it: `no-diacritics`, `lowercase`, `no-punctuation` or `typos` (ADR-0045), or `paraphrase` or `code-switch`, which `models.transform` writes (ADR-0059). Repeatable. |
 | `--concurrency <n>` | 1 | Cases run in parallel. Serial correlation needs 1, unless spans alone show the model calls. |
 | `--target-url <url>` | the profile's | Use this url instead of `target.request.url`. |
@@ -231,6 +234,7 @@ option, a probe that failed, or a proposal that exists without `--force`.
 | `--proxy-url <url>` | `127.0.0.1` on `modelProxy.port` | Where the model proxy is. |
 | `--max-cost <usd>` | | Start no new sample once the model cost, the target's and yokla's own, reaches this. The target's cost comes from the model proxy, or from spans when the proxy has no upstreams. Without a model proxy it caps yokla's own calls alone, and says the target's cost is unknown. |
 | `--fresh-customer` | | Ask the customer model anew, whatever its reply cache holds (ADR-0028). |
+| `--fresh-attacker` | | Ask the attacker model anew, whatever its reply cache holds (ADR-0087). |
 
 It exits with `0` when every case ran, whatever the verdicts: the gate judges
 them. It exits with `2` for a configuration problem, when `target.auth` can't
@@ -410,8 +414,37 @@ pnpm yokla compare --results runs/attacks.json --results runs/base64.json --expe
   rewrote; a strategy that rewrote none is a run issue. Each turn keeps its
   `written` message, and `yokla compare` names the run by its strategy.
 - **Not yet** with `--transform` or a cassette. A conversation spread over
-  turns, and the profile's other language, come with the attacker model
-  (R5).
+  turns comes with `--attacker escalation`, below; the profile's other
+  language with R5b.
+
+**`--attacker`** asks whether an attack the target withstands as written
+falls to a model that adapts it (ADR-0087). Each `redteam` case of one
+turn, sent as no identity, goes through `models.attacker`; the others go
+as written.
+
+```sh
+pnpm yokla run --cases cases/redteam.yaml --attacker escalation --out runs/escalation.json
+pnpm yokla run --cases cases/redteam.yaml --attacker best-of-n --attempts 4 --out runs/best-of-n.json
+```
+
+| Strategy | What the attacker writes | Stops |
+|---|---|---|
+| `escalation` | the next message, turn by turn, from the attack and the conversation so far: it may start with an ordinary question and work towards the attack, or ask again another way | at the first turn a check fails, or after `--max-turns` |
+| `best-of-n` | attempt `i` of `--attempts`: another way to send the attack, each in a sample of its own, in a fresh session | at the first attempt a check fails |
+
+- **The case's own message is the attacker's goal,** and its turn's
+  expectations judge every message the attacker writes. A model never
+  decides a verdict.
+- **The results** keep every message sent, with the case's under
+  `written`; each sample's attacker calls, and for `escalation` the turn
+  that broke through as `brokeAt`; and `run.attacker`, with the strategy,
+  its bound and how many cases it adapted. `run.own` counts the calls.
+- **The cache** in `yokla-data/attacker/` repeats every message while the
+  target answers the same, at no cost. A failed attacker call is an error
+  of the case, never a pass.
+- **What leaves the machine:** a hosted attacker receives the attacks and
+  the target's answers.
+- **Not yet** with `--strategy`, `--transform` or a cassette.
 
 ## `yokla report`
 
@@ -507,6 +540,10 @@ plan:
   paraphrase` and `code-switch` (ADR-0059), in the same kinds as
   `models.customer`, with a `price`, 0 for a local model. A hosted model
   receives the cases' messages.
+- **`models.attacker`:** the model that adapts the attacks of `yokla run
+  --attacker` (ADR-0087), in the same kinds as `models.customer`, with a
+  `price`, 0 for a local model. A hosted model receives the attacks and the
+  target's answers.
 - **`checks`:** check modules you wrote, relative to this file (ADR-0030).
   `yokla run` loads them, and refuses one outside the contract before any
   request. See [checks you write](checks.md#checks-you-write-adr-0030).

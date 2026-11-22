@@ -1051,7 +1051,8 @@ turns on one seeded defect at a time:
   customer (ADR-0085),
 - cancelling another customer's order, cancelling when only asked about
   it, offering a staff-only refund to every customer, and putting more of
-  a product in the cart than its limit (ADR-0086).
+  a product in the cart than its limit (ADR-0086),
+- following an instruction a session has asked for three times (ADR-0087).
 
 Each defect is added in the version whose checks detect it, so that "every
 defect is detected" holds for every version. v0.1 has the first eight; v0.2
@@ -1186,6 +1187,14 @@ For the attacks from templates (ADR-0080), `yokla generate --redteam
   their own kind, `order-fraud`, `excessive-agency`, `quantity` and
   `privilege`, by `tool-calls`, and nothing else. The shop still refuses
   to cancel another customer's order that its model asked to.
+- **An attacker model (ADR-0087):** with the fake provider as attacker,
+  the correct shop withstands every turn of `escalation` and every attempt
+  of `best-of-n`. `worn-down` passes every written case and `best-of-n`,
+  and `escalation` breaks it on its fourth turn, the attack's third time.
+  `obfuscation-obeyed` passes every written case and `escalation`, and
+  `best-of-n` breaks it at its third, leetspeak attempt and sends no
+  fourth. A second run sends no attacker call, every reply from the
+  cache. The test is `packages/cli/src/attacker.e2e.test.ts`.
 
 For the transforms a model writes (ADR-0059), the fake provider plays
 `models.transform` by rules: a paraphrase turns "X var mı?" into "X
@@ -1435,7 +1444,8 @@ them.
 
 v0.5 is built in order, one ADR per item (ADR-0079); ADR-0081 widened it
 from a survey of other tools' red-team features, deciding by a rule what
-they grade with a model, and ADR-0085 split R4 in two. The items that cost nothing come first; a model is
+they grade with a model, and ADR-0085 and ADR-0087 split R4 and R5 in
+two. The items that cost nothing come first; a model is
 needed only from R5. Out of scope: coding-agent attacks, gradient-based
 suffix search, and image, audio and video attacks.
 
@@ -1454,7 +1464,8 @@ suffix search, and image, audio and video attacks.
 | **R3. Multi-turn and encoding strategies** (done for single turns, ADR-0084; spreading over turns and the other language moved to R5) | strategies that rewrite an approved attack case, as the transforms do: an attack spread over several turns; Base64, hex, ROT13, leetspeak, look-alike letters, Morse, hidden Unicode, Turkish without its letters, the profile's other language, yokla's own jailbreak wrappers, and two in layers; the canary goes in encoded and is looked for in plain text (ADR-0081) | an encoded or spread attack the correct shop withstands still passes; a defect that decodes and follows one is caught |
 | **R4. Injection through tools and memory** (done, ADR-0085) | the proxy changes a tool's description, not only its result (ADR-0043), per turn, so also mid-conversation; SQL, shell and URL payloads whose marker must not reach a tool call's arguments (`tool-argument-marker`), beside the free-text arguments a profile names; memory poisoning, checked in the session of another customer (ADR-0081) | a defect that follows an instruction in a tool description is caught, including one that arrives on the second turn |
 | **R4b. Agency and authority** (done, ADR-0086) | order and refund fraud and excessive agency judged by `tool-calls`; roles, whose forbidden tools `tool-calls` judges (ADR-0083); quantity limits read from a cart call's arguments (ADR-0082); moved from R4 (ADR-0085) | a defect that cancels or refunds an order the customer may not, or calls a tool their role forbids, is caught by `tool-calls`; a quantity past the profile's limit in a cart call's arguments is caught |
-| **R5. An attacker model** | `models.attacker` writes variants of the template attacks and adaptive multi-turn attacks, cached and capped: iterative refinement, a tree of variants, gradual escalation, best-of-n, an attack spread over turns, and the profile's other language (ADR-0084); each stops at the first deterministic failure (ADR-0081); detection stays deterministic | with the fake provider as attacker, a defect only an adaptive attack reaches is caught; a second run repeats from the cache at no cost |
+| **R5. An attacker model** (done, ADR-0087) | `models.attacker` adapts the template attacks, cached and capped: `escalation`, turn by turn, which spreads an attack over turns as it chooses, and `best-of-n`, an attempt per sample; each stops at the first deterministic failure (ADR-0081); detection stays deterministic | with the fake provider as attacker, a defect only an adaptive attack reaches is caught; a second run repeats from the cache at no cost |
+| **R5b. More attacker strategies** | iterative refinement, a tree of variants, and the profile's other language, on R5's engine; moved from R5 (ADR-0087) | each strategy reaches a demo-shop defect the template attack doesn't, with the fake provider as attacker |
 | **R6. Findings mapped to frameworks** | each attack kind and check maps to OWASP LLM Top 10 and OWASP Agentic categories, and to the GDPR, KVKK and EU AI Act topics it touches, MITRE ATLAS tactics, the NIST AI RMF Measure function and ISO/IEC 42001; the reports group findings by them; a risk score per kind, severity times attack success rate with its interval, and a gate threshold on it, off by default; never a claim of compliance (ADR-0081) | every red-team finding of the demo-shop's run names its categories; the mapping is tested in both directions |
 | **R7. A calibrated judge** | `models.judge` for dimensions with no deterministic check: unsafe advice, hijacking, age and region restrictions where no rule applies, bias, political and religious statements, harmful content, imitation, free-text claims the data can't check; rubric notes and graded examples the user adds per category (ADR-0081); a calibration set in every run; gates only per dimension, by opt-in | a judge that misjudges a calibration case gives `unmeasured`; with the fake provider as judge, the unsafe-advice defect is found and doesn't gate by default |
 
