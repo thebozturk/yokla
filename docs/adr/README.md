@@ -108,7 +108,7 @@ old one.
 | [0093](0093-a-library-api.md) | A library API (E1) | Accepted |
 | [0094](0094-a-github-action.md) | A GitHub Action and CI recipes (E2) | Accepted |
 | [0095](0095-two-runs-side-by-side.md) | Two runs side by side (E3) | Accepted |
-| [0096](0096-export.md) | Export (E4) | Proposed |
+| [0096](0096-export.md) | Export (E4) | Accepted |
 
 ## Template
 

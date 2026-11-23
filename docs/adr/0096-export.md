@@ -1,6 +1,6 @@
 # 0096. Export (E4)
 
-Status: Proposed · Date: 2026-11-23
+Status: Accepted · Date: 2026-11-23
 
 ## Context
 
@@ -59,7 +59,8 @@ One JSON Lines row per case, for any tool that reads a dataset:
 | `turns` | each turn's message and its expectations, as the case writes them |
 
 - **`yokla export --out <file>`** writes them from the project's cases, as
-  `yokla run` loads them, with `--profile`, `--cases` and `--tag`.
+  `yokla run` loads them, with `--profile`, `--cases`, `--tag` and
+  `--config`. It exits with 2 when no case becomes a row.
 - **Left out, and listed in the guide's table:** a case with a simulated
   customer (it has no written turns: it is skipped, and the command says
   so); a turn's provider faults and tool changes, which need yokla's proxy;
@@ -78,7 +79,7 @@ reads rows:
 | `sample`, `turn` | their indexes |
 | `message`, `answer` | what was sent, and the answer's text |
 | `latencyMs`, `costUsd` | the turn's, when measured |
-| `verdict` | the turn's: `fail` when a finding of a dimension that isn't advisory failed, `pass` when one passed and none failed, `unmeasured` otherwise |
+| `verdict` | the turn's: the status a sample of that one turn gets by the case's policies, as the run recorded them: `fail` when a dimension that gates failed, `pass` when one passed and none failed or went unmeasured, `unmeasured` otherwise; a threshold's mean or percentile is left to the run |
 | `status` | the case's status in the run |
 | `findings` | each finding: check, dimension, verdict, severity, message |
 | `error` | why the turn couldn't be judged |
@@ -96,7 +97,14 @@ reads rows:
   - **`answer`** is the target's answer: its JSON body, `{ body }`, read
     with the profile's response mapping, so the evidence checks apply; or
     its text alone, a string, when the tool has only the text; or
-    `{ text, evidence }`, as yokla's results hold it.
+    `{ text, evidence }`, as yokla's results hold it, whose collections'
+    object items are read. Each form may carry the answer's `status`, 200
+    by default, and its `latencyMs`.
+  - **Without `latencyMs`, a turn's deadline is unmeasured:** a latency no
+    one gave would pass any deadline. A user's check module sees 0, and
+    the guide says so.
+  - **A body the mapping finds no text in** is unmeasured, with the
+    mapping's issue as the reason, as a run's turn error would be.
   - **`context`** names the yokla case, `{ case, turn? }`, the last turn by
     default, and `earlier`, the answers of the turns before it, for checks
     that read the conversation.
@@ -105,8 +113,9 @@ reads rows:
     result rows define it.
   - **`pass`** is true only for `pass`: `unmeasured` is never a pass.
     **`score`** is the share of the turn's applicable findings that passed,
-    0 with none. **`reason`** names the failing findings, or why the turn
-    is unmeasured.
+    0 with none. **`reason`** names the failing findings, each
+    `check (dimension): message`, or why the turn is unmeasured; for a pass,
+    how many findings passed.
 - **The runtime gains `judgeAnswers`,** the runner's own judging of given
   answers, with no target and no model call: the same response mapping,
   the same view, the same checks. Checks that need the model proxy, the
@@ -129,7 +138,8 @@ reads rows:
   turns', gives the verdict and the failing findings the run gave.
 - **From the body, as a tool would:** each single-turn case's message sent
   to the demo-shop by the test itself, and its body given to the
-  assertion, gives the run's verdict.
+  assertion, gives the run's verdict. The test paces its requests by the
+  profile's limits and waits out a 429, as any tool must with this shop.
 - **The rows validate:** a demo-shop run's exported case rows and result
   rows parse with their schemas, one row per approved case without a
   simulated customer, and one per turn of each sample.
