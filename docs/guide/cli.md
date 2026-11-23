@@ -465,14 +465,20 @@ pnpm yokla run --cases cases/redteam.yaml --attacker translate --out runs/transl
 ## `yokla report`
 
 ```sh
-pnpm yokla report --results runs/<run id>.json [--junit runs/junit.xml] [--html runs/report.html]
+pnpm yokla report --results runs/<run id>.json [--junit runs/junit.xml] [--html runs/report.html] \
+  [--markdown runs/summary.md]
 ```
 
 Prints the summary again from the results file alone, and optionally writes
-JUnit XML or an HTML report.
+JUnit XML, an HTML report or the Markdown summary.
 
 - **The terminal summary and JUnit XML** hold one line per case that didn't
   pass, and none of the target's answers.
+- **The Markdown summary** (`--markdown`, ADR-0094) is the terminal
+  summary as Markdown, for a CI's job summary: the counts, a table of the
+  first 100 cases that didn't plainly pass with the reason for each, the
+  errors, and the rest of the run's notes folded away. It holds none of the
+  target's answers. `yokla gate --markdown` writes it with the verdict.
 - **The HTML report** (ADR-0023) is one offline file to read why a case
   didn't pass.
   - It shows the run, the status of each case with its tags, the pass rate
@@ -648,7 +654,8 @@ gate-wide ones for that suite; `maxRisk` follows the `redteam` suite's
 ## `yokla gate`
 
 ```sh
-pnpm yokla gate --results runs/<run id>.json [--baseline yokla.baseline.json] [--config yokla.config.yaml]
+pnpm yokla gate --results runs/<run id>.json [--baseline yokla.baseline.json] [--config yokla.config.yaml] \
+  [--markdown runs/summary.md]
 ```
 
 | Exit code | Meaning |
@@ -661,6 +668,10 @@ pnpm yokla gate --results runs/<run id>.json [--baseline yokla.baseline.json] [-
   unchanged (ADR-0011).
 - **Notices:** the gate also notes a `gap-closed` case, whose `knownGap`
   marker can go, and a baseline made with another profile.
+- **`--markdown <file>`** writes the run's Markdown summary, opening with
+  the verdict and the gate's breaches, also when the gate breaks or can't
+  judge the run (ADR-0094). [The GitHub Action](ci.md#the-github-action)
+  puts it in the job's summary.
 
 ## `yokla baseline`
 

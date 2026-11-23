@@ -85,6 +85,7 @@ try {
 | `terminalReport(results)` | The summary `yokla run` prints: `{ out, err }`, lines for standard output and standard error. | `run`, `report` |
 | `junitReport(results)`, `htmlReport(results)` | The JUnit XML and the static HTML page, as text. | `run`, `report` |
 | `comparisonReport(comparison)` | The lines `yokla compare` prints. | `compare` |
+| `markdownReport(results, outcome?)` | The Markdown summary; with the gate's outcome, its verdict first ([ADR-0094](../adr/0094-a-github-action.md)). | `report`, `gate` |
 | `readResults(path)`, `readBaseline(path)`, `loadConfig(path)`, `readCassette(path)` | Read and validate one file. `readBaseline` takes a results file too. | `gate`, `compare`, `report`, `run` |
 | `main(argv, io)` | The command line itself, given its arguments and an `{ out, err }` output; gives the exit code. | all |
 | `version()`, `schemas`, `jsonSchemas()` | yokla's version, the Zod schemas of the profile and the case files, and every file's JSON Schema. | `schema` |

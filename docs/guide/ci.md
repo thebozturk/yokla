@@ -82,11 +82,77 @@ A suite against a real model costs money on every pipeline run.
 - **Gate it:** `costUsd` and `costPerTurnUsd` thresholds break the build
   when a change makes the assistant more expensive.
 
-## A GitHub Actions workflow
+## The GitHub Action
 
-This example starts the assistant, runs the suite with a cost cap, gates it
-against the committed baseline, and keeps the reports. Adapt the start
-command and the health url to your assistant.
+yokla is a GitHub Action too ([ADR-0094](../adr/0094-a-github-action.md)).
+It runs the cases, gates the run, writes the run's summary to the job's
+summary, and keeps the reports as the job's artifact. Start your assistant
+first, and set up Node.js 24 or later; the action sets up nothing itself.
+
+```yaml
+name: assistant
+on: [pull_request]
+
+jobs:
+  yokla:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Start the assistant
+        run: |
+          npm ci
+          npm start > assistant.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:3000/health && exit 0
+            sleep 1
+          done
+          echo "the assistant did not start"; cat assistant.log; exit 1
+
+      - uses: thebozturk/yokla@v0.6.0
+        with:
+          max-cost: 1
+        env:
+          ASSISTANT_TOKEN: ${{ secrets.ASSISTANT_TOKEN }}
+```
+
+| Input | Default | Meaning |
+|---|---|---|
+| `version` | the release's own | The yokla version to run with `npx`. |
+| `command` | | Runs yokla instead of `npx`, such as `pnpm yokla`; split on spaces. |
+| `profile`, `config`, `baseline` | yokla's own defaults | Passed as `--profile`, `--config` and `--baseline`. |
+| `cases`, `tags` | | One per line; each passed as `--cases` or `--tag`. |
+| `target-url`, `max-cost` | | Passed to `yokla run`. |
+| `args` | | Further `yokla run` arguments, one per line. |
+| `working-directory` | `.` | Where yokla runs. |
+| `reports` | the runner's temporary directory | Where the results and the reports go. |
+| `artifact` | `yokla` | The artifact's name; empty keeps no artifact. |
+| `retention-days` | `7` | How long the artifact is kept. |
+
+- **Its outputs** are `verdict` (`pass`, `broken` or `unjudgeable`; empty
+  when the run wrote no results), `results` and `summary`, the paths of the
+  results file and the Markdown summary.
+- **The step fails** when `yokla run` exits with 2 or the gate breaks or
+  can't judge the run, after the summary and the artifact are kept.
+- **The job's summary holds no answers,** only what the job's log shows:
+  each case that didn't pass and why. A reason can quote a value from an
+  answer, such as a price, and a public repository's job summaries are
+  public. The results file and the HTML report hold the answers; they are
+  only in the artifact.
+- **Pin the tag,** as above, or a commit. The tag runs the yokla release of
+  the same version.
+- **It sends nothing outside the job:** no pull-request comment, and no
+  upload but the job's artifact.
+
+## Every step by hand
+
+This workflow does what the action does, step by step: it starts the
+assistant, runs the suite with a cost cap, gates it against the committed
+baseline, and keeps the reports. Adapt the start command and the health url
+to your assistant.
 
 ```yaml
 name: assistant
@@ -140,12 +206,76 @@ jobs:
   ([the model proxy](model-proxy.md#set-it-up)). The run then measures cost
   and latency per turn, and faults can run.
 
+## GitLab CI
+
+```yaml
+yokla:
+  image: node:24
+  script:
+    - npm ci
+    - npm start > assistant.log 2>&1 &
+    - for i in $(seq 1 60); do curl -sf http://127.0.0.1:3000/health && break; sleep 1; done
+    - npx --yes yokla@0.5.0 run --out runs/ci.json --junit runs/junit.xml --html runs/report.html --max-cost 1
+    - npx --yes yokla@0.5.0 gate --results runs/ci.json --markdown runs/summary.md
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths: [runs/]
+    reports:
+      junit: runs/junit.xml
+```
+
+- **The JUnit XML** shows each case in the merge request's test report.
+- **The artifact** keeps the results, the HTML report and the Markdown
+  summary for a week.
+
+## Azure Pipelines
+
+```yaml
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - task: UseNode@1
+    inputs:
+      version: '24.x'
+  - script: |
+      npm ci
+      npm start > assistant.log 2>&1 &
+      for i in $(seq 1 60); do curl -sf http://127.0.0.1:3000/health && exit 0; sleep 1; done
+      echo "the assistant did not start"; cat assistant.log; exit 1
+    displayName: Start the assistant
+  - script: npx --yes yokla@0.5.0 run --out runs/ci.json --junit runs/junit.xml --html runs/report.html --max-cost 1
+    displayName: Run the cases
+  - script: npx --yes yokla@0.5.0 gate --results runs/ci.json --markdown runs/summary.md
+    displayName: Gate
+  - script: echo "##vso[task.uploadsummary]$(System.DefaultWorkingDirectory)/runs/summary.md"
+    condition: always()
+    displayName: Show the summary
+  - task: PublishTestResults@2
+    condition: always()
+    inputs:
+      testResultsFormat: JUnit
+      testResultsFiles: runs/junit.xml
+  - publish: runs
+    artifact: yokla
+    condition: always()
+```
+
+- **The Markdown summary** shows on the run's page, beside the tests from
+  the JUnit XML.
+- **Any other CI** runs the same two commands: `yokla run` writes the
+  results and the reports, and `yokla gate` exits with 0, 1 or 2.
+
 ## Reports
 
 - **The terminal summary** names each case that didn't pass, with its first
   failing finding.
 - **JUnit XML** (`--junit`) shows each case as a test in your CI's test view.
   It holds none of the assistant's answers.
+- **The Markdown summary** (`yokla gate --markdown`, or `yokla report
+  --markdown`) is the terminal summary as Markdown, for a CI's job summary.
+  It holds none of the assistant's answers either.
 - **The HTML report** (`--html`, or `yokla report --html` later) is one
   offline file: every turn with its answer, findings, evidence and model
   calls, the failing cases first.

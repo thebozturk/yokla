@@ -42,7 +42,7 @@ flowchart LR
 |---|---|
 | [The analyzer](analyzer.md) | From your repository and data to an approved profile, then cases computed from your catalog. |
 | [From a finding to its fix](debugging.md) | Where a wrong value came from, the smallest case that still fails, runs that repeat at no model cost, other models, indirect injection, and a coding agent that fixes against your cases. |
-| [yokla in CI](ci.md) | The gate, the baseline, budgets and reports in a pipeline, with a GitHub Actions example. |
+| [yokla in CI](ci.md) | The gate, the baseline, budgets and reports in a pipeline: the GitHub Action, and recipes for GitLab CI and Azure Pipelines. |
 | [Red teaming](redteam.md) | Attack cases from your profile and data, sent as written, encoded, wrapped or adapted by a model; a calibrated judge for what no rule can decide; findings mapped to frameworks, and the gate. |
 
 **Reference** gives every field and option:
