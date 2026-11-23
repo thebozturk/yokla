@@ -24,6 +24,15 @@ describe('the READMEs', () => {
     expect(relativeLinks(root)).toEqual([]);
   });
 
+  it('the guide shows the library API example pack-check runs (ADR-0093)', () => {
+    const page = readFileSync(new URL('../docs/guide/api.md', import.meta.url), 'utf8');
+    const example = readFileSync(
+      new URL('../packages/cli/examples/run-and-gate.ts', import.meta.url),
+      'utf8',
+    );
+    expect(page).toContain(`\`\`\`ts\n${example}\`\`\`\n`);
+  });
+
   it('finds a relative link, and only that', () => {
     expect(
       relativeLinks('[a](docs/guide.md) [b](https://x.example/) [c](#install) [d](http://x)'),

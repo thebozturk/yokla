@@ -245,6 +245,26 @@ walks through each step: [the analyzer](https://github.com/thebozturk/yokla/blob
 [yokla in CI](https://github.com/thebozturk/yokla/blob/main/docs/guide/ci.md)
 and [red teaming](https://github.com/thebozturk/yokla/blob/main/docs/guide/redteam.md).
 
+## From code
+
+The `yokla` package is a library too. Its functions are the steps of
+`yokla run`, `yokla gate`, `yokla compare` and `yokla report`; they print
+nothing and throw typed errors:
+
+```ts
+import { writeFileSync } from 'node:fs';
+import { gate, junitReport, loadProject, run } from 'yokla';
+
+const project = await loadProject(); // yokla.profile.yaml, cases/ and yokla.config.yaml
+const { results } = await run(project, { samples: 3 });
+writeFileSync('junit.xml', junitReport(results));
+const { verdict } = gate(results, { config: project.config });
+process.exitCode = verdict === 'pass' ? 0 : 1;
+```
+
+[yokla from code](https://github.com/thebozturk/yokla/blob/main/docs/guide/api.md)
+lists every function and option.
+
 ## Try it on the demo-shop
 
 From a checkout, with pnpm:
@@ -281,7 +301,8 @@ upstreams your profile names. An egress test in CI holds yokla to that.
     [cases](https://github.com/thebozturk/yokla/blob/main/docs/guide/cases.md),
     [checks](https://github.com/thebozturk/yokla/blob/main/docs/guide/checks.md),
     [the model proxy](https://github.com/thebozturk/yokla/blob/main/docs/guide/model-proxy.md),
-    [commands and configuration](https://github.com/thebozturk/yokla/blob/main/docs/guide/cli.md).
+    [commands and configuration](https://github.com/thebozturk/yokla/blob/main/docs/guide/cli.md),
+    [yokla from code](https://github.com/thebozturk/yokla/blob/main/docs/guide/api.md).
 - [The design](https://github.com/thebozturk/yokla/blob/main/docs/design.md)
   and the [decision records](https://github.com/thebozturk/yokla/blob/main/docs/adr/README.md).
 - [The changelog](https://github.com/thebozturk/yokla/blob/main/CHANGELOG.md).
@@ -297,7 +318,7 @@ upstreams your profile names. An egress test in CI holds yokla to that.
 
 | Package | What it holds |
 |---|---|
-| [`yokla`](https://www.npmjs.com/package/yokla) | the command line |
+| [`yokla`](https://www.npmjs.com/package/yokla) | the command line and the library API |
 | [`@yokla/core`](https://www.npmjs.com/package/@yokla/core) | schemas, the check API, aggregation and the gate |
 | [`@yokla/runtime`](https://www.npmjs.com/package/@yokla/runtime) | the runner and the target adapters |
 | [`@yokla/proxy`](https://www.npmjs.com/package/@yokla/proxy) | the model proxy |
