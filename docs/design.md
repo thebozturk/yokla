@@ -188,7 +188,7 @@ rules is cheaper than restoring them later.
 packages/
   core/  runtime/  proxy/  report/  cli/  analyzer/
   generator/          (later)
-  interop-*/          mappings to other tools' formats (later)
+  interop-*/          import and export through neutral formats (v0.6)
 packs/
   ecommerce/  lang-tr/  lang-en/
 examples/
@@ -1003,13 +1003,21 @@ machines write them. The results record each module's hash.
 
 ## 18. Interoperability
 
-- **Export (v0.6).** `yokla export <tool>` will write another tool's
-  configuration: the target as an HTTP provider that maps the evidence, plus
-  JavaScript assertions that call yokla's checks.
-- **Import (v0.6).** Another tool's results will be importable into yokla
-  results for reporting and gating. Its test cases will be importable as yokla
-  cases with status `proposed`.
-- Each mapping lives in its own `interop-<tool>` package (ADR-0007).
+- **No tool is named (ADR-0092).** yokla reaches other tools through neutral
+  formats it documents and mappings the user writes. It ships no mapping for
+  a named tool and writes no other tool's configuration file.
+- **Export (v0.6, E4).** yokla's cases as a neutral dataset and its results
+  as neutral rows, each with a JSON Schema and a table of what it leaves
+  out; its checks as a JavaScript assertion function, for any tool whose
+  assertions can be JavaScript. A user points their tool at that function
+  and at their target, in their own configuration.
+- **Import (v0.6, E5).** Another tool's cases and results, read through a
+  mapping the user writes, as a profile adapts yokla to a target (P9).
+  Imported cases are `proposed`, with `source: import`; imported results
+  become samples and findings (ADR-0007), for reporting and gating. A
+  verdict the mapping can't find is `unmeasured`.
+- The mappings live in `interop-*` packages named by what they do, not by a
+  tool (ADR-0007, ADR-0092).
 - **OpenTelemetry (ADR-0029).** `yokla proxy` accepts OTLP/HTTP trace exports
   and reads GenAI spans as model calls, for targets the proxy can't see.
   gRPC export and span files a collector writes come later.
@@ -1455,7 +1463,7 @@ Each version is usable on its own. A version ships when its exit criteria hold.
 | **0.3 — reach and conversations** | a first run in five minutes: `yokla init` sends the target one message, works out where the answer is in its JSON or event stream, writes a profile for review, and adds starter cases that suit any assistant (greeting, out of scope, a basic injection, personal data, an empty or very long message, a switch of language, a deadline), all at no model cost; a static HTML report; publishing to npm; WebSocket targets; authentication (OAuth2 and the like); richer evidence mapping, which the first real target needed: one collection read from several paths, stock given only as in or out of stock, amounts quoted from data other than the shown products (such as an order history), and the text of an answer given only as a component; a Gemini protocol adapter (AI Studio and Vertex); model calls read from OpenTelemetry GenAI spans, for targets the proxy can't see; tool-call and trajectory checks on what the proxy records; a simulated customer: a model plays a customer with a goal, and the deterministic checks judge every turn; generic checks (patterns, JSON Schema, similarity, checks the user writes) | on the demo-shop and on the open-source target, `yokla init` writes a profile that needs no edit for the starter cases, which then run and gate; the demo-shop's tool-call defects detected; the simulated customer reaches each demo-shop purchase goal, and a run repeats from its seed; on the demo-shop, calls read from OpenTelemetry spans match the proxy's records |
 | **0.4 — analyzer** | inventory, LLM extraction with evidence, probe mode, profile review and diff (the deterministic step done, ADR-0047; the extraction of the fields a quote can verify done, ADR-0049, ADR-0051; the response contract from a contract file done, ADR-0057, ADR-0058); e-commerce data generators (done, ADR-0055, ADR-0056); freshness and `fixture-missing` (done, ADR-0053, ADR-0054); robustness transforms of approved cases (§9): typos, removed diacritics, casing and punctuation at no model cost (done, ADR-0045), and paraphrase and Turkish–English code-switching only with a configured, budgeted model (done, ADR-0059) | on demo-shop the analyzer reproduces the approved entries of the hand-written profile (precision and recall reported); on the private target it rediscovers the known issue classes; on the demo-shop, a transform catches a seeded defect that shows only in a message without diacritics, and the transforms of every other approved case keep its verdict |
 | **0.5 — red team** | local attack generation (templates plus attacker model), native TR and EN; e-commerce attacks: price and discount manipulation, order fraud, card data, age and region restrictions, unauthorised commitments, competitor steering, hijacking, excessive agency, another customer's data, injection through product content and through tool descriptions, including a description that changes mid-conversation, unsafe advice; canary-based deterministic detection; multi-turn and encoding strategies; findings mapped to OWASP LLM Top 10, OWASP Agentic, GDPR and KVKK, and the EU AI Act; calibrated judge; built as the red-team track below (ADR-0079) | demo-shop injection, leakage and BOLA defects detected deterministically; the egress test passes |
-| **0.6 — ecosystem** | import and export for other evaluation tools; CI recipes and a GitHub Action; a library API; two runs compared side by side; documentation site | |
+| **0.6 — ecosystem** | import and export for other evaluation tools; CI recipes and a GitHub Action; a library API; two runs compared side by side; documentation site; built as the ecosystem track below (ADR-0092) | the demo-shop's suites run and gate through the library API and through the action; another tool's cases and results, in three shapes, import through a mapping and gate; the documentation site builds with nothing loaded from another host |
 
 ### The debugging track: from a finding to a fix
 
@@ -1513,6 +1521,27 @@ suffix search, and image, audio and video attacks.
 | **R6. Findings mapped to frameworks** (done, ADR-0089) | each attack kind and check maps to OWASP LLM Top 10 and OWASP Agentic categories, and to the GDPR, KVKK and EU AI Act topics it touches, MITRE ATLAS tactics, the NIST AI RMF Measure function and ISO/IEC 42001; the reports group findings by them; a risk score per kind, severity times attack success rate with its interval, and a gate threshold on it, off by default; never a claim of compliance (ADR-0081) | every red-team finding of the demo-shop's run names its categories; the mapping is tested in both directions |
 | **R7. A calibrated judge** (done, ADR-0090) | `models.judge` decides the dimensions a turn's `judge` expectation names, from its message and answer; yokla's rubric per dimension, the person's notes; a calibration set in every run, yokla's items and the person's graded examples, one misjudged and every verdict of the run unmeasured; advisory, worst-of-N once `judge.gate` lists the dimension; unmeasured without a judge or with the target's model as judge; the first dimension, `unsafe-advice` (ADR-0081) | a judge that misjudges a calibration case gives `unmeasured`; with the fake provider as judge, the unsafe-advice defect is found and doesn't gate by default |
 | **R7b. More judge dimensions** (done, ADR-0091) | hijacking beyond the out-of-scope check, age and region restrictions where no rule applies, bias (age, gender, disability, ethnicity, religion), political and religious statements, harmful content, imitation, free-text claims the data can't check, with their attack kinds, on R7's judge; moved from R7 (ADR-0090) | each dimension's defect is found by the fake judge and gates only once listed |
+
+### The ecosystem track: v0.6 in six items
+
+v0.6 is built in order, one ADR per item (ADR-0092). No item needs a model.
+
+- **No other tool is named in the repository.** yokla reaches other tools
+  through neutral formats and mappings the user writes (§18).
+- **No egress beyond the run's own, and no telemetry** (ADR-0003): the
+  action sends nothing outside its job, import and export read and write
+  files only, and the site loads nothing from another host.
+- **The API is the CLI's own path.** A command and its function give the
+  same result.
+
+| Item | Scope | Exit criteria |
+|---|---|---|
+| **E1. A library API** | the `yokla` package exports the CLI's steps as typed functions: load, run, gate, compare and report; they return the schemas' objects, throw typed errors, print nothing and never end the process; the CLI is built on them | a script runs the demo-shop's suites through the API and gates them, with the statuses `yokla run` and `yokla gate` give; `pnpm pack-check` runs it from the installed tarball |
+| **E2. A GitHub Action and CI recipes** | a composite action at the repository's root runs a pinned `yokla run` and `yokla gate`, writes a Markdown summary to the job's summary and keeps the reports as the job's artifact; `yokla report` writes the same summary, for any CI; recipes for other CI systems | this repository's CI runs the action against the demo-shop: the correct shop passes, and a seeded defect breaks the gate with its failing case in the summary |
+| **E3. Two runs side by side** | `yokla compare` shows, per case, each run's findings as new, gone or kept, and each turn's answers next to each other, with cost and latency; the HTML report gains a comparison page; any runs of the same cases | the correct shop's run compared with a run under one defect names that defect's cases and checks as newly failing and shows both answers; reversed, it names them fixed; two correct runs show no change in findings |
+| **E4. Export** | cases as a neutral dataset and results as neutral rows, in JSON Lines, each with a JSON Schema and a table of what it leaves out; the checks as a JavaScript assertion function on E1 | the assertion function gives a demo-shop run's own verdicts; the exported cases and rows validate against their schemas |
+| **E5. Import** | another tool's cases and results, through a mapping the user writes; JSON, JSON Lines, CSV and YAML; cases proposed with `source: import`, results as samples and findings that report and gate; a verdict the mapping can't find is `unmeasured` | three fixtures in different shapes import with their verdicts; E4's rows import back to the same statuses; imported cases don't gate until approved |
+| **E6. A documentation site** | a static site built from `docs/`, with E1's reference, its diagrams and a search built with the site; published by CI to GitHub Pages; no analytics | CI builds it on every push and fails on a broken link or a missing guide page; nothing in the built pages loads from another host |
 
 **Later:** sampling production logs, more domains (banking, travel), more
 languages, SDK adapters.
