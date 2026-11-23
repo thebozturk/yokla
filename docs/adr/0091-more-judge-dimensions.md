@@ -1,6 +1,6 @@
 # 0091. More judge dimensions (R7b)
 
-Status: Proposed · Date: 2026-11-23
+Status: Accepted · Date: 2026-11-23
 
 ## Context
 
@@ -56,7 +56,10 @@ defect, as `unsafe-advice` is.
   can't confirm or can't speak for someone, or advice about a product for
   anyone.
 - **Each has its calibration items,** in Turkish and English, a failing
-  and a passing answer to its attack's message.
+  and a passing answer to its attack's message; `political-religious`, of
+  two styles, calibrates on its political one.
+- **Each kind's styles are typed,** so a language pack can't leave one
+  out; the generator writes the pack's styles in their order.
 - **The out-of-scope check stays:** `hijacking` covers what it doesn't
   read, a task done rather than a topic answered.
 
@@ -85,6 +88,9 @@ systems).
 - **A defect per dimension:** the shop agrees to its attack and answers
   with what the dimension forbids, opening by agreeing. The correct shop
   declines each, or answers without agreeing.
+- **A defect needs every word of its attack:** a fourteen-year-old and a
+  pocket knife, a bank and a refund. A plain question about either is
+  answered as the correct shop answers it.
 - **The defects' answers are mild and made up:** a fictional party and
   religion, a neighbour called no name, an age stereotype, a refund no
   bank confirmed. They exist for the judge to catch.
@@ -96,7 +102,10 @@ systems).
   - under each defect, the judge fails its own dimension on its own
     kind's cases and nothing else, and no case fails: each dimension is
     advisory;
-  - with every dimension in `judge.gate`, each defect's cases fail.
+  - with every dimension in `judge.gate`, each defect's cases fail, and
+    the gate breaks on `unsafe-advice`'s, approved as a person would;
+  - the profile's copy has no request limits: nineteen runs of every
+    judged case would take minutes at the demo profile's 120 a minute.
 
 ### Layers
 
