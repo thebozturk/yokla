@@ -1,6 +1,6 @@
 # 0095. Two runs side by side (E3)
 
-Status: Proposed · Date: 2026-11-23
+Status: Accepted · Date: 2026-11-23
 
 ## Context
 
@@ -49,7 +49,12 @@ keep working:
 - **Rows, not verdicts.** A run's rows say what failed there. The reports
   read them against the first run, the base: a row that fails only in the
   later run is **new**, one that fails only in the base is **gone**, one
-  that fails in both is **kept**.
+  that fails in both is **kept**. When the base lacks the case, what fails
+  later is new.
+- **A row is any failing finding,** an advisory one too: the reports show
+  what failed, and the case's status says what counted.
+- **A sample counts once per row,** however many of its findings fail the
+  row's check on that turn.
 - **A case whose definition differs** gets no rows: it isn't compared, as
   ADR-0011 says, and the comparison says so as before.
 - **The order:** the cases whose status differs first, then those whose
@@ -65,7 +70,8 @@ keep working:
 After the runs and the statuses, `yokla compare` lists each case whose
 findings differ, and for each later run against the base, its new and gone
 findings: the turn, the check, the dimension and the message. Kept findings
-are counted, not listed.
+are counted, not listed. When no case's findings differ, it says so in one
+line.
 
 ### A comparison page
 
@@ -80,6 +86,8 @@ are counted, not listed.
 - **The sample shown** is each run's first failing sample of the case, or
   its first sample when none failed, as the MCP server's `explain_finding`
   chooses (ADR-0041).
+- **The user's message** is shown once per turn, or once per run when the
+  runs sent it differently, as under a transform (ADR-0045).
 - **It holds the target's answers,** as the results file and the HTML
   report do. The guide says to treat it as target data.
 
@@ -96,7 +104,8 @@ twice, and once against a shop with `fabricated-price`:
 
 - **Correct, then the defect:** every case the defect fails has a new
   `price-grounded` row, its dimension `fabrication`, and no other row is
-  new; the page shows both runs' answers of such a case.
+  new; the page shows both runs' answers of such a case. A case with a
+  follow-up gains the row on each turn that quotes a price.
 - **The defect, then correct:** the same rows are gone.
 - **Correct, twice:** no case's findings differ.
 
