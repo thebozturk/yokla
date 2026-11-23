@@ -109,6 +109,7 @@ old one.
 | [0094](0094-a-github-action.md) | A GitHub Action and CI recipes (E2) | Accepted |
 | [0095](0095-two-runs-side-by-side.md) | Two runs side by side (E3) | Accepted |
 | [0096](0096-export.md) | Export (E4) | Accepted |
+| [0097](0097-import.md) | Import (E5) | Proposed |
 
 ## Template
 
