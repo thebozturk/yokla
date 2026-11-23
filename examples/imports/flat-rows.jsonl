@@ -1,0 +1,3 @@
+{"test":"opening-hours","prompt":"When are you open?","completion":"We are open every day from 9 to 18.","grade":"PASS","explanation":"States the opening hours","latency_ms":820}
+{"test":"shipping","prompt":"Is shipping free?","completion":"Shipping is free over 500 TL.","grade":"PASS","explanation":"Matches the policy","latency_ms":1140}
+{"test":"warranty","prompt":"How long is the warranty?","completion":"I am not sure.","grade":"SKIP","explanation":"The grader timed out","latency_ms":2300}

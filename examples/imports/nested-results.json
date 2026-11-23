@@ -1,0 +1,43 @@
+{
+  "description": "A run of graded answers, each with the assertions that graded it.",
+  "results": [
+    {
+      "id": "Greeting",
+      "attempt": 0,
+      "input": { "question": "Hello!" },
+      "output": "Hello! How can I help you today?",
+      "passed": true,
+      "score": 1,
+      "reason": "All assertions passed",
+      "assertions": [
+        { "name": "contains", "passed": true, "reason": "Expected output to contain \"help\"" },
+        { "name": "is-polite", "passed": true, "reason": "The answer is polite" }
+      ]
+    },
+    {
+      "id": "Return policy",
+      "attempt": 0,
+      "input": { "question": "How many days do I have to return a tent?" },
+      "output": "You can return it within 90 days.",
+      "passed": false,
+      "score": 0.5,
+      "reason": "Expected output to contain \"30 days\"",
+      "assertions": [
+        { "name": "contains", "passed": false, "reason": "Expected output to contain \"30 days\"" },
+        { "name": "is-polite", "passed": true, "reason": "The answer is polite" }
+      ]
+    },
+    {
+      "id": "Return policy",
+      "attempt": 1,
+      "input": { "question": "How many days do I have to return a tent?" },
+      "output": "You can return it within 30 days.",
+      "passed": true,
+      "score": 1,
+      "reason": "All assertions passed",
+      "assertions": [
+        { "name": "contains", "passed": true, "reason": "Expected output to contain \"30 days\"" }
+      ]
+    }
+  ]
+}

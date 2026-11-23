@@ -1,0 +1,7 @@
+# Questions another tool asked, to import as yokla's cases.
+- name: Tents
+  question: Çadır önerir misin?
+- name: Cheaper tent
+  question: Daha ucuz bir çadır var mı?
+- name: Greeting
+  question: Merhaba

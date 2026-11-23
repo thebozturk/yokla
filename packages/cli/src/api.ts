@@ -27,8 +27,20 @@ import {
   type YoklaConfig,
 } from '@yokla/core';
 import { comparisonText, junitXml, terminalSummary, type TerminalSummary } from '@yokla/report';
-import { caseRows, resultRows, type TurnVerdict } from '@yokla/interop-rows';
+import {
+  caseRows,
+  ImportMapping,
+  importCases as casesFromRows,
+  importResults as resultsFromRows,
+  readRows,
+  resultRows,
+  RowsError,
+  type ImportedCases,
+  type RowFormat,
+  type TurnVerdict,
+} from '@yokla/interop-rows';
 import { judgeAnswers, runSuite, type GivenAnswer, type RewritePlan } from '@yokla/runtime';
+import { createHash, randomUUID } from 'node:crypto';
 import { LoadError } from './load.ts';
 import {
   loadFiles,
@@ -38,6 +50,7 @@ import {
   type ProjectFiles,
   type ProjectObjects,
 } from './prepare.ts';
+import { version } from './version.ts';
 
 /** Where loadProject finds a run's files; each default as yokla run takes it. */
 export type LoadProjectOptions = ProjectFiles;
@@ -279,6 +292,80 @@ export function comparisonReport(comparison: Comparison): string[] {
 
 export { comparisonHtml, htmlReport, markdownReport } from '@yokla/report';
 export { caseRows, resultRows };
+
+/** SHA-256 of a text, in hex. */
+function sha256(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+/** Where another tool's file came from and how to read it (ADR-0097). */
+export interface ImportOptions {
+  /** The file's format: json, jsonl, csv or yaml. */
+  readonly format: RowFormat;
+  /** The file's name, as the cases' provenance and the run's source name it. */
+  readonly source: string;
+  /** The language of a case whose row the mapping gives none (default: en). */
+  readonly language?: string | undefined;
+}
+
+/** The mapping, validated; a problem is a LoadError. */
+function mappingOf(mapping: unknown): ImportMapping {
+  const parsed = ImportMapping.safeParse(mapping);
+  if (parsed.success) return parsed.data;
+  throw new LoadError(
+    [
+      'mapping: invalid',
+      ...parsed.error.issues.map(
+        (issue) => `  ${issue.path.map(String).join('.') || '(root)'}: ${issue.message}`,
+      ),
+    ].join('\n'),
+  );
+}
+
+/** A file's rows, by the mapping; a problem is a LoadError. */
+function rowsOf(text: string, mapping: ImportMapping, options: ImportOptions): unknown[] {
+  try {
+    return readRows(text, options.format, mapping.rows);
+  } catch (error) {
+    if (error instanceof RowsError) throw new LoadError(`${options.source}: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Another tool's file as yokla's cases (ADR-0097): proposed, with `source:
+ * import` and no expectations, and the rows it couldn't read.
+ */
+export function importCases(text: string, mapping: unknown, options: ImportOptions): ImportedCases {
+  const checked = mappingOf(mapping);
+  return casesFromRows(rowsOf(text, checked, options), checked, {
+    source: options.source,
+    language: options.language ?? 'en',
+  });
+}
+
+/**
+ * Another tool's file as a yokla run (ADR-0097): results.v1, which reports,
+ * gates and compares like any run, and the rows it couldn't read.
+ */
+export function importResults(
+  text: string,
+  mapping: unknown,
+  options: ImportOptions,
+): { readonly results: Results; readonly problems: readonly string[] } {
+  const checked = mappingOf(mapping);
+  const now = new Date().toISOString();
+  return resultsFromRows(rowsOf(text, checked, options), checked, {
+    id: randomUUID(),
+    startedAt: now,
+    finishedAt: now,
+    environment: { node: process.version, platform: process.platform, arch: process.arch },
+    yoklaVersion: version(),
+    source: { name: options.source, sha256: sha256(text) },
+    sha256,
+    language: options.language ?? 'en',
+  });
+}
 
 /** An answer the assertion judges: its text, or the target's body, or its text and evidence. */
 export type AssertionAnswer = string | GivenAnswer;

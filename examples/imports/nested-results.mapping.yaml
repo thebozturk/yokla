@@ -1,0 +1,17 @@
+# yokla import results --from nested-results.json --mapping nested-results.mapping.yaml
+version: 1
+rows: $.results[*]
+case: $.id
+sample: $.attempt
+message: $.input.question
+answer: $.output
+verdict: { at: $.passed, pass: [true], fail: [false] }
+score: $.score
+reason: $.reason
+findings:
+  at: $.assertions[*]
+  check: $.name
+  verdict: { at: $.passed, pass: [true], fail: [false] }
+  reason: $.reason
+suite: { value: factual }
+language: { value: en }

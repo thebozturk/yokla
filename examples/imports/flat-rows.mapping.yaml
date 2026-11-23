@@ -1,0 +1,9 @@
+# yokla import results --from flat-rows.jsonl --mapping flat-rows.mapping.yaml
+version: 1
+case: $.test
+message: $.prompt
+answer: $.completion
+latencyMs: $.latency_ms
+verdict: { at: $.grade, pass: [PASS], fail: [FAIL] }
+reason: $.explanation
+language: { value: en }

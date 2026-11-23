@@ -1,0 +1,18 @@
+# yokla's own result rows, as yokla report --rows writes them (ADR-0096):
+# yokla import results --from rows.jsonl --mapping yokla-rows.mapping.yaml
+version: 1
+case: $.case
+sample: $.sample
+turn: $.turn
+message: $.message
+answer: $.answer
+latencyMs: $.latencyMs
+verdict: { at: $.verdict, pass: [pass], fail: [fail] }
+suite: $.suite
+language: $.language
+tags: $.tags
+findings:
+  at: $.findings[*]
+  check: $.check
+  verdict: { at: $.verdict, pass: [pass], fail: [fail] }
+  reason: $.message

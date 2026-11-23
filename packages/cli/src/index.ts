@@ -10,6 +10,8 @@ export {
   createAssertion,
   gate,
   htmlReport,
+  importCases,
+  importResults,
   junitReport,
   loadProject,
   markdownReport,
@@ -22,6 +24,7 @@ export {
   type AssertionOptions,
   type AssertionResult,
   type GateOptions,
+  type ImportOptions,
   type LoadProjectOptions,
   type ProjectFromOptions,
   type RunOptions,
@@ -49,6 +52,13 @@ export type {
   TransformKind,
   YoklaConfig,
 } from '@yokla/core';
-export type { CaseRow, ResultRow, TurnVerdict } from '@yokla/interop-rows';
+export type {
+  CaseRow,
+  ImportedCases,
+  ImportMapping,
+  ResultRow,
+  RowFormat,
+  TurnVerdict,
+} from '@yokla/interop-rows';
 export type { TerminalSummary } from '@yokla/report';
 export { ConfigError, type GivenAnswer, type RewritePlan } from '@yokla/runtime';

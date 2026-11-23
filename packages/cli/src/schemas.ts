@@ -2,7 +2,7 @@
 // Schema files in packages/cli/schemas/ (ADR-0006).
 
 import { Analysis, Baseline, buildSchemas, Comparison, Results, YoklaConfig, z } from '@yokla/core';
-import { CaseRow, ResultRow } from '@yokla/interop-rows';
+import { CaseRow, ImportMapping, ResultRow } from '@yokla/interop-rows';
 import { DOMAIN_PACKS, LANGUAGE_PACKS } from './packs.ts';
 
 const [firstLanguage, ...otherLanguages] = LANGUAGE_PACKS.map((pack) => pack.language);
@@ -26,5 +26,6 @@ export function jsonSchemas(): Record<string, unknown> {
     'analysis.v1.schema.json': z.toJSONSchema(Analysis, { ...options, io: 'output' }),
     'case-row.v1.schema.json': z.toJSONSchema(CaseRow, { ...options, io: 'output' }),
     'result-row.v1.schema.json': z.toJSONSchema(ResultRow, { ...options, io: 'output' }),
+    'import-mapping.v1.schema.json': z.toJSONSchema(ImportMapping, { ...options, io: 'input' }),
   };
 }

@@ -1,0 +1,4 @@
+case,question,answer,verdict,notes
+stoves,Do you sell camping stoves?,"Yes, we have three: ""Mini"", ""Duo"" and ""Max"".",yes,Names the stoves
+headlamps,Which headlamp is the brightest?,"The Max headlamp, at 400 lumens.",yes,"Gives the brightest,
+with its lumens"

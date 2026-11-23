@@ -1,0 +1,8 @@
+# yokla import results --from graded.csv --mapping graded.mapping.yaml
+version: 1
+case: $.case
+message: $.question
+answer: $.answer
+verdict: { at: $.verdict, pass: ['yes'], fail: ['no'] }
+reason: $.notes
+language: { value: en }

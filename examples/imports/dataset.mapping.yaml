@@ -1,0 +1,5 @@
+# yokla import cases --from dataset.yaml --mapping dataset.mapping.yaml
+version: 1
+case: $.name
+message: $.question
+language: { value: tr }

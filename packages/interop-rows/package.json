@@ -42,6 +42,7 @@
   ],
   "sideEffects": false,
   "dependencies": {
-    "@yokla/core": "workspace:*"
+    "@yokla/core": "workspace:*",
+    "yaml": "^2.9.1"
   }
 }

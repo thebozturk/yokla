@@ -18,6 +18,8 @@ describe('the library API (ADR-0093)', () => {
       'createAssertion',
       'gate',
       'htmlReport',
+      'importCases',
+      'importResults',
       'jsonSchemas',
       'junitReport',
       'loadConfig',
