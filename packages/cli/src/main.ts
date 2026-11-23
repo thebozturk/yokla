@@ -4,6 +4,7 @@ import { ANALYZE_HELP, analyzeCommand } from './commands/analyze.ts';
 import { BASELINE_HELP, baselineCommand } from './commands/baseline.ts';
 import { COMPARE_HELP, compareCommand } from './commands/compare.ts';
 import { EXPLORE_HELP, exploreCommand } from './commands/explore.ts';
+import { EXPORT_HELP, exportCommand } from './commands/export.ts';
 import { GENERATE_HELP, generateCommand } from './commands/generate.ts';
 import { GATE_HELP, gateCommand } from './commands/gate.ts';
 import { INIT_HELP, initCommand } from './commands/init.ts';
@@ -32,8 +33,9 @@ Usage:
   yokla compare [options]    set runs side by side, such as one per model, and name the cheapest that passes
   yokla explore [options]    search for paths the written cases never take, and propose cases for them
   yokla generate [options]   propose cases whose expectations the domain pack computes from the data
+  yokla export [options]     write the cases as neutral rows, one JSON line per case
   yokla schema <name>        print a JSON Schema: profile, cases, config, results, baseline, comparison,
-                             analysis
+                             analysis, case-row, result-row
   yokla --version
 
 ${INIT_HELP}
@@ -58,6 +60,8 @@ ${COMPARE_HELP}
 
 ${EXPLORE_HELP}
 
+${EXPORT_HELP}
+
 ${GENERATE_HELP}
 
 ${ANALYZE_HELP}`;
@@ -70,6 +74,8 @@ const SCHEMA_FILES: Readonly<Record<string, string>> = {
   baseline: 'baseline.v1.schema.json',
   comparison: 'comparison.v1.schema.json',
   analysis: 'analysis.v1.schema.json',
+  'case-row': 'case-row.v1.schema.json',
+  'result-row': 'result-row.v1.schema.json',
 };
 
 export async function main(argv: readonly string[], io: Output): Promise<number> {
@@ -97,6 +103,8 @@ export async function main(argv: readonly string[], io: Output): Promise<number>
       return compareCommand(rest, io);
     case 'explore':
       return exploreCommand(rest, io);
+    case 'export':
+      return exportCommand(rest, io);
     case 'generate':
       return generateCommand(rest, io);
     case 'analyze':
@@ -104,7 +112,9 @@ export async function main(argv: readonly string[], io: Output): Promise<number>
     case 'schema': {
       const file = SCHEMA_FILES[rest[0] ?? ''];
       if (file === undefined) {
-        io.err('usage: yokla schema <profile|cases|config|results|baseline|comparison|analysis>');
+        io.err(
+          'usage: yokla schema <profile|cases|config|results|baseline|comparison|analysis|case-row|result-row>',
+        );
         return 2;
       }
       io.out(JSON.stringify(jsonSchemas()[file], null, 2));

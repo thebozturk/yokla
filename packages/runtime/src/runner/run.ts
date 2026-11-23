@@ -2280,6 +2280,140 @@ function judgeCase(
   };
 }
 
+/** Evidence as the results hold it, as a view reads it: each collection's object items. */
+function givenEvidence(evidence: GivenAnswer['evidence']): TurnView['response']['evidence'] {
+  return Object.fromEntries(
+    Object.entries(evidence ?? {}).map(([name, items]) => [
+      name,
+      items.flatMap((item) =>
+        typeof item === 'object' && item !== null && !Array.isArray(item) ? [item] : [],
+      ),
+    ]),
+  );
+}
+
+/** The check that reads a turn's latency (ADR-0013). */
+const DEADLINE_CHECK = 'answered-within-deadline';
+
+/** An answer judgeAnswers is given: the target's body, or its text and evidence (ADR-0096). */
+export interface GivenAnswer {
+  /** The target's JSON body, read with the profile's response mapping, as a run reads it. */
+  readonly body?: unknown;
+  /** The answer's text, when there is no body. */
+  readonly text?: string;
+  /** The answer's evidence, mapped as the results hold it, when there is no body. */
+  readonly evidence?: Readonly<Record<string, readonly JsonValue[]>>;
+  /** The answer's HTTP status (default: 200). */
+  readonly status?: number;
+  /** How long the answer took; without it, a turn's deadline is unmeasured. */
+  readonly latencyMs?: number;
+}
+
+/** A given answer, judged: its checks, and the verdict a one-turn sample of it would get. */
+export interface JudgedAnswer {
+  readonly turn: number;
+  readonly checks: readonly CheckResult[];
+  readonly verdict: 'pass' | 'fail' | 'unmeasured';
+  /** Why the answer couldn't be judged, as a run's turn error says. */
+  readonly error?: string;
+}
+
+/**
+ * Judges answers given for a case's turns, in order, as the runner judges the
+ * answers it gets (ADR-0096): the profile's response mapping, the turn's view
+ * with the earlier given answers as its history, the same checks, and the
+ * case's policies. It sends nothing and calls no model; checks that read the
+ * model proxy, spans or the target's logs find nothing, as in a run without
+ * them.
+ */
+export function judgeAnswers(
+  input: Omit<RunOptions, 'cases'>,
+  testCase: Case,
+  answers: readonly { readonly turn: number; readonly answer: GivenAnswer }[],
+): JudgedAnswer[] {
+  const options: RunOptions = { ...input, cases: [testCase] };
+  preflight(options);
+  const prepared = prepare(options);
+  const { target } = options.profile;
+  const history: TurnView[] = [];
+  return answers.map(({ turn: index, answer }): JudgedAnswer => {
+    const turn = testCase.turns[index];
+    if (turn === undefined) {
+      throw new ConfigError(`case "${testCase.id}" has no turn ${String(index)}`);
+    }
+    const extracted =
+      answer.body === undefined ? undefined : extractResponse(answer.body, target.response);
+    const text = extracted === undefined ? answer.text : extracted.text;
+    if (text === undefined) {
+      const error = extracted?.issues[0] ?? 'answer text not found';
+      return { turn: index, checks: [], verdict: 'unmeasured', error };
+    }
+    const status = answer.status ?? 200;
+    const clarifying =
+      extracted?.route !== undefined &&
+      (target.response.clarification?.routes.includes(extracted.route) ?? false);
+    const view: TurnView = {
+      user: turn.user,
+      expect: turn.expect ?? NO_EXPECTATIONS,
+      response: {
+        status,
+        latencyMs: answer.latencyMs ?? 0,
+        text,
+        route: extracted?.route,
+        id: extracted?.id,
+        evidence: extracted === undefined ? givenEvidence(answer.evidence) : extracted.evidence,
+        ...(answer.body === undefined ? {} : { document: toJson(answer.body) }),
+      },
+      observed: undefined,
+      seen: {},
+      clarifying,
+      faults: undefined,
+      unusable: undefined,
+      proxy: undefined,
+    };
+    const applicable = answeredStatus(status)
+      ? prepared.checks
+      : prepared.checks.filter((check) => UNANSWERED_JUDGES.has(check.id));
+    const ran = runChecks(applicable, {
+      case: testCase,
+      turnIndex: index,
+      turn: view,
+      history: [...history],
+      profile: options.profile,
+      lang: prepared.languages.get(testCase.language),
+      languages: prepared.languages,
+    });
+    // A deadline judged on a latency no one gave would pass by default: unmeasured, never a pass.
+    const checks =
+      answer.latencyMs === undefined
+        ? ran.map((check) =>
+            check.check === DEADLINE_CHECK && check.applicable
+              ? {
+                  check: check.check,
+                  applicable: true,
+                  findings: [],
+                  unmeasured: check.findings.map((finding) => ({
+                    dimension: finding.dimension,
+                    reason: "the answer's latency was not given",
+                  })),
+                }
+              : check,
+          )
+        : ran;
+    history.push(view);
+    const { status: verdict } = aggregateCase(
+      [{ index: 0, cache: 'cold', turns: [{ user: turn.user, checks }] }],
+      prepared.policies,
+      false,
+    );
+    return {
+      turn: index,
+      checks,
+      verdict: verdict === 'pass' || verdict === 'fail' ? verdict : 'unmeasured',
+    };
+  });
+}
+
 interface OpenRecording {
   readonly control: ProxyControl;
   readonly id: string;

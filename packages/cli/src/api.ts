@@ -27,7 +27,8 @@ import {
   type YoklaConfig,
 } from '@yokla/core';
 import { comparisonText, junitXml, terminalSummary, type TerminalSummary } from '@yokla/report';
-import { runSuite, type RewritePlan } from '@yokla/runtime';
+import { caseRows, resultRows, type TurnVerdict } from '@yokla/interop-rows';
+import { judgeAnswers, runSuite, type GivenAnswer, type RewritePlan } from '@yokla/runtime';
 import { LoadError } from './load.ts';
 import {
   loadFiles,
@@ -277,3 +278,109 @@ export function comparisonReport(comparison: Comparison): string[] {
 }
 
 export { comparisonHtml, htmlReport, markdownReport } from '@yokla/report';
+export { caseRows, resultRows };
+
+/** An answer the assertion judges: its text, or the target's body, or its text and evidence. */
+export type AssertionAnswer = string | GivenAnswer;
+
+/** Which turn of which yokla case an answer is, and the answers before it. */
+export interface AssertionContext {
+  /** The yokla case's id, as its case row has it. */
+  readonly case: string;
+  /** The turn's index (default: the case's last). */
+  readonly turn?: number | undefined;
+  /** The answers of the turns before it, in order, for checks that read the conversation. */
+  readonly earlier?: readonly AssertionAnswer[] | undefined;
+}
+
+/** What the assertion gives (ADR-0096). */
+export interface AssertionResult {
+  /** True only for the verdict pass: unmeasured is never a pass. */
+  readonly pass: boolean;
+  /** The share of the turn's applicable findings that passed; 0 with none. */
+  readonly score: number;
+  /** The failing findings, or why the turn is unmeasured. */
+  readonly reason: string;
+  readonly verdict: TurnVerdict;
+}
+
+/** The options of createAssertion. */
+export interface AssertionOptions {
+  /** For {{env.NAME}} and the keys of the user's checks (default: the process's). */
+  readonly env?: Readonly<Record<string, string | undefined>> | undefined;
+}
+
+const given = (answer: AssertionAnswer): GivenAnswer =>
+  typeof answer === 'string' ? { text: answer } : answer;
+
+/**
+ * yokla's checks as one assertion function, for any tool whose assertions can
+ * be JavaScript (ADR-0096): it judges an answer the tool got, for the turn of
+ * the yokla case its row names, as a run judges it. It sends nothing.
+ */
+export function createAssertion(
+  project: Project,
+  options: AssertionOptions = {},
+): (answer: AssertionAnswer, context: AssertionContext) => Promise<AssertionResult> {
+  const base = runnerOptions(project, { env: options.env });
+  return (answer, context) => {
+    const testCase = project.cases.find((c) => c.id === context.case);
+    if (testCase === undefined) {
+      return Promise.reject(new LoadError(`no case "${context.case}" in the project`));
+    }
+    const last = testCase.turns.length - 1;
+    const turn = context.turn ?? last;
+    if (last < 0) {
+      return Promise.reject(new LoadError(`case "${testCase.id}" has no written turns`));
+    }
+    if (!Number.isInteger(turn) || turn < 0 || turn > last) {
+      return Promise.reject(
+        new LoadError(`case "${testCase.id}" has turns 0 to ${String(last)}, not ${String(turn)}`),
+      );
+    }
+    const earlier = context.earlier ?? [];
+    if (earlier.length > turn) {
+      return Promise.reject(
+        new LoadError(
+          `${String(earlier.length)} earlier answers for turn ${String(turn)}, which has ${String(turn)} before it`,
+        ),
+      );
+    }
+    try {
+      const judged = judgeAnswers(base, testCase, [
+        ...earlier.map((one, index) => ({ turn: index, answer: given(one) })),
+        { turn, answer: given(answer) },
+      ]);
+      const [result] = judged.slice(-1);
+      const checks = result?.checks ?? [];
+      const findings = checks.flatMap((check) => check.findings);
+      const judgedFindings = findings.filter(
+        (finding) => finding.verdict === 'pass' || finding.verdict === 'fail',
+      );
+      const passed = judgedFindings.filter((finding) => finding.verdict === 'pass').length;
+      const verdict = result?.verdict ?? 'unmeasured';
+      const failing = checks.flatMap((check) =>
+        check.findings
+          .filter((finding) => finding.verdict === 'fail')
+          .map((finding) => `${check.check} (${finding.dimension}): ${finding.message}`),
+      );
+      const unmeasured = checks.flatMap((check) =>
+        (check.unmeasured ?? []).map((one) => `${check.check} (${one.dimension}): ${one.reason}`),
+      );
+      const reason =
+        verdict === 'pass'
+          ? `${String(passed)} of ${String(judgedFindings.length)} findings passed`
+          : verdict === 'fail'
+            ? failing.join('; ')
+            : `unmeasured: ${result?.error ?? (unmeasured.length > 0 ? unmeasured.join('; ') : 'no check applied to the answer')}`;
+      return Promise.resolve({
+        pass: verdict === 'pass',
+        score: judgedFindings.length === 0 ? 0 : passed / judgedFindings.length,
+        reason,
+        verdict,
+      });
+    } catch (error) {
+      return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+    }
+  };
+}

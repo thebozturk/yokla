@@ -415,6 +415,23 @@ describe('yokla report', () => {
     expect(text).toContain('| unmeasured | `a` | no check applied to any turn |');
   });
 
+  it('writes the run as neutral rows, one JSON line per turn (ADR-0096)', async () => {
+    const dir = workspace({ 'run.json': JSON.stringify(valid) });
+    const rows = join(dir, 'reports', 'rows.jsonl');
+    const { io, out } = capture();
+    expect(await main(['report', '--results', join(dir, 'run.json'), '--rows', rows], io)).toBe(0);
+    expect(out.at(-1)).toBe(`rows: ${rows} (1 rows)`);
+    const lines = readFileSync(rows, 'utf8').split('\n');
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe('');
+    expect(JSON.parse(lines[0] ?? '')).toMatchObject({
+      schema: 'yokla.result-row/v1',
+      case: 'a',
+      turn: 0,
+      verdict: 'unmeasured',
+    });
+  });
+
   it('writes an HTML report of a results file', async () => {
     const dir = workspace({ 'run.json': JSON.stringify(valid) });
     const html = join(dir, 'reports', 'run.html');

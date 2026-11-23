@@ -20,8 +20,11 @@ export {
 export {
   ConfigError,
   definitionSha256,
+  judgeAnswers,
   preflight,
   runSuite,
+  type GivenAnswer,
+  type JudgedAnswer,
   type RunOptions,
 } from './runner/run.ts';
 export { correlate, parseLogLines, readField, stripAnsi } from './observe/logs.ts';

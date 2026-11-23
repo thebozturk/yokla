@@ -1,0 +1,47 @@
+{
+  "name": "@yokla/interop-rows",
+  "version": "0.5.0",
+  "description": "yokla's cases and results as neutral rows, for other tools.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thebozturk/yokla.git",
+    "directory": "packages/interop-rows"
+  },
+  "homepage": "https://github.com/thebozturk/yokla#readme",
+  "bugs": {
+    "url": "https://github.com/thebozturk/yokla/issues"
+  },
+  "keywords": [
+    "yokla",
+    "llm",
+    "ai-assistant",
+    "chatbot",
+    "testing",
+    "evaluation",
+    "end-to-end",
+    "dataset",
+    "jsonl"
+  ],
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": {
+      "@yokla/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "src",
+    "!src/**/*.test.*"
+  ],
+  "sideEffects": false,
+  "dependencies": {
+    "@yokla/core": "workspace:*"
+  }
+}

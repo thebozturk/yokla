@@ -3,17 +3,24 @@
 // release. index.test.ts lists every name, so a change shows in review.
 
 export {
+  caseRows,
   compare,
   comparisonHtml,
   comparisonReport,
+  createAssertion,
   gate,
   htmlReport,
   junitReport,
   loadProject,
   markdownReport,
   projectFrom,
+  resultRows,
   run,
   terminalReport,
+  type AssertionAnswer,
+  type AssertionContext,
+  type AssertionOptions,
+  type AssertionResult,
   type GateOptions,
   type LoadProjectOptions,
   type ProjectFromOptions,
@@ -42,5 +49,6 @@ export type {
   TransformKind,
   YoklaConfig,
 } from '@yokla/core';
+export type { CaseRow, ResultRow, TurnVerdict } from '@yokla/interop-rows';
 export type { TerminalSummary } from '@yokla/report';
-export { ConfigError, type RewritePlan } from '@yokla/runtime';
+export { ConfigError, type GivenAnswer, type RewritePlan } from '@yokla/runtime';

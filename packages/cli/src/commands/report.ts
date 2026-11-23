@@ -4,7 +4,7 @@
 
 import { parseArgs } from 'node:util';
 import type { Results } from '@yokla/core';
-import { htmlReport, junitReport, markdownReport, terminalReport } from '../api.ts';
+import { htmlReport, junitReport, markdownReport, resultRows, terminalReport } from '../api.ts';
 import { readResults, ResultsError } from '../load.ts';
 import { writeReport, type Output } from './run.ts';
 
@@ -14,13 +14,16 @@ Options:
   --results <file>      the results file of a run
   --junit <file>        also write a JUnit XML report
   --html <file>         also write an HTML report; it holds the target's answers
-  --markdown <file>     also write the run's summary as Markdown, without the target's answers`;
+  --markdown <file>     also write the run's summary as Markdown, without the target's answers
+  --rows <file>         also write the run as neutral rows, one JSON line per turn of each sample;
+                        they hold the target's answers (ADR-0096)`;
 
 const REPORT_OPTIONS = {
   results: { type: 'string' },
   junit: { type: 'string' },
   html: { type: 'string' },
   markdown: { type: 'string' },
+  rows: { type: 'string' },
   help: { type: 'boolean' },
 } as const;
 
@@ -67,6 +70,11 @@ export function reportCommand(args: readonly string[], io: Output): number {
   if (values.html !== undefined) io.out(`html: ${writeReport(values.html, htmlReport(results))}`);
   if (values.markdown !== undefined) {
     io.out(`markdown: ${writeReport(values.markdown, markdownReport(results))}`);
+  }
+  if (values.rows !== undefined) {
+    const rows = resultRows(results);
+    const text = rows.map((row) => `${JSON.stringify(row)}\n`).join('');
+    io.out(`rows: ${writeReport(values.rows, text)} (${String(rows.length)} rows)`);
   }
   return 0;
 }

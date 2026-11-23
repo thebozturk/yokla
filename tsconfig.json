@@ -11,6 +11,9 @@
       "path": "./packages/report"
     },
     {
+      "path": "./packages/interop-rows"
+    },
+    {
       "path": "./packages/analyzer"
     },
     {

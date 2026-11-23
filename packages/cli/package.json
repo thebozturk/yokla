@@ -51,6 +51,7 @@
   "dependencies": {
     "@yokla/analyzer": "workspace:*",
     "@yokla/core": "workspace:*",
+    "@yokla/interop-rows": "workspace:*",
     "@yokla/pack-ecommerce": "workspace:*",
     "@yokla/pack-lang-en": "workspace:*",
     "@yokla/pack-lang-tr": "workspace:*",

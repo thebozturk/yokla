@@ -58,6 +58,9 @@ importers:
       '@yokla/core':
         specifier: workspace:*
         version: link:../core
+      '@yokla/interop-rows':
+        specifier: workspace:*
+        version: link:../interop-rows
       '@yokla/pack-ecommerce':
         specifier: workspace:*
         version: link:../../packs/ecommerce
@@ -85,6 +88,12 @@ importers:
       zod:
         specifier: ^4.6.7
         version: 4.6.7
+
+  packages/interop-rows:
+    dependencies:
+      '@yokla/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/proxy:
     dependencies:

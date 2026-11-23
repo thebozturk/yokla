@@ -14,6 +14,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import {
   compare,
+  createAssertion,
   gate,
   loadProject,
   parseRunOptions,
@@ -555,5 +556,235 @@ describe('what run gives the runner (ADR-0093)', () => {
     expect(configured.prices).toBe(project.config?.prices);
     expect(configured.models).toBe(project.config?.models);
     expect(configured.judge).toBe(project.config?.judge);
+  });
+});
+
+/** A project whose cases the assertion judges: one turn, two turns, and one with no expectation. */
+function judgedProject() {
+  return projectFrom({
+    profile: PROFILE,
+    cases: [
+      { ...CASE, turns: [{ user: 'merhaba', expect: { answer: { contains: ['merhaba'] } } }] },
+      {
+        ...CASE,
+        id: 'two',
+        turns: [
+          { user: 'merhaba' },
+          { user: 'sonra?', expect: { answer: { contains: ['sonra'] } } },
+        ],
+      },
+      { ...CASE, id: 'none', turns: [{ user: 'merhaba' }] },
+      { ...CASE, id: 'timed', turns: [{ user: 'merhaba', expect: { deadlineMs: 1000 } }] },
+    ],
+    dir: mkdtempSync(join(tmpdir(), 'yokla-api-assert-')),
+  });
+}
+
+describe('the assertion function (ADR-0096)', () => {
+  it('passes an answer the case’s checks pass, and fails one they fail', async () => {
+    const assert = createAssertion(await judgedProject());
+    expect(await assert('Merhaba! Nasıl yardımcı olabilirim?', { case: 'a' })).toEqual({
+      pass: true,
+      score: 1,
+      reason: '1 of 1 findings passed',
+      verdict: 'pass',
+    });
+    const failed = await assert('Hoşça kal.', { case: 'a' });
+    expect(failed).toMatchObject({ pass: false, score: 0, verdict: 'fail' });
+    expect(failed.reason).toMatch(/^answer-text \(answer-content\): /u);
+  });
+
+  it('reads the target’s body with the profile, as a run does, or takes the text and evidence', async () => {
+    const assert = createAssertion(await judgedProject());
+    expect((await assert({ body: { answer: 'Merhaba!' } }, { case: 'a' })).verdict).toBe('pass');
+    expect((await assert({ text: 'Merhaba!', evidence: {} }, { case: 'a' })).verdict).toBe('pass');
+    const unread = await assert({ body: { reply: 'Merhaba!' } }, { case: 'a' });
+    expect(unread).toMatchObject({ pass: false, score: 0, verdict: 'unmeasured' });
+    expect(unread.reason).toMatch(/^unmeasured: answer text not found at /u);
+    // The body is what the target said: a text beside it doesn't count.
+    expect(
+      (await assert({ body: { answer: 'Merhaba!' }, text: 'Güle güle' }, { case: 'a' })).verdict,
+    ).toBe('pass');
+  });
+
+  it('never passes an answer no check applied to', async () => {
+    const assert = createAssertion(await judgedProject());
+    expect(await assert('Merhaba!', { case: 'none' })).toEqual({
+      pass: false,
+      score: 0,
+      reason: 'unmeasured: no check applied to the answer',
+      verdict: 'unmeasured',
+    });
+  });
+
+  it('judges a deadline only on the latency it is given', async () => {
+    const assert = createAssertion(await judgedProject());
+    expect(await assert('Merhaba!', { case: 'timed' })).toEqual({
+      pass: false,
+      score: 0,
+      reason: "unmeasured: answered-within-deadline (deadline): the answer's latency was not given",
+      verdict: 'unmeasured',
+    });
+    expect((await assert({ text: 'Merhaba!', latencyMs: 400 }, { case: 'timed' })).verdict).toBe(
+      'pass',
+    );
+    expect((await assert({ text: 'Merhaba!', latencyMs: 4000 }, { case: 'timed' })).verdict).toBe(
+      'fail',
+    );
+  });
+
+  it('judges the last turn by default, a named turn, with the earlier answers before it', async () => {
+    const assert = createAssertion(await judgedProject());
+    expect((await assert('ve sonra şunu', { case: 'two' })).verdict).toBe('pass');
+    expect((await assert('başka', { case: 'two', earlier: ['merhaba'] })).verdict).toBe('fail');
+    expect((await assert('merhaba', { case: 'two', turn: 0 })).verdict).toBe('unmeasured');
+  });
+
+  it('refuses a case or a turn it can’t judge', async () => {
+    const assert = createAssertion(await judgedProject());
+    await expect(assert('x', { case: 'nope' })).rejects.toThrow('no case "nope" in the project');
+    await expect(assert('x', { case: 'two', turn: 2 })).rejects.toThrow(
+      'case "two" has turns 0 to 1, not 2',
+    );
+    await expect(assert('x', { case: 'two', turn: -1 })).rejects.toThrow(
+      'case "two" has turns 0 to 1, not -1',
+    );
+    await expect(assert('x', { case: 'two', turn: 0, earlier: ['y'] })).rejects.toThrow(
+      '1 earlier answers for turn 0, which has 0 before it',
+    );
+  });
+});
+
+/** A profile that maps the route, the products and a clarifying route. */
+const MAPPED = {
+  ...PROFILE,
+  target: {
+    ...PROFILE.target,
+    response: {
+      text: '$.answer',
+      route: '$.route',
+      evidence: {
+        products: { items: '$.products[*]', fields: { id: 'id', name: 'name', price: 'price' } },
+      },
+      clarification: { routes: ['clarify'] },
+    },
+  },
+};
+
+const TENT = { id: 'T1', name: 'Kubbe Çadır', price: 100 };
+
+/** A project on MAPPED: a case that wants products, one with a contract, and a follow-up. */
+function mappedProject() {
+  return projectFrom({
+    profile: MAPPED,
+    cases: [
+      {
+        ...CASE,
+        id: 'shown',
+        turns: [{ user: 'çadır', expect: { evidence: { products: { min: 1 } } } }],
+      },
+      {
+        ...CASE,
+        id: 'contract',
+        turns: [
+          {
+            user: 'çadır',
+            expect: { schema: [{ schema: { type: 'object', required: ['answer'] } }] },
+          },
+        ],
+      },
+      {
+        ...CASE,
+        id: 'priced',
+        turns: [{ user: 'çadır' }, { user: 'fiyatı?', expect: { answer: { notEmpty: true } } }],
+      },
+      {
+        ...CASE,
+        id: 'faulty',
+        turns: [
+          {
+            user: 'çadır',
+            faults: [{ fault: { kind: 'status', status: 500 } }],
+            expect: { answer: { notEmpty: true } },
+          },
+        ],
+      },
+    ],
+    dir: mkdtempSync(join(tmpdir(), 'yokla-api-mapped-')),
+  });
+}
+
+describe('the assertion reads an answer as a run does (ADR-0096)', () => {
+  it('reads the evidence from the body, or as the results hold it, and the route', async () => {
+    const assert = createAssertion(await mappedProject());
+    expect(
+      (await assert({ body: { answer: 'Çadır', products: [TENT] } }, { case: 'shown' })).verdict,
+    ).toBe('pass');
+    expect(
+      (
+        await assert(
+          { text: 'Çadır', evidence: { products: [TENT, ['not an item']] } },
+          { case: 'shown' },
+        )
+      ).verdict,
+    ).toBe('pass');
+    expect(
+      (await assert({ text: 'Çadır', evidence: { products: [] } }, { case: 'shown' })).verdict,
+    ).toBe('fail');
+    // Only an object is an item: an array in a collection isn't counted.
+    expect(
+      (
+        await assert(
+          { text: 'Çadır', evidence: { products: [['not an item']] } },
+          { case: 'shown' },
+        )
+      ).verdict,
+    ).toBe('fail');
+    // A clarifying question isn't held to the products it would show.
+    const asked = await assert(
+      { body: { answer: 'Hangisi?', route: 'clarify', products: [] } },
+      { case: 'shown' },
+    );
+    expect(asked.verdict).toBe('unmeasured');
+  });
+
+  it('validates the body against the turn’s contract', async () => {
+    const assert = createAssertion(await mappedProject());
+    expect((await assert({ body: { answer: 'Çadır' } }, { case: 'contract' })).verdict).toBe(
+      'pass',
+    );
+    expect((await assert('Çadır', { case: 'contract' })).verdict).toBe('unmeasured');
+  });
+
+  it('judges an answer with a status it doesn’t allow by the checks that need no answer', async () => {
+    const assert = createAssertion(await mappedProject());
+    expect(
+      (await assert({ body: { answer: 'Çadır' }, status: 200 }, { case: 'priced', turn: 1 }))
+        .verdict,
+    ).toBe('pass');
+    expect(
+      (await assert({ body: { answer: 'Çadır' }, status: 500 }, { case: 'priced', turn: 1 }))
+        .verdict,
+    ).toBe('unmeasured');
+  });
+
+  it('grounds a price in the products an earlier answer showed', async () => {
+    const assert = createAssertion(await mappedProject());
+    const earlier = [{ body: { answer: 'Kubbe Çadır var.', products: [TENT] } }];
+    const followUp = {
+      body: {
+        answer: 'Kubbe Çadır 100 TL, Plaj Çadırı 200 TL.',
+        products: [{ id: 'T2', name: 'Plaj Çadırı', price: 200 }],
+      },
+    };
+    expect((await assert(followUp, { case: 'priced', turn: 1, earlier })).verdict).toBe('pass');
+    expect((await assert(followUp, { case: 'priced', turn: 1 })).verdict).toBe('fail');
+  });
+
+  it('refuses a case the run would refuse, as one whose faults need the model proxy', async () => {
+    const assert = createAssertion(await mappedProject());
+    await expect(assert('Çadır', { case: 'faulty' })).rejects.toThrow(
+      'case "faulty" injects faults, which needs a modelProxy in the profile',
+    );
   });
 });
