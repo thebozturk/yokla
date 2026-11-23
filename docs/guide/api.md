@@ -81,10 +81,11 @@ try {
 | `projectFrom(options)` | The same from objects. Async; gives a `Project`. | |
 | `run(project, options?)` | Runs the project's cases against its target. Async; gives `{ results, cassette? }`. | `run` |
 | `gate(results, { config?, baseline? })` | Judges a run: its verdict (`pass`, `broken` or `unjudgeable`), breaches, problems and notices. | `gate` |
-| `compare(runs, { config?, baseline? })` | Sets two runs or more side by side, each gated: a `yokla.comparison/v1` object. | `compare` |
+| `compare(runs, { config?, baseline? })` | Sets two runs or more side by side, each gated, with each case's failing findings per run: a `yokla.comparison/v1` object. | `compare` |
 | `terminalReport(results)` | The summary `yokla run` prints: `{ out, err }`, lines for standard output and standard error. | `run`, `report` |
 | `junitReport(results)`, `htmlReport(results)` | The JUnit XML and the static HTML page, as text. | `run`, `report` |
 | `comparisonReport(comparison)` | The lines `yokla compare` prints. | `compare` |
+| `comparisonHtml(comparison, runs)` | The comparison page, from the comparison and the runs' results in the same order ([ADR-0095](../adr/0095-two-runs-side-by-side.md)). | `compare` |
 | `markdownReport(results, outcome?)` | The Markdown summary; with the gate's outcome, its verdict first ([ADR-0094](../adr/0094-a-github-action.md)). | `report`, `gate` |
 | `readResults(path)`, `readBaseline(path)`, `loadConfig(path)`, `readCassette(path)` | Read and validate one file. `readBaseline` takes a results file too. | `gate`, `compare`, `report`, `run` |
 | `main(argv, io)` | The command line itself, given its arguments and an `{ out, err }` output; gives the exit code. | all |

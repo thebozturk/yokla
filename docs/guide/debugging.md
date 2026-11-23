@@ -132,13 +132,16 @@ turns:
 **Would another model do better?** `--swap-model` sends the calls that ask
 for one model to another, with the app unchanged. `yokla compare` then sets
 the runs side by side and names the cheapest that passes the gate
-(ADR-0042):
+(ADR-0042). It also names the findings the other model gained or lost, and
+`--html` shows each case's answers side by side (ADR-0095):
 
 ```sh
 npx yokla run --out runs/as-is.json
 npx yokla run --swap-model openai:gpt-big=gpt-mini --out runs/mini.json
-npx yokla compare --results runs/as-is.json --results runs/mini.json
+npx yokla compare --results runs/as-is.json --results runs/mini.json --html runs/compare.html
 ```
+
+The same works for a fix: run before and after it, and compare the two.
 
 ## 5. Test what your app reads: tool results
 

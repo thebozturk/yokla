@@ -862,30 +862,48 @@ configuration problem, such as a missing `--max-cost`.
 pnpm yokla run --out runs/as-is.json
 pnpm yokla run --swap-model openai:gpt-big=gpt-mini --out runs/mini.json
 pnpm yokla compare --results runs/as-is.json --results runs/mini.json \
-  [--config yokla.config.yaml] [--baseline yokla.baseline.json] [--json runs/compare.json]
+  [--config yokla.config.yaml] [--baseline yokla.baseline.json] [--json runs/compare.json] \
+  [--html runs/compare.html]
 ```
 
 Sets runs of the same cases side by side, such as one run per model that
-`--swap-model` tried, and names the cheapest run that passes the gate
-(ADR-0042). It reads results files and contacts nothing.
+`--swap-model` tried, or a run before and after a change. It names the
+findings each later run gained or lost against the first, and the cheapest
+run that passes the gate (ADR-0042, ADR-0095). It reads results files and
+contacts nothing.
 - **Each run** is named by what it changed: its swaps, its tool changes
   (`reversed: …`) and its transforms (`transforms: …`), or "as the app asks"
   for none. It shows the
   gate's verdict with the configuration's thresholds and the baseline, as
   `yokla gate` gives it; its statuses; its model cost and the mean cost of an
   answered turn; and the latency p50 and p95 of its answered turns.
-- **The cases whose status differs** come first, a status per run. A case
-  whose definition differs between runs is shown, not compared; one a run
-  lacks shows as missing.
+- **The cases whose status differs** come first, a status per run, then
+  those whose findings differ. A case whose definition differs between runs
+  is shown, not compared; one a run lacks shows as missing.
+- **The findings that changed** (ADR-0095): the first run is the base. For
+  each case and each later run, a failing finding (its turn, check and
+  dimension) is **new** when it fails only in the later run, **gone** when it
+  fails only in the base, and **kept** when it fails in both. The terminal
+  lists the new and the gone, with their messages, and counts the kept.
+- **`--html`** writes a page under the HTML report's rules: no script,
+  nothing loaded. It shows the runs, then each case, the changed ones first
+  and open, with its status, cost and latency per run, its findings per run,
+  and turn by turn each run's answer side by side, from each run's first
+  failing sample, with the findings that failed under it. It holds the
+  target's answers: keep it as private as the results files.
 - **The cheapest run that passes the gate** is named by its total cost.
   None is named when no run passes, or when a passing run's cost isn't
   known.
 - `--json` writes the comparison, by the schema `yokla schema comparison`
-  prints.
+  prints. Per case it holds the failing findings, one row per turn, check
+  and dimension, with how many of each run's samples failed it and the
+  first message there, and the case's cost and median latency per run. It
+  holds no answers.
 - **`--expect-same`** exits with `1` when a case's status differs between
   the runs, as after a change that mustn't move a verdict, such as
   `--reverse-items` (ADR-0043) or `--transform` (ADR-0045). A case whose
-  definition differs isn't counted.
+  definition differs isn't counted, and a finding that changed inside a case
+  whose status held doesn't move the exit code.
 
 It exits with `0` when it compared the runs, whatever their verdicts; with
 `1` under `--expect-same` when a status moved; and with `2` when a file can't
