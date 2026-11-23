@@ -22,7 +22,8 @@ options. For a task from start to end, see the workflows:
 | `compare` | Sets runs side by side and names the cheapest that passes. |
 | `explore` | Searches for paths the written cases never take, and proposes cases for them. |
 | `export` | Writes the cases as neutral rows, one JSON line per case, for another tool. |
-| `schema <name>` | Prints a JSON Schema: `profile`, `cases`, `config`, `results`, `baseline`, `comparison`, `analysis`, `case-row` or `result-row`. |
+| `import` | Reads another tool's cases or results through a mapping you write. |
+| `schema <name>` | Prints a JSON Schema: `profile`, `cases`, `config`, `results`, `baseline`, `comparison`, `analysis`, `case-row`, `result-row` or `import-mapping`. |
 
 ## `yokla init`
 
@@ -933,6 +934,31 @@ the cases as `yokla run` does, and contacts nothing.
 
 It exits with `0` when it wrote the rows, and with `2` when the files can't
 be loaded or no case was written.
+
+## `yokla import`
+
+```sh
+pnpm yokla import results --from <file> --mapping <file> --out runs/imported.json [--language <code>]
+pnpm yokla import cases --from <file> --mapping <file> --out cases/imported.yaml \
+  [--language <code>] [--profile yokla.profile.yaml]
+```
+
+Reads another tool's results or cases through a mapping you write, by the
+schema `yokla schema import-mapping` prints (ADR-0097). The file is `.json`,
+`.jsonl`, `.csv`, `.yaml` or `.yml`. It contacts nothing, and names no tool
+([yokla with other tools](interop.md#another-tools-results-in-yoklas-gate)).
+
+- **`results`** writes a results file that `yokla report`, `gate`, `compare`
+  and `baseline` read like any run. The row's verdict decides; a row with no
+  verdict the mapping can find is unmeasured.
+- **`cases`** writes proposed cases with `source: import` and no
+  expectations, and never writes over a file that exists.
+- **The language** of a case whose row gives none is `--language`, else the
+  first of `--profile` or `yokla.profile.yaml`, else `en`.
+- A row it can't read is named on standard error.
+
+It exits with `0` when it wrote the file, and with `2` when a file can't be
+read, the mapping is invalid, or no row became a case or a result.
 
 ## `yokla explore`
 

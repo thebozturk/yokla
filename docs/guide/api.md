@@ -86,6 +86,7 @@ try {
 | `junitReport(results)`, `htmlReport(results)` | The JUnit XML and the static HTML page, as text. | `run`, `report` |
 | `comparisonReport(comparison)` | The lines `yokla compare` prints. | `compare` |
 | `createAssertion(project, { env? })` | yokla's checks as one function for another tool: an answer and its case in, `{ pass, score, reason, verdict }` out ([ADR-0096](../adr/0096-export.md), [yokla with other tools](interop.md#yoklas-checks-in-another-tool)). | |
+| `importResults(text, mapping, { format, source, language? })`, `importCases(…)` | Another tool's file, read through the mapping, as a run or as proposed cases, with the rows it couldn't read ([ADR-0097](../adr/0097-import.md)). | `import` |
 | `caseRows(cases)`, `resultRows(results)` | The cases as `yokla.case-row/v1` rows, with the ones left out and why; a run as `yokla.result-row/v1` rows. | `export`, `report` |
 | `comparisonHtml(comparison, runs)` | The comparison page, from the comparison and the runs' results in the same order ([ADR-0095](../adr/0095-two-runs-side-by-side.md)). | `compare` |
 | `markdownReport(results, outcome?)` | The Markdown summary; with the gate's outcome, its verdict first ([ADR-0094](../adr/0094-a-github-action.md)). | `report`, `gate` |

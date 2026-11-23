@@ -33,6 +33,18 @@ describe('the READMEs', () => {
     expect(page).toContain(`\`\`\`ts\n${example}\`\`\`\n`);
   });
 
+  it('the guide shows the mapping of yokla’s own rows that the fixtures hold (ADR-0097)', () => {
+    const page = readFileSync(new URL('../docs/guide/interop.md', import.meta.url), 'utf8');
+    const mapping = readFileSync(
+      new URL('../examples/imports/yokla-rows.mapping.yaml', import.meta.url),
+      'utf8',
+    )
+      .split('\n')
+      .filter((line) => !line.startsWith('#'))
+      .join('\n');
+    expect(page).toContain(`\`\`\`yaml\n${mapping}\`\`\`\n`);
+  });
+
   it('finds a relative link, and only that', () => {
     expect(
       relativeLinks('[a](docs/guide.md) [b](https://x.example/) [c](#install) [d](http://x)'),

@@ -4,7 +4,9 @@ yokla reaches other evaluation tools through neutral formats it documents,
 never through a file of a named tool ([ADR-0092](../adr/0092-the-ecosystem-track.md)).
 This page covers export ([ADR-0096](../adr/0096-export.md)): your cases as a
 dataset, your runs as rows, and yokla's checks as one JavaScript function a
-tool can call.
+tool can call; and import ([ADR-0097](../adr/0097-import.md)): another
+tool's results into yokla's gate and reports, and its datasets into yokla's
+cases, through a mapping you write.
 
 ## Your cases as a dataset
 
@@ -119,3 +121,102 @@ What it gives:
   find nothing to read, as in a run without them.
 - **It judges a turn,** not a case: your tool keeps its own samples and how
   it sums them.
+
+## Another tool's results in yokla's gate
+
+```sh
+npx yokla import results --from results.json --mapping results.mapping.yaml --out runs/imported.json
+npx yokla gate --results runs/imported.json
+```
+
+yokla knows no other tool's file. You write a small mapping that says where
+each value is in a row, as a profile says where an answer is in your
+assistant's (`yokla schema import-mapping` prints its schema). A value is a
+JSONPath into the row, or `{ value: … }` for a constant:
+
+```yaml
+version: 1
+rows: $.results[*]            # in a JSON or YAML file, where the rows are
+case: $.id                    # the case's id: rows with the same id are one case
+sample: $.attempt             # which sample (default: the order of the case's rows)
+turn: $.turn                  # which turn of the sample (default: 0)
+message: $.input.question     # what was sent
+answer: $.output              # what came back
+latencyMs: $.latency_ms       # how long it took; without it, the answer isn't timed
+verdict: { at: $.passed, pass: [true], fail: [false] }
+score: $.score
+reason: $.reason
+findings:                     # each assertion, when the tool lists them
+  at: $.assertions[*]
+  check: $.name
+  verdict: { at: $.passed, pass: [true], fail: [false] }
+  reason: $.reason
+suite: { value: factual }     # default: quality
+language: { value: en }       # default: --language, else your profile's first
+tags: $.tags
+```
+
+- **The file's format** comes from its extension: `.json`, `.jsonl`,
+  `.csv`, `.yaml` or `.yml`. A CSV file's first line names its columns:
+  `$.question` is the column `question`.
+- **Each row is one turn of one sample of its case.** The row's verdict
+  decides: a finding of the check `imported` in the dimension `verdict`,
+  worst of n. Each assertion is a finding in its own dimension, advisory:
+  it explains the verdict, and doesn't decide it.
+- **A row whose verdict the mapping can't find,** or finds in neither list,
+  is unmeasured, and so is its case: never a pass.
+- **Without `latencyMs`, a row's answer isn't a timed response.** It is
+  kept with the verdict, and a latency threshold stays unmeasured rather
+  than passing on a time no one measured.
+- **The run** reports, gates, compares and becomes a baseline like any
+  other. Its target is `imported`, and the source file's SHA-256 stands for
+  the profile's.
+
+The repository's `examples/imports/` holds three files in shapes other kinds
+of tool write, each with its mapping: nested JSON results with their
+assertions, flat JSON Lines with their latency, and a CSV of graded answers.
+
+### Your own rows, back
+
+Rows `yokla report --rows` wrote import back with this mapping
+(`examples/imports/yokla-rows.mapping.yaml`):
+
+```yaml
+version: 1
+case: $.case
+sample: $.sample
+turn: $.turn
+message: $.message
+answer: $.answer
+latencyMs: $.latencyMs
+verdict: { at: $.verdict, pass: [pass], fail: [fail] }
+suite: $.suite
+language: $.language
+tags: $.tags
+findings:
+  at: $.findings[*]
+  check: $.check
+  verdict: { at: $.verdict, pass: [pass], fail: [fail] }
+  reason: $.message
+```
+
+Each case gets its status back when its dimensions aggregate worst of n, as
+the demo-shop's do. Another policy, such as majority of n, isn't in the
+rows.
+
+## Another tool's dataset as yokla's cases
+
+```sh
+npx yokla import cases --from dataset.csv --mapping dataset.mapping.yaml --out cases/imported.yaml
+```
+
+The same mapping's `case`, `message`, `turn`, `suite`, `language` and
+`tags` make a case per distinct id, its rows' messages as its turns.
+
+- **They are proposed,** with `source: import` and the rows they came from.
+  They run, but gate only once a person approves them (ADR-0004).
+- **They carry no expectations.** Another tool's assertions don't say what
+  yokla's checks should expect: write them when you approve a case. The
+  checks that need no expectation, such as `price-grounded` and your
+  profile's `everyAnswer` rules, judge them from the first run.
+- **`yokla import` never writes over a file.**
