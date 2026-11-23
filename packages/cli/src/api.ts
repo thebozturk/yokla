@@ -276,4 +276,4 @@ export function comparisonReport(comparison: Comparison): string[] {
   return comparisonText(comparison);
 }
 
-export { htmlReport } from '@yokla/report';
+export { htmlReport, markdownReport } from '@yokla/report';

@@ -11,6 +11,8 @@ import {
   CONTENT_SECURITY_POLICY,
   htmlReport,
   junitXml,
+  markdownReport,
+  MARKDOWN_ROWS,
   terminalSummary,
   xmlAttribute,
   xmlText,
@@ -1229,5 +1231,107 @@ describe('the judge in the summary (ADR-0090)', () => {
       }),
     ).toContain('judge: none, unsafe-advice (advisory); unmeasured: no judge model');
     expect(terminalSummary(results([])).out.join('\n')).not.toContain('judge:');
+  });
+});
+
+describe('the Markdown summary (ADR-0094)', () => {
+  const proposed = kase('draft', 'fail', {
+    review: 'proposed',
+    tags: ['search'],
+    dimensions: [dimension('request')],
+    samples: [
+      {
+        index: 0,
+        cache: 'cold',
+        turns: [turn({ checks: [failing('request-handled', 'request', 'showed | cards\nagain')] })],
+      },
+    ],
+  });
+  const run = results([...mixed.cases, proposed], { issues: ['logs unreadable'] });
+  const broken = {
+    verdict: 'broken' as const,
+    breaches: [
+      {
+        rule: 'failures' as const,
+        suite: 'factual',
+        cases: ['high-chair'],
+        message: 'factual: 1 failing case, more than 0',
+      },
+    ],
+    problems: [],
+    notices: ['compared with the baseline'],
+  };
+
+  it('says what the terminal summary says, as Markdown', async () => {
+    await expect(markdownReport(run)).toMatchFileSnapshot('./__snapshots__/summary.md');
+  });
+
+  it('opens with the gate’s verdict, and lists its breaches, problems and notices', async () => {
+    await expect(markdownReport(run, broken)).toMatchFileSnapshot(
+      './__snapshots__/summary-gate.md',
+    );
+    const passed = markdownReport(run, {
+      verdict: 'pass',
+      breaches: [],
+      problems: [],
+      notices: [],
+    });
+    expect(passed.split('\n')[0]).toBe('### yokla: the gate passed');
+    expect(passed).not.toContain('**The gate**');
+    const unjudgeable = markdownReport(run, {
+      verdict: 'unjudgeable',
+      breaches: [],
+      problems: ['a case is in error'],
+      notices: [],
+    });
+    expect(unjudgeable.split('\n')[0]).toBe("### yokla: the gate can't judge the run");
+    expect(unjudgeable).toContain("**The gate**\n\n- can't judge: a case is in error\n");
+  });
+
+  it('holds no answer, and keeps each row on one line, its pipes escaped', () => {
+    const text = markdownReport(run, broken);
+    expect(text).not.toContain(ANSWER);
+    expect(text).toContain(
+      '| fail | `draft` | request 1/1: showed \\| cards again [proposed] [tags: search] |',
+    );
+  });
+
+  it('escapes a backslash in a cell, and keeps a list item on one line', () => {
+    const slashed = kase('slash', 'fail', {
+      dimensions: [dimension('request')],
+      samples: [
+        {
+          index: 0,
+          cache: 'cold',
+          turns: [turn({ checks: [failing('request-handled', 'request', 'a \\| b')] })],
+        },
+      ],
+    });
+    const text = markdownReport(results([slashed]), {
+      ...broken,
+      breaches: broken.breaches.map((breach) => ({ ...breach, message: 'two\n  lines' })),
+    });
+    expect(text).toContain('| fail | `slash` | request 1/1: a \\\\\\| b |');
+    expect(text).toContain('\n- two lines\n');
+  });
+
+  it('shows the first cases in its table, and says how many more there are', () => {
+    const many = Array.from({ length: MARKDOWN_ROWS + 1 }, (_, index) =>
+      kase(`case-${String(index).padStart(3, '0')}`, 'unmeasured'),
+    );
+    const text = markdownReport(results(many));
+    const rows = text.split('\n').filter((row) => row.startsWith('| unmeasured |'));
+    expect(rows).toHaveLength(MARKDOWN_ROWS);
+    expect(rows.at(-1)).toContain('`case-099`');
+    expect(text).toContain('\nAnd 1 more, which the HTML report lists.\n');
+    const exactly = markdownReport(results(many.slice(0, MARKDOWN_ROWS)));
+    expect(exactly).not.toContain('more, which');
+  });
+
+  it('leaves out what a run doesn’t have', () => {
+    const text = markdownReport(results([kase('stroller', 'pass')]));
+    expect(text).toBe(
+      '### yokla\n\nRun `run-1` against `t`.\n\n- 1 cases: pass 1; pass rate 1.000 (1 of 1, 95 % 0.206 to 1.000)\n',
+    );
   });
 });

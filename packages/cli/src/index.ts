@@ -9,6 +9,7 @@ export {
   htmlReport,
   junitReport,
   loadProject,
+  markdownReport,
   projectFrom,
   run,
   terminalReport,

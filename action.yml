@@ -1,0 +1,193 @@
+# yokla as a GitHub Action (ADR-0094): runs the cases, gates the run, writes
+# the run's summary to the job's summary and keeps the reports as the job's
+# artifact. It is thin on purpose: yokla does the work, and the action only
+# calls it. Every input reaches the shell through an environment variable,
+# never written into a script. It sets up nothing: the job brings Node.js 24
+# or later, as it brings the assistant.
+
+name: yokla
+description: Test a conversational AI assistant end to end, and gate the build on it.
+branding:
+  icon: check-circle
+  color: green
+
+inputs:
+  version:
+    description: The yokla version to run with npx. A release's preparation keeps it at the release's own version.
+    default: '0.5.0'
+  command:
+    description: Runs yokla instead of npx, such as `pnpm yokla`; split on spaces.
+    default: ''
+  profile:
+    description: The profile (yokla's default, yokla.profile.yaml, when empty).
+    default: ''
+  config:
+    description: The configuration (yokla.config.yaml, when present, when empty).
+    default: ''
+  baseline:
+    description: A baseline whose passing cases must still pass (yokla.baseline.json, when present, when empty).
+    default: ''
+  cases:
+    description: Case files or directories, one per line (cases, next to the profile, when empty).
+    default: ''
+  tags:
+    description: Run only the cases with any of these tags, one per line.
+    default: ''
+  target-url:
+    description: The target's url, instead of the profile's request url.
+    default: ''
+  max-cost:
+    description: Stop starting samples once the model cost reaches this many USD.
+    default: ''
+  args:
+    description: Further `yokla run` arguments, one per line.
+    default: ''
+  working-directory:
+    description: Where yokla runs.
+    default: '.'
+  reports:
+    description: Where the results and the reports go (the runner's temporary directory, when empty).
+    default: ''
+  artifact:
+    description: The artifact's name; empty keeps no artifact. The results and the HTML report hold the assistant's answers.
+    default: 'yokla'
+  retention-days:
+    description: How many days the artifact is kept.
+    default: '7'
+
+outputs:
+  verdict:
+    description: The gate's verdict, pass, broken or unjudgeable; empty when the run wrote no results.
+    value: ${{ steps.gate.outputs.verdict }}
+  results:
+    description: The results file, when the run wrote one.
+    value: ${{ steps.run.outputs.results }}
+  summary:
+    description: The run's summary as Markdown, as the job's summary shows it.
+    value: ${{ steps.gate.outputs.summary }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check Node.js
+      shell: bash
+      run: |
+        major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
+        if [ "$major" -lt 24 ]; then
+          echo "::error::yokla needs Node.js 24 or later: set it up with actions/setup-node before this action"
+          exit 1
+        fi
+
+    - name: Run the cases
+      id: run
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        YOKLA_VERSION: ${{ inputs.version }}
+        YOKLA_COMMAND: ${{ inputs.command }}
+        YOKLA_PROFILE: ${{ inputs.profile }}
+        YOKLA_CONFIG: ${{ inputs.config }}
+        YOKLA_CASES: ${{ inputs.cases }}
+        YOKLA_TAGS: ${{ inputs.tags }}
+        YOKLA_TARGET_URL: ${{ inputs.target-url }}
+        YOKLA_MAX_COST: ${{ inputs.max-cost }}
+        YOKLA_ARGS: ${{ inputs.args }}
+        YOKLA_REPORTS: ${{ inputs.reports }}
+      run: |
+        # GitHub runs this with -e; yokla's exit code is read, not fatal.
+        set -u +e
+        reports="${YOKLA_REPORTS:-$RUNNER_TEMP/yokla}"
+        mkdir -p "$reports"
+        reports="$(cd "$reports" && pwd)"
+        read -r -a yokla <<< "${YOKLA_COMMAND:-npx --yes yokla@$YOKLA_VERSION}"
+        args=(run --out "$reports/results.json" --junit "$reports/junit.xml" --html "$reports/report.html")
+        if [ -n "$YOKLA_PROFILE" ]; then args+=(--profile "$YOKLA_PROFILE"); fi
+        if [ -n "$YOKLA_CONFIG" ]; then args+=(--config "$YOKLA_CONFIG"); fi
+        while IFS= read -r line; do
+          if [ -n "$line" ]; then args+=(--cases "$line"); fi
+        done <<< "$YOKLA_CASES"
+        while IFS= read -r line; do
+          if [ -n "$line" ]; then args+=(--tag "$line"); fi
+        done <<< "$YOKLA_TAGS"
+        if [ -n "$YOKLA_TARGET_URL" ]; then args+=(--target-url "$YOKLA_TARGET_URL"); fi
+        if [ -n "$YOKLA_MAX_COST" ]; then args+=(--max-cost "$YOKLA_MAX_COST"); fi
+        while IFS= read -r line; do
+          if [ -n "$line" ]; then args+=("$line"); fi
+        done <<< "$YOKLA_ARGS"
+        "${yokla[@]}" "${args[@]}"
+        code=$?
+        echo "code=$code" >> "$GITHUB_OUTPUT"
+        echo "reports=$reports" >> "$GITHUB_OUTPUT"
+        if [ -f "$reports/results.json" ]; then
+          echo "results=$reports/results.json" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Gate the run
+      id: gate
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        YOKLA_VERSION: ${{ inputs.version }}
+        YOKLA_COMMAND: ${{ inputs.command }}
+        YOKLA_CONFIG: ${{ inputs.config }}
+        YOKLA_BASELINE: ${{ inputs.baseline }}
+        REPORTS: ${{ steps.run.outputs.reports }}
+        RESULTS: ${{ steps.run.outputs.results }}
+        RUN_CODE: ${{ steps.run.outputs.code }}
+      run: |
+        # GitHub runs this with -e; yokla's exit code is read, not fatal.
+        set -u +e
+        summary="$REPORTS/summary.md"
+        echo "summary=$summary" >> "$GITHUB_OUTPUT"
+        if [ -z "$RESULTS" ]; then
+          printf '### yokla: the run wrote no results\n\n`yokla run` exited with %s; the log says why.\n' "$RUN_CODE" > "$summary"
+          echo "code=2" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        read -r -a yokla <<< "${YOKLA_COMMAND:-npx --yes yokla@$YOKLA_VERSION}"
+        args=(gate --results "$RESULTS" --markdown "$summary")
+        if [ -n "$YOKLA_CONFIG" ]; then args+=(--config "$YOKLA_CONFIG"); fi
+        if [ -n "$YOKLA_BASELINE" ]; then args+=(--baseline "$YOKLA_BASELINE"); fi
+        "${yokla[@]}" "${args[@]}"
+        code=$?
+        case "$code" in
+          0) verdict=pass ;;
+          1) verdict=broken ;;
+          *) verdict=unjudgeable ;;
+        esac
+        if [ ! -f "$summary" ]; then
+          printf "### yokla: the gate couldn't read the run\n\n\`yokla gate\` exited with %s; the log says why.\n" "$code" > "$summary"
+        fi
+        echo "code=$code" >> "$GITHUB_OUTPUT"
+        echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
+
+    - name: Write the job summary
+      if: always() && steps.gate.outputs.summary != ''
+      shell: bash
+      env:
+        SUMMARY: ${{ steps.gate.outputs.summary }}
+      run: cat "$SUMMARY" >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Keep the reports
+      if: always() && inputs.artifact != '' && steps.run.outputs.reports != ''
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ inputs.artifact }}
+        path: ${{ steps.run.outputs.reports }}
+        retention-days: ${{ inputs.retention-days }}
+        if-no-files-found: ignore
+
+    - name: The verdict
+      shell: bash
+      env:
+        RUN_CODE: ${{ steps.run.outputs.code }}
+        GATE_CODE: ${{ steps.gate.outputs.code }}
+      run: |
+        if [ "$RUN_CODE" != 0 ]; then
+          echo "::error::yokla run exited with $RUN_CODE"
+          exit 1
+        fi
+        if [ "$GATE_CODE" != 0 ]; then
+          echo "::error::yokla gate exited with $GATE_CODE: the job summary says why"
+          exit 1
+        fi

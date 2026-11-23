@@ -402,6 +402,19 @@ describe('yokla report', () => {
     );
   });
 
+  it('writes the Markdown summary of a results file, without a verdict (ADR-0094)', async () => {
+    const dir = workspace({ 'run.json': JSON.stringify(valid) });
+    const markdown = join(dir, 'reports', 'summary.md');
+    const { io, out } = capture();
+    expect(
+      await main(['report', '--results', join(dir, 'run.json'), '--markdown', markdown], io),
+    ).toBe(0);
+    expect(out.at(-1)).toBe(`markdown: ${markdown}`);
+    const text = readFileSync(markdown, 'utf8');
+    expect(text).toMatch(/^### yokla\n/u);
+    expect(text).toContain('| unmeasured | `a` | no check applied to any turn |');
+  });
+
   it('writes an HTML report of a results file', async () => {
     const dir = workspace({ 'run.json': JSON.stringify(valid) });
     const html = join(dir, 'reports', 'run.html');
@@ -538,6 +551,19 @@ describe('yokla gate', () => {
       out: ['gate: broken', '  b passed in the baseline and is now fail'],
       err: [],
     });
+  });
+
+  it('writes the Markdown summary with its verdict, also when the gate breaks (ADR-0094)', async () => {
+    const markdown = join(dir, 'summary.md');
+    // The helper puts each file name in the workspace.
+    const outcome = await gate('--results', 'fail.json', '--markdown', 'summary.md');
+    expect(outcome.code).toBe(1);
+    expect(outcome.out.at(-1)).toBe(`markdown: ${markdown}`);
+    const text = readFileSync(markdown, 'utf8');
+    expect(text).toMatch(/^### yokla: the gate is broken\n/u);
+    expect(text).toContain('- factual: 1 failing case, 0 allowed: b\n');
+    expect(text).toContain('| fail | `b` |');
+    expect((await gate('--results', 'pass.json')).out.join('\n')).not.toContain('markdown:');
   });
 
   it('reads yokla.config.yaml from the working directory by default', () => {

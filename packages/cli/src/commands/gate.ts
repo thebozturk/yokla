@@ -7,9 +7,9 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import type { Baseline, Results, YoklaConfig } from '@yokla/core';
-import { gate } from '../api.ts';
+import { gate, markdownReport } from '../api.ts';
 import { LoadError, loadConfig, readBaseline, readResults, ResultsError } from '../load.ts';
-import type { Output } from './run.ts';
+import { writeReport, type Output } from './run.ts';
 
 export const GATE_HELP = `Usage: yokla gate --results <file> [options]
 
@@ -18,6 +18,8 @@ Options:
   --baseline <file>     a baseline or results file whose passing cases must still pass
                         (default: yokla.baseline.json, when present)
   --config <file>       the thresholds (default: yokla.config.yaml, when present)
+  --markdown <file>     also write the run's summary with the verdict as Markdown, for a CI's
+                        job summary (ADR-0094)
 
 Exit codes: 0 the gate passed, 1 the gate is broken, 2 the run can't be judged.`;
 
@@ -25,6 +27,7 @@ const GATE_OPTIONS = {
   results: { type: 'string' },
   baseline: { type: 'string' },
   config: { type: 'string' },
+  markdown: { type: 'string' },
   help: { type: 'boolean' },
 } as const;
 
@@ -101,5 +104,8 @@ export function gateCommand(
     io.out(`  notice: compared with the baseline in ${baselinePath}`);
   }
   for (const notice of outcome.notices) io.out(`  notice: ${notice}`);
+  if (values.markdown !== undefined) {
+    io.out(`markdown: ${writeReport(values.markdown, markdownReport(results, outcome))}`);
+  }
   return EXIT_CODES[outcome.verdict];
 }

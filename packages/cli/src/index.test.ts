@@ -20,6 +20,7 @@ describe('the library API (ADR-0093)', () => {
       'loadConfig',
       'loadProject',
       'main',
+      'markdownReport',
       'projectFrom',
       'readBaseline',
       'readCassette',

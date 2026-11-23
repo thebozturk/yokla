@@ -76,16 +76,18 @@ function frameworkLines(results: Results): string[] {
   return lines;
 }
 
-export function terminalSummary(results: Results): TerminalSummary {
-  const out: string[] = [];
-  const err: string[] = [];
-
+/**
+ * The lines that open a run's summary: the status counts and pass rate, then
+ * what --stop-early saved and how many cases are proposed.
+ */
+export function countLines(results: Results): string[] {
+  const lines: string[] = [];
   const counts = CASE_STATUSES.flatMap((status) => {
     const count = results.summary.statuses[status];
     return count === undefined ? [] : [`${status} ${String(count)}`];
   });
   const passRate = results.summary.passRate;
-  out.push(
+  lines.push(
     `${String(results.summary.cases)} cases: ${counts.join(', ')}` +
       (passRate === undefined ? '' : `; ${passRateText(passRate)}`),
   );
@@ -93,18 +95,24 @@ export function terminalSummary(results: Results): TerminalSummary {
     // How many samples --stop-early saved (ADR-0038).
     const ran = results.cases.reduce((n, c) => n + c.samples.length, 0);
     const planned = results.cases.reduce((n, c) => n + (c.samplesPlanned ?? c.samples.length), 0);
-    out.push(`  --stop-early: ${counted(ran, 'sample')} ran of ${String(planned)} planned`);
+    lines.push(`--stop-early: ${counted(ran, 'sample')} ran of ${String(planned)} planned`);
   }
   const proposed = results.cases.filter((c) => c.review === 'proposed').length;
   if (proposed > 0) {
-    out.push(
-      `  ${String(proposed)} proposed: they ran, and gate once a person sets their status to approved`,
+    lines.push(
+      `${String(proposed)} proposed: they ran, and gate once a person sets their status to approved`,
     );
   }
+  return lines;
+}
 
-  const rows: [string, string, string][] = [];
+/** A case that didn't plainly pass, or its advisory findings: its status, its id, and why. */
+export type CaseRow = readonly [status: string, id: string, reason: string];
+
+/** The cases that didn't plainly pass, and advisory findings, heaviest first with weights (ADR-0076). */
+export function caseRows(results: Results): CaseRow[] {
+  const rows: CaseRow[] = [];
   const weights = hasWeights(results);
-  // Heaviest first when the cases carry weights: a heavy failure is worth fixing first (ADR-0076).
   for (const c of byWeight(results, results.cases)) {
     const problems = caseProblems(c);
     const reason = caseReason(c, problems);
@@ -121,18 +129,33 @@ export function terminalSummary(results: Results): TerminalSummary {
     }
     const advisory = dimensionSummary(c, problems.advisory, true);
     if (advisory !== '') rows.push(['advisory', c.id, advisory]);
+  }
+  return rows;
+}
+
+/** Each turn that ended in an error, and each problem of the run itself. */
+export function errorLines(results: Results): string[] {
+  const lines: string[] = [];
+  for (const c of byWeight(results, results.cases)) {
     for (const sample of c.samples) {
       for (const turn of sample.turns) {
-        if (turn.error !== undefined)
-          err.push(`  ${c.id} [sample ${String(sample.index)}]: ${turn.error}`);
+        if (turn.error !== undefined) {
+          lines.push(`${c.id} [sample ${String(sample.index)}]: ${turn.error}`);
+        }
       }
     }
   }
-  const statusWidth = Math.max(0, ...rows.map(([status]) => status.length));
-  const idWidth = Math.max(0, ...rows.map(([, id]) => id.length));
-  for (const [status, id, reason] of rows) {
-    out.push(`  ${status.padEnd(statusWidth)}  ${id.padEnd(idWidth)}  ${reason}`);
-  }
+  for (const issue of results.run.issues ?? []) lines.push(`run: ${issue}`);
+  return lines;
+}
+
+/**
+ * The rest of a run's summary: the cases by tag, what the target's logs, the
+ * model proxy and the spans observed, yokla's own models, the run's
+ * transforms, strategy, attacker and judge, and the frameworks.
+ */
+export function noteLines(results: Results): string[] {
+  const out: string[] = [];
 
   // Per tag, the most failing first (ADR-0077).
   const tags = tagsByFailures(results);
@@ -217,6 +240,24 @@ export function terminalSummary(results: Results): TerminalSummary {
     );
   }
   out.push(...frameworkLines(results));
-  for (const issue of results.run.issues ?? []) err.push(`  run: ${issue}`);
-  return { out, err };
+  return out;
+}
+
+export function terminalSummary(results: Results): TerminalSummary {
+  const [first = '', ...more] = countLines(results);
+  const rows = caseRows(results);
+  const statusWidth = Math.max(0, ...rows.map(([status]) => status.length));
+  const idWidth = Math.max(0, ...rows.map(([, id]) => id.length));
+  return {
+    out: [
+      first,
+      ...more.map((line) => `  ${line}`),
+      ...rows.map(
+        ([status, id, reason]) =>
+          `  ${status.padEnd(statusWidth)}  ${id.padEnd(idWidth)}  ${reason}`,
+      ),
+      ...noteLines(results),
+    ],
+    err: errorLines(results).map((line) => `  ${line}`),
+  };
 }

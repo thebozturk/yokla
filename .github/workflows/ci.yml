@@ -38,3 +38,69 @@ jobs:
       - run: pnpm test
       # What a published package would hold, installed and run (ADR-0034).
       - run: pnpm pack-check
+
+  # The GitHub Action from this checkout, against two demo-shops: the correct
+  # one passes, and a seeded defect breaks the gate (ADR-0094).
+  action:
+    name: the GitHub Action
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Start the demo-shops
+        run: |
+          node examples/demo-shop/src/main.ts --port 3101 > "$RUNNER_TEMP/correct.log" 2>&1 &
+          node examples/demo-shop/src/main.ts --port 3102 --defect fabricated-price > "$RUNNER_TEMP/defect.log" 2>&1 &
+          for log in correct defect; do
+            for _ in $(seq 1 30); do
+              grep -q 'listening on' "$RUNNER_TEMP/$log.log" && break
+              sleep 1
+            done
+            cat "$RUNNER_TEMP/$log.log"
+            grep -q 'listening on' "$RUNNER_TEMP/$log.log"
+          done
+      - name: The correct shop passes
+        id: correct
+        uses: ./
+        with:
+          command: pnpm yokla
+          profile: examples/demo-shop/yokla.profile.yaml
+          config: examples/demo-shop/yokla.config.yaml
+          cases: examples/demo-shop/cases
+          target-url: http://127.0.0.1:3101/v1/chat
+          reports: ${{ runner.temp }}/correct
+          artifact: yokla-correct
+          retention-days: 1
+      - name: A seeded defect breaks the gate
+        id: defect
+        continue-on-error: true
+        uses: ./
+        with:
+          command: pnpm yokla
+          profile: examples/demo-shop/yokla.profile.yaml
+          config: examples/demo-shop/yokla.config.yaml
+          cases: examples/demo-shop/cases
+          target-url: http://127.0.0.1:3102/v1/chat
+          reports: ${{ runner.temp }}/defect
+          artifact: yokla-defect
+          retention-days: 1
+      - name: The verdicts and the summary
+        env:
+          CORRECT: ${{ steps.correct.outputs.verdict }}
+          DEFECT: ${{ steps.defect.outputs.verdict }}
+          OUTCOME: ${{ steps.defect.outcome }}
+          SUMMARY: ${{ steps.defect.outputs.summary }}
+        run: |
+          test "$CORRECT" = pass
+          test "$DEFECT" = broken
+          test "$OUTCOME" = failure
+          grep -F '### yokla: the gate is broken' "$SUMMARY"
+          grep -F '| fail | `tents-tr` | fabrication 1/1:' "$SUMMARY"
