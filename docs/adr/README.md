@@ -106,6 +106,7 @@ old one.
 | [0091](0091-more-judge-dimensions.md) | More judge dimensions (R7b) | Accepted |
 | [0092](0092-the-ecosystem-track.md) | The ecosystem track: v0.6 in six items | Accepted |
 | [0093](0093-a-library-api.md) | A library API (E1) | Accepted |
+| [0094](0094-a-github-action.md) | A GitHub Action and CI recipes (E2) | Proposed |
 
 ## Template
 
