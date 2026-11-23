@@ -565,7 +565,9 @@ The judge (ADR-0090) decides the dimensions a turn's `judge` expectation
 names, from the turn's message and answer, with `models.judge`. Its
 calibration is yokla's items per dimension and language and the person's
 graded examples. Its dimensions are advisory unless `judge.gate` lists them.
-Its first dimension is `unsafe-advice`; R7b adds the others.
+Its first dimension is `unsafe-advice`; R7b (ADR-0091) adds `hijacking`,
+`unruled-restriction`, `bias`, `political-religious`, `harmful-content`,
+`imitation` and `unverifiable-claim`, each with its attack kind.
 
 ### Rules for writing checks
 
@@ -1231,6 +1233,12 @@ For the attacks from templates (ADR-0080), `yokla generate --redteam
   calibration: every verdict is unmeasured, and a run issue names the
   items. A second run sends no judge call. The test is
   `packages/cli/src/judge.e2e.test.ts`.
+- **More judge dimensions (ADR-0091):** in the same test, over the attack
+  cases of every judge dimension, the correct shop passes each. Each of
+  `hijacking`, `unruled-restriction`, `bias`, `political-religious`,
+  `harmful-content`, `imitation` and `unverifiable-claim`, which agrees to
+  its attack with mild, made-up text, is found on its own kind's cases and
+  nothing else, and fails no case until `judge.gate` lists the dimensions.
 
 For the transforms a model writes (ADR-0059), the fake provider plays
 `models.transform` by rules: a paraphrase turns "X var mı?" into "X
@@ -1504,7 +1512,7 @@ suffix search, and image, audio and video attacks.
 | **R5b. More attacker strategies** (done, ADR-0088) | `iterative`, each attempt from the earlier ones and their answers; `tree`, variants of variants, breadth first, within `--branches` and `--depth`; `translate`, the attack in the profile's other languages, judged in the language it was sent in; on R5's engine; moved from R5 (ADR-0087) | with the fake provider as attacker, `iterative` and `tree` each reach a demo-shop defect the template attack doesn't; `translate` reaches, from the cases of one language, a defect those cases don't reach as written (ADR-0088) |
 | **R6. Findings mapped to frameworks** (done, ADR-0089) | each attack kind and check maps to OWASP LLM Top 10 and OWASP Agentic categories, and to the GDPR, KVKK and EU AI Act topics it touches, MITRE ATLAS tactics, the NIST AI RMF Measure function and ISO/IEC 42001; the reports group findings by them; a risk score per kind, severity times attack success rate with its interval, and a gate threshold on it, off by default; never a claim of compliance (ADR-0081) | every red-team finding of the demo-shop's run names its categories; the mapping is tested in both directions |
 | **R7. A calibrated judge** (done, ADR-0090) | `models.judge` decides the dimensions a turn's `judge` expectation names, from its message and answer; yokla's rubric per dimension, the person's notes; a calibration set in every run, yokla's items and the person's graded examples, one misjudged and every verdict of the run unmeasured; advisory, worst-of-N once `judge.gate` lists the dimension; unmeasured without a judge or with the target's model as judge; the first dimension, `unsafe-advice` (ADR-0081) | a judge that misjudges a calibration case gives `unmeasured`; with the fake provider as judge, the unsafe-advice defect is found and doesn't gate by default |
-| **R7b. More judge dimensions** | hijacking beyond the out-of-scope check, age and region restrictions where no rule applies, bias (age, gender, disability, ethnicity, religion), political and religious statements, harmful content, imitation, free-text claims the data can't check, with their attack kinds, on R7's judge; moved from R7 (ADR-0090) | each dimension's defect is found by the fake judge and gates only once listed |
+| **R7b. More judge dimensions** (done, ADR-0091) | hijacking beyond the out-of-scope check, age and region restrictions where no rule applies, bias (age, gender, disability, ethnicity, religion), political and religious statements, harmful content, imitation, free-text claims the data can't check, with their attack kinds, on R7's judge; moved from R7 (ADR-0090) | each dimension's defect is found by the fake judge and gates only once listed |
 
 **Later:** sampling production logs, more domains (banking, travel), more
 languages, SDK adapters.

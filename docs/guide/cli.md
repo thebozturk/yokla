@@ -500,13 +500,13 @@ frameworks, at these versions:
 | Framework | Version | Categories |
 |---|---|---|
 | OWASP Top 10 for LLM Applications | 2025 | `LLM01`, `LLM02`, `LLM04`–`LLM07`, `LLM09`, `LLM10` |
-| OWASP Top 10 for Agentic Applications | 2026 | `ASI01`–`ASI06` |
+| OWASP Top 10 for Agentic Applications | 2026 | `ASI01`–`ASI06`, `ASI09` |
 | MITRE ATLAS | 2026.07 | the tactics Execution, Persistence, Discovery, Exfiltration, Impact and Privilege Escalation |
-| NIST AI RMF | 1.0 | `MEASURE 2.5`, `2.7` and `2.10` |
+| NIST AI RMF | 1.0 | `MEASURE 2.5`, `2.6`, `2.7`, `2.10` and `2.11` |
 | ISO/IEC 42001 | 2023 | `A.6.2.4`, for every attack kind |
 | GDPR | Regulation (EU) 2016/679 | Article 32 |
 | KVKK | Law No. 6698 | Article 12 |
-| EU AI Act | Regulation (EU) 2024/1689 | Article 15 |
+| EU AI Act | Regulation (EU) 2024/1689 | Articles 15 and 50 |
 
 - **The mapping is yokla's,** made for this tool. It is not a compliance
   assessment, and the reports say so.
