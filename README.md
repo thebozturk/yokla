@@ -302,11 +302,12 @@ upstreams your profile names. An egress test in CI holds yokla to that.
     [checks](https://github.com/thebozturk/yokla/blob/main/docs/guide/checks.md),
     [the model proxy](https://github.com/thebozturk/yokla/blob/main/docs/guide/model-proxy.md),
     [commands and configuration](https://github.com/thebozturk/yokla/blob/main/docs/guide/cli.md),
-    [yokla from code](https://github.com/thebozturk/yokla/blob/main/docs/guide/api.md).
+    [yokla from code](https://github.com/thebozturk/yokla/blob/main/docs/guide/api.md),
+    [yokla with other tools](https://github.com/thebozturk/yokla/blob/main/docs/guide/interop.md).
 - [The design](https://github.com/thebozturk/yokla/blob/main/docs/design.md)
   and the [decision records](https://github.com/thebozturk/yokla/blob/main/docs/adr/README.md).
 - [The changelog](https://github.com/thebozturk/yokla/blob/main/CHANGELOG.md).
-- `yokla <command> --help`, and `yokla schema <profile|cases|config|results|baseline|comparison|analysis>`
+- `yokla <command> --help`, and `yokla schema <profile|cases|config|results|baseline|comparison|analysis|case-row|result-row>`
   for the JSON Schemas.
 
 ## Roadmap
@@ -322,7 +323,8 @@ upstreams your profile names. An egress test in CI holds yokla to that.
 | [`@yokla/core`](https://www.npmjs.com/package/@yokla/core) | schemas, the check API, aggregation and the gate |
 | [`@yokla/runtime`](https://www.npmjs.com/package/@yokla/runtime) | the runner and the target adapters |
 | [`@yokla/proxy`](https://www.npmjs.com/package/@yokla/proxy) | the model proxy |
-| [`@yokla/report`](https://www.npmjs.com/package/@yokla/report) | terminal, JUnit XML and HTML reports |
+| [`@yokla/report`](https://www.npmjs.com/package/@yokla/report) | terminal, JUnit XML, Markdown and HTML reports |
+| [`@yokla/interop-rows`](https://www.npmjs.com/package/@yokla/interop-rows) | cases and results as neutral rows, for other tools |
 | [`@yokla/analyzer`](https://www.npmjs.com/package/@yokla/analyzer) | the analyzer behind `yokla analyze` |
 | [`@yokla/pack-ecommerce`](https://www.npmjs.com/package/@yokla/pack-ecommerce) | the e-commerce checks |
 | [`@yokla/pack-lang-tr`](https://www.npmjs.com/package/@yokla/pack-lang-tr), [`@yokla/pack-lang-en`](https://www.npmjs.com/package/@yokla/pack-lang-en) | Turkish and English |

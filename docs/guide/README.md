@@ -25,6 +25,7 @@ flowchart LR
         Proxy["The model proxy"]
         CLI["Commands and configuration"]
         API["yokla from code"]
+        Interop["yokla with other tools"]
     end
     Analyzer --> Profile
     Analyzer --> Cases
@@ -32,6 +33,7 @@ flowchart LR
     Debugging --> Checks
     CI --> CLI
     CI --> API
+    API --> Interop
     RedTeam --> Cases
     RedTeam --> Checks
 ```
@@ -55,6 +57,7 @@ flowchart LR
 | [The model proxy](model-proxy.md) | Seeing the app's model calls, their cost and prompts, making the provider fail, swapping models and replaying recorded calls. |
 | [Commands and configuration](cli.md) | Every command and option, `yokla.config.yaml`, the gate and the baseline, and `yokla mcp` for coding agents. |
 | [yokla from code](api.md) | The library API: loading a project, running it, the gate, comparisons and reports, from a program of your own. |
+| [yokla with other tools](interop.md) | Your cases as a dataset, your runs as rows, and yokla's checks as a function another tool calls. |
 
 ## A first run
 

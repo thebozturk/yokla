@@ -21,7 +21,8 @@ options. For a task from start to end, see the workflows:
 | `mcp` | Serves yokla's tools to a coding agent over stdio. |
 | `compare` | Sets runs side by side and names the cheapest that passes. |
 | `explore` | Searches for paths the written cases never take, and proposes cases for them. |
-| `schema <name>` | Prints a JSON Schema: `profile`, `cases`, `config`, `results`, `baseline`, `comparison` or `analysis`. |
+| `export` | Writes the cases as neutral rows, one JSON line per case, for another tool. |
+| `schema <name>` | Prints a JSON Schema: `profile`, `cases`, `config`, `results`, `baseline`, `comparison`, `analysis`, `case-row` or `result-row`. |
 
 ## `yokla init`
 
@@ -466,11 +467,11 @@ pnpm yokla run --cases cases/redteam.yaml --attacker translate --out runs/transl
 
 ```sh
 pnpm yokla report --results runs/<run id>.json [--junit runs/junit.xml] [--html runs/report.html] \
-  [--markdown runs/summary.md]
+  [--markdown runs/summary.md] [--rows runs/rows.jsonl]
 ```
 
 Prints the summary again from the results file alone, and optionally writes
-JUnit XML, an HTML report or the Markdown summary.
+JUnit XML, an HTML report, the Markdown summary or neutral rows.
 
 - **The terminal summary and JUnit XML** hold one line per case that didn't
   pass, and none of the target's answers.
@@ -479,6 +480,10 @@ JUnit XML, an HTML report or the Markdown summary.
   first 100 cases that didn't plainly pass with the reason for each, the
   errors, and the rest of the run's notes folded away. It holds none of the
   target's answers. `yokla gate --markdown` writes it with the verdict.
+- **Neutral rows** (`--rows`, ADR-0096): one JSON line per turn of each
+  sample, by the schema `yokla schema result-row` prints, for a tool or a
+  dashboard that reads rows. They hold the target's answers
+  ([yokla with other tools](interop.md#your-runs-as-rows)).
 - **The HTML report** (ADR-0023) is one offline file to read why a case
   didn't pass.
   - It shows the run, the status of each case with its tags, the pass rate
@@ -908,6 +913,26 @@ contacts nothing.
 It exits with `0` when it compared the runs, whatever their verdicts; with
 `1` under `--expect-same` when a status moved; and with `2` when a file can't
 be read or fewer than two runs are given.
+
+## `yokla export`
+
+```sh
+pnpm yokla export --out cases.jsonl [--profile yokla.profile.yaml] [--cases cases] [--tag <tag>] \
+  [--config yokla.config.yaml]
+```
+
+Writes the cases as neutral rows, one JSON line per case, by the schema
+`yokla schema case-row` prints (ADR-0096): its id, suite, language and tags,
+its first message, and each turn's message with its expectations. It loads
+the cases as `yokla run` does, and contacts nothing.
+
+- **Only approved cases with written turns** become rows. A proposed or
+  rejected case, and one with a simulated customer, is named as skipped.
+- **Another tool sends each row's message,** and yokla's assertion function
+  judges the answer ([yokla with other tools](interop.md)).
+
+It exits with `0` when it wrote the rows, and with `2` when the files can't
+be loaded or no case was written.
 
 ## `yokla explore`
 

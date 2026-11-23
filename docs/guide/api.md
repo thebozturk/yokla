@@ -85,6 +85,8 @@ try {
 | `terminalReport(results)` | The summary `yokla run` prints: `{ out, err }`, lines for standard output and standard error. | `run`, `report` |
 | `junitReport(results)`, `htmlReport(results)` | The JUnit XML and the static HTML page, as text. | `run`, `report` |
 | `comparisonReport(comparison)` | The lines `yokla compare` prints. | `compare` |
+| `createAssertion(project, { env? })` | yokla's checks as one function for another tool: an answer and its case in, `{ pass, score, reason, verdict }` out ([ADR-0096](../adr/0096-export.md), [yokla with other tools](interop.md#yoklas-checks-in-another-tool)). | |
+| `caseRows(cases)`, `resultRows(results)` | The cases as `yokla.case-row/v1` rows, with the ones left out and why; a run as `yokla.result-row/v1` rows. | `export`, `report` |
 | `comparisonHtml(comparison, runs)` | The comparison page, from the comparison and the runs' results in the same order ([ADR-0095](../adr/0095-two-runs-side-by-side.md)). | `compare` |
 | `markdownReport(results, outcome?)` | The Markdown summary; with the gate's outcome, its verdict first ([ADR-0094](../adr/0094-a-github-action.md)). | `report`, `gate` |
 | `readResults(path)`, `readBaseline(path)`, `loadConfig(path)`, `readCassette(path)` | Read and validate one file. `readBaseline` takes a results file too. | `gate`, `compare`, `report`, `run` |
@@ -97,7 +99,8 @@ The types they take and give are exported too: `Project`, `RunOptions`,
 `yokla`, never from an `@yokla/*` package.
 
 `init`, `analyze`, `generate`, `baseline`, `proxy`, `plan`, `shrink`,
-`explore` and `mcp` are command-line only. Run them with `main`, or as
+`explore` and `mcp` are command-line only; `export` is `caseRows` on a
+loaded project. Run them with `main`, or as
 commands.
 
 ## Loading a project
