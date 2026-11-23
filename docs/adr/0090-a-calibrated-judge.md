@@ -1,6 +1,6 @@
 # 0090. A calibrated judge (R7)
 
-Status: Proposed · Date: 2026-11-23
+Status: Accepted · Date: 2026-11-23
 
 ## Context
 
@@ -60,7 +60,8 @@ This narrows ADR-0081's R7, as its last rule allows.
 
 - **A turn asks for it** with the expectation `judge`, the dimensions to
   judge, such as `judge: [unsafe-advice]`. Only an answered turn is
-  judged.
+  judged, as the checks judge it: a usable 2xx answer under no fault
+  (ADR-0019). The judge isn't paid for a verdict nothing would use.
 - **The judge reads** the turn's message and the answer, nothing of the
   target's own: no prompt, no tool, no data.
 - **A dimension's rubric is yokla's,** in Turkish and English: what an
@@ -84,8 +85,10 @@ refusal, a warning, or advice to ask a professional passes.
 - **A person's graded examples are calibration items too,** added in the
   configuration with their verdict. They test the judge on the person's
   own answers.
-- **Before the cases, the judge judges every item** of the dimensions and
-  languages the run's turns ask for.
+- **Once the cases ran, before any turn is judged,** the judge judges
+  every item: yokla's of the dimensions and languages the run's turns ask
+  for, and the person's of those dimensions in any language. Only then are
+  the target's models known, which the judge must differ from.
 - **One item misjudged, or unreadable, and every judge dimension of the
   run is `unmeasured`.** A run issue names the items; the results keep
   which.
@@ -134,6 +137,9 @@ As ADR-0028's, with the judge's name in place of the customer's:
   configuration, the dimension's rubric and notes, the language, the
   message and the answer. `--fresh-judge` ignores the cache.
 - **The cost is counted** with yokla's other spend; `--max-cost` caps it.
+  A verdict the cap stopped is `unmeasured`.
+- **The client starts at the first call the cache doesn't answer**
+  (ADR-0078): a run the cache answers asks for no key.
 - **What leaves the machine:** a hosted judge receives the messages and
   the target's answers. The guide says so.
 
@@ -152,6 +158,11 @@ Additive (ADR-0007):
 - **`unsafe-advice`,** written by core from the language packs, asks for
   approval of something dangerous, with the expectation
   `judge: [unsafe-advice]`.
+- **The case also expects an answer** that isn't empty
+  (`answer.notEmpty`). A case whose only dimension is advisory is
+  `unmeasured` (design §13): without a rule of its own, the case would be
+  unmeasured whatever the judge said, and break the gate by default. The
+  rule decides the case; the judge advises.
 - **Its mapping** (ADR-0089): severity high; OWASP LLM09, ATLAS Impact,
   NIST AI RMF MEASURE 2.6 (safety), ISO/IEC 42001 A.6.2.4 and EU AI Act
   Article 15. MEASURE 2.6 is a new category of the NIST framework's list.
@@ -170,7 +181,8 @@ Additive (ADR-0007):
   - under the defect, the judge fails the dimension, and the case doesn't
     fail: the dimension is advisory;
   - with `judge.gate: [unsafe-advice]`, the case fails and the gate
-    breaks;
+    breaks, its cases approved as a person would; the gate setting keys no
+    verdict, so that run reads the advisory run's cache;
   - with `demo-judge-lax`, the calibration is misjudged, every judge
     dimension is `unmeasured`, and a run issue names the item;
   - a second run sends no judge call.
