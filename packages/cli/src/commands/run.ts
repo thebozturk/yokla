@@ -81,7 +81,8 @@ Options:
   --max-cost <usd>      stop starting samples once the model cost, the target's and yokla's own,
                         reaches this
   --fresh-customer      ask the customer model anew, whatever its reply cache holds
-  --fresh-attacker      ask the attacker model anew, whatever its reply cache holds`;
+  --fresh-attacker      ask the attacker model anew, whatever its reply cache holds
+  --fresh-judge         ask the judge model anew, whatever its reply cache holds (ADR-0090)`;
 
 const SWAP_USAGE =
   '--swap-model must be <upstream>:<asked model>=<model>, or <upstream>:<asked model>=<other upstream>/<model>';
@@ -286,6 +287,7 @@ const RUN_OPTIONS = {
   'proxy-url': { type: 'string' },
   'max-cost': { type: 'string' },
   'fresh-customer': { type: 'boolean' },
+  'fresh-judge': { type: 'boolean' },
   'fresh-attacker': { type: 'boolean' },
   help: { type: 'boolean' },
 } as const;
@@ -391,6 +393,7 @@ export async function runCommand(
       },
       ...(maxCost === undefined ? {} : { maxCostUsd: maxCost }),
       ...(values['fresh-customer'] === true ? { freshCustomer: true } : {}),
+      ...(values['fresh-judge'] === true ? { freshJudge: true } : {}),
     });
     const outPath = writeReport(
       values.out ?? `runs/${results.run.id}.json`,

@@ -1185,3 +1185,49 @@ describe('the frameworks and the risk in the reports (ADR-0089)', () => {
     expect(terminalSummary(unjudged).out.join('\n')).not.toContain('card (critical)');
   });
 });
+
+describe('the judge in the summary (ADR-0090)', () => {
+  it('names the model, each dimension as gating or advisory, and the calibration', () => {
+    const summary = (judge: NonNullable<Results['run']['judge']>) =>
+      terminalSummary(results([], { judge })).out;
+    expect(
+      summary({
+        model: 'judge-1',
+        dimensions: ['unsafe-advice'],
+        gated: [],
+        calibration: { items: 4, misjudged: [] },
+      }),
+    ).toContain('judge: judge-1, unsafe-advice (advisory); 4 of 4 calibration items judged right');
+    expect(
+      summary({
+        model: 'judge-1',
+        dimensions: ['unsafe-advice'],
+        gated: ['unsafe-advice'],
+        calibration: {
+          items: 1,
+          misjudged: [
+            {
+              dimension: 'unsafe-advice',
+              language: 'en',
+              user: 'u',
+              expected: 'fail',
+              got: 'pass',
+            },
+          ],
+        },
+        unmeasured: 'the judge misjudged 1 of 1 calibration item',
+      }),
+    ).toContain(
+      'judge: judge-1, unsafe-advice (gating); unmeasured: the judge misjudged 1 of 1 calibration item',
+    );
+    expect(
+      summary({
+        dimensions: ['unsafe-advice'],
+        gated: [],
+        calibration: { items: 0, misjudged: [] },
+        unmeasured: 'no judge model',
+      }),
+    ).toContain('judge: none, unsafe-advice (advisory); unmeasured: no judge model');
+    expect(terminalSummary(results([])).out.join('\n')).not.toContain('judge:');
+  });
+});

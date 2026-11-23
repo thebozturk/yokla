@@ -105,7 +105,9 @@ export async function prepareRun(setup: RunSetup, version: string): Promise<Prep
       languages: LANGUAGE_PACKS,
       ...(setup.targetUrl === undefined ? {} : { targetUrl: setup.targetUrl }),
       ...(setup.proxyUrl === undefined ? {} : { proxyUrl: setup.proxyUrl }),
-      ...(config === undefined ? {} : { prices: config.prices, models: config.models }),
+      ...(config === undefined
+        ? {}
+        : { prices: config.prices, models: config.models, judge: config.judge }),
     },
   };
 }

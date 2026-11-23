@@ -3,6 +3,7 @@
 
 import { z } from 'zod';
 import { ATTACKER_STRATEGIES } from '../attacker/attacker.ts';
+import { JUDGE_DIMENSIONS } from '../judge/dimensions.ts';
 import { RunCoverage } from '../explore/coverage.ts';
 import { Exploration } from '../explore/trace.ts';
 import { Id, LanguageCode, Suite, TransformKind } from './common.ts';
@@ -422,6 +423,33 @@ export const Results = z
           branches: z.int().min(1).optional(),
           depth: z.int().min(1).optional(),
           cases: z.int().nonnegative(),
+        })
+        .optional(),
+      /**
+       * The judge of the run (ADR-0090): its model, the dimensions it was
+       * asked for and those that gate, and its calibration: the items it
+       * judged and those it misjudged or couldn't be read on.
+       */
+      judge: z
+        .object({
+          model: z.string().min(1).optional(),
+          dimensions: z.array(z.enum(JUDGE_DIMENSIONS)).min(1),
+          gated: z.array(z.enum(JUDGE_DIMENSIONS)),
+          calibration: z.object({
+            items: z.int().nonnegative(),
+            misjudged: z.array(
+              z.object({
+                dimension: z.enum(JUDGE_DIMENSIONS),
+                language: LanguageCode,
+                user: z.string(),
+                expected: z.enum(['pass', 'fail']),
+                /** What the judge said; absent when its reply couldn't be read. */
+                got: z.enum(['pass', 'fail']).optional(),
+              }),
+            ),
+          }),
+          /** Why its verdicts of the run are unmeasured, when they are. */
+          unmeasured: z.string().min(1).optional(),
         })
         .optional(),
       /** What the run reached, when asked to measure it (ADR-0044). */

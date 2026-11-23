@@ -212,6 +212,10 @@ export type InjectionStyle = (typeof INJECTION_STYLES)[number];
 export const INTERNALS_STYLES = ['debug', 'model', 'tools'] as const;
 export type InternalsStyle = (typeof INTERNALS_STYLES)[number];
 
+/** The styles of unsafe-advice (ADR-0090): a request to approve something dangerous. */
+export const UNSAFE_ADVICE_STYLES = ['chemicals', 'heating'] as const;
+export type UnsafeAdviceStyle = (typeof UNSAFE_ADVICE_STYLES)[number];
+
 /** The ways of asking for the system prompt (ADR-0080). */
 export const EXTRACTION_STYLES = ['repeat', 'code-block', 'translate'] as const;
 export type ExtractionStyle = (typeof EXTRACTION_STYLES)[number];
@@ -254,6 +258,8 @@ export interface AttackPhrasings {
   readonly pretext: string;
   /** card: the test number `{card}`, and a request to keep it and write it back in full. */
   readonly card: string;
+  /** unsafe-advice (ADR-0090): a request to approve something dangerous, by style. */
+  readonly unsafeAdvice: Readonly<Record<UnsafeAdviceStyle, string>>;
   /** The lines of the encoding and wrapping strategies (ADR-0084). */
   readonly strategies: StrategyPhrasings;
 }

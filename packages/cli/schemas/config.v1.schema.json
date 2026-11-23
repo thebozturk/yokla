@@ -145,6 +145,82 @@
         }
       }
     },
+    "judge": {
+      "default": {},
+      "description": "The calibrated judge (ADR-0090).",
+      "type": "object",
+      "properties": {
+        "gate": {
+          "description": "The judge dimensions that gate: one failing sample fails the case. Every other one is advisory (ADR-0005, ADR-0090).",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "unsafe-advice"
+            ]
+          }
+        },
+        "dimensions": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": [
+              "unsafe-advice"
+            ]
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "notes": {
+                "description": "Notes added to the dimension's rubric in the judge's prompt.",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "examples": {
+                "description": "Graded examples: calibration items the judge must grade right in every run, or its verdicts of the run are unmeasured.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "language": {
+                      "type": "string",
+                      "pattern": "^[a-z]{2}$"
+                    },
+                    "user": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "answer": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "verdict": {
+                      "type": "string",
+                      "enum": [
+                        "pass",
+                        "fail"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "language",
+                    "user",
+                    "answer",
+                    "verdict"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "models": {
       "default": {},
       "type": "object",
@@ -331,6 +407,96 @@
         },
         "attacker": {
           "description": "The model yokla run --attacker uses to adapt the redteam cases' attacks (ADR-0087). A hosted model receives the attacks and the target's answers. It needs a price, 0 for a local model, so --max-cost can be enforced.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "openai-compatible",
+                "anthropic",
+                "gemini"
+              ]
+            },
+            "auth": {
+              "default": "api-key",
+              "description": "For gemini: the key in x-goog-api-key, or as an Authorization bearer token, as Vertex AI takes it (ADR-0032). The other kinds send it in their own header.",
+              "type": "string",
+              "enum": [
+                "api-key",
+                "bearer"
+              ]
+            },
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "description": "The base url, e.g. http://127.0.0.1:11434/v1 for a local model."
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "apiKeyEnv": {
+              "description": "The environment variable that holds the API key, if one is needed.",
+              "type": "string",
+              "minLength": 1
+            },
+            "temperature": {
+              "default": 0,
+              "type": "number",
+              "minimum": 0,
+              "maximum": 2
+            },
+            "maxTokens": {
+              "default": 400,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64000
+            },
+            "timeoutMs": {
+              "default": 60000,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "price": {
+              "description": "USD per million tokens. Without it, the calls have no cost, never 0.",
+              "type": "object",
+              "properties": {
+                "input": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "output": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "cachedInput": {
+                  "description": "Defaults to the input price, so cost is never understated.",
+                  "type": "number",
+                  "minimum": 0
+                },
+                "cacheWrite": {
+                  "description": "Defaults to the input price, so cost is never understated.",
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "input",
+                "output"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "kind",
+            "url",
+            "model"
+          ],
+          "additionalProperties": false
+        },
+        "judge": {
+          "description": "The model that decides the judge's dimensions of a turn's answer (ADR-0090). It must differ from the target's model. A hosted model receives the turns' messages and the target's answers. It needs a price, 0 for a local model, so --max-cost can be enforced.",
           "type": "object",
           "properties": {
             "kind": {

@@ -203,6 +203,19 @@ export function terminalSummary(results: Results): TerminalSummary {
       `attacker: ${attacker.strategy}, ${attackerBound(attacker)}, ${counted(attacker.cases, 'case')}`,
     );
   }
+  // The judge: its model, its dimensions, and its calibration (ADR-0090).
+  const { judge } = results.run;
+  if (judge !== undefined) {
+    const dimensions = judge.dimensions
+      .map(
+        (dimension) => `${dimension} (${judge.gated.includes(dimension) ? 'gating' : 'advisory'})`,
+      )
+      .join(', ');
+    const calibrated = `${String(judge.calibration.items - judge.calibration.misjudged.length)} of ${counted(judge.calibration.items, 'calibration item')} judged right`;
+    out.push(
+      `judge: ${judge.model ?? 'none'}, ${dimensions}; ${judge.unmeasured === undefined ? calibrated : `unmeasured: ${judge.unmeasured}`}`,
+    );
+  }
   out.push(...frameworkLines(results));
   for (const issue of results.run.issues ?? []) err.push(`  run: ${issue}`);
   return { out, err };

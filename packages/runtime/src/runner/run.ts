@@ -8,6 +8,12 @@ import { readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   aggregateCase,
+  CALIBRATION,
+  coreExpectations,
+  JUDGE_DIMENSIONS,
+  judgeSeverity,
+  type CalibrationItem,
+  type JudgeDimension,
   caseKinds,
   CORE_TAXONOMY,
   kindRisks,
@@ -98,6 +104,7 @@ import { correlate, observedFields, parseLogLines, readLogText } from '../observ
 import { ProxyControl, ProxyControlError } from '../proxy/control.ts';
 import { ModelClientError } from '../models/client.ts';
 import { AttackerPlayer } from '../models/attacker.ts';
+import { JudgePlayer } from '../models/judge.ts';
 import { CustomerPlayer, type OwnCall } from '../models/customer.ts';
 import { Rewriter, type RewritePlan, type RewriteResult } from '../models/rewrite.ts';
 import {
@@ -120,6 +127,7 @@ import { measureCoverage } from './coverage.ts';
 type CaseResult = Results['cases'][number];
 type SampleResult = CaseResult['samples'][number];
 type TurnResult = SampleResult['turns'][number];
+type CheckResult = TurnResult['checks'][number];
 
 export interface RunOptions {
   readonly profile: Profile;
@@ -183,6 +191,10 @@ export interface RunOptions {
    * `fresh` asks the attacker anew, whatever its reply cache holds.
    */
   readonly attacker?: AttackerRun & { readonly fresh?: boolean };
+  /** The judge's settings: the dimensions that gate, rubric notes and graded examples (ADR-0090). */
+  readonly judge?: YoklaConfig['judge'];
+  /** Ask the judge model anew, whatever its reply cache holds (ADR-0090). */
+  readonly freshJudge?: boolean;
   /** Told what the model's transforms will take, before any is asked (ADR-0059). */
   readonly onTransformPlan?: (plan: RewritePlan) => void;
   /** Where yokla keeps generated and cached data. Default: yokla-data next to the profile. */
@@ -287,12 +299,22 @@ function prepare(options: RunOptions): Prepared {
   }
   return {
     checks,
-    policies: { ...options.policies, ...pack?.dimensions },
+    policies: { ...options.policies, ...pack?.dimensions, ...judgePolicies(options) },
     languages: new Map((options.languages ?? []).map((lang) => [lang.language, lang])),
     unmetFacts,
     data: [...data.values()],
     taxonomy,
   };
+}
+
+/** The judge's dimensions: advisory, unless judge.gate lists them (ADR-0005, ADR-0090). */
+function judgePolicies(options: RunOptions): Record<string, AggregationPolicy> {
+  const gated = new Set<string>(options.judge?.gate ?? []);
+  const policies: Record<string, AggregationPolicy> = {};
+  for (const dimension of JUDGE_DIMENSIONS) {
+    policies[dimension] = gated.has(dimension) ? 'worst-of-n' : 'advisory';
+  }
+  return policies;
 }
 
 /** A case result with its attack kinds, when it has any (ADR-0089). */
@@ -465,7 +487,8 @@ export function preflight(options: RunOptions): void {
   const ownSpends =
     simulated.length > 0 ||
     orderedTransforms(options.transforms).some(isModelTransform) ||
-    options.attacker !== undefined;
+    options.attacker !== undefined ||
+    judges(options);
   if (options.maxCostUsd !== undefined && options.profile.modelProxy === undefined && !ownSpends) {
     problems.push('a cost cap needs a modelProxy in the profile: without one, spend is unknown');
   }
@@ -511,6 +534,16 @@ export function preflight(options: RunOptions): void {
     problems.push(`environment variable ${keyEnv} is not set`);
   }
   problems.push(...attackerProblems(options));
+  // The judge needs a price, so --max-cost can hold its calls (ADR-0090).
+  if (
+    judges(options) &&
+    options.models?.judge !== undefined &&
+    options.models.judge.price === undefined
+  ) {
+    problems.push(
+      'models.judge has no price, so --max-cost could not be enforced: give it one, 0 for a local model',
+    );
+  }
   for (const c of options.cases) {
     if (!c.turns.some((turn) => turn.faults !== undefined)) continue;
     if (options.profile.modelProxy === undefined) {
@@ -1788,6 +1821,197 @@ function errored(sample: ExchangedSample | undefined): boolean {
   return (sample?.exchanges ?? []).some((exchange) => exchange.turn.error !== undefined);
 }
 
+/** The judge dimensions a turn asks for (ADR-0090). */
+function askedDimensions(expect: Readonly<Record<string, unknown>> | undefined): JudgeDimension[] {
+  const parsed = coreExpectations.judge.safeParse(expect?.['judge']);
+  return parsed.success ? parsed.data : [];
+}
+
+/** Whether a turn's answer can be judged: a usable 2xx answer, under no fault (ADR-0019). */
+function judgeable(view: TurnView): boolean {
+  return (
+    view.faults?.failure === undefined &&
+    view.unusable === undefined &&
+    answeredStatus(view.response.status)
+  );
+}
+
+/** Whether a case of the run asks the judge for a dimension (ADR-0090). */
+function judges(options: RunOptions): boolean {
+  return options.cases.some((c) => c.turns.some((turn) => askedDimensions(turn.expect).length > 0));
+}
+
+interface Judged {
+  /** The judge's check on each turn it was asked about. */
+  readonly byExchange: ReadonlyMap<Exchange, CheckResult>;
+  readonly summary?: NonNullable<Results['run']['judge']>;
+  readonly issues: readonly string[];
+}
+
+const JUDGE_CHECK = 'judge';
+
+/**
+ * The judge's verdicts on the answered turns that ask for them (ADR-0005,
+ * ADR-0090). Its calibration items first: one misjudged, or a judge that is
+ * the target's model, or none at all, and every verdict of the run is
+ * unmeasured. A verdict it can't give is unmeasured on its turn.
+ */
+async function judgeTurns(
+  options: RunOptions,
+  exchanged: readonly ExchangedCase[],
+  targetModels: ReadonlySet<string>,
+  spend: OwnSpend,
+  cap: Cap | undefined,
+): Promise<Judged> {
+  const asked = exchanged.flatMap((c) =>
+    c.samples.flatMap((sample) =>
+      sample.exchanges.flatMap((exchange) => {
+        // An answer the checks wouldn't judge, the judge doesn't either (ADR-0019).
+        const { view } = exchange;
+        const dimensions =
+          view !== undefined && judgeable(view) ? askedDimensions(view.expect) : [];
+        return dimensions.length === 0
+          ? []
+          : [{ exchange, dimensions, language: c.testCase.language }];
+      }),
+    ),
+  );
+  if (asked.length === 0) return { byExchange: new Map(), issues: [] };
+  const wanted = new Set(asked.flatMap((turn) => turn.dimensions));
+  const dimensions = JUDGE_DIMENSIONS.filter((dimension) => wanted.has(dimension));
+  const gated = dimensions.filter((dimension) => options.judge?.gate?.includes(dimension) === true);
+  const model = options.models?.judge;
+  const summary = (
+    calibration: NonNullable<Results['run']['judge']>['calibration'],
+    why?: string,
+  ) => ({
+    ...(model === undefined ? {} : { model: model.model }),
+    dimensions: [...dimensions],
+    gated,
+    calibration,
+    ...(why === undefined ? {} : { unmeasured: why }),
+  });
+  const unmeasured = (why: string): Map<Exchange, CheckResult> =>
+    new Map(
+      asked.map(({ exchange, dimensions: own }) => [
+        exchange,
+        {
+          check: JUDGE_CHECK,
+          applicable: true,
+          findings: [],
+          unmeasured: own.map((dimension) => ({ dimension, reason: why })),
+        },
+      ]),
+    );
+  const uncalibrated = { items: 0, misjudged: [] };
+  if (model === undefined) {
+    const why = 'no judge model: models.judge is not in the configuration';
+    return { byExchange: unmeasured(why), summary: summary(uncalibrated, why), issues: [] };
+  }
+  if (targetModels.has(model.model)) {
+    const why = `the judge's model, ${model.model}, is the target's: it must be another (ADR-0005)`;
+    return { byExchange: unmeasured(why), summary: summary(uncalibrated, why), issues: [why] };
+  }
+  const player = new JudgePlayer({
+    model,
+    env: options.env,
+    cacheDir: resolve(options.dataDir ?? resolve(options.profileDir, 'yokla-data'), 'judge'),
+    ...(options.freshJudge === true ? { fresh: true } : {}),
+  });
+  const notesOf = (dimension: JudgeDimension) =>
+    options.judge?.dimensions?.[dimension]?.notes ?? [];
+  /** One verdict, or why there is none; each call counted and capped. */
+  const verdictOn = async (
+    dimension: JudgeDimension,
+    language: string,
+    user: string,
+    answer: string,
+  ): Promise<{ verdict: 'pass' | 'fail'; reason: string } | { why: string }> => {
+    if (cap?.stopped() === true) return { why: 'the cost cap stopped the judge' };
+    try {
+      const { verdict, call } = await player.judge({
+        dimension,
+        language,
+        notes: notesOf(dimension),
+        user,
+        answer,
+      });
+      countSpend(spend, call);
+      await cap?.check();
+      return verdict ?? { why: "the judge's reply couldn't be read as a verdict" };
+    } catch (error) {
+      const why = error instanceof ModelClientError ? error.message : errorMessage(error);
+      return { why: `the judge model failed: ${why}` };
+    }
+  };
+  // The calibration: yokla's items in the turns' languages, and the person's examples.
+  const languages = new Set(asked.map((turn) => turn.language));
+  const items: CalibrationItem[] = [
+    ...CALIBRATION.filter((item) => wanted.has(item.dimension) && languages.has(item.language)),
+    ...dimensions.flatMap((dimension) =>
+      (options.judge?.dimensions?.[dimension]?.examples ?? []).map((example) => ({
+        dimension,
+        ...example,
+      })),
+    ),
+  ];
+  const misjudged: NonNullable<Results['run']['judge']>['calibration']['misjudged'] = [];
+  for (const item of items) {
+    const got = await verdictOn(item.dimension, item.language, item.user, item.answer);
+    if ('why' in got || got.verdict !== item.verdict) {
+      misjudged.push({
+        dimension: item.dimension,
+        language: item.language,
+        user: item.user,
+        expected: item.verdict,
+        ...('why' in got ? {} : { got: got.verdict }),
+      });
+    }
+  }
+  const calibration = { items: items.length, misjudged };
+  if (misjudged.length > 0) {
+    const why = `the judge misjudged ${String(misjudged.length)} of ${counted(items.length, 'calibration item')}, so its verdicts of the run are discarded`;
+    const named = misjudged.map(
+      (item) =>
+        `${item.dimension} (${item.language}) "${item.user}": ${item.expected} expected, ${item.got ?? 'no verdict'} given`,
+    );
+    return {
+      byExchange: unmeasured(why),
+      summary: summary(calibration, why),
+      issues: [`${why}: ${named.join('; ')}`],
+    };
+  }
+  const byExchange = new Map<Exchange, CheckResult>();
+  for (const { exchange, dimensions: own, language } of asked) {
+    const findings: CheckResult['findings'] = [];
+    const gaps: { dimension: string; reason: string }[] = [];
+    for (const dimension of own) {
+      const got = await verdictOn(
+        dimension,
+        language,
+        exchange.turn.user,
+        exchange.turn.response?.text ?? '',
+      );
+      if ('why' in got) gaps.push({ dimension, reason: got.why });
+      else {
+        findings.push({
+          dimension,
+          verdict: got.verdict,
+          severity: judgeSeverity(dimension),
+          message: got.reason,
+        });
+      }
+    }
+    byExchange.set(exchange, {
+      check: JUDGE_CHECK,
+      applicable: true,
+      findings,
+      ...(gaps.length === 0 ? {} : { unmeasured: gaps }),
+    });
+  }
+  return { byExchange, summary: summary(calibration), issues: [] };
+}
+
 /** Runs `worker` over `items` with at most `limit` in flight, keeping the input order. */
 async function pool<T, R>(
   items: readonly T[],
@@ -1927,6 +2151,7 @@ function judgeCase(
   observation: Observation,
   proxied: ProxiedCalls | undefined,
   spanned: SpannedCalls | undefined,
+  verdicts?: ReadonlyMap<Exchange, CheckResult>,
 ): CaseResult {
   const { testCase } = exchanged;
   const correlation = options.profile.target.observe?.logs?.correlate.by;
@@ -2027,7 +2252,9 @@ function judgeCase(
         languages: prepared.languages,
       });
       history.push(view);
-      return { ...turn, checks };
+      // The judge's verdicts on the answer join the checks' (ADR-0090).
+      const verdict = verdicts?.get(exchange);
+      return { ...turn, checks: verdict === undefined ? checks : [...checks, verdict] };
     });
     return {
       index: sample.index,
@@ -2275,7 +2502,10 @@ export async function runSuite(input: RunOptions): Promise<Results> {
           languages: prepared.languages,
         };
   const cap =
-    recording === undefined && simulation === undefined && options.attacker === undefined
+    recording === undefined &&
+    simulation === undefined &&
+    options.attacker === undefined &&
+    !judges(options)
       ? undefined
       : costCap(options, recording, ownSpend);
   const arm: Arm | undefined =
@@ -2473,8 +2703,17 @@ export async function runSuite(input: RunOptions): Promise<Results> {
       "no span carried a turn's trace id: the app may not pass the incoming traceparent on to its model calls",
     );
   }
+  // The judge's verdicts, once the target's models are known (ADR-0090).
+  const targetModels = new Set(
+    [
+      ...(records ?? []).map((record) => record.model),
+      ...(spanCalls ?? []).map((call) => call.model),
+    ].flatMap((model) => (model === null || model === undefined ? [] : [model])),
+  );
+  const verdicts = await judgeTurns(options, exchanged, targetModels, ownSpend, cap);
+  proxyIssues.push(...verdicts.issues);
   const judged = exchanged.map((c) => ({
-    ...judgeCase(options, prepared, c, observation, calls, spanned?.byTurn),
+    ...judgeCase(options, prepared, c, observation, calls, spanned?.byTurn, verdicts.byExchange),
     ...(c.stoppedEarly ? { samplesPlanned: c.planned } : {}),
   }));
   // The cases in the order they were given, with those the data no longer holds in
@@ -2613,7 +2852,7 @@ export async function runSuite(input: RunOptions): Promise<Results> {
     ...(stop === undefined ? [] : [stop]),
   ];
   const own =
-    simulation === undefined && rewrites === undefined && attack === undefined
+    simulation === undefined && rewrites === undefined && attack === undefined && !judges(options)
       ? undefined
       : ownSpend;
   const finishedAt = new Date();
@@ -2653,6 +2892,7 @@ export async function runSuite(input: RunOptions): Promise<Results> {
               cases: options.cases.filter(attacked).length,
             },
           }),
+      ...(verdicts.summary === undefined ? {} : { judge: verdicts.summary }),
       ...(coverage === undefined ? {} : { coverage }),
       ...(prepared.data.length === 0 ? {} : { data: prepared.data.map((file) => ({ ...file })) }),
       ...(replay === undefined

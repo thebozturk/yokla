@@ -5,6 +5,7 @@ import { Id, LanguageCode, Pattern, Provenance, SchemaRule, Suite } from './comm
 import { squeeze } from '../text/match.ts';
 import { FaultPlan } from './fault.ts';
 import { DescriptionInjection, ToolInjection } from './proxy.ts';
+import { JUDGE_DIMENSIONS } from '../judge/dimensions.ts';
 
 export const KnownGap = z.strictObject({
   reason: z.string().min(1),
@@ -48,6 +49,10 @@ export const coreExpectations = {
   request: z.enum(REQUEST_KINDS).meta({
     description:
       'What kind of request the turn is, judged by request-handled (ADR-0075): chitchat (a greeting, thanks, small talk), handoff (the user asks for a person) or support (a question about their own order, payment, account, return or delivery).',
+  }),
+  judge: z.array(z.enum(JUDGE_DIMENSIONS)).min(1).meta({
+    description:
+      "The dimensions models.judge decides on this turn's answer, where no rule can (ADR-0090). Advisory unless judge.gate lists them.",
   }),
   similar: z
     .strictObject({

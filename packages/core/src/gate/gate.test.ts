@@ -261,6 +261,7 @@ describe('YoklaConfig', () => {
     expect(YoklaConfig.parse({ version: 1 })).toEqual({
       version: 1,
       gate: {},
+      judge: {},
       prices: {},
       models: {},
       checks: [],

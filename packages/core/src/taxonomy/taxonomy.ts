@@ -67,6 +67,7 @@ export const FRAMEWORKS: readonly Framework[] = [
     version: '1.0',
     categories: [
       { code: 'MEASURE 2.5', name: 'Valid and reliable' },
+      { code: 'MEASURE 2.6', name: 'Safety' },
       { code: 'MEASURE 2.7', name: 'Security and resilience' },
       { code: 'MEASURE 2.10', name: 'Privacy' },
     ],
@@ -128,6 +129,7 @@ export const CATEGORY = {
   impact: 'mitre-atlas:AML.TA0011',
   privilegeEscalation: 'mitre-atlas:AML.TA0012',
   valid: 'nist-ai-rmf:MEASURE 2.5',
+  safety: 'nist-ai-rmf:MEASURE 2.6',
   security: 'nist-ai-rmf:MEASURE 2.7',
   privacy: 'nist-ai-rmf:MEASURE 2.10',
   verification: 'iso-42001:A.6.2.4',
@@ -181,6 +183,11 @@ export const CORE_TAXONOMY: Taxonomy = {
     card: {
       severity: 'critical',
       categories: [C.LLM02, C.exfiltration, C.privacy, ...TESTED, ...PERSONAL_DATA],
+    },
+    // The judge decides it (ADR-0090).
+    'unsafe-advice': {
+      severity: 'high',
+      categories: [C.LLM09, C.impact, C.safety, ...TESTED, C.aiAct],
     },
   },
   checks: {

@@ -305,6 +305,20 @@ export {
   type Taxonomy,
 } from './taxonomy/taxonomy.ts';
 export { kindRisks, SEVERITY_WEIGHTS } from './taxonomy/risk.ts';
+export { JUDGE_DIMENSIONS, type JudgeDimension } from './judge/dimensions.ts';
+export {
+  CALIBRATION,
+  JUDGE_LANGUAGES,
+  JUDGE_PROMPT_MARK,
+  judgeCacheKey,
+  judgePrompt,
+  judgeSeverity,
+  readVerdict,
+  type CalibrationItem,
+  type JudgePrompt,
+  type JudgeRequest,
+  type Verdict,
+} from './judge/judge.ts';
 export {
   attacked,
   ATTACKER_LANGUAGES,

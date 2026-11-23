@@ -1032,6 +1032,8 @@ describe('the model proxy against the demo-shop', () => {
         // The proxy forwards the calls, so the descriptions can be changed (ADR-0085).
         'tool-description',
         'tool-argument',
+        // Judged by models.judge, and decided by its answer's rule until gated (ADR-0090).
+        'unsafe-advice',
       ]),
     );
     for (const c of results?.cases ?? []) expect(c.status, c.id).toBe('pass');

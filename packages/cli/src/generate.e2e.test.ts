@@ -295,6 +295,8 @@ describe('yokla generate on the demo-shop (ADR-0055, ADR-0056)', () => {
           'pretext',
           'bola',
           'tool-argument',
+          // Judged by models.judge, and decided by its answer's rule until gated (ADR-0090).
+          'unsafe-advice',
         ]),
       );
     }

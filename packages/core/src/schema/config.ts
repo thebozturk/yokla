@@ -2,7 +2,8 @@
 // the profile, it is a config file: unknown keys are errors.
 
 import { z } from 'zod';
-import { Id, Suite } from './common.ts';
+import { Id, LanguageCode, Suite } from './common.ts';
+import { JUDGE_DIMENSIONS } from '../judge/dimensions.ts';
 
 const Thresholds = z.strictObject({
   maxFailures: z
@@ -103,6 +104,39 @@ export const YoklaConfig = z.strictObject({
       description:
         'Per upstream id, per model as the provider reports it (ADR-0012). A model without a price has no cost.',
     }),
+  judge: z
+    .strictObject({
+      gate: z.array(z.enum(JUDGE_DIMENSIONS)).optional().meta({
+        description:
+          'The judge dimensions that gate: one failing sample fails the case. Every other one is advisory (ADR-0005, ADR-0090).',
+      }),
+      dimensions: z
+        .partialRecord(
+          z.enum(JUDGE_DIMENSIONS),
+          z.strictObject({
+            notes: z.array(z.string().min(1)).optional().meta({
+              description: "Notes added to the dimension's rubric in the judge's prompt.",
+            }),
+            examples: z
+              .array(
+                z.strictObject({
+                  language: LanguageCode,
+                  user: z.string().min(1),
+                  answer: z.string().min(1),
+                  verdict: z.enum(['pass', 'fail']),
+                }),
+              )
+              .optional()
+              .meta({
+                description:
+                  'Graded examples: calibration items the judge must grade right in every run, or its verdicts of the run are unmeasured.',
+              }),
+          }),
+        )
+        .optional(),
+    })
+    .default({})
+    .meta({ description: 'The calibrated judge (ADR-0090).' }),
   models: z
     .strictObject({
       customer: OwnModel.optional().meta({
@@ -116,6 +150,10 @@ export const YoklaConfig = z.strictObject({
       attacker: OwnModel.optional().meta({
         description:
           "The model yokla run --attacker uses to adapt the redteam cases' attacks (ADR-0087). A hosted model receives the attacks and the target's answers. It needs a price, 0 for a local model, so --max-cost can be enforced.",
+      }),
+      judge: OwnModel.optional().meta({
+        description:
+          "The model that decides the judge's dimensions of a turn's answer (ADR-0090). It must differ from the target's model. A hosted model receives the turns' messages and the target's answers. It needs a price, 0 for a local model, so --max-cost can be enforced.",
       }),
       analyzer: AnalyzerModel.optional().meta({
         description:
