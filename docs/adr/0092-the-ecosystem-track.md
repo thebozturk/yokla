@@ -1,6 +1,6 @@
 # 0092. The ecosystem track: v0.6 in six items
 
-Status: Proposed · Date: 2026-11-23 · Amends 0007
+Status: Accepted · Date: 2026-11-23 · Amends 0007
 
 ## Context
 
