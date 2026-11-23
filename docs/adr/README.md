@@ -103,6 +103,7 @@ old one.
 | [0088](0088-more-attacker-strategies.md) | More attacker strategies (R5b) | Accepted |
 | [0089](0089-findings-mapped-to-frameworks.md) | Findings mapped to frameworks (R6) | Accepted |
 | [0090](0090-a-calibrated-judge.md) | A calibrated judge (R7) | Accepted |
+| [0091](0091-more-judge-dimensions.md) | More judge dimensions (R7b) | Proposed |
 
 ## Template
 
