@@ -34,7 +34,7 @@ wrong value came from.
   calls, and a turn can break the provider on purpose.
 - **Nothing leaves your machine.** No telemetry, no account, no cloud.
 
-**Status: v0.4.** Turkish and English are first-class. The e-commerce pack is
+**Status: v0.5.** Turkish and English are first-class. The e-commerce pack is
 the first domain pack.
 
 ## Quick start
@@ -132,6 +132,25 @@ answer, or only in your app's code after the model call.
   verdict that moved. With a model you configure, it also paraphrases them,
   or mixes Turkish and English as shoppers do, keeping every amount and
   value your checks look for.
+
+**Red teaming**
+- **`yokla generate --redteam`** writes attack cases from your catalog and
+  profile, in Turkish and English, for a person to approve: prompt
+  injection and system-prompt extraction, price manipulation and promises
+  no policy gives, another customer's order and personal data, card
+  numbers, injection through tool descriptions, tool arguments and memory,
+  order fraud, a role's forbidden tools, and restrictions on age, region
+  and quantity. Deterministic checks judge each one, by a canary or a value
+  from your data.
+- **`yokla run --strategy`** sends the attacks encoded or wrapped, and
+  **`--attacker`** has a model you choose adapt them: turn by turn, in many
+  attempts, as variants of variants, or in your profile's other language.
+- **Findings map to frameworks:** OWASP LLM and Agentic, MITRE ATLAS, NIST
+  AI RMF, ISO/IEC 42001, GDPR, KVKK and the EU AI Act, with a risk score
+  per attack kind. The mapping is yokla's, not a compliance assessment.
+- **A calibrated judge** decides what no rule can, such as unsafe advice,
+  bias or imitation. It must grade its calibration right in every run, and
+  gates nothing until you list a dimension.
 
 **Your own rules**
 - Regular expressions on the answer, a JSON Schema on the response, and
@@ -269,8 +288,6 @@ upstreams your profile names. An egress test in CI holds yokla to that.
 
 ## Roadmap
 
-- **v0.5:** red teaming with local attack generation, mapped to OWASP, GDPR
-  and KVKK, and the EU AI Act.
 - **v0.6:** import and export for other evaluation tools, a GitHub Action and
   a library API.
 

@@ -4,6 +4,103 @@ Notable changes per version. Versions follow the roadmap in
 [design §20](docs/design.md#20-roadmap); a version ships when its exit criteria
 hold.
 
+## 0.5.0 — 2026-11-23
+
+Red teaming, built as the track of ADR-0079: `yokla generate --redteam`
+writes attack cases in Turkish and English from templates, judged by
+deterministic checks; `yokla run` sends them encoded or wrapped, through
+the tools' descriptions and arguments, as other customers and roles, or
+adapted by an attacker model; findings map to OWASP, MITRE ATLAS, NIST AI
+RMF, ISO/IEC 42001, GDPR, KVKK and the EU AI Act with a risk score per
+attack kind; and a calibrated judge decides what no rule can, without
+gating until a person says so.
+
+**Exit criteria.** v0.5 ships with its criteria met.
+- **The demo-shop's injection, leakage and BOLA defects are detected
+  deterministically,** each by its own check, and the correct shop passes
+  every attack case.
+- **The egress test passes:** every red-team end-to-end test contacts
+  nothing but the demo-shop and its fake provider.
+- **Each item of the track meets its own** (design §20): template attacks
+  (ADR-0080, ADR-0082), leakage and another customer's data (ADR-0083),
+  encoding and wrapping strategies (ADR-0084), injection through tools and
+  memory (ADR-0085), agency and authority (ADR-0086), an attacker model
+  (ADR-0087, ADR-0088), findings mapped to frameworks (ADR-0089), and a
+  calibrated judge (ADR-0090, ADR-0091).
+
+### Added
+
+- **Attack cases from templates (ADR-0080, ADR-0082).** `yokla generate
+  --redteam` writes proposed cases of the `redteam` suite: a domain pack
+  holds the goals, a language pack their wording, and each case carries a
+  fresh canary or a value a check looks for. Kinds: direct injection in
+  five styles and hidden in invisible characters, system-prompt
+  extraction, price manipulation and unauthorised commitments (the new
+  check `concession`), competitor steering, a policy stated wrongly,
+  cost abuse, the assistant's internals (`internals-leak`), and age,
+  region and quantity restrictions the profile declares.
+- **Leakage and another customer's data (ADR-0083).** A profile declares
+  identities, each with its own request values and seeded personal data,
+  and a turn's `as` sends it as one. New checks: `pii-leak`, for seeded
+  data in an answer, and `card-number`, for a full card number that passes
+  Luhn. Kinds: another customer's order by its id, personal data asked by
+  pretext, a note left in one session asked in another, and a card number
+  written back.
+- **Encoding and wrapping strategies (ADR-0084).** `yokla run --strategy`
+  sends each `redteam` message in Base64, hex, ROT13, Morse, hidden
+  characters, leetspeak or look-alike letters, or wrapped as a role-play,
+  a hypothetical or a developer mode, or two in layers; the case keeps its
+  definition, so the gate and `yokla compare` judge it.
+- **Injection through tools and memory (ADR-0085).** A turn's
+  `toolDescriptions` has the proxy append an instruction to the tools'
+  descriptions; `toolArguments.notContains` and the new check
+  `tool-argument-marker` fail a payload's marker in a tool's arguments.
+  Kinds: tool-description, tool-argument (SQL, shell and URL) and memory
+  poisoning across customers.
+- **Agency and authority (ADR-0086).** Identities carry a role, roles
+  forbid tools, and `tool-calls` gains `atMost`. Kinds: order fraud,
+  excessive agency, privilege and quantity past the shop's limit.
+- **An attacker model (ADR-0087, ADR-0088).** `yokla run --attacker`
+  adapts each one-turn attack case with `models.attacker`: `escalation`,
+  turn by turn; `best-of-n` and `iterative`, an attempt per sample, the
+  latter from the earlier attempts' answers; `tree`, variants of variants
+  within `--branches` and `--depth`; and `translate`, in the profile's
+  other languages, judged in each. Each stops at the first deterministic
+  failure; replies are cached in `yokla-data/attacker/`, and the spend
+  counts in `--max-cost`.
+- **Findings mapped to frameworks (ADR-0089).** Every attack kind, and
+  every check that judges security, privacy or a claim, maps to OWASP LLM
+  2025 and Agentic 2026 categories, MITRE ATLAS tactics, NIST AI RMF
+  Measure subcategories, ISO/IEC 42001 A.6.2.4, GDPR Article 32, KVKK
+  Article 12 and EU AI Act Articles 15 and 50. The results keep the
+  mapping and each kind's risk: 10 × its severity's weight × its attack
+  success rate, with its interval. `gate.maxRisk` gates on it, off by
+  default. The reports group failing findings by framework, and say the
+  mapping is not a compliance assessment.
+- **A calibrated judge (ADR-0090, ADR-0091).** `models.judge` decides the
+  dimensions a turn's `judge` expectation names: unsafe advice,
+  hijacking, restrictions no rule states, bias, political and religious
+  statements, harmful content, imitation and unverifiable claims, each
+  with yokla's rubric, the person's notes, and an attack kind. It grades
+  yokla's calibration items and the person's graded examples first; one
+  misjudged, and its verdicts of the run are unmeasured. Its dimensions
+  are advisory unless `judge.gate` lists them, and unmeasured without a
+  judge or when the target calls the judge's model.
+- **A turn says what kind of request it is (ADR-0075).** `expect.request`
+  is `chitchat`, `handoff` or `support`, and the new check
+  `request-handled` fails one answered with products, a failed search, or,
+  for a handoff, no way to reach a person.
+- **Cases weighted and grouped (ADR-0076, ADR-0077).** A case's `weight`
+  gives a weighted pass rate beside the plain one; tags group the summary
+  and the report, and `yokla run --tag` selects the cases a run sends.
+
+### Changed
+
+- **A cached reply needs no key (ADR-0078).** The analyzer and the
+  transforms, and the judge (ADR-0090), ask for their model's key only
+  when a reply isn't cached; the simulated customer and the attacker check
+  it when the run starts.
+
 ## 0.4.3 — 2026-11-20
 
 The analyzer's model step reads what can answer its questions first.
