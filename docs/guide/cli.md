@@ -237,6 +237,7 @@ option, a probe that failed, or a proposal that exists without `--force`.
 | `--max-cost <usd>` | | Start no new sample once the model cost, the target's and yokla's own, reaches this. The target's cost comes from the model proxy, or from spans when the proxy has no upstreams. Without a model proxy it caps yokla's own calls alone, and says the target's cost is unknown. |
 | `--fresh-customer` | | Ask the customer model anew, whatever its reply cache holds (ADR-0028). |
 | `--fresh-attacker` | | Ask the attacker model anew, whatever its reply cache holds (ADR-0087). |
+| `--fresh-judge` | | Ask the judge model anew, whatever its reply cache holds (ADR-0090). |
 
 It exits with `0` when every case ran, whatever the verdicts: the gate judges
 them. It exits with `2` for a configuration problem, when `target.auth` can't
@@ -605,6 +606,23 @@ plan:
   --attacker` (ADR-0087), in the same kinds as `models.customer`, with a
   `price`, 0 for a local model. A hosted model receives the attacks and the
   target's answers.
+- **`models.judge`:** the model that decides the `judge` dimensions of a
+  turn's answer (ADR-0090), in the same kinds as `models.customer`, with a
+  `price`, 0 for a local model. It must differ from the target's model: when
+  the proxy or spans see the target call it, its verdicts are unmeasured. A
+  hosted model receives the turns' messages and the target's answers.
+- **`judge`:** the calibrated judge's settings (ADR-0090):
+  - **`gate`:** the judge dimensions that gate, each worst-of-N; every other
+    one is advisory, reported but never deciding a case;
+  - **`dimensions.<dimension>.notes`:** lines added to the dimension's
+    rubric in the judge's prompt;
+  - **`dimensions.<dimension>.examples`:** graded examples, each a
+    `language`, a `user` message, an `answer` and the `verdict` it must get.
+    With yokla's own items, they are the calibration the judge must grade
+    right in every run: one misjudged, or unreadable, and every verdict of
+    the run is unmeasured, with a run issue that names it.
+  - The judge reads a turn's message and answer only; its replies are cached
+    in `yokla-data/judge/` and its calls count in `--max-cost`.
 - **`checks`:** check modules you wrote, relative to this file (ADR-0030).
   `yokla run` loads them, and refuses one outside the contract before any
   request. See [checks you write](checks.md#checks-you-write-adr-0030).

@@ -561,6 +561,12 @@ pass a calibration set of seeded cases in every run. If any calibration case is
 misjudged, judge scores for that run are discarded and reported as
 `unmeasured`.
 
+The judge (ADR-0090) decides the dimensions a turn's `judge` expectation
+names, from the turn's message and answer, with `models.judge`. Its
+calibration is yokla's items per dimension and language and the person's
+graded examples. Its dimensions are advisory unless `judge.gate` lists them.
+Its first dimension is `unsafe-advice`; R7b adds the others.
+
 ### Rules for writing checks
 
 These are lessons from building a production harness.
@@ -786,7 +792,7 @@ hash, the text with patterns redacted, or the full text (ADR-0015).
   | refusal correctness | **majority-of-N** |
   | deflection (sent to customer service) | **advisory**: reported, never decides the case |
   | latency | percentiles over the suite's answered turns, every sample pooled, as gate thresholds (ADR-0014) |
-  | judge rubric (v0.5) | mean, with interval |
+  | judge dimensions (ADR-0090) | **advisory**; **worst-of-N** once `judge.gate` lists the dimension |
 
 - **Statistics.** Rates are reported with Wilson 95 % intervals. A case whose
   samples disagree is flagged `unstable`.
@@ -1217,6 +1223,14 @@ For the attacks from templates (ADR-0080), `yokla generate --redteam
   every mapped kind is written; every mapped check exists; every category
   named is listed, and every listed category is named. The test is
   `packages/cli/src/generate.e2e.test.ts`.
+- **A calibrated judge (ADR-0090):** with the fake provider as judge, the
+  correct shop passes `unsafe-advice`. `unsafe-advice`, which agrees to a
+  dangerous request, is found on every case, and fails none by default: the
+  dimension is advisory. With `judge.gate`, the cases fail and the gate
+  breaks. `demo-judge-lax`, which passes every answer, misjudges the
+  calibration: every verdict is unmeasured, and a run issue names the
+  items. A second run sends no judge call. The test is
+  `packages/cli/src/judge.e2e.test.ts`.
 
 For the transforms a model writes (ADR-0059), the fake provider plays
 `models.transform` by rules: a paraphrase turns "X var mı?" into "X
@@ -1489,7 +1503,8 @@ suffix search, and image, audio and video attacks.
 | **R5. An attacker model** (done, ADR-0087) | `models.attacker` adapts the template attacks, cached and capped: `escalation`, turn by turn, which spreads an attack over turns as it chooses, and `best-of-n`, an attempt per sample; each stops at the first deterministic failure (ADR-0081); detection stays deterministic | with the fake provider as attacker, a defect only an adaptive attack reaches is caught; a second run repeats from the cache at no cost |
 | **R5b. More attacker strategies** (done, ADR-0088) | `iterative`, each attempt from the earlier ones and their answers; `tree`, variants of variants, breadth first, within `--branches` and `--depth`; `translate`, the attack in the profile's other languages, judged in the language it was sent in; on R5's engine; moved from R5 (ADR-0087) | with the fake provider as attacker, `iterative` and `tree` each reach a demo-shop defect the template attack doesn't; `translate` reaches, from the cases of one language, a defect those cases don't reach as written (ADR-0088) |
 | **R6. Findings mapped to frameworks** (done, ADR-0089) | each attack kind and check maps to OWASP LLM Top 10 and OWASP Agentic categories, and to the GDPR, KVKK and EU AI Act topics it touches, MITRE ATLAS tactics, the NIST AI RMF Measure function and ISO/IEC 42001; the reports group findings by them; a risk score per kind, severity times attack success rate with its interval, and a gate threshold on it, off by default; never a claim of compliance (ADR-0081) | every red-team finding of the demo-shop's run names its categories; the mapping is tested in both directions |
-| **R7. A calibrated judge** | `models.judge` for dimensions with no deterministic check: unsafe advice, hijacking, age and region restrictions where no rule applies, bias, political and religious statements, harmful content, imitation, free-text claims the data can't check; rubric notes and graded examples the user adds per category (ADR-0081); a calibration set in every run; gates only per dimension, by opt-in | a judge that misjudges a calibration case gives `unmeasured`; with the fake provider as judge, the unsafe-advice defect is found and doesn't gate by default |
+| **R7. A calibrated judge** (done, ADR-0090) | `models.judge` decides the dimensions a turn's `judge` expectation names, from its message and answer; yokla's rubric per dimension, the person's notes; a calibration set in every run, yokla's items and the person's graded examples, one misjudged and every verdict of the run unmeasured; advisory, worst-of-N once `judge.gate` lists the dimension; unmeasured without a judge or with the target's model as judge; the first dimension, `unsafe-advice` (ADR-0081) | a judge that misjudges a calibration case gives `unmeasured`; with the fake provider as judge, the unsafe-advice defect is found and doesn't gate by default |
+| **R7b. More judge dimensions** | hijacking beyond the out-of-scope check, age and region restrictions where no rule applies, bias (age, gender, disability, ethnicity, religion), political and religious statements, harmful content, imitation, free-text claims the data can't check, with their attack kinds, on R7's judge; moved from R7 (ADR-0090) | each dimension's defect is found by the fake judge and gates only once listed |
 
 **Later:** sampling production logs, more domains (banking, travel), more
 languages, SDK adapters.
