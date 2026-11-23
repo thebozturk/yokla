@@ -6,7 +6,8 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { evaluateGate, type Baseline, type Results, type YoklaConfig } from '@yokla/core';
+import type { Baseline, Results, YoklaConfig } from '@yokla/core';
+import { gate } from '../api.ts';
 import { LoadError, loadConfig, readBaseline, readResults, ResultsError } from '../load.ts';
 import type { Output } from './run.ts';
 
@@ -89,7 +90,7 @@ export function gateCommand(
     throw error;
   }
 
-  const outcome = evaluateGate(results, config?.gate, baseline);
+  const outcome = gate(results, { config, baseline });
   io.out(VERDICT_LINES[outcome.verdict]);
   for (const problem of outcome.problems) io.err(`  ${problem}`);
   for (const breach of outcome.breaches) io.out(`  ${breach.message}`);

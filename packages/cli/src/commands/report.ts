@@ -4,7 +4,7 @@
 
 import { parseArgs } from 'node:util';
 import type { Results } from '@yokla/core';
-import { htmlReport, junitXml, terminalSummary } from '@yokla/report';
+import { htmlReport, junitReport, terminalReport } from '../api.ts';
 import { readResults, ResultsError } from '../load.ts';
 import { writeReport, type Output } from './run.ts';
 
@@ -57,10 +57,11 @@ export function reportCommand(args: readonly string[], io: Output): number {
     }
     throw error;
   }
-  const summary = terminalSummary(results);
+  const summary = terminalReport(results);
   for (const line of summary.out) io.out(line);
   for (const line of summary.err) io.err(line);
-  if (values.junit !== undefined) io.out(`junit: ${writeReport(values.junit, junitXml(results))}`);
+  if (values.junit !== undefined)
+    io.out(`junit: ${writeReport(values.junit, junitReport(results))}`);
   if (values.html !== undefined) io.out(`html: ${writeReport(values.html, htmlReport(results))}`);
   return 0;
 }

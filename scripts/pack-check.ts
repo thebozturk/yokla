@@ -10,6 +10,7 @@
 
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -30,6 +31,9 @@ const MINIMUM_RELEASE_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const DEMO_SHOP_START_TIMEOUT_MS = 10_000;
 /** The repository trusted publishing matches each package against (ADR-0037). */
 const REPOSITORY = 'git+https://github.com/thebozturk/yokla.git';
+
+/** The library API's example the guide shows (ADR-0093). */
+const EXAMPLE = 'packages/cli/examples/run-and-gate.ts';
 
 function fail(message: string): never {
   throw new Error(message);
@@ -218,6 +222,24 @@ async function smoke(packages: readonly Packed[], workDir: string): Promise<void
     const results = readdirSync(join(starter, 'runs')).filter((file) => file.endsWith('.json'));
     if (results.length !== 1) fail(`yokla run wrote ${String(results.length)} results files`);
     console.log(`pack-check: yokla run of the starter cases against the demo-shop:\n${summary}`);
+
+    // The library API's example, importing yokla from the installed package
+    // (ADR-0093): a results file the gate can judge, so it exits with 0 or 1.
+    const example = join(project, 'run-and-gate.ts');
+    copyFileSync(EXAMPLE, example);
+    const ran = spawnSync(process.execPath, [example], { cwd: starter, encoding: 'utf8' });
+    if (ran.error !== undefined) throw ran.error;
+    if (ran.status !== 0 && ran.status !== 1) {
+      fail(`node run-and-gate.ts exited with ${String(ran.status)}\n${ran.stdout}${ran.stderr}`);
+    }
+    const written = readdirSync(join(starter, 'runs')).filter(
+      (file) => file.endsWith('.json') && !results.includes(file),
+    );
+    if (written.length !== 1) fail(`run-and-gate.ts wrote ${String(written.length)} results files`);
+    if (!/^gate: (?:pass|broken)$/mu.test(ran.stdout)) {
+      fail(`run-and-gate.ts printed no verdict:\n${ran.stdout}${ran.stderr}`);
+    }
+    console.log(`pack-check: the library API's example against the demo-shop:\n${ran.stdout}`);
   } finally {
     child.kill();
   }

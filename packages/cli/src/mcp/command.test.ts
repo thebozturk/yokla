@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 import { mcpCommand } from '../commands/mcp.ts';
-import { prepareRun } from '../prepare.ts';
+import { loadFiles } from '../prepare.ts';
 
 const PROFILE = `version: 1
 target:
@@ -110,13 +110,10 @@ describe('yokla mcp (ADR-0041)', () => {
     writeFileSync(join(dir, 'cases', 'a.min.yaml'), CASE('a-min'));
     const elsewhere = join(dir, 'b.min.yaml');
     writeFileSync(elsewhere, CASE('b-min'));
-    const prepared = await prepareRun(
-      {
-        profile: join(dir, 'yokla.profile.yaml'),
-        alsoCases: [join(dir, 'cases', 'a.min.yaml'), elsewhere],
-      },
-      '0',
-    );
+    const prepared = await loadFiles({
+      profile: join(dir, 'yokla.profile.yaml'),
+      alsoCases: [join(dir, 'cases', 'a.min.yaml'), elsewhere],
+    });
     // A directory loads its files in name order; a file it holds isn't loaded twice.
     expect(prepared.cases.map((c) => c.id)).toEqual(['a-min', 'a', 'b-min']);
   });

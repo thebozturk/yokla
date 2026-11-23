@@ -20,16 +20,22 @@ import {
   TRANSFORM_KINDS,
   TransformKind,
   type Strategy,
-  type Cassette,
   type ModelSwap,
   type Profile,
   type Results,
   type ToolReversal,
 } from '@yokla/core';
-import { htmlReport, junitXml, terminalSummary } from '@yokla/report';
-import { ConfigError, runSuite, type RewritePlan } from '@yokla/runtime';
+import { ConfigError, type RewritePlan } from '@yokla/runtime';
+import {
+  htmlReport,
+  junitReport,
+  loadProject,
+  run,
+  terminalReport,
+  type RunOptions,
+} from '../api.ts';
 import { LoadError } from '../load.ts';
-import { prepareRun, readCassette } from '../prepare.ts';
+import { readCassette } from '../prepare.ts';
 
 export interface Output {
   out(line: string): void;
@@ -157,12 +163,15 @@ function boundedInt(value: string | undefined, name: string, max: number): numbe
   return number;
 }
 
-/** The attacker of yokla run --attacker, with its bounds, from the command line (ADR-0087, ADR-0088). */
+/**
+ * The attacker of yokla run --attacker, with its bounds, from the command line
+ * (ADR-0087, ADR-0088); --fresh-attacker goes with it, as the API's fresh.attacker.
+ */
 export function parseAttacker(
   values: Partial<Readonly<Record<AttackerBound | 'attacker', string | undefined>>> & {
     readonly 'fresh-attacker'?: boolean | undefined;
   },
-): (AttackerRun & { fresh?: boolean }) | undefined {
+): AttackerRun | undefined {
   const { attacker } = values;
   if (attacker === undefined) {
     for (const flag of [...ATTACKER_BOUNDS, 'fresh-attacker'] as const) {
@@ -179,13 +188,11 @@ export function parseAttacker(
       throw new LoadError(`--${flag} doesn't go with --attacker ${strategy}`);
     }
   }
-  const fresh = values['fresh-attacker'] === true ? { fresh: true } : {};
   switch (strategy) {
     case 'escalation': {
       return {
         strategy,
         limit: positiveInt(values['max-turns'], 'max-turns') ?? DEFAULT_MAX_TURNS,
-        ...fresh,
       };
     }
     case 'best-of-n':
@@ -193,7 +200,6 @@ export function parseAttacker(
       return {
         strategy,
         limit: positiveInt(values.attempts, 'attempts') ?? DEFAULT_ATTEMPTS,
-        ...fresh,
       };
     }
     case 'tree': {
@@ -201,11 +207,10 @@ export function parseAttacker(
         strategy,
         branches: boundedInt(values.branches, 'branches', MAX_BRANCHES) ?? DEFAULT_BRANCHES,
         depth: boundedInt(values.depth, 'depth', MAX_DEPTH) ?? DEFAULT_DEPTH,
-        ...fresh,
       };
     }
     case 'translate': {
-      return { strategy, ...fresh };
+      return { strategy };
     }
   }
 }
@@ -219,24 +224,6 @@ export function parseTransform(text: string): TransformKind {
   return kind.data;
 }
 
-/**
- * The cases with any of the tags (ADR-0077), in their order; every case
- * without tags given. No case left is a configuration problem: a run of
- * nothing would pass any gate.
- */
-export function selectByTags<C extends { readonly tags: readonly string[] }>(
-  cases: readonly C[],
-  tags: readonly string[],
-): C[] {
-  if (tags.length === 0) return [...cases];
-  const wanted = new Set(tags);
-  const selected = cases.filter((c) => c.tags.some((tag) => wanted.has(tag)));
-  if (selected.length === 0) {
-    throw new LoadError(`no case has the tag ${tags.map((tag) => `"${tag}"`).join(' or ')}`);
-  }
-  return selected;
-}
-
 function positiveInt(value: string | undefined, name: string): number | undefined {
   if (value === undefined) return undefined;
   const number = Number(value);
@@ -246,7 +233,7 @@ function positiveInt(value: string | undefined, name: string): number | undefine
 }
 
 export function printSummary(results: Results, outPath: string, io: Output): void {
-  const summary = terminalSummary(results);
+  const summary = terminalReport(results);
   for (const line of summary.out) io.out(line);
   for (const line of summary.err) io.err(line);
   io.out(`results: ${outPath}`);
@@ -292,17 +279,77 @@ const RUN_OPTIONS = {
   help: { type: 'boolean' },
 } as const;
 
-function parseRunArgs(args: readonly string[]) {
+/** yokla run's flags, as parseArgs reads them. */
+export type RunFlags = ReturnType<typeof parseRunArgs>;
+
+export function parseRunArgs(args: readonly string[]) {
   return parseArgs({ args: [...args], options: RUN_OPTIONS, strict: true, allowPositionals: false })
     .values;
 }
 
-export async function runCommand(
-  args: readonly string[],
-  io: Output,
-  version: string,
-): Promise<number> {
-  let values: ReturnType<typeof parseRunArgs>;
+/**
+ * yokla run's flags as the library API's run options (ADR-0093), each checked
+ * as its flag; the cassette to replay is read from its file. What the model's
+ * transforms will take is printed to `io`.
+ */
+export function runOptionsOf(values: RunFlags, profile: Profile, io: Output): RunOptions {
+  const samples = positiveInt(values.samples, 'samples');
+  const concurrency = positiveInt(values.concurrency, 'concurrency');
+  const maxCost = values['max-cost'] === undefined ? undefined : Number(values['max-cost']);
+  if (maxCost !== undefined && !(Number.isFinite(maxCost) && maxCost > 0)) {
+    throw new LoadError('--max-cost must be a positive number of USD');
+  }
+  if (values.record !== undefined && values.replay !== undefined) {
+    throw new LoadError('--record and --replay go one at a time');
+  }
+  if (values['replay-loose'] === true && values.replay === undefined) {
+    throw new LoadError('--replay-loose needs --replay');
+  }
+  // A cassette answers the model calls instead of the provider (ADR-0040).
+  const replayed = values.replay === undefined ? undefined : readCassette(values.replay);
+  return {
+    // Only the cases with one of the tags asked for (ADR-0077).
+    tags: values.tag,
+    samples,
+    stopEarly: values['stop-early'],
+    concurrency,
+    targetUrl: values['target-url'],
+    proxyUrl: values['proxy-url'],
+    maxCostUsd: maxCost,
+    record: values.record !== undefined,
+    replay:
+      replayed === undefined
+        ? undefined
+        : { ...replayed, ...(values['replay-loose'] === true ? { loose: true } : {}) },
+    // Calls that ask for a model go to another (ADR-0042).
+    swaps: (values['swap-model'] ?? []).map((text) => parseSwap(text, profile)),
+    // Arrays in every result of a tool, reversed before the model sees them (ADR-0043).
+    reversals: (values['reverse-items'] ?? []).map(parseReversal),
+    // Each written message as users write it (ADR-0045).
+    transforms: (values.transform ?? []).map(parseTransform),
+    // Each message of a redteam case, encoded or wrapped (ADR-0084).
+    strategy: values.strategy === undefined ? undefined : parseStrategyOption(values.strategy),
+    // Each redteam case of one turn, adapted by the attacker model (ADR-0087).
+    attacker: parseAttacker(values),
+    fresh: {
+      customer: values['fresh-customer'],
+      attacker: values['fresh-attacker'],
+      judge: values['fresh-judge'],
+    },
+    // What the model's transforms will take, before any is asked (ADR-0059).
+    onTransformPlan: (plan: RewritePlan) => {
+      io.out(
+        `transform: ${String(plan.messages)} message(s) to rewrite with ${plan.model} at ${plan.url}; their text goes there`,
+      );
+      io.out(
+        `  ${String(plan.calls)} call(s) at most, ${String(plan.cached)} from the cache; at most ${plan.upperUsd === null ? 'an unknown cost' : `$${plan.upperUsd.toFixed(4)}`}`,
+      );
+    },
+  };
+}
+
+export async function runCommand(args: readonly string[], io: Output): Promise<number> {
+  let values: RunFlags;
   try {
     values = parseRunArgs(args);
   } catch (error) {
@@ -316,92 +363,24 @@ export async function runCommand(
   }
 
   try {
-    const prepared = await prepareRun(
-      {
-        profile: values.profile,
-        cases: values.cases,
-        config: values.config,
-        targetUrl: values['target-url'],
-        proxyUrl: values['proxy-url'],
-      },
-      version,
-    );
-    const samples = positiveInt(values.samples, 'samples');
-    const concurrency = positiveInt(values.concurrency, 'concurrency');
-    const maxCost = values['max-cost'] === undefined ? undefined : Number(values['max-cost']);
-    if (maxCost !== undefined && !(Number.isFinite(maxCost) && maxCost > 0)) {
-      throw new LoadError('--max-cost must be a positive number of USD');
-    }
-    if (values.record !== undefined && values.replay !== undefined) {
-      throw new LoadError('--record and --replay go one at a time');
-    }
-    if (values['replay-loose'] === true && values.replay === undefined) {
-      throw new LoadError('--replay-loose needs --replay');
-    }
-    // A cassette answers the model calls instead of the provider (ADR-0040).
-    const replayed = values.replay === undefined ? undefined : readCassette(values.replay);
-    // Calls that ask for a model go to another (ADR-0042).
-    const swaps = (values['swap-model'] ?? []).map((text) => parseSwap(text, prepared.profile));
-    // Arrays in every result of a tool, reversed before the model sees them (ADR-0043).
-    const reversals = (values['reverse-items'] ?? []).map(parseReversal);
-    // Each written message as users write it (ADR-0045).
-    const transforms = (values.transform ?? []).map(parseTransform);
-    // Each message of a redteam case, encoded or wrapped (ADR-0084).
-    const strategy =
-      values.strategy === undefined ? undefined : parseStrategyOption(values.strategy);
-    // Each redteam case of one turn, adapted by the attacker model (ADR-0087).
-    const attacker = parseAttacker(values);
-    const results = await runSuite({
-      ...prepared.base,
-      // Only the cases with one of the tags asked for (ADR-0077).
-      cases: selectByTags(prepared.cases, values.tag ?? []),
-      ...(samples === undefined ? {} : { samples }),
-      ...(values['stop-early'] === true ? { stopEarly: true } : {}),
-      ...(values.record === undefined
-        ? {}
-        : {
-            cassette: { record: true as const },
-            onCassette: (cassette: Cassette) => {
-              io.out(
-                `cassette: ${writeReport(values.record ?? '', `${JSON.stringify(cassette)}\n`)} (${String(cassette.calls.length)} model calls; it holds their answers in full)`,
-              );
-            },
-          }),
-      ...(replayed === undefined
-        ? {}
-        : {
-            cassette: {
-              replay: replayed.cassette,
-              sha256: replayed.sha256,
-              ...(values['replay-loose'] === true ? { loose: true } : {}),
-            },
-          }),
-      ...(concurrency === undefined ? {} : { concurrency }),
-      ...(swaps.length === 0 ? {} : { swaps }),
-      ...(reversals.length === 0 ? {} : { reversals }),
-      ...(transforms.length === 0 ? {} : { transforms }),
-      ...(strategy === undefined ? {} : { strategy }),
-      ...(attacker === undefined ? {} : { attacker }),
-      // What the model's transforms will take, before any is asked (ADR-0059).
-      onTransformPlan: (plan: RewritePlan) => {
-        io.out(
-          `transform: ${String(plan.messages)} message(s) to rewrite with ${plan.model} at ${plan.url}; their text goes there`,
-        );
-        io.out(
-          `  ${String(plan.calls)} call(s) at most, ${String(plan.cached)} from the cache; at most ${plan.upperUsd === null ? 'an unknown cost' : `$${plan.upperUsd.toFixed(4)}`}`,
-        );
-      },
-      ...(maxCost === undefined ? {} : { maxCostUsd: maxCost }),
-      ...(values['fresh-customer'] === true ? { freshCustomer: true } : {}),
-      ...(values['fresh-judge'] === true ? { freshJudge: true } : {}),
+    const project = await loadProject({
+      profile: values.profile,
+      cases: values.cases,
+      config: values.config,
     });
+    const { results, cassette } = await run(project, runOptionsOf(values, project.profile, io));
+    if (cassette !== undefined) {
+      io.out(
+        `cassette: ${writeReport(values.record ?? '', `${JSON.stringify(cassette)}\n`)} (${String(cassette.calls.length)} model calls; it holds their answers in full)`,
+      );
+    }
     const outPath = writeReport(
       values.out ?? `runs/${results.run.id}.json`,
       `${JSON.stringify(results, null, 2)}\n`,
     );
     printSummary(results, outPath, io);
     if (values.junit !== undefined)
-      io.out(`junit: ${writeReport(values.junit, junitXml(results))}`);
+      io.out(`junit: ${writeReport(values.junit, junitReport(results))}`);
     if (values.html !== undefined) io.out(`html: ${writeReport(values.html, htmlReport(results))}`);
     // A case that ended in error, or that the data no longer holds, didn't run (ADR-0053).
     return results.cases.some((c) => c.status === 'error' || c.status === 'fixture-missing')

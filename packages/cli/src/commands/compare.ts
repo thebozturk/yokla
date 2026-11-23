@@ -10,8 +10,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { compareRuns, evaluateGate } from '@yokla/core';
-import { comparisonText } from '@yokla/report';
+import { compare, comparisonReport } from '../api.ts';
 import { LoadError, loadConfig, readBaseline, readResults, ResultsError } from '../load.ts';
 import { writeReport, type Output } from './run.ts';
 
@@ -73,10 +72,8 @@ export function compareCommand(
     const fallbackConfig = join(cwd, 'yokla.config.yaml');
     const configPath = values.config ?? (existsSync(fallbackConfig) ? fallbackConfig : undefined);
     const config = configPath === undefined ? undefined : loadConfig(configPath);
-    const comparison = compareRuns(
-      runs.map((results) => ({ results, gate: evaluateGate(results, config?.gate, baseline) })),
-    );
-    for (const line of comparisonText(comparison)) io.out(line);
+    const comparison = compare(runs, { config, baseline });
+    for (const line of comparisonReport(comparison)) io.out(line);
     if (config === undefined) {
       io.out('note: no yokla.config.yaml; the gate defaults apply: no failing or unmeasured case');
     }

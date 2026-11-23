@@ -352,9 +352,7 @@ describe('an evidence field fit two ways (ADR-0068)', () => {
 describe('a profile with entries not approved (ADR-0047)', () => {
   it("doesn't run, and names each entry", async () => {
     const output = io();
-    expect(
-      await runCommand(['--profile', profile(['proposed', 'rejected'])], output, '0.0.0'),
-    ).toBe(2);
+    expect(await runCommand(['--profile', profile(['proposed', 'rejected'])], output)).toBe(2);
     expect(output.lines.join('\n')).toContain(
       '2 entries are not approved:\n  /target/response/text (proposed)\n  /target/response/route (rejected)',
     );
@@ -364,7 +362,7 @@ describe('a profile with entries not approved (ADR-0047)', () => {
     const output = io();
     // It goes on to the target, which isn't there: the run errors, not the profile.
     const path = profile(['approved', 'approved']);
-    await runCommand(['--profile', path, '--out', `${path}.results.json`], output, '0.0.0');
+    await runCommand(['--profile', path, '--out', `${path}.results.json`], output);
     expect(output.lines.join('\n')).not.toContain('not approved');
   });
 });

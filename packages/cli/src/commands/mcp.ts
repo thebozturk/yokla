@@ -11,7 +11,7 @@ import { ConfigError } from '@yokla/runtime';
 import { LoadError } from '../load.ts';
 import { mcpServer, serveLines } from '../mcp/protocol.ts';
 import { canSpend, Session, sessionTools } from '../mcp/tools.ts';
-import { prepareRun, readCassette } from '../prepare.ts';
+import { loadFiles, readCassette } from '../prepare.ts';
 import type { Output } from './run.ts';
 
 export const MCP_HELP = `Usage: yokla mcp [options]
@@ -87,10 +87,9 @@ export async function mcpCommand(
       maxCostUsd: maxCost,
       replay: values.replay,
       replayLoose: values['replay-loose'],
-      version,
     };
     // The files must load before the session starts, and say whether it can spend.
-    const prepared = await prepareRun(settings, version);
+    const prepared = await loadFiles(settings);
     if (values.replay !== undefined) readCassette(values.replay);
     if (maxCost === undefined && canSpend(prepared, values.replay !== undefined)) {
       throw new LoadError(

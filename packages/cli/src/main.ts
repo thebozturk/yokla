@@ -1,6 +1,5 @@
 // The yokla command line.
 
-import { readFileSync } from 'node:fs';
 import { ANALYZE_HELP, analyzeCommand } from './commands/analyze.ts';
 import { BASELINE_HELP, baselineCommand } from './commands/baseline.ts';
 import { COMPARE_HELP, compareCommand } from './commands/compare.ts';
@@ -15,6 +14,7 @@ import { REPORT_HELP, reportCommand } from './commands/report.ts';
 import { RUN_HELP, runCommand, type Output } from './commands/run.ts';
 import { SHRINK_HELP, shrinkCommand } from './commands/shrink.ts';
 import { jsonSchemas } from './schemas.ts';
+import { version } from './version.ts';
 
 const HELP = `yokla — test conversational AI assistants end to end
 
@@ -62,18 +62,6 @@ ${GENERATE_HELP}
 
 ${ANALYZE_HELP}`;
 
-export function version(): string {
-  const manifest: unknown = JSON.parse(
-    readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
-  );
-  return typeof manifest === 'object' &&
-    manifest !== null &&
-    'version' in manifest &&
-    typeof manifest.version === 'string'
-    ? manifest.version
-    : '0.0.0';
-}
-
 const SCHEMA_FILES: Readonly<Record<string, string>> = {
   profile: 'profile.v1.schema.json',
   cases: 'cases.v1.schema.json',
@@ -90,7 +78,7 @@ export async function main(argv: readonly string[], io: Output): Promise<number>
     case 'init':
       return initCommand(rest, io, version());
     case 'run':
-      return runCommand(rest, io, version());
+      return runCommand(rest, io);
     case 'report':
       return reportCommand(rest, io);
     case 'gate':
@@ -102,13 +90,13 @@ export async function main(argv: readonly string[], io: Output): Promise<number>
     case 'plan':
       return planCommand(rest, io);
     case 'shrink':
-      return shrinkCommand(rest, io, version());
+      return shrinkCommand(rest, io);
     case 'mcp':
       return mcpCommand(rest, io, version());
     case 'compare':
       return compareCommand(rest, io);
     case 'explore':
-      return exploreCommand(rest, io, version());
+      return exploreCommand(rest, io);
     case 'generate':
       return generateCommand(rest, io);
     case 'analyze':

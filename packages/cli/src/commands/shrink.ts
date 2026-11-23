@@ -27,7 +27,7 @@ import {
 import { originText } from '@yokla/report';
 import { ConfigError, definitionSha256, runSuite, type RunOptions } from '@yokla/runtime';
 import { findCaseSource, LoadError, readResults, ResultsError } from '../load.ts';
-import { prepareRun, type PreparedRun } from '../prepare.ts';
+import { loadFiles, runnerOptions, type Project } from '../prepare.ts';
 import type { Output } from './run.ts';
 
 export const SHRINK_HELP = `Usage: yokla shrink --results <file> --case <id> [options]
@@ -122,7 +122,7 @@ export function planShrink(
   results: Results,
   resultsName: string,
   caseId: string,
-  prepared: PreparedRun,
+  prepared: Project,
   check?: string,
   out?: string,
 ): ShrinkPlan {
@@ -317,11 +317,7 @@ export async function runShrink(
   return { kind: 'written', ...kept, id, file: planned.out };
 }
 
-export async function shrinkCommand(
-  args: readonly string[],
-  io: Output,
-  version: string,
-): Promise<number> {
+export async function shrinkCommand(args: readonly string[], io: Output): Promise<number> {
   let values;
   try {
     values = parseArgs({ args: [...args], options: OPTIONS, strict: true }).values;
@@ -350,16 +346,11 @@ export async function shrinkCommand(
     }
 
     const results = readResults(values.results);
-    const prepared = await prepareRun(
-      {
-        profile: values.profile,
-        cases: values.cases,
-        config: values.config,
-        targetUrl: values['target-url'],
-        proxyUrl: values['proxy-url'],
-      },
-      version,
-    );
+    const prepared = await loadFiles({
+      profile: values.profile,
+      cases: values.cases,
+      config: values.config,
+    });
     const planned = planShrink(
       results,
       values.results,
@@ -402,7 +393,7 @@ export async function shrinkCommand(
     }
     const outcome = await runShrink(
       planned,
-      prepared.base,
+      runnerOptions(prepared, { targetUrl: values['target-url'], proxyUrl: values['proxy-url'] }),
       { samples, reproduce, maxRuns, words, maxCost },
       (line) => {
         io.out(line);

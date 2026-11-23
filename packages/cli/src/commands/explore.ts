@@ -34,7 +34,7 @@ import { ConfigError, runSuite, type RunOptions } from '@yokla/runtime';
 import { LoadError } from '../load.ts';
 import { canSpend, spentBy } from '../mcp/tools.ts';
 import { DOMAIN_PACKS } from '../packs.ts';
-import { prepareRun } from '../prepare.ts';
+import { loadFiles, runnerOptions } from '../prepare.ts';
 import { type Output, writeReport } from './run.ts';
 
 export const EXPLORE_HELP = `Usage: yokla explore [options]
@@ -212,11 +212,7 @@ function intentsOf(profile: Profile, profileDir: string): Intents | undefined {
   }).intents;
 }
 
-export async function exploreCommand(
-  args: readonly string[],
-  io: Output,
-  version: string,
-): Promise<number> {
+export async function exploreCommand(args: readonly string[], io: Output): Promise<number> {
   let values;
   try {
     values = parseArgs({ args: [...args], options: OPTIONS, strict: true }).values;
@@ -244,16 +240,11 @@ export async function exploreCommand(
     if (maxCost !== undefined && !(Number.isFinite(maxCost) && maxCost > 0)) {
       throw new LoadError('--max-cost must be a positive number of USD');
     }
-    const prepared = await prepareRun(
-      {
-        profile: values.profile,
-        cases: values.cases,
-        config: values.config,
-        targetUrl: values['target-url'],
-        proxyUrl: values['proxy-url'],
-      },
-      version,
-    );
+    const prepared = await loadFiles({
+      profile: values.profile,
+      cases: values.cases,
+      config: values.config,
+    });
     const { profile } = prepared;
     if (profile.target.response.route === undefined) {
       throw new LoadError(
@@ -265,7 +256,7 @@ export async function exploreCommand(
         'this exploration can spend money on model calls: run yokla explore with --max-cost <usd> (ADR-0044)',
       );
     }
-    const out = resolve(values.out ?? join(prepared.profileDir, 'explored.yaml'));
+    const out = resolve(values.out ?? join(prepared.dir, 'explored.yaml'));
     if (existsSync(out)) throw new LoadError(`${out} exists: explore never overwrites a file`);
     const written = prepared.cases.filter((c) => c.customer === undefined);
     if (written.length === 0) {
@@ -284,7 +275,13 @@ export async function exploreCommand(
       io.out('  no model proxy: only routes count; no tools, argument shapes or faults');
     }
 
-    const base: Omit<RunOptions, 'cases'> = { ...prepared.base, coverage: true };
+    const base: Omit<RunOptions, 'cases'> = {
+      ...runnerOptions(prepared, {
+        targetUrl: values['target-url'],
+        proxyUrl: values['proxy-url'],
+      }),
+      coverage: true,
+    };
     let spent = 0;
     let capped: string | undefined;
     /** Runs cases under what is left of the cap; undefined once it is reached. */
@@ -348,7 +345,7 @@ export async function exploreCommand(
       seeds,
       seedCoverage,
       {
-        intents: intentsOf(profile, prepared.profileDir),
+        intents: intentsOf(profile, prepared.dir),
         // A timeout fault holds a call as long as yokla waits for the target.
         faults: proxied ? exploreFaults(profile.target.request.timeoutMs) : [],
         languages: profile.languages,

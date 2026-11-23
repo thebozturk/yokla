@@ -105,7 +105,6 @@ async function explore(dir: string, ...args: string[]) {
       ...args,
     ],
     { out: (line) => lines.push(line), err: (line) => err.push(line) },
-    '0.0.0-test',
   );
   return { code, out: lines, err };
 }
@@ -391,7 +390,6 @@ cases:
     const onlyCustomers = await exploreCommand(
       ['--profile', join(dir, 'yokla.profile.yaml'), '--cases', join(dir, 'customer.yaml')],
       { out: () => undefined, err: (line) => customerErr.push(line) },
-      '0',
     );
     expect(onlyCustomers).toBe(2);
     expect(customerErr).toEqual(['no case with written turns to start from']);
@@ -399,11 +397,7 @@ cases:
     expect(unknown.code).toBe(2);
     expect(unknown.err[0]).toMatch(/nope/u);
     expect(requests).toBe(0);
-    const help = await exploreCommand(
-      ['--help'],
-      { out: () => undefined, err: () => undefined },
-      '0',
-    );
+    const help = await exploreCommand(['--help'], { out: () => undefined, err: () => undefined });
     expect(help).toBe(0);
   });
 });

@@ -255,7 +255,6 @@ describe('parseTransform (ADR-0045, ADR-0059)', () => {
       {
         strategy: 'best-of-n',
         limit: 8,
-        fresh: true,
       },
     );
     expect(parseAttacker({ attacker: 'escalation', 'max-turns': '3' })).toEqual({
@@ -291,7 +290,7 @@ describe('parseTransform (ADR-0045, ADR-0059)', () => {
     });
     expect(
       parseAttacker({ attacker: 'tree', branches: '5', depth: '3', 'fresh-attacker': true }),
-    ).toEqual({ strategy: 'tree', branches: 5, depth: 3, fresh: true });
+    ).toEqual({ strategy: 'tree', branches: 5, depth: 3 });
     expect(parseAttacker({ attacker: 'tree', branches: '1', depth: '1' })).toEqual({
       strategy: 'tree',
       branches: 1,

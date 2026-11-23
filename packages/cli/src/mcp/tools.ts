@@ -17,15 +17,25 @@ import {
   type Results,
   type ShrinkTarget,
 } from '@yokla/core';
-import { ConfigError, definitionSha256, runSuite } from '@yokla/runtime';
+import { ConfigError, definitionSha256 } from '@yokla/runtime';
+import { run as runProject, type RunOptions } from '../api.ts';
 import { planShrink, runShrink } from '../commands/shrink.ts';
 import { writeReport } from '../commands/run.ts';
 import { LoadError, readResults, ResultsError } from '../load.ts';
-import { prepareRun, readCassette, type PreparedRun, type RunSetup } from '../prepare.ts';
+import {
+  loadFiles,
+  readCassette,
+  runnerOptions,
+  type Project,
+  type ProjectFiles,
+  type ReadCassette,
+} from '../prepare.ts';
 import { ToolError, type McpTool } from './protocol.ts';
 
 /** What the person fixed when the server started. */
-export interface SessionSettings extends RunSetup {
+export interface SessionSettings extends ProjectFiles {
+  readonly targetUrl?: string | undefined;
+  readonly proxyUrl?: string | undefined;
   /** Where every run's results file goes. */
   readonly out: string;
   /** The session's cost cap, over every run (ADR-0041). */
@@ -33,7 +43,6 @@ export interface SessionSettings extends RunSetup {
   /** A cassette every run of the session replays (ADR-0040). */
   readonly replay?: string | undefined;
   readonly replayLoose?: boolean | undefined;
-  readonly version: string;
 }
 
 /** An answer's text in a tool result is cut here (ADR-0041). */
@@ -151,7 +160,7 @@ export function spentBy(results: Results): { usd: number | null; targetUnknown: 
 }
 
 /** Whether a session with these files can spend money on model calls (ADR-0041). */
-export function canSpend(prepared: PreparedRun, replaying: boolean): boolean {
+export function canSpend(prepared: Project, replaying: boolean): boolean {
   const proxy = prepared.profile.modelProxy;
   const target =
     !replaying && proxy !== undefined && (proxy.upstreams.length > 0 || proxy.spans !== undefined);
@@ -180,12 +189,9 @@ export class Session {
   }
 
   /** Loads the files again, as a CLI command would at each call. */
-  async prepare(): Promise<PreparedRun> {
+  async prepare(): Promise<Project> {
     try {
-      return await prepareRun(
-        { ...this.#settings, alsoCases: this.#written },
-        this.#settings.version,
-      );
+      return await loadFiles({ ...this.#settings, alsoCases: this.#written });
     } catch (error) {
       throw asToolError(error);
     }
@@ -227,16 +233,31 @@ export class Session {
   }
 
   /** The cassette every run replays, if the session was started with one. */
-  cassette() {
+  replay(): (ReadCassette & { loose?: boolean }) | undefined {
     const path = this.#settings.replay;
-    if (path === undefined) return {};
-    const { cassette, sha256 } = readCassette(path);
+    if (path === undefined) return undefined;
     return {
-      cassette: {
-        replay: cassette,
-        sha256,
-        ...(this.#settings.replayLoose === true ? { loose: true } : {}),
-      },
+      ...readCassette(path),
+      ...(this.#settings.replayLoose === true ? { loose: true } : {}),
+    };
+  }
+
+  /** Where the session's runs send their turns. */
+  reach(): { targetUrl?: string | undefined; proxyUrl?: string | undefined } {
+    return { targetUrl: this.#settings.targetUrl, proxyUrl: this.#settings.proxyUrl };
+  }
+
+  /** A run's options in this session, as the library API takes them (ADR-0093). */
+  runOptions(
+    options: { samples?: number | undefined; stopEarly?: boolean | undefined },
+    allowance: number | undefined,
+  ): RunOptions {
+    return {
+      ...this.reach(),
+      replay: this.replay(),
+      samples: options.samples,
+      stopEarly: options.stopEarly,
+      maxCostUsd: allowance,
     };
   }
 
@@ -276,7 +297,7 @@ function asToolError(error: unknown): unknown {
 }
 
 /** The cases a run takes, by id, in the order the files hold them. */
-function selected(prepared: PreparedRun, ids: readonly string[] | undefined) {
+function selected(prepared: Project, ids: readonly string[] | undefined) {
   if (ids === undefined) return [...prepared.cases];
   const known = new Set(prepared.cases.map((c) => c.id));
   const missing = ids.filter((id) => !known.has(id));
@@ -472,21 +493,17 @@ const VerifyOutput = z.object({
 export function sessionTools(session: Session): McpTool[] {
   /** Runs cases as yokla run does, against the session's cap; writes the results. */
   const runCases = async (
-    prepared: PreparedRun,
-    cases: PreparedRun['cases'],
+    prepared: Project,
+    cases: Project['cases'],
     options: { samples?: number | undefined; stopEarly?: boolean | undefined },
   ) => {
     const allowance = session.allowance();
     let results: Results;
     try {
-      results = await runSuite({
-        ...prepared.base,
-        cases,
-        ...session.cassette(),
-        ...(options.samples === undefined ? {} : { samples: options.samples }),
-        ...(options.stopEarly === true ? { stopEarly: true } : {}),
-        ...(allowance === undefined ? {} : { maxCostUsd: allowance }),
-      });
+      ({ results } = await runProject(
+        { ...prepared, cases },
+        session.runOptions(options, allowance),
+      ));
     } catch (error) {
       throw asToolError(error);
     }
@@ -664,7 +681,7 @@ export function sessionTools(session: Session): McpTool[] {
           })();
           const outcome = await runShrink(
             planned,
-            prepared.base,
+            runnerOptions(prepared, session.reach()),
             {
               samples: args.samples ?? 3,
               reproduce: args.reproduce ?? 5,

@@ -5,7 +5,7 @@ import type { Results } from '@yokla/core';
 import { startTestServer, type TestServer } from '@yokla/runtime/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { readResults } from '../load.ts';
-import { prepareRun } from '../prepare.ts';
+import { loadFiles } from '../prepare.ts';
 import { ToolError, type McpTool } from './protocol.ts';
 import { canSpend, EVIDENCE_LIMIT, Session, sessionTools, spentBy, TEXT_LIMIT } from './tools.ts';
 
@@ -109,7 +109,6 @@ ${extra}`,
       profile: join(dir, 'yokla.profile.yaml'),
       cases: [join(dir, 'cases.yaml')],
       out: join(dir, 'runs'),
-      version: '0.0.0-test',
     },
   };
 }
@@ -395,6 +394,46 @@ describe('the MCP tools (ADR-0041)', () => {
   });
 });
 
+describe("a session's run options (ADR-0093)", () => {
+  it('gives each run the session’s target, proxy, cassette and cap, with the tool’s samples', () => {
+    const { dir, settings } = workspace('http://127.0.0.1:1/chat');
+    const cassette = {
+      schema: 'yokla.cassette/v1',
+      profileSha256: 'a'.repeat(64),
+      recordedAt: '2026-11-23T12:00:00.000Z',
+      calls: [],
+    };
+    const file = join(dir, 'calls.json');
+    writeFileSync(file, JSON.stringify(cassette));
+    const session = new Session({
+      ...settings,
+      targetUrl: 'http://127.0.0.1:7/chat',
+      proxyUrl: 'http://127.0.0.1:8',
+      replay: file,
+      replayLoose: true,
+    });
+    expect(session.runOptions({ samples: 2, stopEarly: true }, 0.5)).toMatchObject({
+      targetUrl: 'http://127.0.0.1:7/chat',
+      proxyUrl: 'http://127.0.0.1:8',
+      replay: { cassette, loose: true },
+      samples: 2,
+      stopEarly: true,
+      maxCostUsd: 0.5,
+    });
+    const strict = new Session({ ...settings, replay: file }).runOptions({}, undefined);
+    expect(strict.replay?.cassette).toEqual(cassette);
+    expect(strict.replay?.loose).toBeUndefined();
+    expect(new Session(settings).runOptions({}, undefined)).toEqual({
+      targetUrl: undefined,
+      proxyUrl: undefined,
+      replay: undefined,
+      samples: undefined,
+      stopEarly: undefined,
+      maxCostUsd: undefined,
+    });
+  });
+});
+
 describe('the session cap (ADR-0041)', () => {
   it('lets runs spend what is left, and refuses once it is spent or can no longer hold', async () => {
     const { settings } = workspace('http://127.0.0.1:1/chat');
@@ -465,25 +504,25 @@ describe('the session cap (ADR-0041)', () => {
       'http://127.0.0.1:1/chat',
       "modelProxy:\n  upstreams: [{ id: fake, kind: openai-compatible, upstream: 'http://127.0.0.1:2/v1' }]\n",
     );
-    const prepared = await prepareRun(proxied.settings, '0');
+    const prepared = await loadFiles(proxied.settings);
     expect(canSpend(prepared, false)).toBe(true);
     expect(canSpend(prepared, true)).toBe(false);
-    const plain = await prepareRun(workspace('http://127.0.0.1:1/chat').settings, '0');
+    const plain = await loadFiles(workspace('http://127.0.0.1:1/chat').settings);
     expect(canSpend(plain, false)).toBe(false);
     const spansOnly = workspace(
       'http://127.0.0.1:1/chat',
       'modelProxy:\n  upstreams: []\n  spans: {}\n',
     );
-    expect(canSpend(await prepareRun(spansOnly.settings, '0'), false)).toBe(true);
-    const config = join(plain.profileDir, 'customer.yaml');
+    expect(canSpend(await loadFiles(spansOnly.settings), false)).toBe(true);
+    const config = join(plain.dir, 'customer.yaml');
     writeFileSync(
       config,
       "version: 1\nmodels:\n  customer: { kind: openai-compatible, url: 'http://127.0.0.1:3/v1', model: m }\n",
     );
-    const withCustomer = await prepareRun(
-      { ...workspace('http://127.0.0.1:1/chat').settings, config },
-      '0',
-    );
+    const withCustomer = await loadFiles({
+      ...workspace('http://127.0.0.1:1/chat').settings,
+      config,
+    });
     expect(canSpend(withCustomer, true)).toBe(true);
   });
 });

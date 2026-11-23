@@ -9,7 +9,8 @@ import { baselineCommand } from './commands/baseline.ts';
 import { gateCommand } from './commands/gate.ts';
 import { planCommand } from './commands/plan.ts';
 import { proxyCommand } from './commands/proxy.ts';
-import { printSummary, selectByTags } from './commands/run.ts';
+import { selectByTags } from './api.ts';
+import { printSummary } from './commands/run.ts';
 import { main } from './main.ts';
 
 function capture() {

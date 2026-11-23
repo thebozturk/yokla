@@ -27,29 +27,31 @@ export class LoadError extends Error {
 
 const CONFIG_EXTENSIONS = new Set(['.yaml', '.yml', '.json']);
 
-function display(path: string): string {
-  const shown = relative(process.cwd(), path);
+/** A path as messages show it: relative to `cwd` when under it. */
+function display(path: string, cwd: string): string {
+  const shown = relative(cwd, path);
   return shown === '' || shown.startsWith('..') ? path : shown;
 }
 
-function parseFile<T>(path: string, schema: z.ZodType<T>): { value: T; text: string } {
+/** Reads and validates the file at the absolute `path`; messages show it relative to `cwd`. */
+function parseFile<T>(path: string, schema: z.ZodType<T>, cwd: string): { value: T; text: string } {
   let text: string;
   try {
     text = readFileSync(path, 'utf8');
   } catch (error) {
     throw new LoadError(
-      `${display(path)}: ${error instanceof Error ? error.message : String(error)}`,
+      `${display(path, cwd)}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  const result = parseConfig(text, display(path), schema);
+  const result = parseConfig(text, display(path, cwd), schema);
   if (!result.ok) throw new LoadError(result.issues.map(formatIssue).join('\n'));
   return { value: result.value, text };
 }
 
 /** A rule with its schemaFile read, relative to `dir`, into schema (ADR-0030). */
-function readSchemaRule(rule: SchemaRule, dir: string): SchemaRule {
+function readSchemaRule(rule: SchemaRule, dir: string, cwd: string): SchemaRule {
   if (rule.schemaFile === undefined) return rule;
-  const { value } = parseFile(resolve(dir, rule.schemaFile), JsonSchemaValue);
+  const { value } = parseFile(resolve(dir, rule.schemaFile), JsonSchemaValue, cwd);
   return { at: rule.at, schema: value };
 }
 
@@ -57,6 +59,7 @@ function readSchemaRule(rule: SchemaRule, dir: string): SchemaRule {
 function readTurnSchemas<E extends Readonly<Record<string, unknown>> | undefined>(
   expect: E,
   dir: string,
+  cwd: string,
 ): E {
   const rules: unknown = expect?.['schema'];
   if (expect === undefined || !Array.isArray(rules)) return expect;
@@ -64,34 +67,36 @@ function readTurnSchemas<E extends Readonly<Record<string, unknown>> | undefined
     ...expect,
     schema: SchemaRule.array()
       .parse(rules)
-      .map((rule) => readSchemaRule(rule, dir)),
+      .map((rule) => readSchemaRule(rule, dir, cwd)),
   };
 }
 
 /** A case with every schemaFile its expectations name read (ADR-0030). */
-function readCaseSchemas(testCase: Case, dir: string): Case {
+export function readCaseSchemas(testCase: Case, dir: string, cwd: string): Case {
   return {
     ...testCase,
     turns: testCase.turns.map((turn) =>
-      turn.expect === undefined ? turn : { ...turn, expect: readTurnSchemas(turn.expect, dir) },
+      turn.expect === undefined
+        ? turn
+        : { ...turn, expect: readTurnSchemas(turn.expect, dir, cwd) },
     ),
     ...(testCase.customer?.expect === undefined
       ? {}
       : {
           customer: {
             ...testCase.customer,
-            expect: readTurnSchemas(testCase.customer.expect, dir),
+            expect: readTurnSchemas(testCase.customer.expect, dir, cwd),
           },
         }),
   };
 }
 
 /** The profile with the file of its response contract read (ADR-0030). */
-function withContract(profile: Profile, dir: string): Profile {
+export function withContract(profile: Profile, dir: string, cwd: string): Profile {
   const { target } = profile;
   const contract = target.response.schema;
   if (contract === undefined) return profile;
-  const schema = readSchemaRule(contract, dir);
+  const schema = readSchemaRule(contract, dir, cwd);
   // Each adapter on its own, so the target keeps its own type.
   if (target.adapter === 'websocket') {
     return { ...profile, target: { ...target, response: { ...target.response, schema } } };
@@ -106,10 +111,11 @@ export interface LoadedProfile {
   readonly path: string;
 }
 
-export function loadProfile(path: string): LoadedProfile {
-  const absolute = resolve(path);
-  const { value, text } = parseFile(absolute, schemas.profile);
-  const profile = withContract(value, dirname(absolute));
+/** Loads a profile; a relative path, and the paths messages show, are relative to `cwd`. */
+export function loadProfile(path: string, cwd: string = process.cwd()): LoadedProfile {
+  const absolute = resolve(cwd, path);
+  const { value, text } = parseFile(absolute, schemas.profile, cwd);
+  const profile = withContract(value, dirname(absolute), cwd);
   return {
     profile,
     sha256: createHash('sha256').update(text).digest('hex'),
@@ -118,13 +124,13 @@ export function loadProfile(path: string): LoadedProfile {
   };
 }
 
-function caseFiles(path: string): string[] {
-  const absolute = resolve(path);
+function caseFiles(path: string, cwd: string): string[] {
+  const absolute = resolve(cwd, path);
   let stats: Stats;
   try {
     stats = statSync(absolute);
   } catch {
-    throw new LoadError(`${display(absolute)}: no such file or directory`);
+    throw new LoadError(`${display(absolute, cwd)}: no such file or directory`);
   }
   if (!stats.isDirectory()) return [absolute];
   return readdirSync(absolute)
@@ -133,17 +139,20 @@ function caseFiles(path: string): string[] {
     .map((name) => join(absolute, name));
 }
 
-/** Loads cases from files and directories (every .yaml, .yml and .json file in it). */
-export function loadCases(paths: readonly string[]): Case[] {
-  const files = paths.flatMap(caseFiles);
+/**
+ * Loads cases from files and directories (every .yaml, .yml and .json file in
+ * it); relative paths, and the paths messages show, are relative to `cwd`.
+ */
+export function loadCases(paths: readonly string[], cwd: string = process.cwd()): Case[] {
+  const files = paths.flatMap((path) => caseFiles(path, cwd));
   if (files.length === 0) throw new LoadError(`no case files found in ${paths.join(', ')}`);
   const problems: string[] = [];
   const cases: Case[] = [];
   for (const file of files) {
     try {
       cases.push(
-        ...parseFile(file, schemas.caseFile).value.cases.map((testCase) =>
-          readCaseSchemas(testCase, dirname(file)),
+        ...parseFile(file, schemas.caseFile, cwd).value.cases.map((testCase) =>
+          readCaseSchemas(testCase, dirname(file), cwd),
         ),
       );
     } catch (error) {
@@ -163,17 +172,18 @@ const RawCaseFile = z.looseObject({ cases: z.array(z.record(z.string(), z.unknow
 export function findCaseSource(
   paths: readonly string[],
   id: string,
+  cwd: string = process.cwd(),
 ): { readonly file: string; readonly raw: Record<string, unknown> } {
-  for (const file of paths.flatMap(caseFiles)) {
-    const raw = parseFile(file, RawCaseFile).value.cases.find((c) => c['id'] === id);
+  for (const file of paths.flatMap((path) => caseFiles(path, cwd))) {
+    const raw = parseFile(file, RawCaseFile, cwd).value.cases.find((c) => c['id'] === id);
     if (raw !== undefined) return { file, raw };
   }
   throw new LoadError(`no case "${id}" in ${paths.join(', ')}`);
 }
 
-/** Loads yokla.config.yaml (ADR-0010). */
-export function loadConfig(path: string): YoklaConfig {
-  return parseFile(resolve(path), YoklaConfig).value;
+/** Loads yokla.config.yaml (ADR-0010); a relative path is relative to `cwd`. */
+export function loadConfig(path: string, cwd: string = process.cwd()): YoklaConfig {
+  return parseFile(resolve(cwd, path), YoklaConfig, cwd).value;
 }
 
 export class ResultsError extends Error {
