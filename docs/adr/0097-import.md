@@ -1,6 +1,6 @@
 # 0097. Import (E5)
 
-Status: Proposed · Date: 2026-11-23
+Status: Accepted · Date: 2026-11-23
 
 ## Context
 
@@ -70,9 +70,18 @@ tags: $.tags
 - **`rows`** applies to a JSON or YAML file; by default its top level, when
   that is an array. Each line of JSON Lines and each CSV row is a row.
 - **`case`** defaults to `row-<n>` by the row's position when cases are
-  imported; results need it, to group the rows of a case.
-- **`suite`** defaults to `quality`, and **`language`** to the profile's
-  first language: the command passes it.
+  imported; results need it, to group the rows of a case. An empty id is no
+  id. An id becomes a yokla id: lowercase letters, digits, `-` and `.`; a
+  case keeps the name it had as its title when that changed it.
+- **A case's own fields,** its suite, language and tags, come from its
+  first row in the file.
+- **`suite`** defaults to `quality`, as does a suite yokla doesn't know.
+  **`language`** defaults to `--language`, else the first language of
+  `--profile` or `yokla.profile.yaml`, else `en`.
+- **`latencyMs`,** optional, says how long an answer took. Without it, a
+  row's answer isn't a timed response: it is kept with the verdict's
+  finding, and the gate's latency thresholds stay unmeasured rather than
+  passing on a time no one measured.
 - **Nothing in the mapping names a tool.** It is the user's, like a profile.
 
 ### Cases
@@ -97,8 +106,9 @@ tags: $.tags
   dimension `verdict`, with the reason as its message and the score with
   it. The dimension's policy is `worst-of-n`.
 - **Each mapped assertion is a finding** of the check `imported`, in a
-  dimension named after it, with the policy `advisory`: it explains the
-  verdict, and doesn't decide it.
+  dimension named after it, `assertion-<n>` without a name, with the policy
+  `advisory`: it explains the verdict, and doesn't decide it. An assertion
+  whose verdict the mapping can't find is left out.
 - **A row whose verdict the mapping can't find, or finds outside both
   lists, is `unmeasured`**: its turn gets no finding in `verdict`, and an
   unmeasured entry that names why. The case is then `unmeasured`, never a
@@ -111,7 +121,9 @@ tags: $.tags
 
 ### yokla's own rows
 
-**A mapping for `yokla.result-row/v1`** ships in the guide, not in code:
+**A mapping for `yokla.result-row/v1`** ships in the guide, not in code,
+and in `examples/imports/` beside the fixtures, where a test keeps the two
+the same:
 its `case`, `sample`, `turn`, `message`, `answer` and `verdict` (`pass`
 passes, `fail` fails, `unmeasured` is neither), and its findings. A run
 exported with `yokla report --rows` and imported back has the same statuses
@@ -137,10 +149,13 @@ rows live in `@yokla/interop-rows`.
 - **The round trip:** a demo-shop run, correct and with
   `fabricated-price`, exported with `yokla report --rows` and imported back
   through the guide's mapping, has every case's status.
-- **Imported cases don't gate:** a case file imported from a fixture runs
-  against the demo-shop, and the gate passes while its cases are proposed;
-  once a person approves them, as they carry no expectations, the gate is
-  broken by their `unmeasured` status until expectations are written.
+- **Imported cases don't gate until approved:** cases imported from a
+  dataset fixture run against the demo-shop with `fabricated-price`. The
+  checks that need no expectation judge them, and one fails
+  `price-grounded`: the gate passes while they are proposed, and breaks
+  once a person approves them. Approved cases without expectations aren't
+  `unmeasured` here, as first thought: the profile's `everyAnswer` rules and
+  `price-grounded` judge any answer.
 
 ## Consequences
 
