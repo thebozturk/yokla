@@ -102,6 +102,7 @@ old one.
 | [0087](0087-an-attacker-model.md) | An attacker model (R5) | Accepted |
 | [0088](0088-more-attacker-strategies.md) | More attacker strategies (R5b) | Accepted |
 | [0089](0089-findings-mapped-to-frameworks.md) | Findings mapped to frameworks (R6) | Accepted |
+| [0090](0090-a-calibrated-judge.md) | A calibrated judge (R7) | Proposed |
 
 ## Template
 
