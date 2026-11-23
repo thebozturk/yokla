@@ -241,8 +241,9 @@ from.
 
 The [guide](https://github.com/thebozturk/yokla/blob/main/docs/guide/README.md)
 walks through each step: [the analyzer](https://github.com/thebozturk/yokla/blob/main/docs/guide/analyzer.md),
-[from a finding to its fix](https://github.com/thebozturk/yokla/blob/main/docs/guide/debugging.md)
-and [yokla in CI](https://github.com/thebozturk/yokla/blob/main/docs/guide/ci.md).
+[from a finding to its fix](https://github.com/thebozturk/yokla/blob/main/docs/guide/debugging.md),
+[yokla in CI](https://github.com/thebozturk/yokla/blob/main/docs/guide/ci.md)
+and [red teaming](https://github.com/thebozturk/yokla/blob/main/docs/guide/redteam.md).
 
 ## Try it on the demo-shop
 
@@ -274,7 +275,8 @@ upstreams your profile names. An egress test in CI holds yokla to that.
   a first run against your own assistant, and a page for each part.
   - Workflows: [the analyzer](https://github.com/thebozturk/yokla/blob/main/docs/guide/analyzer.md),
     [from a finding to its fix](https://github.com/thebozturk/yokla/blob/main/docs/guide/debugging.md),
-    [yokla in CI](https://github.com/thebozturk/yokla/blob/main/docs/guide/ci.md).
+    [yokla in CI](https://github.com/thebozturk/yokla/blob/main/docs/guide/ci.md),
+    [red teaming](https://github.com/thebozturk/yokla/blob/main/docs/guide/redteam.md).
   - Reference: [the profile](https://github.com/thebozturk/yokla/blob/main/docs/guide/profile.md),
     [cases](https://github.com/thebozturk/yokla/blob/main/docs/guide/cases.md),
     [checks](https://github.com/thebozturk/yokla/blob/main/docs/guide/checks.md),

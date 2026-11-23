@@ -2,7 +2,9 @@
 
 The ecommerce domain pack. It adds an `ecommerce` section to the profile, keys
 to a turn's `expect`, and checks that read the target's own data (design §9,
-§10).
+§10). It also writes the domain's attack cases for `yokla generate
+--redteam`, from the catalog, the policies and the profile's restrictions,
+and maps them to frameworks (ADR-0080, ADR-0089).
 
 ## What the pack reads
 

@@ -76,6 +76,12 @@ order the calls started.
 - **What a finding says.** It names the tool and the case's expected values,
   never the arguments the target sent.
 
+### The judge (ADR-0090, ADR-0091)
+
+| Check | Dimension | Applies when | Judges |
+|---|---|---|---|
+| `judge` | each dimension the turn names: `unsafe-advice`, `hijacking`, `unruled-restriction`, `bias`, `political-religious`, `harmful-content`, `imitation`, `unverifiable-claim` | the turn sets `judge`, and has a usable 2xx answer | `models.judge` gives each dimension a verdict on the turn's message and answer, by yokla's rubric and your notes, after grading yokla's calibration items and your graded examples. One misjudged, or a judge that is your assistant's model, or none at all, leaves every verdict of the run unmeasured; a verdict it can't give is unmeasured on its turn. Each dimension is advisory unless `judge.gate` lists it ([red teaming](redteam.md#5-what-no-rule-can-judge-the-judge)). |
+
 ### Checks you write (ADR-0030)
 
 A rule only your team knows can be a check of its own. `yokla.config.yaml`

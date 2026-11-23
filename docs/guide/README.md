@@ -1,6 +1,6 @@
 # yokla guide
 
-How to test your own assistant with yokla 0.4. The [design](../design.md)
+How to test your own assistant with yokla 0.5. The [design](../design.md)
 explains why yokla works this way, and the [ADRs](../adr/README.md) record
 each decision.
 
@@ -16,6 +16,7 @@ flowchart LR
         Analyzer["The analyzer<br/>analyze · generate"]
         Debugging["From a finding to its fix<br/>origin · shrink · replay · swap · mcp"]
         CI["yokla in CI<br/>gate · baseline · JUnit"]
+        RedTeam["Red teaming<br/>generate --redteam · strategy · attacker · judge"]
     end
     subgraph Reference
         Profile["The profile"]
@@ -29,6 +30,8 @@ flowchart LR
     Debugging --> Proxy
     Debugging --> Checks
     CI --> CLI
+    RedTeam --> Cases
+    RedTeam --> Checks
 ```
 
 **Workflows** walk through a task from start to end:
@@ -38,6 +41,7 @@ flowchart LR
 | [The analyzer](analyzer.md) | From your repository and data to an approved profile, then cases computed from your catalog. |
 | [From a finding to its fix](debugging.md) | Where a wrong value came from, the smallest case that still fails, runs that repeat at no model cost, other models, indirect injection, and a coding agent that fixes against your cases. |
 | [yokla in CI](ci.md) | The gate, the baseline, budgets and reports in a pipeline, with a GitHub Actions example. |
+| [Red teaming](redteam.md) | Attack cases from your profile and data, sent as written, encoded, wrapped or adapted by a model; a calibrated judge for what no rule can decide; findings mapped to frameworks, and the gate. |
 
 **Reference** gives every field and option:
 

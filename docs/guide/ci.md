@@ -46,6 +46,9 @@ gate:
   `allowUnmeasured: true`.
 - **Only approved cases gate.** A proposed case runs and reports, but never
   breaks the build (ADR-0004).
+- **Attack cases gate too.** `gate.maxRisk` breaks the build on an attack
+  kind whose risk score is above it, and `judge.gate` lets the judge's
+  dimensions you trust decide their cases ([red teaming](redteam.md#7-gate-on-it)).
 
 ## The baseline
 
@@ -109,12 +112,12 @@ jobs:
           echo "the assistant did not start"; cat assistant.log; exit 1
 
       - name: Run the cases
-        run: npx yokla@0.4.0 run --out runs/ci.json --junit runs/junit.xml --html runs/report.html --max-cost 1
+        run: npx yokla@0.5.0 run --out runs/ci.json --junit runs/junit.xml --html runs/report.html --max-cost 1
         env:
           ASSISTANT_TOKEN: ${{ secrets.ASSISTANT_TOKEN }}
 
       - name: Gate
-        run: npx yokla@0.4.0 gate --results runs/ci.json --baseline yokla.baseline.json
+        run: npx yokla@0.5.0 gate --results runs/ci.json --baseline yokla.baseline.json
 
       - name: Keep the reports
         if: always()
