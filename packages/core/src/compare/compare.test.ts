@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateGate } from '../gate/gate.ts';
 import { Results, RESULTS_SCHEMA_ID } from '../schema/results.ts';
-import { Comparison, compareRuns, runLabel } from './compare.ts';
+import { Comparison, compareRuns, findingRows, runLabel } from './compare.ts';
 
 type CaseResult = Results['cases'][number];
 
@@ -172,7 +172,7 @@ describe('compareRuns (ADR-0042)', () => {
 
   it('puts the cases whose status differs first, a status per run', () => {
     const { cases } = compared(big, mini, nano);
-    expect(cases).toEqual([
+    expect(cases).toMatchObject([
       {
         id: 'a',
         suite: 'factual',
@@ -257,7 +257,7 @@ describe('compareRuns (ADR-0042)', () => {
   it("doesn't compare a case whose definition differs, and shows one a run lacks", () => {
     const other = run('other', [kase('a', 'fail', { definition: 'e' }), kase('c', 'pass')]);
     const { cases } = compared(big, other);
-    expect(cases).toEqual([
+    expect(cases).toMatchObject([
       { id: 'a', suite: 'factual', statuses: ['pass', 'fail'], differs: true, changed: true },
       { id: 'b', suite: 'factual', statuses: ['pass', null], differs: false, changed: false },
       { id: 'c', suite: 'factual', statuses: [null, 'pass'], differs: false, changed: false },
@@ -274,5 +274,216 @@ describe('compareRuns (ADR-0042)', () => {
       "run elsewhere replayed a cassette: its latency isn't the model's (ADR-0040)",
     ]);
     expect(compared(big, mini).notices).toEqual([]);
+  });
+});
+
+type Turn = CaseResult['samples'][number]['turns'][number];
+
+/** A turn whose checks give these findings: [check, dimension, verdict, message]. */
+function judged(findings: readonly (readonly [string, string, 'pass' | 'fail', string])[]): Turn {
+  return {
+    user: 'u',
+    response: { status: 200, latencyMs: 100, evidence: {} },
+    checks: findings.map(([check, dimension, verdict, message]) => ({
+      check,
+      applicable: true,
+      findings: [{ dimension, verdict, severity: 'high', message }],
+    })),
+  };
+}
+
+/** A case of these samples, each a list of turns. */
+function sampled(id: string, samples: readonly (readonly Turn[])[], definition = 'd'): CaseResult {
+  return {
+    id,
+    suite: 'factual',
+    language: 'tr',
+    status: 'fail',
+    unstable: false,
+    definitionSha256: definition.repeat(64).slice(0, 64),
+    dimensions: [],
+    samples: samples.map((turns, index) => ({ index, cache: 'cold', turns: [...turns] })),
+  };
+}
+
+/** A case whose every turn cost this much, as the proxy measured it. */
+const withCost = (c: CaseResult, costUsd: number | null): CaseResult => ({
+  ...c,
+  samples: c.samples.map((sample) => ({
+    ...sample,
+    turns: sample.turns.map((turn) => ({
+      ...turn,
+      proxy: { correlation: 'serial' as const, calls: [], costUsd },
+    })),
+  })),
+});
+
+/** A passing turn that took this long. */
+function timed(latencyMs: number): Turn {
+  return {
+    user: 'u',
+    response: { status: 200, latencyMs, evidence: {} },
+    checks: [],
+  };
+}
+
+const fabricated = judged([['price-grounded', 'fabrication', 'fail', '"9 TL" is not a price']]);
+const grounded = judged([['price-grounded', 'fabrication', 'pass', 'grounded']]);
+
+describe('what changed inside a case (ADR-0095)', () => {
+  it('has a row per turn, check and dimension that failed, with each run’s failing samples', () => {
+    const before = sampled('a', [[grounded, grounded]]);
+    const after = sampled('a', [
+      [grounded, fabricated],
+      [grounded, judged([['price-grounded', 'fabrication', 'fail', 'another']])],
+    ]);
+    expect(findingRows([before, after])).toEqual([
+      {
+        turn: 1,
+        check: 'price-grounded',
+        dimension: 'fabrication',
+        failed: [0, 2],
+        messages: [null, '"9 TL" is not a price'],
+      },
+    ]);
+  });
+
+  it('counts a sample once, however many findings fail the row in it, and orders the rows', () => {
+    const twice = judged([
+      ['stock-claim', 'fabrication', 'fail', 'first'],
+      ['stock-claim', 'fabrication', 'fail', 'second'],
+      ['policy-claim', 'fabrication', 'fail', 'policy'],
+      ['price-grounded', 'answer', 'fail', 'answer'],
+      ['stock-claim', 'availability', 'fail', 'availability'],
+    ]);
+    const rows = findingRows([sampled('a', [[twice], [twice]])]);
+    expect(
+      rows.map((row) => [row.turn, row.check, row.dimension, row.failed, row.messages]),
+    ).toEqual([
+      [0, 'policy-claim', 'fabrication', [2], ['policy']],
+      [0, 'price-grounded', 'answer', [2], ['answer']],
+      [0, 'stock-claim', 'availability', [2], ['availability']],
+      [0, 'stock-claim', 'fabrication', [2], ['first']],
+    ]);
+    const later = findingRows([sampled('a', [[grounded, fabricated], [fabricated]])]);
+    expect(later.map((row) => [row.turn, row.failed])).toEqual([
+      [0, [1]],
+      [1, [1]],
+    ]);
+  });
+
+  it('marks a run that lacks the case, or the turn, apart from one that passed it', () => {
+    const rows = findingRows([
+      sampled('a', [[grounded, fabricated]]),
+      undefined,
+      sampled('a', [[grounded]]),
+    ]);
+    expect(rows.map((row) => row.failed)).toEqual([[1, null, null]]);
+    const passed = findingRows([sampled('a', [[fabricated]]), sampled('a', [[grounded]])]);
+    expect(passed.map((row) => row.failed)).toEqual([[1, 0]]);
+  });
+
+  it('says whether the findings differ, and gives each run’s cost and latency of the case', () => {
+    const slow = sampled('a', [
+      [{ ...fabricated, response: { status: 200, latencyMs: 300, evidence: {} } }],
+    ]);
+    const first = run('first', [
+      withCost(sampled('a', [[grounded], [grounded], [grounded]]), 0.001),
+    ]);
+    const second = run('second', [withCost(slow, null)]);
+    const [row] = compared(first, second).cases;
+    expect(row).toMatchObject({
+      findingsDiffer: true,
+      costUsd: [0.003, null],
+      latencyMs: [100, 300],
+    });
+    expect(row?.costUsd?.[0]).toBeCloseTo(0.003, 10);
+    const same = compared(first, first).cases[0];
+    expect(same?.findingsDiffer).toBe(false);
+    expect(same?.findings).toEqual([]);
+  });
+
+  it('reads a case’s cost from its spans without a proxy, and knows none without either', () => {
+    const spanned: CaseResult = {
+      ...sampled('a', [[grounded]]),
+      samples: [
+        {
+          index: 0,
+          cache: 'cold',
+          turns: [{ ...grounded, spans: { calls: [], costUsd: 0.002 } }],
+        },
+      ],
+    };
+    const bare = sampled('a', [[grounded]]);
+    const { cases } = compared(run('x', [spanned]), run('y', [bare]));
+    expect(cases[0]?.costUsd).toEqual([0.002, null]);
+    const unanswered: CaseResult = {
+      ...bare,
+      samples: [{ index: 0, cache: 'cold', turns: [{ user: 'u', checks: [] }] }],
+    };
+    expect(compared(run('x', [unanswered]), run('y', [bare])).cases[0]?.latencyMs).toEqual([
+      null,
+      100,
+    ]);
+  });
+
+  it('puts the cases whose findings differ after those whose status differs', () => {
+    const moved = { ...sampled('moved', [[grounded]]), status: 'pass' as const };
+    const changedInside = sampled('inside', [[fabricated]]);
+    const same = sampled('same', [[fabricated]]);
+    const before = run('before', [same, changedInside, moved]);
+    const after = run('after', [
+      same,
+      sampled('inside', [[judged([['stock-claim', 'fabrication', 'fail', 'stock']])]]),
+      sampled('moved', [[fabricated]]),
+    ]);
+    expect(compared(before, after).cases.map((c) => [c.id, c.differs, c.findingsDiffer])).toEqual([
+      ['moved', true, true],
+      ['inside', false, true],
+      ['same', false, false],
+    ]);
+  });
+
+  it('counts a row the same that fails in every run that has it, however often', () => {
+    const once = run('once', [
+      sampled('a', [
+        [grounded, fabricated],
+        [grounded, grounded],
+      ]),
+    ]);
+    const twice = run('twice', [
+      sampled('a', [
+        [grounded, fabricated],
+        [grounded, fabricated],
+      ]),
+    ]);
+    const shorter = run('shorter', [sampled('a', [[fabricated]])]);
+    const often = compared(once, twice).cases[0];
+    expect(often?.findings?.map((row) => row.failed)).toEqual([[1, 2]]);
+    expect(often?.findingsDiffer).toBe(false);
+    // The shorter run lacks turn 1: its row there isn't a change.
+    const lacking = compared(once, shorter).cases[0];
+    expect(lacking?.findings?.find((row) => row.turn === 1)?.failed).toEqual([1, null]);
+    expect(lacking?.findingsDiffer).toBe(true);
+    const onlyLacking = compared(
+      run('long', [sampled('a', [[fabricated, fabricated]])]),
+      run('short', [sampled('a', [[fabricated]])]),
+    ).cases[0];
+    expect(onlyLacking?.findingsDiffer).toBe(false);
+  });
+
+  it('gives the median latency of a case’s answered turns', () => {
+    const three = run('three', [sampled('a', [[timed(300)], [timed(100)], [timed(200)]])]);
+    expect(compared(three, three).cases[0]?.latencyMs).toEqual([200, 200]);
+  });
+
+  it('gives a case whose definition differs no rows', () => {
+    const before = run('before', [sampled('a', [[fabricated]])]);
+    const after = run('after', [sampled('a', [[grounded]], 'e')]);
+    expect(compared(before, after).cases[0]).toMatchObject({
+      changed: true,
+      findings: [],
+      findingsDiffer: false,
+    });
   });
 });

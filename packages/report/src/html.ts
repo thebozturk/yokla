@@ -31,7 +31,7 @@ type CheckResult = TurnResult['checks'][number];
 type ModelCall = NonNullable<TurnResult['proxy']>['calls'][number];
 
 /** Markup that is safe as it is. */
-interface Html {
+export interface Html {
   readonly markup: string;
 }
 type Part = string | number | Html | readonly Html[] | undefined;
@@ -51,7 +51,7 @@ function markupOf(part: Part): string {
 }
 
 /** A template whose strings are markup and whose values are escaped text. */
-function h(strings: TemplateStringsArray, ...parts: readonly Part[]): Html {
+export function h(strings: TemplateStringsArray, ...parts: readonly Part[]): Html {
   let markup = strings[0] ?? '';
   for (const [index, part] of parts.entries()) {
     markup += markupOf(part) + (strings[index + 1] ?? '');
@@ -59,7 +59,8 @@ function h(strings: TemplateStringsArray, ...parts: readonly Part[]): Html {
   return { markup };
 }
 
-const STYLE = `
+// The helpers below are shared with the comparison page (ADR-0095).
+export const STYLE = `
 :root { color-scheme: light dark; --bg: #ffffff; --fg: #1d2025; --muted: #5d6570;
   --line: #d8dce2; --panel: #f6f7f9; --code: #eef0f3;
   --good: #1a7f37; --bad: #c42b2b; --warn: #8f6200; }
@@ -107,7 +108,7 @@ a { color: inherit; }
 @media print { details.case { break-inside: avoid-page; } }
 `;
 
-const STATUS_TONE: Readonly<Record<CaseResult['status'], string>> = {
+export const STATUS_TONE: Readonly<Record<CaseResult['status'], string>> = {
   pass: 'good',
   fail: 'bad',
   error: 'bad',
@@ -124,7 +125,7 @@ const VERDICT_TONE: Readonly<Record<string, string>> = {
   unmeasured: 'warn',
 };
 
-function badge(text: string, tone: string): Html {
+export function badge(text: string, tone: string): Html {
   return h`<span class="status ${tone}">${text}</span>`;
 }
 
@@ -132,11 +133,11 @@ function seconds(durationMs: number): string {
   return `${(durationMs / 1000).toFixed(3)} s`;
 }
 
-function ms(value: number): string {
+export function ms(value: number): string {
   return `${String(Math.round(value))} ms`;
 }
 
-function usd(value: number | null): string {
+export function usd(value: number | null): string {
   return value === null ? 'no cost' : `$${round(value)}`;
 }
 
@@ -148,11 +149,15 @@ function item(term: string, value: Part): Html {
   return h`<dt>${term}</dt><dd>${value}</dd>`;
 }
 
-function list(lines: readonly string[], tone: string): Html {
+export function list(lines: readonly string[], tone: string): Html {
   return h`<ul class="${tone}">${lines.map((line) => h`<li>${line}</li>`)}</ul>`;
 }
 
-function table(head: readonly string[], rows: readonly Html[], numeric: readonly number[] = []) {
+export function table(
+  head: readonly string[],
+  rows: readonly Html[],
+  numeric: readonly number[] = [],
+): Html {
   const cells = head.map((name, index) =>
     numeric.includes(index) ? h`<th class="num">${name}</th>` : h`<th>${name}</th>`,
   );
@@ -506,7 +511,7 @@ function spansBlock(spans: NonNullable<TurnResult['spans']>): Html {
   )}</details>`;
 }
 
-function answerBlock(turn: TurnResult): Html {
+export function answerBlock(turn: TurnResult): Html {
   const { response } = turn;
   if (response === undefined) return h`<p class="bad">No answer.</p>`;
   const facts = [

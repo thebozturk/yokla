@@ -1,8 +1,9 @@
-// yokla compare (ADR-0042): sets runs of the same cases side by side, one run
-// per model the proxy swapped in. Each run is judged by the gate, with the
-// configuration's thresholds and the baseline as yokla gate would; the
-// comparison names the cheapest run that passes. It reads results files and
-// contacts nothing.
+// yokla compare (ADR-0042, ADR-0095): sets runs of the same cases side by
+// side, such as one run per model the proxy swapped in, or a run before and
+// after a change, with the findings each later run gained or lost. Each run
+// is judged by the gate, with the configuration's thresholds and the baseline
+// as yokla gate would; the comparison names the cheapest run that passes. It
+// reads results files and contacts nothing.
 // Exit codes: 0 compared, whatever the verdicts; 1 with --expect-same, a case's
 // status differs between the runs (ADR-0043); 2 a file can't be read, or fewer
 // than two runs are given.
@@ -10,14 +11,16 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { compare, comparisonReport } from '../api.ts';
+import { compare, comparisonHtml, comparisonReport } from '../api.ts';
 import { LoadError, loadConfig, readBaseline, readResults, ResultsError } from '../load.ts';
 import { writeReport, type Output } from './run.ts';
 
 export const COMPARE_HELP = `Usage: yokla compare --results <file> --results <file> [options]
 
 Sets runs of the same cases side by side, such as one run per model that
-yokla run --swap-model tried, and names the cheapest run that passes the gate.
+yokla run --swap-model tried, or a run before and after a change. It names the
+findings each later run gained or lost against the first, and the cheapest run
+that passes the gate.
 
 Options:
   --results <file>      a run's results file; two or more
@@ -25,6 +28,9 @@ Options:
   --baseline <file>     a baseline each run is gated against (default: yokla.baseline.json,
                         when present)
   --json <file>         also write the comparison as JSON
+  --html <file>         also write a page that sets each case's answers side by side, with the
+                        findings each run gained or lost against the first; it holds the target's
+                        answers (ADR-0095)
   --expect-same         exit with 1 when a case's status differs between the runs, as a
                         metamorphic run's must not
 
@@ -35,6 +41,7 @@ const OPTIONS = {
   config: { type: 'string' },
   baseline: { type: 'string' },
   json: { type: 'string' },
+  html: { type: 'string' },
   'expect-same': { type: 'boolean' },
   help: { type: 'boolean' },
 } as const;
@@ -82,6 +89,9 @@ export function compareCommand(
     }
     if (values.json !== undefined) {
       io.out(`json: ${writeReport(values.json, `${JSON.stringify(comparison, null, 2)}\n`)}`);
+    }
+    if (values.html !== undefined) {
+      io.out(`html: ${writeReport(values.html, comparisonHtml(comparison, runs))}`);
     }
     // A change that mustn't move a verdict (ADR-0043): any case that moved breaks it.
     if (values['expect-same'] === true) {

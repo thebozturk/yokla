@@ -12,6 +12,7 @@ describe('the library API (ADR-0093)', () => {
       'LoadError',
       'ResultsError',
       'compare',
+      'comparisonHtml',
       'comparisonReport',
       'gate',
       'htmlReport',

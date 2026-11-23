@@ -108,6 +108,22 @@ describe('yokla compare (ADR-0042)', () => {
     expect(written.cheapest).toEqual({ runs: ['mini'], costUsd: 0.004 });
   });
 
+  it('writes the comparison page with --html (ADR-0095)', () => {
+    const { code, out } = compare(
+      '--results',
+      'big.json',
+      '--results',
+      'nano.json',
+      '--html',
+      'out/comparison.html',
+    );
+    expect(code).toBe(0);
+    expect(out.at(-1)).toBe(`html: ${join(dir, 'out/comparison.html')}`);
+    const page = readFileSync(join(dir, 'out/comparison.html'), 'utf8');
+    expect(page).toMatch(/^<!doctype html>\n/u);
+    expect(page).toContain('<details class="case" id="case-a" open>');
+  });
+
   it("gates each run by the configuration's thresholds", () => {
     const { out } = compare(
       '--results',

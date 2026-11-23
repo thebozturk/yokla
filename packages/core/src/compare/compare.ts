@@ -43,6 +43,30 @@ export const Comparison = z
         differs: z.boolean(),
         /** Its definition differs between runs: its statuses aren't compared (ADR-0011). */
         changed: z.boolean(),
+        /**
+         * Its failing findings, one row per turn, check and dimension that failed
+         * in a run (ADR-0095); none when its definition differs.
+         */
+        findings: z
+          .array(
+            z.object({
+              /** The turn's index in the case's samples. */
+              turn: z.int().nonnegative(),
+              check: z.string(),
+              dimension: z.string(),
+              /** In each run, how many samples failed it; null when the case or the turn isn't there. */
+              failed: z.array(z.int().nonnegative().nullable()),
+              /** In each run, the first failing message; null when it didn't fail there. */
+              messages: z.array(z.string().nullable()),
+            }),
+          )
+          .optional(),
+        /** A row fails in one run and not in another (ADR-0095). */
+        findingsDiffer: z.boolean().optional(),
+        /** In each run, the target's model cost of the case; null when unknown or not there. */
+        costUsd: z.array(z.number().nonnegative().nullable()).optional(),
+        /** In each run, the median latency of the case's answered turns; null with none. */
+        latencyMs: z.array(z.number().nonnegative().nullable()).optional(),
       }),
     ),
     /** The cheapest runs that pass the gate, by run id; null when none can be named. */
@@ -114,6 +138,91 @@ function summaryOf(results: Results, gate: GateOutcome) {
   };
 }
 
+type CaseResult = Results['cases'][number];
+type FindingRow = NonNullable<Comparison['cases'][number]['findings']>[number];
+
+/**
+ * A case's failing findings across runs (ADR-0095): one row per turn, check
+ * and dimension that failed in some run, with how many of each run's samples
+ * failed it and the first failing message there.
+ */
+export function findingRows(found: readonly (CaseResult | undefined)[]): FindingRow[] {
+  const rows = new Map<
+    string,
+    FindingRow & { failed: (number | null)[]; messages: (string | null)[] }
+  >();
+  found.forEach((c, run) => {
+    if (c === undefined) return;
+    for (const sample of c.samples) {
+      const counted = new Set<string>();
+      sample.turns.forEach((turn, index) => {
+        for (const check of turn.checks) {
+          for (const finding of check.findings) {
+            if (finding.verdict !== 'fail') continue;
+            const key = JSON.stringify([index, check.check, finding.dimension]);
+            let row = rows.get(key);
+            if (row === undefined) {
+              row = {
+                turn: index,
+                check: check.check,
+                dimension: finding.dimension,
+                failed: found.map(() => null),
+                messages: found.map(() => null),
+              };
+              rows.set(key, row);
+            }
+            if (!counted.has(key)) {
+              counted.add(key);
+              row.failed[run] = (row.failed[run] ?? 0) + 1;
+            }
+            row.messages[run] ??= finding.message;
+          }
+        }
+      });
+    }
+  });
+  // A run that has the case and the turn, and didn't fail the row, failed it in no sample.
+  for (const row of rows.values()) {
+    found.forEach((c, run) => {
+      if (row.failed[run] === null && c?.samples.some((sample) => sample.turns.length > row.turn)) {
+        row.failed[run] = 0;
+      }
+    });
+  }
+  return [...rows.values()].toSorted(
+    (a, b) =>
+      a.turn - b.turn || a.check.localeCompare(b.check) || a.dimension.localeCompare(b.dimension),
+  );
+}
+
+/** Whether a row fails in one run that has it and not in another. */
+function rowsDiffer(rows: readonly FindingRow[]): boolean {
+  return rows.some(
+    (row) => new Set(row.failed.flatMap((count) => (count === null ? [] : [count > 0]))).size > 1,
+  );
+}
+
+/** The target's model cost of a case, from the proxy or the spans; null when a turn's isn't known. */
+function caseCost(c: CaseResult): number | null {
+  let total = 0;
+  for (const sample of c.samples) {
+    for (const turn of sample.turns) {
+      const cost = turn.proxy?.costUsd ?? turn.spans?.costUsd;
+      if (cost === undefined || cost === null) return null;
+      total += cost;
+    }
+  }
+  return total;
+}
+
+/** The median latency of a case's answered turns; null with none. */
+function caseLatency(c: CaseResult): number | null {
+  const latencies = c.samples
+    .flatMap((sample) => sample.turns.flatMap((turn) => turn.response?.latencyMs ?? []))
+    .toSorted((a, b) => a - b);
+  return latencies.length === 0 ? null : percentile(latencies, 0.5);
+}
+
 /** Compares two or more runs, each with the verdict its gate gave. */
 export function compareRuns(
   runs: readonly { readonly results: Results; readonly gate: GateOutcome }[],
@@ -139,18 +248,27 @@ export function compareRuns(
     const found = runs.map(({ results }) => results.cases.find((c) => c.id === id));
     const present = found.flatMap((c) => (c === undefined ? [] : [c]));
     const definitions = new Set(present.flatMap((c) => c.definitionSha256 ?? []));
+    const changed = definitions.size > 1;
+    // A case whose definition differs isn't compared (ADR-0011).
+    const findings = changed ? [] : findingRows(found);
     return {
       id,
       suite: present[0]?.suite ?? '',
       statuses: found.map((c) => c?.status ?? null),
       differs: new Set(present.map((c) => c.status)).size > 1,
-      changed: definitions.size > 1,
+      changed,
+      findings,
+      findingsDiffer: rowsDiffer(findings),
+      costUsd: found.map((c) => (c === undefined ? null : caseCost(c))),
+      latencyMs: found.map((c) => (c === undefined ? null : caseLatency(c))),
     };
   });
-  // The cases whose verdict the model changed come first.
+  // The cases whose verdict the run changed come first, then those whose findings it changed.
+  const statusMoved = (c: (typeof cases)[number]) => c.differs && !c.changed;
   const ordered = [
-    ...cases.filter((c) => c.differs && !c.changed),
-    ...cases.filter((c) => !(c.differs && !c.changed)),
+    ...cases.filter((c) => statusMoved(c)),
+    ...cases.filter((c) => !statusMoved(c) && c.findingsDiffer),
+    ...cases.filter((c) => !statusMoved(c) && !c.findingsDiffer),
   ];
 
   const passing = summaries.filter((run) => run.gate.verdict === 'pass');

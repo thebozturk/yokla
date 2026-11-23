@@ -4,6 +4,7 @@
 
 export {
   compare,
+  comparisonHtml,
   comparisonReport,
   gate,
   htmlReport,
