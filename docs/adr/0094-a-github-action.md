@@ -1,6 +1,6 @@
 # 0094. A GitHub Action and CI recipes (E2)
 
-Status: Proposed · Date: 2026-11-23
+Status: Accepted · Date: 2026-11-23
 
 ## Context
 
@@ -38,6 +38,8 @@ What exists:
   itself doesn't test.
 - **Every input reaches the shell through an environment variable,** never
   written into the script, so an input can't inject a command.
+- **GitHub runs a bash step with `-e`.** The run and gate steps turn it off,
+  so they read yokla's exit code instead of stopping at it.
 - **It sets up nothing.** The job brings Node.js 24 or later, as it brings
   the assistant. The first step checks the version and fails with a clear
   message when it is older.
@@ -47,7 +49,7 @@ What exists:
 | Input | Default | Meaning |
 |---|---|---|
 | `version` | this release's version | The yokla version to run, with `npx --yes yokla@<version>`. |
-| `command` | | Runs yokla instead of `npx`, such as `pnpm yokla` in this repository. |
+| `command` | | Runs yokla instead of `npx`, such as `pnpm yokla` in this repository; split on spaces. |
 | `profile`, `config`, `baseline` | yokla's own defaults | Passed as `--profile`, `--config` and `--baseline`. |
 | `cases`, `tags` | | One per line; each passed as `--cases` or `--tag`. |
 | `target-url`, `max-cost` | | Passed to `yokla run`. |
@@ -63,6 +65,9 @@ What exists:
 - **The default version is the release's own.** `action.yml` names it, a
   test keeps it equal to the packages' version, and a release's preparation
   raises it with them. `uses: thebozturk/yokla@v0.6.0` runs yokla 0.6.0.
+- **A test, `scripts/action.test.ts`, holds the action to these rules:** the
+  default version, every action it uses pinned to a commit, and no
+  expression written into a script.
 
 ### Its steps
 
@@ -88,6 +93,10 @@ What exists:
 - **It holds what the terminal summary holds, and no answers.** The job's
   log already shows the same. The answers stay in the results file and the
   HTML page, which only the artifact keeps.
+- **The two are built from the same parts:** the counts, the case rows,
+  the errors and the run's notes. The terminal summary lays them out as
+  lines, the Markdown as a list, a table and a folded block, so the two
+  can't drift apart.
 - **It stays under GitHub's limit for a step's summary:** the table shows
   the first 100 cases, heaviest first as the terminal does, and says how
   many more there are.
@@ -112,7 +121,9 @@ What exists:
   demo-shops: the correct one, and one with `fabricated-price`.
   - The correct shop's step passes, with the verdict `pass`.
   - The defect's step fails, with the verdict `broken`, and its summary
-    names a failing case and `price-grounded`.
+    names a failing case with the reason the terminal summary gives: its
+    dimension, `fabrication`, and the finding. The check's id isn't in it,
+    as it isn't in the terminal summary.
 - **A snapshot test** holds the Markdown of a run with failing, proposed
   and advisory cases, with and without the gate's outcome.
 
