@@ -1,6 +1,6 @@
 # 0093. A library API (E1)
 
-Status: Proposed · Date: 2026-11-23
+Status: Accepted · Date: 2026-11-23
 
 ## Context
 
@@ -77,6 +77,11 @@ What exists:
 Each option takes the value its flag parses to, and is checked as the flag
 is: a bound out of range, or `record` with `replay`, is a `LoadError`.
 
+A `Project` is a plain object: the profile, the cases, the configuration,
+their directory, the profile's hash, the case paths and the loaded check
+modules. A run of some of its cases passes the tags, or a project with
+fewer cases: `run({ ...project, cases })`.
+
 ### What the functions never do
 
 - **They print nothing and never end the process.** A problem is a thrown
@@ -93,8 +98,8 @@ is: a bound out of range, or `record` with `replay`, is a `LoadError`.
 - **`LoadError`:** a file or an object doesn't load or validate, or an
   option is wrong. `yokla run` exits with 2 for it.
 - **`ResultsError`:** a results or baseline file can't be read.
-- **`ConfigError`:** the run can't start, such as a key it needs that the
-  environment lacks.
+- **`ConfigError`:** the configuration doesn't let the run start, such as a
+  model transform without `models.transform`.
 - **Anything else is a bug,** in yokla or in a user's check module.
 
 ### The CLI is built on it
@@ -103,14 +108,19 @@ is: a bound out of range, or `record` with `replay`, is a `LoadError`.
   default files, call the functions, print, and choose their exit codes.
 - **The MCP server calls the same functions.** There is no second path
   from files to results.
+- **`explore` and `shrink` load as `loadProject` does,** and build the
+  runner's options as `run` does, through the same internal functions. They
+  run candidates of their own, so they call the runner themselves, as the
+  MCP server's `shrink_case` does.
 - **The other commands stay command-line only:** `init`, `analyze`,
   `generate`, `baseline`, `proxy`, `plan`, `shrink`, `explore` and `mcp`.
   Each can join the API by its own ADR.
 
 ### How the API changes
 
-- **A test lists the exported names.** Any change to the list shows in
-  review.
+- **A test lists the exported names** a program imports at run time. The
+  types are exported beside them, in the same file. Any change to either
+  shows in review.
 - **Adding** a function or an option is a feature, with its own ADR, as
   every feature is.
 - **Removing or changing one incompatibly** needs an ADR too. Before 1.0 it
@@ -121,10 +131,12 @@ is: a bound out of range, or `record` with `replay`, is a `LoadError`.
 
 - **A new guide page, `docs/guide/api.md`,** documents each function, its
   options and its errors.
-- **Its example is a file in the repository:** it loads the project in
-  the directory it runs in, runs it, gates it, writes the results and a
-  JUnit report, and exits with the gate's code. The guide shows that file,
-  and a test keeps the two the same.
+- **Its example is a file in the repository,**
+  `packages/cli/examples/run-and-gate.ts`: it loads the project in the
+  directory it runs in, runs it, gates it, writes the results and a JUnit
+  report, and exits with the gate's code. It is type-checked with the
+  repository and isn't published. The guide shows that file, and a test
+  keeps the two the same.
 - **The root README** gains a short section on using yokla from code.
 
 ### Exit criteria
