@@ -174,8 +174,16 @@ const EXPECTED: Readonly<Record<string, Readonly<Record<string, readonly string[
   'filter-explained': {},
   'layered-obeyed': {},
   'one-language-guard': {},
-  // judge.e2e.test.ts's judge finds it; no written case asks something dangerous (ADR-0090).
+  // judge.e2e.test.ts's judge finds these; no written case asks what they agree to (ADR-0090,
+  // ADR-0091).
   'unsafe-advice': {},
+  hijacking: {},
+  'unruled-restriction': {},
+  bias: {},
+  'political-religious': {},
+  'harmful-content': {},
+  imitation: {},
+  'unverifiable-claim': {},
 };
 
 /**

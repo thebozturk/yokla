@@ -46,6 +46,7 @@ export const FRAMEWORKS: readonly Framework[] = [
       { code: 'ASI04', name: 'Agentic Supply Chain Vulnerabilities' },
       { code: 'ASI05', name: 'Unexpected Code Execution' },
       { code: 'ASI06', name: 'Memory and Context Poisoning' },
+      { code: 'ASI09', name: 'Human-Agent Trust Exploitation' },
     ],
   },
   {
@@ -70,6 +71,7 @@ export const FRAMEWORKS: readonly Framework[] = [
       { code: 'MEASURE 2.6', name: 'Safety' },
       { code: 'MEASURE 2.7', name: 'Security and resilience' },
       { code: 'MEASURE 2.10', name: 'Privacy' },
+      { code: 'MEASURE 2.11', name: 'Fairness and bias' },
     ],
   },
   {
@@ -94,7 +96,13 @@ export const FRAMEWORKS: readonly Framework[] = [
     id: 'eu-ai-act',
     name: 'EU AI Act',
     version: 'Regulation (EU) 2024/1689',
-    categories: [{ code: 'Article 15', name: 'Accuracy, robustness and cybersecurity' }],
+    categories: [
+      { code: 'Article 15', name: 'Accuracy, robustness and cybersecurity' },
+      {
+        code: 'Article 50',
+        name: 'Transparency obligations for providers and deployers of certain AI systems',
+      },
+    ],
   },
 ];
 
@@ -122,6 +130,7 @@ export const CATEGORY = {
   ASI04: 'owasp-agentic:ASI04',
   ASI05: 'owasp-agentic:ASI05',
   ASI06: 'owasp-agentic:ASI06',
+  ASI09: 'owasp-agentic:ASI09',
   execution: 'mitre-atlas:AML.TA0005',
   persistence: 'mitre-atlas:AML.TA0006',
   discovery: 'mitre-atlas:AML.TA0008',
@@ -132,10 +141,12 @@ export const CATEGORY = {
   safety: 'nist-ai-rmf:MEASURE 2.6',
   security: 'nist-ai-rmf:MEASURE 2.7',
   privacy: 'nist-ai-rmf:MEASURE 2.10',
+  fairness: 'nist-ai-rmf:MEASURE 2.11',
   verification: 'iso-42001:A.6.2.4',
   gdpr: 'gdpr:Article 32',
   kvkk: 'kvkk:Article 12',
   aiAct: 'eu-ai-act:Article 15',
+  transparency: 'eu-ai-act:Article 50',
 } as const;
 
 const C = CATEGORY;
@@ -184,10 +195,26 @@ export const CORE_TAXONOMY: Taxonomy = {
       severity: 'critical',
       categories: [C.LLM02, C.exfiltration, C.privacy, ...TESTED, ...PERSONAL_DATA],
     },
-    // The judge decides it (ADR-0090).
+    // The judge decides these (ADR-0090, ADR-0091).
     'unsafe-advice': {
       severity: 'high',
       categories: [C.LLM09, C.impact, C.safety, ...TESTED, C.aiAct],
+    },
+    hijacking: { severity: 'medium', categories: [C.ASI01, C.impact, C.valid, ...TESTED, C.aiAct] },
+    'unruled-restriction': {
+      severity: 'high',
+      categories: [C.LLM06, C.impact, C.safety, ...TESTED, C.aiAct],
+    },
+    bias: { severity: 'high', categories: [C.impact, C.fairness, ...TESTED] },
+    'political-religious': { severity: 'medium', categories: [C.impact, C.fairness, ...TESTED] },
+    'harmful-content': { severity: 'high', categories: [C.impact, C.safety, ...TESTED] },
+    imitation: {
+      severity: 'high',
+      categories: [C.LLM09, C.ASI09, C.impact, C.valid, ...TESTED, C.transparency],
+    },
+    'unverifiable-claim': {
+      severity: 'medium',
+      categories: [C.LLM09, C.impact, C.valid, ...TESTED, C.aiAct],
     },
   },
   checks: {

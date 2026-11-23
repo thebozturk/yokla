@@ -1,10 +1,10 @@
-// The calibrated judge, end to end (ADR-0090): yokla generate --redteam
-// writes the unsafe-advice cases, and yokla run asks models.judge about each
-// answer, the fake provider playing the judge.
-// - The correct shop passes unsafe-advice.
-// - The unsafe-advice defect is found, and doesn't fail a case by default:
-//   the dimension is advisory. With judge.gate, the cases fail and the gate
-//   breaks.
+// The calibrated judge, end to end (ADR-0090, ADR-0091): yokla generate
+// --redteam writes the attack cases of every judge dimension, and yokla run
+// asks models.judge about each answer, the fake provider playing the judge.
+// - The correct shop passes every dimension.
+// - Each judged defect is found on its own kind's cases and nothing else,
+//   and fails no case by default: the dimensions are advisory. With every
+//   dimension in judge.gate, its cases fail, and the gate breaks.
 // - demo-judge-lax misjudges the calibration: every verdict is unmeasured,
 //   and a run issue names the items.
 // - A second run sends no judge call.
@@ -14,7 +14,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Results } from '@yokla/core';
+import { JUDGE_DIMENSIONS, Results } from '@yokla/core';
 import { installNetworkGuard, type NetworkGuard } from '@yokla/runtime/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { main } from './main.ts';
@@ -59,7 +59,7 @@ async function cli(...args: string[]): Promise<{ code: number; output: string }>
   return { code, output: lines.join('\n') };
 }
 
-/** A configuration with the fake provider as judge, under a model name, and these judge settings. */
+/** A configuration with the fake provider as judge, under a model name, and these judge lines. */
 function writeConfig(name: string, provider: string, model: string, judge: string[] = []): string {
   const file = join(work, `${name}.config.yaml`);
   writeFileSync(
@@ -80,61 +80,68 @@ function writeConfig(name: string, provider: string, model: string, judge: strin
   return file;
 }
 
-/** Each run: the shop's defect, and the configuration it runs with. */
-const RUNS = {
-  correct: ['none', 'advisory'],
-  again: ['none', 'advisory'],
-  advisory: ['unsafe-advice', 'advisory'],
-  gated: ['unsafe-advice', 'gated'],
-  lax: ['unsafe-advice', 'lax'],
-} as const;
+type Config = 'advisory' | 'gated' | 'lax';
+/** Each run: the shop's defect, or none, and the configuration it runs with. */
+const RUNS: readonly (readonly [string, string, Config])[] = [
+  ['correct', 'none', 'advisory'],
+  ['again', 'none', 'advisory'],
+  ...JUDGE_DIMENSIONS.flatMap((defect) => [
+    [defect, defect, 'advisory'] as const,
+    [`${defect}-gated`, defect, 'gated'] as const,
+  ]),
+  ['lax', 'unsafe-advice', 'lax'],
+];
 
 const runs = new Map<string, { code: number; output: string }>();
 const results = (run: string) =>
   Results.parse(JSON.parse(readFileSync(join(work, `${run}.json`), 'utf8')));
-/** The judge's findings of a run, per case. */
+const kindOf = (id: string) => id.replace(/-(?:tr|en)-.*$/u, '');
+/** Each case of a run, by its kind, with the judge's verdicts on it. */
 const verdicts = (run: string) =>
-  results(run).cases.map((c) =>
-    c.samples
+  results(run).cases.map((c) => ({
+    kind: kindOf(c.id),
+    status: c.status,
+    verdicts: c.samples
       .flatMap((sample) => sample.turns)
       .flatMap((turn) => turn.checks)
-      .filter((check) => check.check === 'judge'),
-  );
+      .filter((check) => check.check === 'judge')
+      .flatMap((check) => check.findings.map((finding) => finding.verdict)),
+  }));
+
+/** The profile's request limits, which pace a run; the shops here run without theirs. */
+const LIMITS = '  limits:\n    burstPerSecond: 3\n    perMinute: 120\n';
 
 beforeAll(async () => {
-  writeFileSync(
-    profile,
-    readFileSync(join(DEMO, 'yokla.profile.yaml'), 'utf8').replaceAll(
-      './data/',
-      join(DEMO, 'data/'),
-    ),
-  );
+  const demo = readFileSync(join(DEMO, 'yokla.profile.yaml'), 'utf8');
+  if (!demo.includes(LIMITS)) throw new Error("the demo profile's limits changed");
+  // Nineteen runs of every judged case: at 120 a minute, they would take minutes.
+  writeFileSync(profile, demo.replace(LIMITS, '').replaceAll('./data/', join(DEMO, 'data/')));
   cpSync(join(DEMO, 'data'), join(work, 'data'), { recursive: true });
   guard = installNetworkGuard(
     (host, port) => host === '127.0.0.1' && port !== undefined && ports.has(port),
   );
   const provider = await start('src/provider-main.ts', ['--port', '0']);
-  const configs = {
+  const configs: Readonly<Record<Config, string>> = {
     advisory: writeConfig('advisory', provider, 'demo-judge-1'),
-    gated: writeConfig('gated', provider, 'demo-judge-1', ['judge:', '  gate: [unsafe-advice]']),
+    gated: writeConfig('gated', provider, 'demo-judge-1', [
+      'judge:',
+      `  gate: [${JUDGE_DIMENSIONS.join(', ')}]`,
+    ]),
     lax: writeConfig('lax', provider, 'demo-judge-lax'),
   };
   process.env[KEY_ENV] = 'demo-key';
   const generated = await cli('generate', '--redteam', '--profile', profile, '--per-kind', '2');
   if (generated.code !== 0) throw new Error(generated.output);
-  const shops = {
-    none: await start('src/main.ts', ['--port', '0', '--rate-limit', 'off']),
-    'unsafe-advice': await start('src/main.ts', [
-      '--port',
-      '0',
-      '--rate-limit',
-      'off',
-      '--defect',
-      'unsafe-advice',
-    ]),
-  };
-  // One after the other: the second run of the correct shop reads the first's cache.
-  for (const [run, [defect, config]] of Object.entries(RUNS)) {
+  const shops = new Map<string, string>();
+  for (const defect of ['none', ...JUDGE_DIMENSIONS]) {
+    shops.set(
+      defect,
+      await start('src/main.ts', ['--port', '0', '--rate-limit', 'off', '--defect', defect]),
+    );
+  }
+  const tags = JUDGE_DIMENSIONS.flatMap((dimension) => ['--tag', dimension]);
+  // One after the other: a later run reads the earlier ones' cache.
+  for (const [run, defect, config] of RUNS) {
     runs.set(
       run,
       await cli(
@@ -145,10 +152,9 @@ beforeAll(async () => {
         configs[config],
         '--cases',
         attacks,
-        '--tag',
-        'unsafe-advice',
+        ...tags,
         '--target-url',
-        `${shops[defect]}/v1/chat`,
+        `${shops.get(defect) ?? ''}/v1/chat`,
         '--out',
         join(work, `${run}.json`),
       ),
@@ -161,58 +167,52 @@ afterAll(() => {
   for (const child of children) child.kill();
 });
 
-describe('the calibrated judge on the demo-shop (ADR-0090)', () => {
-  it('judges every unsafe-advice case after its calibration in both languages', () => {
+describe('the calibrated judge on the demo-shop (ADR-0090, ADR-0091)', () => {
+  it('judges the attack cases of every dimension, after its calibration in both languages', () => {
     // yokla run judges; yokla gate decides, below.
     for (const [run, ran] of runs) expect(ran.code, `${run}: ${ran.output}`).toBe(0);
     const correct = results('correct');
-    expect(correct.cases.map((c) => c.id.replace(/-(?:tr|en)-.*$/u, ''))).toEqual(
-      correct.cases.map(() => 'unsafe-advice'),
-    );
-    expect(correct.cases.length).toBe(4);
+    expect(new Set(correct.cases.map((c) => kindOf(c.id)))).toEqual(new Set(JUDGE_DIMENSIONS));
     expect(correct.run.judge).toEqual({
       model: 'demo-judge-1',
-      dimensions: ['unsafe-advice'],
+      dimensions: [...JUDGE_DIMENSIONS],
       gated: [],
-      calibration: { items: 4, misjudged: [] },
+      calibration: { items: JUDGE_DIMENSIONS.length * 4, misjudged: [] },
     });
     expect(runs.get('correct')?.output).toContain(
-      'judge: demo-judge-1, unsafe-advice (advisory); 4 of 4 calibration items judged right',
+      `${String(JUDGE_DIMENSIONS.length * 4)} of ${String(JUDGE_DIMENSIONS.length * 4)} calibration items judged right`,
     );
   });
 
-  it('the correct shop passes unsafe-advice', () => {
-    expect(results('correct').cases.map((c) => c.status)).toEqual(['pass', 'pass', 'pass', 'pass']);
-    for (const checks of verdicts('correct')) {
-      expect(checks.flatMap((check) => check.findings.map((finding) => finding.verdict))).toEqual([
-        'pass',
-      ]);
+  it('the correct shop passes every dimension', () => {
+    for (const c of verdicts('correct')) {
+      expect(c.status, c.kind).toBe('pass');
+      expect(c.verdicts, c.kind).toEqual(['pass']);
     }
   });
 
-  it('finds the defect, and fails no case by default: the dimension is advisory', () => {
-    for (const checks of verdicts('advisory')) {
-      expect(checks.flatMap((check) => check.findings.map((finding) => finding.verdict))).toEqual([
-        'fail',
-      ]);
+  it("finds each defect on its own kind's cases and nothing else, and fails no case by default", () => {
+    for (const defect of JUDGE_DIMENSIONS) {
+      const cases = verdicts(defect);
+      expect(
+        cases.some((c) => c.kind === defect),
+        defect,
+      ).toBe(true);
+      for (const c of cases) {
+        expect(c.verdicts, `${defect}: ${c.kind}`).toEqual([c.kind === defect ? 'fail' : 'pass']);
+        expect(c.status, `${defect}: ${c.kind}`).toBe('pass');
+      }
     }
-    expect(results('advisory').cases.map((c) => c.status)).toEqual([
-      'pass',
-      'pass',
-      'pass',
-      'pass',
-    ]);
-    expect(
-      results('advisory').cases.map(
-        (c) => c.dimensions.find((d) => d.dimension === 'unsafe-advice')?.policy,
-      ),
-    ).toEqual(['advisory', 'advisory', 'advisory', 'advisory']);
   });
 
-  it('with judge.gate, fails every case and breaks the gate', async () => {
-    expect(results('gated').cases.map((c) => c.status)).toEqual(['fail', 'fail', 'fail', 'fail']);
+  it("with every dimension in judge.gate, fails each defect's cases, and the gate breaks", async () => {
+    for (const defect of JUDGE_DIMENSIONS) {
+      for (const c of verdicts(`${defect}-gated`)) {
+        expect(c.status, `${defect}: ${c.kind}`).toBe(c.kind === defect ? 'fail' : 'pass');
+      }
+    }
     const approved = join(work, 'gated-approved.json');
-    const ran = results('gated');
+    const ran = results('unsafe-advice-gated');
     writeFileSync(
       approved,
       JSON.stringify({ ...ran, cases: ran.cases.map(({ review: _review, ...c }) => c) }),
@@ -224,25 +224,18 @@ describe('the calibrated judge on the demo-shop (ADR-0090)', () => {
 
   it('a judge that misjudges the calibration leaves every verdict unmeasured, naming the items', () => {
     const lax = results('lax');
+    const failing = JUDGE_DIMENSIONS.length * 2;
     expect(lax.run.judge?.unmeasured).toBe(
-      'the judge misjudged 2 of 4 calibration items, so its verdicts of the run are discarded',
+      `the judge misjudged ${String(failing)} of ${String(failing * 2)} calibration items, so its verdicts of the run are discarded`,
     );
-    expect(lax.run.judge?.calibration.misjudged.map((item) => [item.language, item.got])).toEqual([
-      ['en', 'pass'],
-      ['tr', 'pass'],
-    ]);
-    for (const checks of verdicts('lax')) {
-      expect(checks.flatMap((check) => check.findings)).toEqual([]);
-      expect(checks.flatMap((check) => check.unmeasured ?? []).map((u) => u.dimension)).toEqual([
-        'unsafe-advice',
-      ]);
-    }
+    expect(lax.run.judge?.calibration.misjudged.every((item) => item.got === 'pass')).toBe(true);
+    for (const c of verdicts('lax')) expect(c.verdicts, c.kind).toEqual([]);
     expect(lax.run.issues?.join('\n')).toContain('fail expected, pass given');
   });
 
   it('a second run sends no judge call: every verdict comes from the cache', () => {
     const first = results('correct').run.own;
-    expect(first?.calls).toBeGreaterThan(4);
+    expect(first?.calls).toBeGreaterThan(JUDGE_DIMENSIONS.length * 4);
     expect(results('again').run.own).toEqual({
       calls: first?.calls,
       cached: first?.calls,

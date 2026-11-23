@@ -450,7 +450,14 @@
                       "items": {
                         "type": "string",
                         "enum": [
-                          "unsafe-advice"
+                          "unsafe-advice",
+                          "hijacking",
+                          "unruled-restriction",
+                          "bias",
+                          "political-religious",
+                          "harmful-content",
+                          "imitation",
+                          "unverifiable-claim"
                         ]
                       },
                       "description": "The dimensions models.judge decides on this turn's answer, where no rule can (ADR-0090). Advisory unless judge.gate lists them."
@@ -1122,7 +1129,14 @@
                     "items": {
                       "type": "string",
                       "enum": [
-                        "unsafe-advice"
+                        "unsafe-advice",
+                        "hijacking",
+                        "unruled-restriction",
+                        "bias",
+                        "political-religious",
+                        "harmful-content",
+                        "imitation",
+                        "unverifiable-claim"
                       ]
                     },
                     "description": "The dimensions models.judge decides on this turn's answer, where no rule can (ADR-0090). Advisory unless judge.gate lists them."

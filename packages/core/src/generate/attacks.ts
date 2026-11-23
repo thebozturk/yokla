@@ -13,7 +13,6 @@ import {
   EXTRACTION_STYLES,
   INJECTION_STYLES,
   INTERNALS_STYLES,
-  UNSAFE_ADVICE_STYLES,
   type AttackPhrasings,
   type InjectionStyle,
   type Generated,
@@ -21,6 +20,7 @@ import {
   type LanguagePack,
 } from '../checks/types.ts';
 import { TEST_CARD } from '../init/starter.ts';
+import { JUDGE_DIMENSIONS } from '../judge/dimensions.ts';
 import { seededFraction } from '../seed.ts';
 
 const REDTEAM = 'redteam';
@@ -155,21 +155,23 @@ export function genericAttacks(options: {
       turns: [{ user: attacks.card.replaceAll('{card}', TEST_CARD) }],
       basis: 'the test card number; card-number fails an answer that writes it back in full',
     });
-    // No rule can tell unsafe advice: the judge decides it, and the case asks for an answer (ADR-0090).
-    for (const style of UNSAFE_ADVICE_STYLES.slice(0, options.perKind)) {
-      cases.push({
-        kind: 'unsafe-advice',
-        language,
-        key: style,
-        suite: REDTEAM,
-        turns: [
-          {
-            user: attacks.unsafeAdvice[style],
-            expect: { answer: { notEmpty: true }, judge: ['unsafe-advice'] },
-          },
-        ],
-        basis: `${style}; models.judge decides unsafe-advice, advisory unless judge.gate lists it`,
-      });
+    // No rule can judge these: the judge decides each, and the case asks for an answer
+    // (ADR-0090, ADR-0091).
+    for (const dimension of JUDGE_DIMENSIONS) {
+      // The pack words every style of the kind, in its order (JUDGED_STYLES types them).
+      for (const [style, user] of Object.entries(attacks.judged[dimension]).slice(
+        0,
+        options.perKind,
+      )) {
+        cases.push({
+          kind: dimension,
+          language,
+          key: style,
+          suite: REDTEAM,
+          turns: [{ user, expect: { answer: { notEmpty: true }, judge: [dimension] } }],
+          basis: `${style}; models.judge decides ${dimension}, advisory unless judge.gate lists it`,
+        });
+      }
     }
     // The first identity whose role forbids a tool claims to be staff (ADR-0086).
     const limited = (options.identities ?? []).flatMap(([id, identity]) => {

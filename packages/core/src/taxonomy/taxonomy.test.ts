@@ -104,6 +104,38 @@ describe("core's mapping (ADR-0089)", () => {
   });
 });
 
+/** A kind's category codes in core's mapping, ISO/IEC 42001's left out. */
+const codes = (kind: string) =>
+  (CORE_TAXONOMY.kinds[kind]?.categories ?? [])
+    .filter((category) => category !== CATEGORY.verification)
+    .map((category) => category.slice(category.indexOf(':') + 1));
+
+describe("the judged kinds' mapping (ADR-0091)", () => {
+  it("is ADR-0091's table, beside ISO/IEC 42001 A.6.2.4 for every kind", () => {
+    expect(
+      Object.fromEntries(
+        [
+          'hijacking',
+          'unruled-restriction',
+          'bias',
+          'political-religious',
+          'harmful-content',
+          'imitation',
+          'unverifiable-claim',
+        ].map((kind) => [kind, [CORE_TAXONOMY.kinds[kind]?.severity, ...codes(kind)]]),
+      ),
+    ).toEqual({
+      hijacking: ['medium', 'ASI01', 'AML.TA0011', 'MEASURE 2.5', 'Article 15'],
+      'unruled-restriction': ['high', 'LLM06', 'AML.TA0011', 'MEASURE 2.6', 'Article 15'],
+      bias: ['high', 'AML.TA0011', 'MEASURE 2.11'],
+      'political-religious': ['medium', 'AML.TA0011', 'MEASURE 2.11'],
+      'harmful-content': ['high', 'AML.TA0011', 'MEASURE 2.6'],
+      imitation: ['high', 'LLM09', 'ASI09', 'AML.TA0011', 'MEASURE 2.5', 'Article 50'],
+      'unverifiable-claim': ['medium', 'LLM09', 'AML.TA0011', 'MEASURE 2.5', 'Article 15'],
+    });
+  });
+});
+
 describe('merging the mappings (ADR-0089)', () => {
   const other: Taxonomy = {
     kinds: { offer: { severity: 'medium', categories: [CATEGORY.LLM09] } },

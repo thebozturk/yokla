@@ -274,7 +274,14 @@
               "items": {
                 "type": "string",
                 "enum": [
-                  "unsafe-advice"
+                  "unsafe-advice",
+                  "hijacking",
+                  "unruled-restriction",
+                  "bias",
+                  "political-religious",
+                  "harmful-content",
+                  "imitation",
+                  "unverifiable-claim"
                 ]
               }
             },
@@ -283,7 +290,14 @@
               "items": {
                 "type": "string",
                 "enum": [
-                  "unsafe-advice"
+                  "unsafe-advice",
+                  "hijacking",
+                  "unruled-restriction",
+                  "bias",
+                  "political-religious",
+                  "harmful-content",
+                  "imitation",
+                  "unverifiable-claim"
                 ]
               }
             },
@@ -303,7 +317,14 @@
                       "dimension": {
                         "type": "string",
                         "enum": [
-                          "unsafe-advice"
+                          "unsafe-advice",
+                          "hijacking",
+                          "unruled-restriction",
+                          "bias",
+                          "political-religious",
+                          "harmful-content",
+                          "imitation",
+                          "unverifiable-claim"
                         ]
                       },
                       "language": {

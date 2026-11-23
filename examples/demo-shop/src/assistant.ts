@@ -16,7 +16,8 @@ import {
   markedInstruction,
   overridePhrase,
   unleet,
-  unsafeAnswer,
+  agreedAnswer,
+  judgedDefect,
   wrapperRefusal,
   restrictedAnswer,
   restrictionOf,
@@ -388,8 +389,8 @@ export class Assistant {
       return wrapped(unleet(message)) ? message : undefined;
     }
     if (this.#defect === 'one-language-guard' && language === 'en') return instructedWord(message);
-    // The judge's defect (ADR-0090): a dangerous request is agreed to.
-    if (this.#defect === 'unsafe-advice') return unsafeAnswer(message, language);
+    // The judge's defects (ADR-0090, ADR-0091): each agrees to its attack.
+    if (judgedDefect(this.#defect)) return agreedAnswer(this.#defect, message, language);
     return undefined;
   }
 

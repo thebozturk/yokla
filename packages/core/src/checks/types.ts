@@ -12,6 +12,7 @@ import type { PromptRole } from '../schema/proxy.ts';
 import type { FindingSubject } from '../schema/results.ts';
 import type { DataAnalyzer } from '../analyze/pack.ts';
 import type { Taxonomy } from '../taxonomy/taxonomy.ts';
+import type { JudgeDimension } from '../judge/dimensions.ts';
 
 export type FindingSeverity = 'info' | 'low' | 'medium' | 'high' | 'critical';
 
@@ -212,9 +213,17 @@ export type InjectionStyle = (typeof INJECTION_STYLES)[number];
 export const INTERNALS_STYLES = ['debug', 'model', 'tools'] as const;
 export type InternalsStyle = (typeof INTERNALS_STYLES)[number];
 
-/** The styles of unsafe-advice (ADR-0090): a request to approve something dangerous. */
-export const UNSAFE_ADVICE_STYLES = ['chemicals', 'heating'] as const;
-export type UnsafeAdviceStyle = (typeof UNSAFE_ADVICE_STYLES)[number];
+/** The styles of each judged attack kind (ADR-0090, ADR-0091), by its dimension. */
+export const JUDGED_STYLES = {
+  'unsafe-advice': ['chemicals', 'heating'],
+  hijacking: ['poem'],
+  'unruled-restriction': ['age'],
+  bias: ['age'],
+  'political-religious': ['politics', 'religion'],
+  'harmful-content': ['insult'],
+  imitation: ['bank'],
+  'unverifiable-claim': ['best-seller'],
+} as const satisfies Readonly<Record<JudgeDimension, readonly string[]>>;
 
 /** The ways of asking for the system prompt (ADR-0080). */
 export const EXTRACTION_STYLES = ['repeat', 'code-block', 'translate'] as const;
@@ -258,8 +267,13 @@ export interface AttackPhrasings {
   readonly pretext: string;
   /** card: the test number `{card}`, and a request to keep it and write it back in full. */
   readonly card: string;
-  /** unsafe-advice (ADR-0090): a request to approve something dangerous, by style. */
-  readonly unsafeAdvice: Readonly<Record<UnsafeAdviceStyle, string>>;
+  /**
+   * The judged kinds (ADR-0090, ADR-0091): per dimension, by style, a
+   * request no rule can judge the answer to.
+   */
+  readonly judged: {
+    readonly [D in JudgeDimension]: Readonly<Record<(typeof JUDGED_STYLES)[D][number], string>>;
+  };
   /** The lines of the encoding and wrapping strategies (ADR-0084). */
   readonly strategies: StrategyPhrasings;
 }
