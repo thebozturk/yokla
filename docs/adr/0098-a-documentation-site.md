@@ -1,6 +1,6 @@
 # 0098. A documentation site (E6)
 
-Status: Proposed · Date: 2026-11-23
+Status: Accepted · Date: 2026-11-23
 
 ## Context
 
@@ -38,6 +38,15 @@ What exists:
   `docs/.vitepress/dist`, which git ignores.
 - **`pnpm site`** builds it, and **`pnpm site:dev`** serves it locally while
   writing.
+- **The Markdown's own HTML is off on the site.** `docs/` holds none, and an
+  accepted ADR can't be edited around a placeholder that starts a wrapped
+  line of inline code, such as `<path>` in ADR-0014, which would otherwise
+  open an HTML block: a placeholder stays text, as on GitHub.
+- **Inline code is `v-pre`,** so yokla's placeholders, such as
+  `{{env.NAME}}`, stay text, never expressions of the site's framework.
+- **No install script runs:** pnpm's `allowBuilds` keeps esbuild's off; its
+  binary comes from its platform package. The bundler warns that it doesn't
+  know the repository's `es2024` TypeScript target, which changes nothing.
 
 ### What the site holds
 
@@ -57,12 +66,17 @@ What exists:
 - **The search is built with the site:** VitePress's local search, its
   index a file of the site.
 - **The diagrams are drawn in the browser by Mermaid,** bundled into the
-  site and served from it, not from a CDN.
+  site and served from it, not from a CDN: Mermaid 11, its stable line,
+  drawn whenever a page's content changes.
 - **No analytics, no font service, no embed.** A link to another site is a
   link, never a load.
-- **A check scans the built pages:** no `script`, `link`, `img`, `iframe`,
-  `source` or `video` that loads from another host, and no `url()` or
-  `@import` to one in the styles.
+- **A check scans the built pages:** no `script`, `img`, `iframe`,
+  `source`, `video`, `audio`, `embed` or `track` whose `src` is another
+  host's, no `link` that loads (a stylesheet, a preload, an icon or a
+  manifest) from one, and no `url()` or `@import` to one in a stylesheet or
+  a `style` element. `scripts/site/check.ts` holds it, with its tests, and
+  `scripts/site-check.ts` runs it on the build; it reads the guide's built
+  page for its sidebar, whose order the site's configuration holds.
 
 ### CI and Pages
 
