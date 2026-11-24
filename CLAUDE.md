@@ -53,6 +53,9 @@ change a decision, propose a new ADR. Never edit an accepted one.
   maintainer publishes a 0.0.0 placeholder from their own machine, deprecates
   it, adds the trusted publisher and requires two-factor authentication
   (ADR-0037, ADR-0071). Trusted publishing can't make a first version.
+- **`pnpm site`** builds the documentation site from `docs/` (ADR-0098), and
+  `node scripts/site-check.ts` checks the build; `pnpm site:dev` serves it
+  while writing. A release's tag publishes it to GitHub Pages.
 - **`pnpm yokla <command>`** runs the CLI from source, without a build. An
   example is `pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml
   --target-url http://127.0.0.1:<port>/v1/chat` against a running demo-shop.
