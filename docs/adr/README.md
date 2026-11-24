@@ -110,6 +110,7 @@ old one.
 | [0095](0095-two-runs-side-by-side.md) | Two runs side by side (E3) | Accepted |
 | [0096](0096-export.md) | Export (E4) | Accepted |
 | [0097](0097-import.md) | Import (E5) | Accepted |
+| [0098](0098-a-documentation-site.md) | A documentation site (E6) | Proposed |
 
 ## Template
 
