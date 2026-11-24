@@ -1,6 +1,6 @@
 {
   "name": "@yokla/interop-rows",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "yokla's cases and results as neutral rows, for other tools.",
   "license": "Apache-2.0",
   "repository": {

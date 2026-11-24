@@ -4,6 +4,85 @@ Notable changes per version. Versions follow the roadmap in
 [design §20](docs/design.md#20-roadmap); a version ships when its exit criteria
 hold.
 
+## 0.6.0 — 2026-11-24
+
+The ecosystem, built as the track of ADR-0092: the `yokla` package exports
+the library API its commands are built on; a GitHub Action runs yokla in a
+job and writes what didn't pass to the job's summary; `yokla compare` says
+what changed inside each case between runs, and a page sets their answers
+side by side; yokla's cases and results go to other tools as neutral rows,
+and other tools' cases and results come in through a mapping you write; and
+a documentation site is built from `docs/`. No other tool is named, nothing
+is sent beyond the run's own requests, and no item needs a model.
+
+**Exit criteria.** v0.6 ships with its criteria met.
+- **The demo-shop's suites run and gate through the library API and
+  through the action,** with the statuses `yokla run` and `yokla gate`
+  give; `pnpm pack-check` runs the API from the installed tarballs, and CI
+  runs the action against the correct shop and a seeded defect.
+- **Another tool's cases and results, in three shapes, import through a
+  mapping and gate,** and yokla's own rows import back to the same
+  statuses.
+- **The documentation site builds with nothing loaded from another host.**
+- **Each item of the track meets its own** (design §20): a library API
+  (ADR-0093), a GitHub Action and CI recipes (ADR-0094), two runs side by
+  side (ADR-0095), export (ADR-0096), import (ADR-0097) and a documentation
+  site (ADR-0098).
+
+### Added
+
+- **A library API (ADR-0093).** `import { loadProject, run, gate } from
+  'yokla'`: `loadProject` and `projectFrom` load a run's files or objects,
+  `run` takes `yokla run`'s flags as typed options, and `gate`, `compare`
+  and the reports work as their commands do. The functions print nothing,
+  never end the process, throw `LoadError`, `ResultsError` or
+  `ConfigError`, and write no file but a run's model caches. The commands
+  and the MCP server are built on them.
+- **A GitHub Action (ADR-0094).** `uses: thebozturk/yokla@v0.6.0` runs a
+  pinned `yokla run` and `yokla gate`, writes a Markdown summary to the
+  job's summary, keeps the reports as the job's artifact, and fails the
+  step when the run exits with 2, or the gate breaks or can't judge the
+  run. Its inputs reach the
+  shell only through the environment, and it posts nothing outside the
+  job.
+- **A Markdown summary (ADR-0094).** `yokla gate --markdown` and `yokla
+  report --markdown` write the run's counts, up to 100 cases that didn't
+  pass with their reasons, its advisory findings and notes, and with the
+  gate, its verdict. It holds no answers. The CI guide gives recipes for
+  GitLab CI and Azure Pipelines.
+- **What changed inside a case (ADR-0095).** `yokla compare` lists, for
+  each later run against the first, the findings that are new or gone,
+  with their turn, check and message, and counts those kept;
+  `yokla.comparison/v1` holds each case's failing findings per run, its
+  cost and its median latency. `yokla compare --html` writes a static page
+  with each turn's answers side by side.
+- **Export (ADR-0096).** `yokla export` writes the approved cases as
+  `yokla.case-row/v1` JSON Lines, and `yokla report --rows` a run as
+  `yokla.result-row/v1`, a row per turn of each sample; `yokla schema`
+  prints both. `createAssertion` judges an answer another tool got with the
+  case's checks, as a run judges it, and a turn's deadline is unmeasured
+  when no latency is given. The new package `@yokla/interop-rows` holds
+  the rows.
+- **Import (ADR-0097).** `yokla import results` and `yokla import cases`
+  read JSON, JSON Lines, YAML or CSV through a `yokla.import/v1` mapping
+  you write. Imported results report, gate and compare like a run: the
+  row's verdict decides, each assertion is advisory, and a row without a
+  verdict is unmeasured. Imported cases are proposed with `source: import`
+  and no expectations.
+- **A documentation site (ADR-0098).** The guide, the design and the
+  decision records, with search and diagrams, published to GitHub Pages
+  from a release's tag. It loads nothing from another host. The guide
+  gained pages on red teaming, yokla from code and yokla with other tools.
+
+### Changed
+
+- **Only the `yokla` package's exports are promised (ADR-0093).** The
+  `@yokla/*` packages are yokla's parts, and their exports may change in
+  any release; the user-check contract stays as ADR-0030 says.
+- **`yokla compare` orders the cases** whose status differs first, then
+  those whose findings differ (ADR-0095). `--expect-same` still reads the
+  statuses only.
+
 ## 0.5.0 — 2026-11-23
 
 Red teaming, built as the track of ADR-0079: `yokla generate --redteam`

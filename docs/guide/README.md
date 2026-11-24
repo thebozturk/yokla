@@ -1,6 +1,6 @@
 # yokla guide
 
-How to test your own assistant with yokla 0.5. The [design](../design.md)
+How to test your own assistant with yokla 0.6. The [design](../design.md)
 explains why yokla works this way, and the [ADRs](../adr/README.md) record
 each decision.
 

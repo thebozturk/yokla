@@ -34,7 +34,7 @@ wrong value came from.
   calls, and a turn can break the provider on purpose.
 - **Nothing leaves your machine.** No telemetry, no account, no cloud.
 
-**Status: v0.5.** Turkish and English are first-class. The e-commerce pack is
+**Status: v0.6.** Turkish and English are first-class. The e-commerce pack is
 the first domain pack.
 
 ## Quick start
@@ -171,6 +171,9 @@ answer, or only in your app's code after the model call.
 - **`yokla run --swap-model`** tries another model under your cases, with
   the app unchanged, and **`yokla compare`** names the cheapest run that
   still passes the gate.
+- **Runs side by side:** for any runs of the same cases, `yokla compare`
+  shows per case the findings that are new, gone or kept, with cost and
+  latency, and with `--html`, each turn's answers next to each other.
 - **Indirect injection without a copy of your data:** the proxy writes an
   instruction into a tool result before the model sees it, and
   `injection-canary` checks the answer didn't follow it. A run that reverses
@@ -195,6 +198,19 @@ answer, or only in your app's code after the model call.
   baseline small enough to commit.
 - A terminal summary, JUnit XML, and an offline HTML report that shows each
   answer next to its findings.
+- **A GitHub Action** runs a pinned yokla and the gate, writes a Markdown
+  summary of what didn't pass to the job's summary, and keeps the reports
+  as the job's artifact. `yokla gate --markdown` writes the same summary in
+  any CI.
+
+**With other tools**
+- **`yokla export`** writes your approved cases as neutral JSON Lines rows,
+  and `yokla report --rows` a run's results, each with a JSON Schema.
+- **`createAssertion`**, from the library, judges the answers another tool
+  gets with your cases' checks, as a run judges them.
+- **`yokla import`** reads another tool's cases or results, in JSON, JSON
+  Lines, YAML or CSV, through a mapping you write. Imported results report
+  and gate like a run; imported cases are proposed, for you to approve.
 
 ## A case
 
@@ -291,6 +307,8 @@ upstreams your profile names. An egress test in CI holds yokla to that.
 
 ## Documentation
 
+- [The documentation site](https://thebozturk.github.io/yokla/): the guide,
+  the design and the decision records, with search, for the latest release.
 - [The guide](https://github.com/thebozturk/yokla/blob/main/docs/guide/README.md):
   a first run against your own assistant, and a page for each part.
   - Workflows: [the analyzer](https://github.com/thebozturk/yokla/blob/main/docs/guide/analyzer.md),
@@ -307,13 +325,14 @@ upstreams your profile names. An egress test in CI holds yokla to that.
 - [The design](https://github.com/thebozturk/yokla/blob/main/docs/design.md)
   and the [decision records](https://github.com/thebozturk/yokla/blob/main/docs/adr/README.md).
 - [The changelog](https://github.com/thebozturk/yokla/blob/main/CHANGELOG.md).
-- `yokla <command> --help`, and `yokla schema <profile|cases|config|results|baseline|comparison|analysis|case-row|result-row>`
+- `yokla <command> --help`, and `yokla schema <profile|cases|config|results|baseline|comparison|analysis|case-row|result-row|import-mapping>`
   for the JSON Schemas.
 
 ## Roadmap
 
-- **v0.6:** import and export for other evaluation tools, a GitHub Action and
-  a library API.
+v0.6 completes the [planned versions](https://github.com/thebozturk/yokla/blob/main/docs/design.md#20-roadmap).
+Later: sampling production logs, more domains such as banking and travel,
+more languages, SDK adapters, a chat widget driven in a browser, and voice.
 
 ## Packages
 

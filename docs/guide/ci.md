@@ -178,12 +178,12 @@ jobs:
           echo "the assistant did not start"; cat assistant.log; exit 1
 
       - name: Run the cases
-        run: npx yokla@0.5.0 run --out runs/ci.json --junit runs/junit.xml --html runs/report.html --max-cost 1
+        run: npx yokla@0.6.0 run --out runs/ci.json --junit runs/junit.xml --html runs/report.html --max-cost 1
         env:
           ASSISTANT_TOKEN: ${{ secrets.ASSISTANT_TOKEN }}
 
       - name: Gate
-        run: npx yokla@0.5.0 gate --results runs/ci.json --baseline yokla.baseline.json
+        run: npx yokla@0.6.0 gate --results runs/ci.json --baseline yokla.baseline.json
 
       - name: Keep the reports
         if: always()
@@ -215,8 +215,8 @@ yokla:
     - npm ci
     - npm start > assistant.log 2>&1 &
     - for i in $(seq 1 60); do curl -sf http://127.0.0.1:3000/health && break; sleep 1; done
-    - npx --yes yokla@0.5.0 run --out runs/ci.json --junit runs/junit.xml --html runs/report.html --max-cost 1
-    - npx --yes yokla@0.5.0 gate --results runs/ci.json --markdown runs/summary.md
+    - npx --yes yokla@0.6.0 run --out runs/ci.json --junit runs/junit.xml --html runs/report.html --max-cost 1
+    - npx --yes yokla@0.6.0 gate --results runs/ci.json --markdown runs/summary.md
   artifacts:
     when: always
     expire_in: 7 days
@@ -245,9 +245,9 @@ steps:
       for i in $(seq 1 60); do curl -sf http://127.0.0.1:3000/health && exit 0; sleep 1; done
       echo "the assistant did not start"; cat assistant.log; exit 1
     displayName: Start the assistant
-  - script: npx --yes yokla@0.5.0 run --out runs/ci.json --junit runs/junit.xml --html runs/report.html --max-cost 1
+  - script: npx --yes yokla@0.6.0 run --out runs/ci.json --junit runs/junit.xml --html runs/report.html --max-cost 1
     displayName: Run the cases
-  - script: npx --yes yokla@0.5.0 gate --results runs/ci.json --markdown runs/summary.md
+  - script: npx --yes yokla@0.6.0 gate --results runs/ci.json --markdown runs/summary.md
     displayName: Gate
   - script: echo "##vso[task.uploadsummary]$(System.DefaultWorkingDirectory)/runs/summary.md"
     condition: always()
