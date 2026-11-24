@@ -1,6 +1,7 @@
 pnpm-lock.yaml
 **/dist/
 coverage/
+docs/.vitepress/cache/
 LICENSE
 # Markdown is hand-formatted; accepted ADRs are never rewritten.
 *.md

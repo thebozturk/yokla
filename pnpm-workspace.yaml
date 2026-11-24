@@ -7,3 +7,7 @@ packages:
 # A release must be at least 7 days old before it can be installed.
 minimumReleaseAge: 10080
 engineStrict: true
+# No dependency runs an install script. esbuild, which the documentation
+# site builds with (ADR-0098), gets its binary from its platform package.
+allowBuilds:
+  esbuild: false

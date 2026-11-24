@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "typecheck": "tsc -b && tsc -p scripts && tsc -p examples/demo-shop/checks && tsc -p packages/cli/examples",
+    "typecheck": "tsc -b && tsc -p scripts && tsc -p examples/demo-shop/checks && tsc -p packages/cli/examples && tsc -p docs/.vitepress",
     "lint": "oxlint && node scripts/check-layers.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -17,16 +17,20 @@
     "test:coverage": "vitest run --coverage",
     "check": "pnpm format:check && pnpm typecheck && pnpm lint && pnpm test",
     "pack-check": "pnpm build && node scripts/pack-check.ts",
-    "yokla": "node --conditions=@yokla/source packages/cli/src/bin.ts"
+    "yokla": "node --conditions=@yokla/source packages/cli/src/bin.ts",
+    "site": "vitepress build docs",
+    "site:dev": "vitepress dev docs"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
     "@vitest/coverage-v8": "^5.0.5",
     "fast-check": "^4.10.2",
+    "mermaid": "11.13.0",
     "oxlint": "^1.90.0",
     "oxlint-tsgolint": "^7.0.2005",
     "prettier": "^3.9.10",
     "typescript": "^7.0.2",
+    "vitepress": "1.6.4",
     "vitest": "^5.0.5",
     "yaml": "^2.9.1"
   }

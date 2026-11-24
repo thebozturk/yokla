@@ -1,6 +1,8 @@
 node_modules/
 dist/
 coverage/
+# The documentation site's build cache (ADR-0098); its build is dist/.
+docs/.vitepress/cache/
 *.tsbuildinfo
 
 # yokla run artifacts may contain the target's data
