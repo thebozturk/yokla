@@ -112,6 +112,7 @@ old one.
 | [0097](0097-import.md) | Import (E5) | Accepted |
 | [0098](0098-a-documentation-site.md) | A documentation site (E6) | Accepted |
 | [0099](0099-replies-cut-at-maxtokens-in-every-role.md) | Replies cut at maxTokens, in every role of yokla's own models | Accepted |
+| [0100](0100-judged-defects-answer-in-words-of-their-own.md) | The demo-shop's judged defects answer in words of their own | Proposed |
 
 ## Template
 
