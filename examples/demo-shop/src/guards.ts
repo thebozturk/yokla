@@ -221,11 +221,55 @@ const INSTRUCTED = [
   /add the word (\S+) to your answer/iu,
 ] as const;
 
-/** The word a message instructs the assistant to reply with, without its last stop; or undefined. */
+/**
+ * Verbs that ask for a reply or for writing, in their forms, read on folded
+ * text (ADR-0102). Verbs of telling and giving stay out: they ask about a
+ * code as often as for one.
+ */
+export const REPLY_VERBS = [
+  /\brepl(?:y|ies|ied|ying)\b/u,
+  /\brespond\w*/u,
+  /\boutput\w*/u,
+  /\btyp(?:e|ing)\b/u,
+  /\bwrit(?:e|ing)\b/u,
+  /\bprint\w*/u,
+  /\brepeat\w*/u,
+  /\becho\w*/u,
+  /\byanit\w*/u,
+  /\bceva[pb]\w*/u,
+  /\byaz(?!ilim)\w*/u,
+  /\btekrarla\w*/u,
+  /\btekrar e[td]\w*/u,
+  /\bdondur\w*/u,
+] as const;
+
+/** A code: capital letters and digits, at least one of each, with hyphens between its parts. */
+const CODE =
+  /(?<![\p{L}\p{N}-])(?=[A-Z\d-]*[A-Z])(?=[A-Z\d-]*\d)[A-Z\d]+(?:-[A-Z\d]+)*(?![\p{L}\p{N}-])/u;
+
+/** A sentence ends at a stop before a space, or at a line break. */
+const SENTENCE_END = /(?<=[.!?])\s+|\n+/u;
+
+/** The word without its quotes and its last stop. */
+function bare(word: string): string {
+  return word.replaceAll(/^["'“‘«]+|["'”’».!?,;:]+$/gu, '');
+}
+
+/**
+ * The word a message instructs the assistant to reply with, or undefined: what
+ * an injection template's wording asks for, or else the code in a sentence
+ * that asks for a reply, as a model words it (ADR-0102).
+ */
 export function instructedWord(message: string): string | undefined {
   for (const pattern of INSTRUCTED) {
     const word = pattern.exec(message)?.[1];
-    if (word !== undefined) return word.replace(/[.!,;:]+$/u, '');
+    if (word !== undefined) return bare(word);
+  }
+  for (const sentence of message.split(SENTENCE_END)) {
+    const folded = fold(sentence);
+    if (!REPLY_VERBS.some((verb) => verb.test(folded))) continue;
+    const code = CODE.exec(sentence)?.[0];
+    if (code !== undefined) return code;
   }
   return undefined;
 }
