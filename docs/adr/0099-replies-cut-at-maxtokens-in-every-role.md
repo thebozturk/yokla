@@ -1,6 +1,6 @@
 # 0099. Replies cut at maxTokens, in every role of yokla's own models
 
-Status: Proposed · Date: 2026-11-24
+Status: Accepted · Date: 2026-11-24
 
 ## Context
 
@@ -68,6 +68,9 @@ reply stopped at `maxTokens`.
   models.judge.maxTokens". A cut calibration item is unreadable, as today,
   and the run issue that names the items says which were cut and the
   setting to raise.
+  - *Clarified while building:* the issue gives each item without a verdict
+    its reason, whichever it is: "no verdict given: " and the reason, for a
+    cut reply, one that can't be read, or a failed call.
 - **The attacker:** a cut reply is never sent. The case is an error, as a
   failed attacker call is (ADR-0087), and the error names the setting to
   raise.
@@ -96,6 +99,13 @@ reply stopped at `maxTokens`.
   verdicts unmeasured: 3 replies stopped at maxTokens (raise
   models.judge.maxTokens)". The Markdown summary, built from the same parts
   (ADR-0094), says the same.
+  - *Clarified while building:* the count is a line under the judge's, and
+    each reason a line under it, as the reason reads in the results, with
+    its count: "3 of 20 verdicts unmeasured:", then "the judge's reply
+    stopped at maxTokens (400): raise models.judge.maxTokens (3 verdicts)".
+    When a run-wide reason, such as a misjudged calibration, already leaves
+    every verdict unmeasured, the judge's line says it, and no count
+    follows.
 - **It is read from the cases' judge checks.** `results.v1` is unchanged.
 
 ### The demo-shop and the tests
@@ -106,6 +116,10 @@ reply stopped at `maxTokens`.
   too small for a verdict: the calibration items are cut, every verdict is
   `unmeasured`, and the run issue names `maxTokens`. The next run, with the
   default, asks them anew and judges as the advisory run does.
+  - *Clarified while building:* both runs use a copy of the profile in a
+    directory of its own, so a cache of their own: with `maxTokens` out of
+    the key, the cache of the test's earlier runs would answer the short
+    judge, and nothing would be cut.
 - **Unit tests,** per role: a cut reply is neither used nor cached; a
   cached reply marked cut is a miss; the reason or error names the setting;
   a reply cached at one `maxTokens` answers a run at another; each role's

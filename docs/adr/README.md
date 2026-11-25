@@ -40,7 +40,7 @@ old one.
 | [0025](0025-tool-calls.md) | Tool calls: what the proxy reads, and the checks on them | Accepted |
 | [0026](0026-evidence-from-tool-results.md) | Evidence from the tool results the model saw | Accepted |
 | [0027](0027-a-product-named-by-the-start-of-its-name.md) | A product named by the start of its name | Accepted |
-| [0028](0028-the-simulated-customer.md) | The simulated customer, and yokla's own model calls | Accepted |
+| [0028](0028-the-simulated-customer.md) | The simulated customer, and yokla's own model calls | Accepted; amended by 0099 |
 | [0029](0029-model-calls-from-opentelemetry-spans.md) | Model calls read from OpenTelemetry spans | Accepted |
 | [0030](0030-generic-checks.md) | Generic checks: patterns, JSON Schema, similarity, and checks the user writes | Accepted |
 | [0031](0031-tokens-yokla-obtains.md) | Authentication: tokens yokla obtains and refreshes | Accepted |
@@ -71,7 +71,7 @@ old one.
 | [0056](0056-type-padding-shows-in-a-short-result.md) | Type padding shows in a short result, not an empty band | Accepted |
 | [0057](0057-the-response-contract-from-a-contract-file.md) | The response contract from a contract file, verified against the answers | Accepted; amended by 0058 |
 | [0058](0058-the-demo-shop-contract-is-19-entries.md) | The demo-shop's contract is 19 entries | Accepted |
-| [0059](0059-paraphrase-and-code-switching-by-a-model.md) | Paraphrase and code-switching, written by a model | Accepted; amended by 0060 |
+| [0059](0059-paraphrase-and-code-switching-by-a-model.md) | Paraphrase and code-switching, written by a model | Accepted; amended by 0060, 0099 |
 | [0060](0060-a-rewrite-adds-nothing-and-keeps-its-language.md) | A rewrite adds nothing, and keeps its language | Accepted |
 | [0061](0061-negated-stock-wording-and-products-only-named.md) | Negated stock wording, and products the answer only names | Accepted |
 | [0062](0062-generated-cases-name-products-in-stock.md) | Generated cases name products in stock | Accepted |
@@ -84,7 +84,7 @@ old one.
 | [0069](0069-the-model-proxy-reads-an-ai-sdk-gateway.md) | The model proxy reads an AI SDK gateway | Accepted |
 | [0070](0070-v0-4-ships-with-one-criterion-partly-met.md) | v0.4 ships with one exit criterion partly met | Accepted |
 | [0071](0071-a-new-package-reserved-before-it-ships-and-a-release-that-resumes.md) | A new package reserved before it ships, and a release that resumes | Accepted |
-| [0072](0072-the-model-step-reads-the-likely-files-first.md) | The model step reads the likely files first, and answers at length | Accepted; amended by 0073 |
+| [0072](0072-the-model-step-reads-the-likely-files-first.md) | The model step reads the likely files first, and answers at length | Accepted; amended by 0073, 0099 |
 | [0073](0073-marked-files-smallest-first.md) | Marked files go smallest first | Accepted |
 | [0074](0074-a-number-written-with-digit-separators.md) | A number written with digit separators | Accepted |
 | [0075](0075-a-turn-says-what-kind-of-request-it-is.md) | A turn says what kind of request it is | Accepted |
@@ -99,10 +99,10 @@ old one.
 | [0084](0084-encoding-and-wrapping-strategies.md) | Encoding and wrapping strategies (R3) | Accepted |
 | [0085](0085-injection-through-tools-and-memory.md) | Injection through tools and memory (R4) | Accepted |
 | [0086](0086-agency-and-authority.md) | Agency and authority (R4b) | Accepted |
-| [0087](0087-an-attacker-model.md) | An attacker model (R5) | Accepted |
+| [0087](0087-an-attacker-model.md) | An attacker model (R5) | Accepted; amended by 0099 |
 | [0088](0088-more-attacker-strategies.md) | More attacker strategies (R5b) | Accepted |
 | [0089](0089-findings-mapped-to-frameworks.md) | Findings mapped to frameworks (R6) | Accepted |
-| [0090](0090-a-calibrated-judge.md) | A calibrated judge (R7) | Accepted |
+| [0090](0090-a-calibrated-judge.md) | A calibrated judge (R7) | Accepted; amended by 0099 |
 | [0091](0091-more-judge-dimensions.md) | More judge dimensions (R7b) | Accepted |
 | [0092](0092-the-ecosystem-track.md) | The ecosystem track: v0.6 in six items | Accepted |
 | [0093](0093-a-library-api.md) | A library API (E1) | Accepted |
@@ -111,7 +111,7 @@ old one.
 | [0096](0096-export.md) | Export (E4) | Accepted |
 | [0097](0097-import.md) | Import (E5) | Accepted |
 | [0098](0098-a-documentation-site.md) | A documentation site (E6) | Accepted |
-| [0099](0099-replies-cut-at-maxtokens-in-every-role.md) | Replies cut at maxTokens, in every role of yokla's own models | Proposed |
+| [0099](0099-replies-cut-at-maxtokens-in-every-role.md) | Replies cut at maxTokens, in every role of yokla's own models | Accepted |
 
 ## Template
 
