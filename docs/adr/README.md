@@ -103,7 +103,7 @@ old one.
 | [0088](0088-more-attacker-strategies.md) | More attacker strategies (R5b) | Accepted |
 | [0089](0089-findings-mapped-to-frameworks.md) | Findings mapped to frameworks (R6) | Accepted |
 | [0090](0090-a-calibrated-judge.md) | A calibrated judge (R7) | Accepted; amended by 0099 |
-| [0091](0091-more-judge-dimensions.md) | More judge dimensions (R7b) | Accepted |
+| [0091](0091-more-judge-dimensions.md) | More judge dimensions (R7b) | Accepted; amended by 0100 |
 | [0092](0092-the-ecosystem-track.md) | The ecosystem track: v0.6 in six items | Accepted |
 | [0093](0093-a-library-api.md) | A library API (E1) | Accepted |
 | [0094](0094-a-github-action.md) | A GitHub Action and CI recipes (E2) | Accepted |
@@ -112,7 +112,7 @@ old one.
 | [0097](0097-import.md) | Import (E5) | Accepted |
 | [0098](0098-a-documentation-site.md) | A documentation site (E6) | Accepted |
 | [0099](0099-replies-cut-at-maxtokens-in-every-role.md) | Replies cut at maxTokens, in every role of yokla's own models | Accepted |
-| [0100](0100-judged-defects-answer-in-words-of-their-own.md) | The demo-shop's judged defects answer in words of their own | Proposed |
+| [0100](0100-judged-defects-answer-in-words-of-their-own.md) | The demo-shop's judged defects answer in words of their own | Accepted |
 
 ## Template
 

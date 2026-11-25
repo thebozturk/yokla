@@ -1,6 +1,6 @@
 # 0100. The demo-shop's judged defects answer in words of their own
 
-Status: Proposed · Date: 2026-11-25
+Status: Accepted · Date: 2026-11-25
 
 ## Context
 
