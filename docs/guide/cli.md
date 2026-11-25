@@ -459,7 +459,8 @@ pnpm yokla run --cases cases/redteam.yaml --attacker translate --out runs/transl
   cases it adapted. `run.own` counts the calls.
 - **The cache** in `yokla-data/attacker/` repeats every message while the
   target answers the same, at no cost. A failed attacker call is an error
-  of the case, never a pass.
+  of the case, never a pass, and so is a reply cut at `maxTokens`, which is
+  never sent (ADR-0099).
 - **What leaves the machine:** a hosted attacker receives the attacks and
   the target's answers.
 - **Not yet** with `--strategy`, `--transform` or a cassette.
@@ -589,7 +590,7 @@ plan:
     `https://aiplatform.googleapis.com/v1/projects/P/locations/global/publishers/google`.
   - **How yokla calls it:**
     - directly, never through the model proxy;
-    - at `temperature` 0, with at most `maxTokens` (400);
+    - at `temperature` 0, with at most `maxTokens` (2,000 by default);
     - with the sample's seed where the provider takes one.
   - **Its key** is read from `apiKeyEnv`. For Gemini it goes in
     `x-goog-api-key`, or with `auth: bearer` as a bearer token, as Vertex AI
@@ -603,9 +604,9 @@ plan:
     answers included.
 - **`models.analyzer`:** the model `yokla analyze` asks for values in the
   target's docs, prompts and code (ADR-0049), in the same kinds as
-  `models.customer`. Its `maxTokens` is 2,000 by default (ADR-0072), the
-  others' 400. Raise it to what its replies fit in, such as 8000: a model
-  that reasons spends output tokens on it, counted against
+  `models.customer`. Its `maxTokens` is 2,000 by default (ADR-0072), as
+  every own model's is (ADR-0099). Raise it to what its replies fit in, such
+  as 8000: a model that reasons spends output tokens on it, counted against
   `maxTokens` and billed as output (ADR-0051). Give it a `price` too, 0 for
   a local model: without one, `--max-cost` couldn't be kept, and
   `yokla analyze` refuses to run it. A hosted model receives those files'
@@ -623,6 +624,14 @@ plan:
   `price`, 0 for a local model. It must differ from the target's model: when
   the proxy or spans see the target call it, its verdicts are unmeasured. A
   hosted model receives the turns' messages and the target's answers.
+- **A reply cut at `maxTokens`,** in any of these roles, is never used and
+  never cached (ADR-0051, ADR-0099). A customer's or an attacker's ends its
+  case in an error, and a judge's leaves its dimension unmeasured on the
+  turn, or, for a calibration item, every verdict of the run; each names
+  `models.<role>.maxTokens` as the setting to raise. `maxTokens` isn't in
+  any role's cache key, so raising it asks only the cut replies anew. A
+  model that reasons spends its reasoning from the same budget: with
+  2,000, a cut is rare.
 - **`judge`:** the calibrated judge's settings (ADR-0090):
   - **`gate`:** the judge dimensions that gate, each worst-of-N; every other
     one is advisory, reported but never deciding a case;

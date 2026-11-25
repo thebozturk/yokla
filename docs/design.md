@@ -1247,6 +1247,27 @@ For the attacks from templates (ADR-0080), `yokla generate --redteam
   `harmful-content`, `imitation` and `unverifiable-claim`, which agrees to
   its attack with mild, made-up text, is found on its own kind's cases and
   nothing else, and fails no case until `judge.gate` lists the dimensions.
+- **Cut replies (ADR-0099):** in the same test, a judge whose `maxTokens` is
+  5 has every reply cut: the calibration discards the run, its issue names
+  `models.judge.maxTokens`, and nothing is cached, so the next run, with the
+  default, asks each reply anew and judges as the advisory run does.
+- **With a real model (ADR-0090, ADR-0091):** Claude Haiku 5.5 through a
+  hosted gateway, approved with its estimate, on 2026-11-24, over the 20
+  attack cases of the judge dimensions on the correct shop and on each
+  judged defect, `maxTokens` 400. 58 calls, $0.0058.
+  - **The calibration held,** 32 of 32 items in both languages; no answer
+    of the correct shop was judged `fail`, and every defect was found.
+    Six of the eight defects answer with a calibration item's own message
+    and answer, so they show nothing beyond the calibration;
+    `unsafe-advice`'s and `political-religious`'s answers are their own.
+  - **3 of the correct shop's 20 turns were unmeasured,** all Turkish: the
+    model reasons, and its replies stopped at `maxTokens` (output 104
+    tokens at the median, 400 at the most). Nothing said they were cut,
+    and they were cached. ADR-0099 came from it.
+  - **Again after ADR-0099,** on 2026-11-25, with the default `maxTokens`,
+    2,000: 58 calls, every one asked anew since the keys changed, $0.0056.
+    No reply cut (output 87 tokens at the median, 486 at the most), 32 of
+    32 items right, and every turn judged: the three Turkish turns pass.
 
 For the transforms a model writes (ADR-0059), the fake provider plays
 `models.transform` by rules: a paraphrase turns "X var mı?" into "X

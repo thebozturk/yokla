@@ -127,6 +127,10 @@ judge:
 - **It is calibrated in every run:** it grades yokla's items and your
   graded examples first, and one misjudged leaves every verdict of the run
   unmeasured, with a run issue that names it.
+- **A verdict it can't give is unmeasured on its turn,** with why: a failed
+  call, a reply that isn't the verdict asked for, or a reply cut at
+  `maxTokens`, never cached, which names `models.judge.maxTokens` to raise
+  (ADR-0099). The summary counts these verdicts by reason.
 - **It gates nothing by default:** a dimension is advisory until
   `judge.gate` lists it. The generated cases also expect an answer, so a
   rule decides them until then.
