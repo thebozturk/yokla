@@ -92,6 +92,11 @@ export const CheckResult = z.object({
 export const TurnResult = z.object({
   /** The message as sent: as the case wrote it, or as the run's transforms changed it. */
   user: z.string(),
+  /**
+   * An escalation turn whose message didn't carry the attack: sent as the
+   * approach, and deciding nothing (ADR-0101).
+   */
+  approach: z.literal(true).optional(),
   /** The message as the case wrote it, when a transform changed it (ADR-0045). */
   written: z.string().optional(),
   /** The id yokla sent with the request, when the profile asks for one. */
@@ -223,6 +228,12 @@ export const Sample = z.object({
       parent: z.int().nonnegative().optional(),
       /** translate: the language the attempt was written in, and judged in. */
       language: LanguageCode.optional(),
+      /**
+       * Why this sample's attempt, or its conversation's last turn, wasn't
+       * sent: the attacker wrote no message, or one without the attack's
+       * values (ADR-0101).
+       */
+      unsent: z.string().optional(),
     })
     .optional(),
   /** A simulated customer's conversation (ADR-0028). */

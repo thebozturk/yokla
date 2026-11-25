@@ -52,6 +52,8 @@ function sampleVerdicts(sample: Sample): {
   let error = false;
   for (const turn of sample.turns) {
     if (turn.error !== undefined) error = true;
+    // An escalation's approach, which didn't carry the attack, decides nothing (ADR-0101).
+    if (turn.approach === true) continue;
     for (const check of turn.checks) {
       for (const finding of check.findings) {
         if (finding.verdict === 'error') error = true;
@@ -141,7 +143,8 @@ export function summariseChecks(cases: readonly CaseResult[]): CheckSummary[] {
   const byCheck = new Map<string, CheckSummary>();
   for (const c of cases) {
     for (const sample of c.samples) {
-      for (const turn of sample.turns) {
+      // An escalation's approach turns decide nothing, and count in no check's summary (ADR-0101).
+      for (const turn of sample.turns.filter((t) => t.approach !== true)) {
         for (const check of turn.checks) {
           const entry = byCheck.get(check.check) ?? {
             check: check.check,

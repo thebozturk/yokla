@@ -21,9 +21,11 @@ import {
   runTaxonomy,
   type Taxonomy,
   attacked,
+  attackValues,
   type AttackerRun,
   type AttackExchange,
   type AttackRequest,
+  leftOut,
   MAX_BRANCHES,
   MAX_DEPTH,
   translatable,
@@ -986,6 +988,14 @@ function attackerLimit(run: AttackerRun, languages: readonly string[]): number {
   }
 }
 
+/** Whether an earlier attempt was sent: one that wasn't has no answer to show (ADR-0101). */
+function wasSent(sample: ExchangedSample | undefined): boolean {
+  return sample !== undefined && sample.attacker?.unsent === undefined;
+}
+
+/** Why a tree's attempt isn't written: it would vary an attempt never sent (ADR-0101). */
+const PARENT_UNSENT = "the attempt it varies wasn't sent";
+
 /** An earlier attempt as the attacker is shown it: its message and the answer (ADR-0088). */
 function attemptOf(sample: ExchangedSample | undefined): AttackExchange {
   const [exchange] = sample?.exchanges ?? [];
@@ -1559,8 +1569,14 @@ async function attackWith(
   const said: AttackExchange[] = [];
   const sent: Sent = { written: turn.user, changedBy: [] };
   const { run } = attack;
+  // What a message must hold to carry the attack (ADR-0101).
+  const values = attackValues(turn.user, turn.expect);
   let brokeAt: number | undefined;
+  let unsent: string | undefined;
   const parent = run.strategy === 'tree' ? treeParent(sampleIndex, run.branches) : undefined;
+  if (parent !== undefined && !wasSent(earlier[parent])) {
+    return { calls, costUsd: sumCosts(calls), parent, unsent: PARENT_UNSENT };
+  }
   const into =
     run.strategy === 'translate'
       ? otherLanguages(testCase, attack.languages)[sampleIndex]
@@ -1578,7 +1594,10 @@ async function attackWith(
           strategy: 'iterative',
           attempt: sampleIndex,
           attempts: run.limit,
-          earlier: earlier.map((attempt) => attemptOf(attempt)),
+          // An attempt that wasn't sent has no answer to learn from (ADR-0101).
+          earlier: earlier
+            .filter((attempt) => wasSent(attempt))
+            .map((attempt) => attemptOf(attempt)),
         };
       }
       case 'tree': {
@@ -1612,6 +1631,11 @@ async function attackWith(
         sample.exchanges.push({ turn: { user: '', error: next.why, checks: [] }, view: undefined });
         break;
       }
+      // A refusal, or a note about the task, isn't a message: never sent (ADR-0101).
+      if ('unsent' in next) {
+        unsent = next.unsent;
+        break;
+      }
       text = next.text;
     } catch (error) {
       const why = error instanceof ModelClientError ? error.message : errorMessage(error);
@@ -1621,20 +1645,35 @@ async function attackWith(
       });
       break;
     }
+    // A message without the attack's values isn't an attempt at it; an escalation sends
+    // it as its approach, which decides nothing (ADR-0101).
+    const lost = leftOut(text, values);
+    if (lost !== undefined && run.strategy !== 'escalation') {
+      unsent = `"${lost}" was left out`;
+      break;
+    }
     const outcome = await sample.runTurn(
       { ...turn, user: text, ...(expect === undefined ? {} : { expect }) },
       turnIndex,
       sent,
     );
+    if (lost !== undefined) {
+      sample.exchanges[sample.exchanges.length - 1] = {
+        ...outcome,
+        turn: { ...outcome.turn, approach: true },
+      };
+    }
     if (outcome.turn.error !== undefined || outcome.view === undefined) break;
     if (run.strategy !== 'escalation') break;
-    // The conversation ends at the first turn a check fails.
-    const judged = await attack.judge(testCase, [
-      { index: sampleIndex, exchanges: [...sample.exchanges] },
-    ]);
-    if (broke(judged, true)) {
-      brokeAt = turnIndex;
-      break;
+    // The conversation ends at the first turn that carried the attack and failed a check.
+    if (lost === undefined) {
+      const judged = await attack.judge(testCase, [
+        { index: sampleIndex, exchanges: [...sample.exchanges] },
+      ]);
+      if (broke(judged, true)) {
+        brokeAt = turnIndex;
+        break;
+      }
     }
     said.push({ attacker: text, answer: outcome.turn.response?.text ?? '' });
   }
@@ -1644,6 +1683,7 @@ async function attackWith(
     ...(brokeAt === undefined ? {} : { brokeAt }),
     ...(parent === undefined ? {} : { parent }),
     ...(into === undefined ? {} : { language: into }),
+    ...(unsent === undefined ? {} : { unsent }),
   };
 }
 

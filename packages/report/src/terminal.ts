@@ -225,6 +225,7 @@ export function noteLines(results: Results): string[] {
     out.push(
       `attacker: ${attacker.strategy}, ${attackerBound(attacker)}, ${counted(attacker.cases, 'case')}`,
     );
+    out.push(...unsentAttemptLines(results, attacker.strategy === 'escalation'));
   }
   // The judge: its model, its dimensions, and its calibration (ADR-0090).
   const { judge } = results.run;
@@ -243,6 +244,39 @@ export function noteLines(results: Results): string[] {
   }
   out.push(...frameworkLines(results));
   return out;
+}
+
+/**
+ * The attacker's attempts not sent, counted by reason, with the values a
+ * reason quotes left out so that one reason counts once; and the escalations
+ * that never carried the attack (ADR-0101).
+ */
+function unsentAttemptLines(results: Results, escalation: boolean): string[] {
+  const attacked = results.cases.flatMap((c) => c.samples).filter((s) => s.attacker !== undefined);
+  const noun = escalation ? 'conversation' : 'attempt';
+  const reasons = new Map<string, number>();
+  let neverCarried = 0;
+  for (const sample of attacked) {
+    const unsent = sample.attacker?.unsent;
+    if (unsent !== undefined) {
+      const reason = unsent.replaceAll(/"[^"]*"/gu, '"…"');
+      reasons.set(reason, (reasons.get(reason) ?? 0) + 1);
+    } else if (sample.turns.length > 0 && sample.turns.every((turn) => turn.approach === true)) {
+      neverCarried += 1;
+    }
+  }
+  const unsentCount = [...reasons.values()].reduce((sum, count) => sum + count, 0);
+  const lines: string[] = [];
+  if (unsentCount > 0) {
+    lines.push(
+      `  ${String(unsentCount)} of ${counted(attacked.length, noun)} ${escalation ? 'ended at a reply not sent' : 'not sent'}:`,
+      ...[...reasons].map(([reason, count]) => `    ${reason} (${counted(count, noun)})`),
+    );
+  }
+  if (neverCarried > 0) {
+    lines.push(`  ${counted(neverCarried, 'conversation')} never carried the attack`);
+  }
+  return lines;
 }
 
 /** The judged turns' verdicts left unmeasured, counted by reason, if any (ADR-0099). */

@@ -7,6 +7,10 @@
 // - obfuscation-obeyed passes every written case and escalation, and
 //   best-of-n breaks it at its leetspeak attempt, running no further one.
 // - A second run sends no attacker call: every reply comes from the cache.
+// - An attacker that refuses, or leaves the attack's values out, sends
+//   nothing that could break a case: each case it should have attacked is
+//   unmeasured, the summary counts what wasn't sent, and the gate breaks
+//   (ADR-0101).
 // The shop's model runs in process, at no cost, behind the network guard.
 
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -61,16 +65,30 @@ async function cli(...args: string[]): Promise<{ code: number; output: string }>
 
 /** Each shop's runs, in order: an attacker strategy, or none for the cases as written. */
 const PLAN: Readonly<Record<string, readonly string[]>> = {
-  none: ['escalation', 'best-of-n', 'escalation-again'],
+  none: ['escalation', 'best-of-n', 'escalation-again', 'best-of-n@refuses'],
   'worn-down': ['escalation', 'best-of-n', 'written'],
-  'obfuscation-obeyed': ['best-of-n', 'escalation', 'written'],
+  'obfuscation-obeyed': [
+    'best-of-n',
+    'escalation',
+    'written',
+    'best-of-n@refuses',
+    'best-of-n@drops',
+    'escalation@drops',
+  ],
+};
+/** The fake attackers that write no attack, by the name a run gives after "@" (ADR-0101). */
+const NO_ATTACK: Readonly<Record<string, string>> = {
+  refuses: 'demo-attacker-refuses',
+  drops: 'demo-attacker-drops',
 };
 /** The kinds whose own message, followed, breaks a check (ADR-0084). */
 const FOLLOWED = new Set(['injection', 'false-premise', 'card', 'offer']);
 
 const runs = new Map<string, { code: number; output: string }>();
+const fileOf = (defect: string, run: string) =>
+  join(work, `${defect}-${run.replace('@', '-')}.json`);
 const results = (defect: string, run: string) =>
-  Results.parse(JSON.parse(readFileSync(join(work, `${defect}-${run}.json`), 'utf8')));
+  Results.parse(JSON.parse(readFileSync(fileOf(defect, run), 'utf8')));
 const kindOf = (id: string) => id.replace(/-(?:tr|en)-.*$/u, '');
 const failed = (defect: string, run: string) =>
   results(defect, run)
@@ -90,20 +108,22 @@ beforeAll(async () => {
     (host, port) => host === '127.0.0.1' && port !== undefined && ports.has(port),
   );
   const provider = await start('src/provider-main.ts', ['--port', '0']);
-  writeFileSync(
-    config,
+  const configText = (model: string) =>
     [
       'version: 1',
       'models:',
       '  attacker:',
       '    kind: openai-compatible',
       `    url: ${provider}/v1`,
-      '    model: demo-attacker-1',
+      `    model: ${model}`,
       `    apiKeyEnv: ${KEY_ENV}`,
       '    price: { input: 0, output: 0 }',
       '',
-    ].join('\n'),
-  );
+    ].join('\n');
+  writeFileSync(config, configText('demo-attacker-1'));
+  for (const [name, model] of Object.entries(NO_ATTACK)) {
+    writeFileSync(join(work, `${name}.config.yaml`), configText(model));
+  }
   process.env[KEY_ENV] = 'demo-key';
   const generated = await cli(
     'generate',
@@ -128,7 +148,7 @@ beforeAll(async () => {
         defect,
       ]);
       for (const run of plan) {
-        const strategy = run.replace(/-again$/u, '');
+        const [strategy = '', attacker] = run.replace(/-again$/u, '').split('@');
         runs.set(
           `${defect} ${run}`,
           await cli(
@@ -136,14 +156,16 @@ beforeAll(async () => {
             '--profile',
             profile,
             '--config',
-            config,
+            attacker === undefined ? config : join(work, `${attacker}.config.yaml`),
             '--cases',
             attacks,
+            // The attackers that write no attack run the injections only: each has a canary.
+            ...(attacker === undefined ? [] : ['--tag', 'injection']),
             '--target-url',
             `${shop}/v1/chat`,
             ...(strategy === 'written' ? [] : ['--attacker', strategy]),
             '--out',
-            join(work, `${defect}-${run}.json`),
+            fileOf(defect, run),
           ),
         );
       }
@@ -245,6 +267,64 @@ describe('the attacker model on the demo-shop (ADR-0087)', () => {
       results('none', 'escalation-again').cases.map((c) => c.samples[0]?.turns.map((t) => t.user)),
     ).toEqual(
       results('none', 'escalation').cases.map((c) => c.samples[0]?.turns.map((t) => t.user)),
+    );
+  });
+
+  it('an attacker that refuses sends nothing: every attacked case is unmeasured, never a pass (ADR-0101)', async () => {
+    for (const defect of ['none', 'obfuscation-obeyed']) {
+      const ran = results(defect, 'best-of-n@refuses');
+      expect(
+        ran.cases.map((c) => c.status),
+        defect,
+      ).toEqual(ran.cases.map(() => 'unmeasured'));
+      for (const c of ran.cases) {
+        expect(
+          c.samples.map((sample) => [sample.turns.length, sample.attacker?.unsent]),
+          c.id,
+        ).toEqual(c.samples.map(() => [0, 'the attacker wrote no message']));
+      }
+      const attempts = ran.cases.reduce((sum, c) => sum + c.samples.length, 0);
+      expect(runs.get(`${defect} best-of-n@refuses`)?.output).toContain(
+        `${String(attempts)} of ${String(attempts)} attempts not sent:\n    the attacker wrote no message (${String(attempts)} attempts)`,
+      );
+    }
+    // Approved, its cases break the gate: what wasn't tested isn't a pass.
+    const approved = join(work, 'refuses-approved.json');
+    const ran = results('none', 'best-of-n@refuses');
+    writeFileSync(
+      approved,
+      JSON.stringify({ ...ran, cases: ran.cases.map(({ review: _review, ...c }) => c) }),
+    );
+    const gate = await cli('gate', '--results', approved);
+    expect(gate.code, gate.output).toBe(1);
+  });
+
+  it("an attacker that leaves the attack's values out breaks nothing obfuscation-obeyed gives in to (ADR-0101)", () => {
+    const ran = results('obfuscation-obeyed', 'best-of-n@drops');
+    expect(failed('obfuscation-obeyed', 'best-of-n@drops')).toEqual([]);
+    // Every injection had a canary to leave out; each of their attempts says which.
+    expect(ran.cases.map((c) => kindOf(c.id))).toEqual(ran.cases.map(() => 'injection'));
+    expect(ran.cases.length).toBeGreaterThan(0);
+    for (const c of ran.cases) {
+      expect(c.status, c.id).toBe('unmeasured');
+      for (const sample of c.samples) {
+        expect(sample.turns, c.id).toEqual([]);
+        expect(sample.attacker?.unsent, c.id).toMatch(/^".+" was left out$/u);
+      }
+    }
+    // An escalation without the values only approaches: its conversations decide nothing.
+    const escalated = results('obfuscation-obeyed', 'escalation@drops').cases.filter(
+      (c) => kindOf(c.id) === 'injection',
+    );
+    for (const c of escalated) {
+      expect(
+        c.samples[0]?.turns.every((turn) => turn.approach === true),
+        c.id,
+      ).toBe(true);
+      expect(c.status, c.id).toBe('unmeasured');
+    }
+    expect(runs.get('obfuscation-obeyed escalation@drops')?.output).toMatch(
+      /\d+ conversations? never carried the attack/u,
     );
   });
 

@@ -131,6 +131,52 @@ describe('summariseChecks', () => {
       { check: 'stock', applied: 1, notApplicable: 1, passed: 0, failed: 0, errors: 1 },
     ]);
   });
+
+  it("leaves out an escalation's approach turns, which decide nothing (ADR-0101)", () => {
+    const approach = turn([applied(finding('injection', 'fail'))], { approach: true });
+    const caseResult = {
+      id: 'a',
+      suite: 'redteam' as const,
+      language: 'en',
+      status: 'pass' as const,
+      unstable: false,
+      dimensions: [],
+      samples: [sample(approach, turn([applied(finding('injection', 'pass'))]))],
+    };
+    expect(summariseChecks([caseResult])).toEqual([
+      { check: 'c', applied: 1, notApplicable: 0, passed: 1, failed: 0, errors: 0 },
+    ]);
+  });
+});
+
+/** An escalation turn that didn't carry the attack, with this verdict (ADR-0101). */
+const approach = (verdict: 'pass' | 'fail') =>
+  turn([applied(finding('injection', verdict))], { approach: true });
+/** A turn that carried the attack, with this verdict. */
+const carried = (verdict: 'pass' | 'fail') => turn([applied(finding('injection', verdict))]);
+
+describe("an escalation's approach turns (ADR-0101)", () => {
+  it('decide nothing: the turns that carried the attack decide', () => {
+    expect(aggregateCase([sample(approach('fail'), carried('pass'))], {}, false).status).toBe(
+      'pass',
+    );
+    expect(aggregateCase([sample(approach('pass'), carried('fail'))], {}, false).status).toBe(
+      'fail',
+    );
+  });
+
+  it('leave a conversation with no other turn unmeasured, never a pass', () => {
+    expect(aggregateCase([sample(approach('pass'), approach('pass'))], {}, false)).toEqual({
+      status: 'unmeasured',
+      unstable: false,
+      dimensions: [],
+    });
+  });
+
+  it("still count their errors: a turn that failed to run is the case's error", () => {
+    const crashed = turn([], { approach: true, error: 'timeout' });
+    expect(aggregateCase([sample(crashed, carried('pass'))], {}, false).status).toBe('error');
+  });
 });
 
 describe('runChecks', () => {

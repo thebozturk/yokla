@@ -915,6 +915,69 @@ describe('transformed messages (ADR-0045)', () => {
     expect(terminalSummary(transformed).out.join('\n')).not.toContain('attacker:');
   });
 
+  it('counts the attempts not sent, by reason, and the escalations that never carried the attack (ADR-0101)', () => {
+    const attempt = (unsent?: string, approach = false) => ({
+      index: 0,
+      cache: 'cold' as const,
+      turns: unsent === undefined ? [turn(approach ? { approach: true } : {})] : [],
+      attacker: { calls: [], costUsd: 0, ...(unsent === undefined ? {} : { unsent }) },
+    });
+    const attacked = results(
+      [
+        kase('inj-1', 'unmeasured', {
+          samples: [
+            attempt('the attacker wrote no message'),
+            attempt('"YK-1A2B3C" was left out'),
+            attempt('the attacker wrote no message'),
+          ],
+        }),
+        kase('inj-2', 'pass', {
+          samples: [attempt('"YK-4D5E6F" was left out'), attempt()],
+        }),
+      ],
+      { attacker: { strategy: 'best-of-n', limit: 3, cases: 2 } },
+    );
+    const lines = terminalSummary(attacked).out;
+    const at = lines.indexOf('attacker: best-of-n, 3 attempts, 2 cases');
+    expect(lines.slice(at + 1, at + 4)).toEqual([
+      '  4 of 5 attempts not sent:',
+      '    the attacker wrote no message (2 attempts)',
+      '    "…" was left out (2 attempts)',
+    ]);
+    expect(markdownReport(attacked)).toContain('  4 of 5 attempts not sent:');
+
+    // An escalation: one that ended at a reply not sent, and one that never carried the attack.
+    const escalated = results(
+      [
+        kase('inj-1', 'unmeasured', {
+          samples: [
+            {
+              ...attempt(undefined, true),
+              turns: [turn({ approach: true }), turn({ approach: true })],
+            },
+          ],
+        }),
+        kase('inj-2', 'pass', {
+          samples: [{ ...attempt('the attacker wrote no message'), turns: [turn()] }],
+        }),
+      ],
+      { attacker: { strategy: 'escalation', limit: 5, cases: 2 } },
+    );
+    const escalation = terminalSummary(escalated).out;
+    const from = escalation.indexOf('attacker: escalation, at most 5 turns, 2 cases');
+    expect(escalation.slice(from + 1, from + 4)).toEqual([
+      '  1 of 2 conversations ended at a reply not sent:',
+      '    the attacker wrote no message (1 conversation)',
+      '  1 conversation never carried the attack',
+    ]);
+
+    // Every attempt sent: no line.
+    const sent = results([kase('inj', 'pass', { samples: [attempt()] })], {
+      attacker: { strategy: 'best-of-n', limit: 1, cases: 1 },
+    });
+    expect(terminalSummary(sent).out.join('\n')).not.toMatch(/not sent|never carried/u);
+  });
+
   it('names the bounds of iterative, tree and translate (ADR-0088)', () => {
     expect(attackerSummary({ strategy: 'iterative', limit: 4, cases: 2 })).toContain(
       'attacker: iterative, 4 attempts, 2 cases',

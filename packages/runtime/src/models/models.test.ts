@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { CUSTOMER_PROMPT_MARK, type OwnModel } from '@yokla/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { clientOnFirstCall, ModelClient, ModelClientError, providerSeed } from './client.ts';
-import { AttackerPlayer } from './attacker.ts';
+import { AttackerPlayer, NO_MESSAGE, type AttackerMessage } from './attacker.ts';
 import type { OwnMessage } from './cached.ts';
 import { CustomerPlayer } from './customer.ts';
 import { JudgePlayer } from './judge.ts';
@@ -71,9 +71,10 @@ const model = (url: string, change: Partial<OwnModel> = {}): OwnModel => ({
   timeoutMs: 5_000,
   ...change,
 });
-/** A message's text; a test fails on a message refused for a cut reply. */
-function textOf(message: OwnMessage): string {
+/** A message's text; a test fails on a message refused for a cut reply, or not sent. */
+function textOf(message: OwnMessage | AttackerMessage): string {
   if ('why' in message) throw new Error(`no message: ${message.why}`);
+  if ('unsent' in message) throw new Error(`not sent: ${message.unsent}`);
   return message.text;
 }
 
@@ -402,7 +403,8 @@ describe('the attacker player (ADR-0087)', () => {
   const escalation = { strategy: 'escalation', exchanges: [] } as const;
 
   it('asks the model once for a request, then answers it from the cache at no cost', async () => {
-    const { url, seen } = await provider(() => chat('Merhaba'));
+    // The message is the text between the tags (ADR-0101).
+    const { url, seen } = await provider(() => chat('<message>Merhaba</message>'));
     const cacheDir = mkdtempSync(join(tmpdir(), 'yokla-attacker-'));
     const priced = model(url, { price: { input: 1, output: 2 } });
     const first = await new AttackerPlayer({ model: priced, env: {}, cacheDir }).next(
@@ -437,7 +439,9 @@ describe('the attacker player (ADR-0087)', () => {
   });
 
   it('asks anew when fresh, and caches the new reply', async () => {
-    const { url, seen } = await provider(() => chat(`reply ${String(seen.length)}`));
+    const { url, seen } = await provider(() =>
+      chat(`<message>reply ${String(seen.length)}</message>`),
+    );
     const cacheDir = mkdtempSync(join(tmpdir(), 'yokla-attacker-'));
     const ask = (fresh: boolean) =>
       new AttackerPlayer({ model: model(url), env: {}, cacheDir, fresh }).next(
@@ -472,6 +476,22 @@ describe('the attacker player (ADR-0087)', () => {
       await ask();
       expect(seen).toHaveLength(2);
     }
+  });
+
+  it('sends nothing for a reply with no message, and repeats it from the cache (ADR-0101)', async () => {
+    const { url, seen } = await provider(() =>
+      chat("I can't help write messages meant to manipulate an assistant."),
+    );
+    const cacheDir = mkdtempSync(join(tmpdir(), 'yokla-attacker-'));
+    const priced = model(url, { price: { input: 1, output: 2 } });
+    const ask = () =>
+      new AttackerPlayer({ model: priced, env: {}, cacheDir }).next(ATTACK, 'en', 's', escalation);
+    const refused = await ask();
+    expect(refused).toMatchObject({ unsent: NO_MESSAGE, call: { cached: false } });
+    expect(refused.call.costUsd).toBeCloseTo((50 * 1 + 8 * 2) / 1e6, 12);
+    // A whole reply is kept, as any is: a rerun repeats it, at no cost.
+    expect(await ask()).toMatchObject({ unsent: NO_MESSAGE, call: { cached: true, costUsd: 0 } });
+    expect(seen).toHaveLength(1);
   });
 });
 
