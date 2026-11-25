@@ -1,6 +1,6 @@
 # 0101. An attacker's reply that isn't the attack
 
-Status: Proposed · Date: 2026-11-25
+Status: Accepted · Date: 2026-11-25
 
 ## Context
 
@@ -71,11 +71,21 @@ an attack never sent was a pass.
     answer to learn from.
   - `tree` writes no variants of an unsent attempt: they vary what was
     answered.
+  - *Clarified while building:* each such variant is a sample with no turn
+    and no call, whose `unsent` is "the attempt it varies wasn't sent".
+  - *Clarified while building:* a reply cut at `maxTokens` stays the case's
+    error (ADR-0099): it is the run's setting to fix, not the model's
+    answer. Only a whole reply with no message, or one without the values,
+    is unsent.
 - **`escalation`:** a turn whose reply isn't a message ends the
   conversation, and `unsent` says why. A turn that doesn't carry the attack
   is sent, as the approach escalation allows (ADR-0087), but is marked
   `approach` and decides nothing: its checks are kept and don't count. A
   conversation in which no turn carried the attack decides nothing.
+  - *Clarified while building:* an approach turn ends no conversation: only
+    a turn that carried the attack and failed a check sets `brokeAt`. Its
+    checks count in no check's summary either, and an approach turn that
+    errored is still the case's error.
 - **Its cost counts,** toward `--max-cost` and in `run.own`, and the reply
   is cached as any other: a rerun repeats it, and `--fresh-attacker` asks
   anew. Nothing is asked again by itself.
@@ -93,6 +103,10 @@ an attack never sent was a pass.
   attempts not sent, by reason, and the conversations that never carried
   the attack, when there are any: "9 of 16 attempts not sent", then a line
   per reason with its count.
+  - *Clarified while building:* a reason's quoted value is shown as
+    `"…"`, so that one reason counts once across cases, whose canaries
+    differ. For `escalation` the line reads "1 of 4 conversations ended at
+    a reply not sent".
 - **`results.v1` gains, additively,** `attacker.unsent` on a sample and
   `approach` on a turn.
 
@@ -109,6 +123,11 @@ an attack never sent was a pass.
   `unmeasured`, never a pass or a fail; each sample says why; the summary
   counts them; the gate breaks. Escalation's opening question is an
   approach turn.
+  - *Clarified while building:* these runs take the `injection` cases
+    only, each of which has a canary to leave out: run over every case, at
+    the demo profile's request limits, the test's setup ran past its time.
+    The regular fake attacker's verdicts held unchanged, its opening
+    question now an approach turn.
 - **Unit tests:** reading the tags (none, one, two, empty, around other
   text); the values carried, in both directions; each strategy's unsent
   attempt; an approach turn in the aggregation; the summary's count; the
