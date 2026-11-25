@@ -4,6 +4,50 @@ Notable changes per version. Versions follow the roadmap in
 [design §20](docs/design.md#20-roadmap); a version ships when its exit criteria
 hold.
 
+## 0.6.1 — 2026-11-25
+
+What the first runs of the judge and the attacker on a real model showed.
+A model that reasons spent its reasoning from yokla's 400-token budget, and
+a cut reply was cached, sent or read as if whole; and an attacker that
+refused, or wrote a note instead of the attack, had its reply sent and its
+case passed. No attack that wasn't sent is a pass now, and no cut reply is
+used. On the demo-shop, the judged defects no longer answer with the
+judge's own calibration answers (ADR-0100), so finding them shows the
+judge judging.
+
+### Changed
+
+- **Every own model's `maxTokens` defaults to 2000 (ADR-0099),** as the
+  analyzer's did: the customer's, the transforms', the attacker's and the
+  judge's were 400. What is spent doesn't grow; the transforms' printed
+  upper bound does.
+- **`maxTokens` is no longer in the customer's, the attacker's or the
+  judge's cache key (ADR-0099),** and the attacker's key holds its prompt's
+  version (ADR-0101): their replies cached before are asked anew once.
+- **The attacker writes its message between `<message>` tags (ADR-0101),**
+  sees the earlier messages and answers as a transcript rather than as the
+  other party's turns, and is told the test is the owner's, on their own
+  assistant.
+- **`results.v1` gains, additively,** `attacker.unsent` on a sample and
+  `approach` on a turn (ADR-0101).
+
+### Fixed
+
+- **A reply cut at `maxTokens` is never used or cached (ADR-0099).** A
+  customer's or an attacker's ends its case in an error, and is never sent;
+  a judge's leaves its dimension unmeasured on the turn, or, for a
+  calibration item, every verdict of the run. Each names
+  `models.<role>.maxTokens` as the setting to raise. The terminal and
+  Markdown summaries count the judge's verdicts left unmeasured, by reason.
+- **An attacker's reply that isn't the attack is never sent (ADR-0101).**
+  A reply with no message, such as a refusal, or a message that leaves out
+  the attack's values, what the turn's expectations quote and every number
+  the case's message writes, isn't sent, and says why; `iterative` doesn't
+  show it to the next attempt, and `tree` writes no variants of it. In an
+  escalation, a turn without the values is sent as the approach and
+  decides nothing. A case none of whose attempts was sent is unmeasured,
+  never a pass, and the summary counts the attempts not sent, by reason.
+
 ## 0.6.0 — 2026-11-24
 
 The ecosystem, built as the track of ADR-0092: the `yokla` package exports

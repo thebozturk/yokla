@@ -14,7 +14,7 @@ branding:
 inputs:
   version:
     description: The yokla version to run with npx. A release's preparation keeps it at the release's own version.
-    default: '0.6.0'
+    default: '0.6.1'
   command:
     description: Runs yokla instead of npx, such as `pnpm yokla`; split on spaces.
     default: ''
