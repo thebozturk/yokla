@@ -280,10 +280,11 @@ function requested(request: AttackRequest): unknown {
 
 /**
  * What keys a cached attacker reply: the model, the attack, the request and
- * the seed. The runtime hashes it; equal keys mean an equal request.
+ * the seed. The runtime hashes it; equal keys mean an equal request. maxTokens
+ * isn't in it: a cut reply is never cached (ADR-0099).
  */
 export function attackerCacheKey(parts: {
-  readonly model: Pick<OwnModel, 'kind' | 'url' | 'model' | 'temperature' | 'maxTokens'>;
+  readonly model: Pick<OwnModel, 'kind' | 'url' | 'model' | 'temperature'>;
   readonly attack: string;
   readonly language: string;
   readonly request: AttackRequest;
@@ -291,7 +292,7 @@ export function attackerCacheKey(parts: {
 }): string {
   const { model, request } = parts;
   return JSON.stringify([
-    [model.kind, model.url, model.model, model.temperature, model.maxTokens],
+    [model.kind, model.url, model.model, model.temperature],
     [parts.attack, parts.language, parts.seed, request.strategy],
     requested(request),
   ]);

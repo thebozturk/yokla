@@ -80,19 +80,15 @@ const OwnModel = z.strictObject({
     .optional()
     .meta({ description: 'The environment variable that holds the API key, if one is needed.' }),
   temperature: z.number().min(0).max(2).default(0),
-  // A model that reasons spends output tokens on it (ADR-0051).
-  maxTokens: z.int().min(1).max(64_000).default(400),
+  // A model that reasons spends output tokens on it, so every role answers in up to
+  // 2,000 by default (ADR-0051, ADR-0072, ADR-0099).
+  maxTokens: z.int().min(1).max(64_000).default(2000),
   timeoutMs: z.int().min(1).max(600_000).default(60_000),
   price: Price.optional().meta({
     description: 'USD per million tokens. Without it, the calls have no cost, never 0.',
   }),
 });
 export type OwnModel = z.output<typeof OwnModel>;
-
-/** The analyzer's model: its replies list many values, so it answers at length (ADR-0072). */
-const AnalyzerModel = OwnModel.extend({
-  maxTokens: z.int().min(1).max(64_000).default(2000),
-});
 
 export const YoklaConfig = z.strictObject({
   version: z.literal(1),
@@ -155,7 +151,7 @@ export const YoklaConfig = z.strictObject({
         description:
           "The model that decides the judge's dimensions of a turn's answer (ADR-0090). It must differ from the target's model. A hosted model receives the turns' messages and the target's answers. It needs a price, 0 for a local model, so --max-cost can be enforced.",
       }),
-      analyzer: AnalyzerModel.optional().meta({
+      analyzer: OwnModel.optional().meta({
         description:
           "The model yokla analyze asks for values in the target's docs, prompts and code (ADR-0049). A hosted model receives those files' text. It needs a price, 0 for a local model, so --max-cost can be enforced.",
       }),

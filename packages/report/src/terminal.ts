@@ -238,9 +238,33 @@ export function noteLines(results: Results): string[] {
     out.push(
       `judge: ${judge.model ?? 'none'}, ${dimensions}; ${judge.unmeasured === undefined ? calibrated : `unmeasured: ${judge.unmeasured}`}`,
     );
+    // A run-wide reason already covers every verdict; else the turns' own gaps (ADR-0099).
+    if (judge.unmeasured === undefined) out.push(...unmeasuredVerdictLines(results));
   }
   out.push(...frameworkLines(results));
   return out;
+}
+
+/** The judged turns' verdicts left unmeasured, counted by reason, if any (ADR-0099). */
+function unmeasuredVerdictLines(results: Results): string[] {
+  let verdicts = 0;
+  const reasons = new Map<string, number>();
+  for (const turn of results.cases.flatMap((c) => c.samples).flatMap((s) => s.turns)) {
+    for (const check of turn.checks) {
+      if (check.check !== 'judge') continue;
+      verdicts += check.findings.length;
+      for (const gap of check.unmeasured ?? []) {
+        verdicts += 1;
+        reasons.set(gap.reason, (reasons.get(gap.reason) ?? 0) + 1);
+      }
+    }
+  }
+  const unmeasured = [...reasons.values()].reduce((sum, count) => sum + count, 0);
+  if (unmeasured === 0) return [];
+  return [
+    `  ${String(unmeasured)} of ${counted(verdicts, 'verdict')} unmeasured:`,
+    ...[...reasons].map(([reason, count]) => `    ${reason} (${counted(count, 'verdict')})`),
+  ];
 }
 
 export function terminalSummary(results: Results): TerminalSummary {

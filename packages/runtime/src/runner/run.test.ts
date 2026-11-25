@@ -3117,8 +3117,13 @@ describe('runSuite with a WebSocket target (ADR-0024)', () => {
  * A fake customer model: its reply by how many calls came before, and by how
  * many messages the conversation has, as a model at temperature 0 would.
  */
+/** A reply the model cut at max_tokens, with the text it got to (ADR-0099). */
+interface CutReply {
+  readonly cut: string;
+}
+
 async function customerModel(
-  reply: (callIndex: number, messages: number, body: unknown) => string | undefined,
+  reply: (callIndex: number, messages: number, body: unknown) => string | CutReply | undefined,
 ): Promise<{ url: string; calls: () => number }> {
   let count = 0;
   const server = createServer((request, response) => {
@@ -3135,7 +3140,11 @@ async function customerModel(
       }
       json(response, {
         model: 'customer-1',
-        choices: [{ message: { content: text } }],
+        choices: [
+          typeof text === 'string'
+            ? { message: { content: text } }
+            : { message: { content: text.cut }, finish_reason: 'length' },
+        ],
         usage: { prompt_tokens: 100, completion_tokens: 10 },
       });
     });
@@ -3313,6 +3322,28 @@ describe('runSuite with a simulated customer (ADR-0028)', () => {
     expect(sample?.turns.at(-1)?.error).toBe(
       'the customer model failed: the customer model answered 500',
     );
+    expect(results.cases[0]?.status).toBe('error');
+  });
+
+  it('ends the case in error on a cut reply, sending none of it, and counts its cost (ADR-0099)', async () => {
+    const t = await cartShop();
+    const model = await customerModel(() => ({ cut: 'İlkini sepete' }));
+    const results = await runSuite(
+      options(cartProfile(t.url), cases(shopper()), {
+        models: customerConfig(model.url),
+        dataDir: mkdtempSync(join(tmpdir(), 'yokla-data-')),
+      }),
+    );
+    const [sample] = results.cases[0]?.samples ?? [];
+    expect(sample?.customer?.ended).toBe('error');
+    expect(sample?.turns.at(-1)).toMatchObject({
+      user: '',
+      error: "the customer's reply stopped at maxTokens (300): raise models.customer.maxTokens",
+    });
+    // The opening went as written; the cut reply never reached the shop.
+    expect(t.received.map((r) => r.body['message'])).toEqual([shopper().customer.opening]);
+    expect(sample?.customer?.calls.map((c) => c.cached)).toEqual([false]);
+    expect(sample?.customer?.costUsd).toBeCloseTo((100 * 1 + 10 * 2) / 1e6, 12);
     expect(results.cases[0]?.status).toBe('error');
   });
 
@@ -4676,6 +4707,29 @@ describe('runSuite with an attacker (ADR-0087)', () => {
     expect(results.cases[0]?.samples[0]?.turns[0]?.error).toMatch(/^the attacker model failed: /u);
   });
 
+  it("makes a cut reply the case's error, sending none of it, and counts its cost (ADR-0099)", async () => {
+    const t = await breakableShop();
+    const model = await customerModel((index) => (index === 0 ? 'Merhaba' : { cut: 'BREAK' }));
+    const results = await runSuite(
+      options(profile(t.url), cases(ATTACK_CASE), {
+        models: attackerConfig(model.url),
+        dataDir: mkdtempSync(join(tmpdir(), 'yokla-data-')),
+        checks: CORE_CHECKS,
+        attacker: { strategy: 'escalation', limit: 3 },
+      }),
+    );
+    const [sample] = results.cases[0]?.samples ?? [];
+    expect(sample?.turns.map((turn) => [turn.user, turn.error])).toEqual([
+      ['Merhaba', undefined],
+      ['', "the attacker's reply stopped at maxTokens (300): raise models.attacker.maxTokens"],
+    ]);
+    // The cut "BREAK" never reached the shop, which would have given in to it.
+    expect(t.received.map((r) => r.body['message'])).toEqual(['Merhaba']);
+    expect(sample?.attacker?.calls).toHaveLength(2);
+    expect(sample?.attacker?.costUsd).toBeCloseTo((2 * (100 * 1 + 10 * 2)) / 1e6, 12);
+    expect(results.cases[0]?.status).toBe('error');
+  });
+
   it('refuses what it cannot run, before any request', async () => {
     const t = await breakableShop();
     const run = (change: Record<string, unknown>, c = cases(ATTACK_CASE)) =>
@@ -5021,7 +5075,7 @@ const judgedAnswer = (body: unknown) =>
   /<answer>\n([\s\S]*?)\n<\/answer>/u.exec(sentMessage(body, 1))?.[1] ?? '';
 
 /** A judge that fails an answer opening with "Tabii" and passes any other, unless `reply` says. */
-async function judgeModel(reply?: (body: unknown, index: number) => string | undefined) {
+async function judgeModel(reply?: (body: unknown, index: number) => string | CutReply | undefined) {
   const systems: string[] = [];
   const model = await customerModel((index, _count, body) => {
     systems.push(sentMessage(body, 0));
@@ -5233,6 +5287,70 @@ describe('runSuite with the judge (ADR-0090)', () => {
       expect(check?.unmeasured?.[0]?.reason).toMatch(reason);
       expect(results.cases[0]?.status).toBe('pass');
     }
+  });
+
+  it('leaves a turn cut at maxTokens unmeasured, naming the setting, and asks it anew (ADR-0099)', async () => {
+    const t = await saying('Tabii.');
+    // The calibration is judged right; the turn's reply is cut, its JSON whole or not.
+    for (const cut of [
+      '{"verdict": "fail", "reason": "It agr',
+      '{"verdict": "fail", "reason": "x"}',
+    ]) {
+      const model = await judgeModel((body, index) =>
+        index < 2
+          ? JSON.stringify(
+              judgedAnswer(body).startsWith('Tabii')
+                ? { verdict: 'fail', reason: 'x' }
+                : { verdict: 'pass', reason: 'x' },
+            )
+          : { cut },
+      );
+      const dir = dataDir();
+      const run = () =>
+        runSuite(
+          options(profile(t.url), cases(JUDGED_CASE), {
+            models: judgeConfig(model.url),
+            dataDir: dir,
+            checks: CORE_CHECKS,
+          }),
+        );
+      const results = await run();
+      expect(judgeCheck(results)).toEqual({
+        check: 'judge',
+        applicable: true,
+        findings: [],
+        unmeasured: [
+          {
+            dimension: 'unsafe-advice',
+            reason: "the judge's reply stopped at maxTokens (200): raise models.judge.maxTokens",
+          },
+        ],
+      });
+      // Its cost counts, as any call's.
+      expect(results.run.own).toEqual({ calls: 3, cached: 0, costUsd: (3 * 120) / 1e6 });
+      // The cut reply wasn't kept: the next run asks only it anew.
+      const again = await run();
+      expect(model.calls()).toBe(4);
+      expect(again.run.own).toMatchObject({ calls: 3, cached: 2 });
+    }
+  });
+
+  it('names a calibration item whose reply was cut, with the setting to raise (ADR-0099)', async () => {
+    const t = await saying('Tabii.');
+    const model = await judgeModel((body, index) =>
+      index === 0 ? { cut: '' } : JSON.stringify({ verdict: 'fail', reason: 'x' }),
+    );
+    const results = await runSuite(
+      options(profile(t.url), cases(JUDGED_CASE), {
+        models: judgeConfig(model.url),
+        dataDir: dataDir(),
+        checks: CORE_CHECKS,
+      }),
+    );
+    expect(results.run.judge?.calibration.misjudged).toHaveLength(2);
+    expect(results.run.issues?.join('\n')).toContain(
+      ": fail expected, no verdict given: the judge's reply stopped at maxTokens (200): raise models.judge.maxTokens",
+    );
   });
 
   it("leaves the dimension unmeasured without models.judge, or with the target's model as judge", async () => {

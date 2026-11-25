@@ -190,6 +190,12 @@ describe('the attacker cache key (ADR-0087)', () => {
     expect(new Set([key(), ...others]).size).toBe(others.length + 1);
   });
 
+  it("doesn't change with maxTokens: a cut reply is never cached (ADR-0099)", () => {
+    // A role's whole model goes in, maxTokens with it.
+    const longer = { ...model, maxTokens: 2000 };
+    expect(key({ model: longer })).toBe(key());
+  });
+
   it('differs by everything that changes the request of R5b (ADR-0088)', () => {
     const pair = { attacker: 'a', answer: 'b' };
     const requests: AttackRequest[] = [
@@ -213,17 +219,17 @@ describe('the attacker cache key (ADR-0087)', () => {
     );
   });
 
-  it('keeps the keys of R5 as they were, so their cached replies still answer (ADR-0087)', () => {
+  it("keeps R5's keys as ADR-0099 left them, without maxTokens, so cached replies still answer", () => {
     expect(key()).toBe(
       JSON.stringify([
-        ['openai-compatible', 'http://127.0.0.1:1/v1', 'm', 0, 400],
+        ['openai-compatible', 'http://127.0.0.1:1/v1', 'm', 0],
         [ATTACK, 'en', 's', 'escalation'],
         [],
       ]),
     );
     expect(key({ request: { strategy: 'best-of-n', attempt: 1, attempts: 4 } })).toBe(
       JSON.stringify([
-        ['openai-compatible', 'http://127.0.0.1:1/v1', 'm', 0, 400],
+        ['openai-compatible', 'http://127.0.0.1:1/v1', 'm', 0],
         [ATTACK, 'en', 's', 'best-of-n'],
         [1, 4],
       ]),

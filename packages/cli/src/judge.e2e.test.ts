@@ -8,10 +8,13 @@
 // - demo-judge-lax misjudges the calibration: every verdict is unmeasured,
 //   and a run issue names the items.
 // - A second run sends no judge call.
+// - A judge whose maxTokens is too small for a verdict has every reply cut:
+//   the calibration discards the run, naming the setting, and nothing is
+//   cached, so the next run, with the default, asks each anew (ADR-0099).
 // The shop's model runs in process, at no cost, behind the network guard.
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { JUDGE_DIMENSIONS, Results } from '@yokla/core';
@@ -23,6 +26,8 @@ const DEMO = new URL('../../../examples/demo-shop/', import.meta.url).pathname;
 const KEY_ENV = 'YOKLA_E2E_JUDGE_KEY';
 const work = mkdtempSync(join(tmpdir(), 'yokla-judge-e2e-'));
 const profile = join(work, 'yokla.profile.yaml');
+const cutDir = join(work, 'cut');
+const cutProfile = join(cutDir, 'yokla.profile.yaml');
 const attacks = join(work, 'cases', 'redteam.yaml');
 const children: ChildProcess[] = [];
 const ports = new Set<number>();
@@ -60,7 +65,13 @@ async function cli(...args: string[]): Promise<{ code: number; output: string }>
 }
 
 /** A configuration with the fake provider as judge, under a model name, and these judge lines. */
-function writeConfig(name: string, provider: string, model: string, judge: string[] = []): string {
+function writeConfig(
+  name: string,
+  provider: string,
+  model: string,
+  judge: string[] = [],
+  modelLines: string[] = [],
+): string {
   const file = join(work, `${name}.config.yaml`);
   writeFileSync(
     file,
@@ -73,6 +84,7 @@ function writeConfig(name: string, provider: string, model: string, judge: strin
       `    model: ${model}`,
       `    apiKeyEnv: ${KEY_ENV}`,
       '    price: { input: 0, output: 0 }',
+      ...modelLines,
       ...judge,
       '',
     ].join('\n'),
@@ -160,6 +172,33 @@ beforeAll(async () => {
       ),
     );
   }
+  // A judge too short for a verdict, on a cache of its own: maxTokens isn't in
+  // the key, so the cache above would answer it (ADR-0099).
+  mkdirSync(cutDir);
+  writeFileSync(cutProfile, readFileSync(profile, 'utf8'));
+  const cut = writeConfig('cut', provider, 'demo-judge-1', [], ['    maxTokens: 5']);
+  for (const [run, config] of [
+    ['cut', cut],
+    ['after-cut', configs.advisory],
+  ] as const) {
+    runs.set(
+      run,
+      await cli(
+        'run',
+        '--profile',
+        cutProfile,
+        '--config',
+        config,
+        '--cases',
+        attacks,
+        ...tags,
+        '--target-url',
+        `${shops.get('none') ?? ''}/v1/chat`,
+        '--out',
+        join(work, `${run}.json`),
+      ),
+    );
+  }
 }, 300_000);
 
 afterAll(() => {
@@ -241,6 +280,24 @@ describe('the calibrated judge on the demo-shop (ADR-0090, ADR-0091)', () => {
       cached: first?.calls,
       costUsd: 0,
     });
+  });
+
+  it('a reply cut at maxTokens is named with its setting, never cached, and asked anew (ADR-0099)', () => {
+    const items = JUDGE_DIMENSIONS.length * 4;
+    const cut = results('cut');
+    expect(cut.run.judge?.unmeasured).toBe(
+      `the judge misjudged ${String(items)} of ${String(items)} calibration items, so its verdicts of the run are discarded`,
+    );
+    expect(cut.run.issues?.join('\n')).toContain(
+      "no verdict given: the judge's reply stopped at maxTokens (5): raise models.judge.maxTokens",
+    );
+    for (const c of verdicts('cut')) expect(c.verdicts, c.kind).toEqual([]);
+    // Each item was asked, and none kept: with the default, every reply is asked
+    // anew, the items too, and judged as the advisory run's.
+    expect(cut.run.own).toMatchObject({ calls: items, cached: 0 });
+    const after = results('after-cut');
+    expect(after.run.own).toEqual({ ...results('correct').run.own, cached: 0 });
+    expect(verdicts('after-cut')).toEqual(verdicts('correct'));
   });
 
   // Last, so it sees the traffic of everything above.

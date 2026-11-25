@@ -116,6 +116,10 @@ describe('the judge cache key (ADR-0090)', () => {
     ];
     expect(new Set([key(), ...others]).size).toBe(others.length + 1);
   });
+
+  it("doesn't change with maxTokens: a reply read whole doesn't depend on it (ADR-0099)", () => {
+    expect(key({}, { ...model, maxTokens: 2000 })).toBe(key());
+  });
 });
 
 describe('the calibration items (ADR-0090)', () => {

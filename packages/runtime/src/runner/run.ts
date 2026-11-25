@@ -1607,6 +1607,11 @@ async function attackWith(
       const next = await attack.player.next(turn.user, testCase.language, seed, request());
       calls.push(next.call);
       countSpend(attack.spend, next.call);
+      // A cut reply isn't the attack the strategy wrote: never sent (ADR-0099).
+      if ('why' in next) {
+        sample.exchanges.push({ turn: { user: '', error: next.why, checks: [] }, view: undefined });
+        break;
+      }
       text = next.text;
     } catch (error) {
       const why = error instanceof ModelClientError ? error.message : errorMessage(error);
@@ -1674,6 +1679,15 @@ async function converse(
         const next = await simulation.player.next(customer, testCase.language, seed, said);
         calls.push(next.call);
         countSpend(simulation.spend, next.call);
+        // A cut reply isn't the customer's turn: never sent (ADR-0099).
+        if ('why' in next) {
+          sample.exchanges.push({
+            turn: { user: '', error: next.why, checks: [] },
+            view: undefined,
+          });
+          ended = 'error';
+          break;
+        }
         message = next.text;
       } catch (error) {
         const why = error instanceof ModelClientError ? error.message : errorMessage(error);
@@ -1929,16 +1943,16 @@ async function judgeTurns(
   ): Promise<{ verdict: 'pass' | 'fail'; reason: string } | { why: string }> => {
     if (cap?.stopped() === true) return { why: 'the cost cap stopped the judge' };
     try {
-      const { verdict, call } = await player.judge({
+      const judged = await player.judge({
         dimension,
         language,
         notes: notesOf(dimension),
         user,
         answer,
       });
-      countSpend(spend, call);
+      countSpend(spend, judged.call);
       await cap?.check();
-      return verdict ?? { why: "the judge's reply couldn't be read as a verdict" };
+      return 'why' in judged ? { why: judged.why } : judged.verdict;
     } catch (error) {
       const why = error instanceof ModelClientError ? error.message : errorMessage(error);
       return { why: `the judge model failed: ${why}` };
@@ -1956,6 +1970,8 @@ async function judgeTurns(
     ),
   ];
   const misjudged: NonNullable<Results['run']['judge']>['calibration']['misjudged'] = [];
+  // Each misjudged item for the run issue, with why it got no verdict, such as a cut reply.
+  const named: string[] = [];
   for (const item of items) {
     const got = await verdictOn(item.dimension, item.language, item.user, item.answer);
     if ('why' in got || got.verdict !== item.verdict) {
@@ -1966,15 +1982,15 @@ async function judgeTurns(
         expected: item.verdict,
         ...('why' in got ? {} : { got: got.verdict }),
       });
+      named.push(
+        `${item.dimension} (${item.language}) "${item.user}": ${item.verdict} expected, ` +
+          ('why' in got ? `no verdict given: ${got.why}` : `${got.verdict} given`),
+      );
     }
   }
   const calibration = { items: items.length, misjudged };
   if (misjudged.length > 0) {
     const why = `the judge misjudged ${String(misjudged.length)} of ${counted(items.length, 'calibration item')}, so its verdicts of the run are discarded`;
-    const named = misjudged.map(
-      (item) =>
-        `${item.dimension} (${item.language}) "${item.user}": ${item.expected} expected, ${item.got ?? 'no verdict'} given`,
-    );
     return {
       byExchange: unmeasured(why),
       summary: summary(calibration, why),

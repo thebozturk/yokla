@@ -1,11 +1,19 @@
 // The attacker's next message (ADR-0087): from the reply cache when the same
 // request was answered before, else from the attacker model, as the simulated
 // customer's is (ADR-0028). A rerun repeats every message while the target
-// answers the same.
+// answers the same. A reply cut at maxTokens is neither sent nor cached
+// (ADR-0099).
 
 import { attackerCacheKey, attackerPrompt, type AttackRequest, type OwnModel } from '@yokla/core';
-import { cachedReply, replyFile, storedReply, type OwnCall } from './cached.ts';
-import { ModelClient, ModelClientError } from './client.ts';
+import {
+  cachedReply,
+  cutReason,
+  paidCall,
+  replyFile,
+  storedReply,
+  type OwnMessage,
+} from './cached.ts';
+import { ModelClient } from './client.ts';
 
 export interface AttackerOptions {
   readonly model: OwnModel;
@@ -27,13 +35,16 @@ export class AttackerPlayer {
     this.#client = options.client ?? new ModelClient(options.model, options.env, 'attacker');
   }
 
-  /** The attacker's message for a request about an attack, and the call it took. */
+  /**
+   * The attacker's message for a request about an attack, and the call it
+   * took; or, for a reply cut at maxTokens, why there is none.
+   */
   async next(
     attack: string,
     language: string,
     seed: string,
     request: AttackRequest,
-  ): Promise<{ readonly text: string; readonly call: OwnCall }> {
+  ): Promise<OwnMessage> {
     const { model } = this.#options;
     const file = replyFile(
       this.#options.cacheDir,
@@ -42,8 +53,9 @@ export class AttackerPlayer {
     const cached = this.#options.fresh === true ? undefined : cachedReply(file);
     if (cached !== undefined) return cached;
     const reply = await this.#client.complete(attackerPrompt(attack, language, request), seed);
-    // A reply cut at maxTokens may be empty; a message to send can't be (ADR-0051).
-    if (reply.text === '') throw new ModelClientError('the attacker model answered with no text');
+    if (reply.cut === true) {
+      return { why: cutReason('attacker', model.maxTokens), call: paidCall(reply, model.price) };
+    }
     return storedReply(file, reply, model.price);
   }
 }

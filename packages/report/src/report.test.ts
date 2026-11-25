@@ -1188,6 +1188,42 @@ describe('the frameworks and the risk in the reports (ADR-0089)', () => {
   });
 });
 
+/** A judge check with this many verdicts, and a gap for each reason (ADR-0099). */
+function judgeCheck(verdicts: number, gaps: readonly string[]): TurnResult['checks'][number] {
+  return {
+    check: 'judge',
+    applicable: true,
+    findings: Array.from({ length: verdicts }, () => ({
+      dimension: 'bias',
+      verdict: 'pass' as const,
+      severity: 'high' as const,
+      message: 'x',
+    })),
+    ...(gaps.length === 0
+      ? {}
+      : { unmeasured: gaps.map((reason) => ({ dimension: 'bias', reason })) }),
+  };
+}
+
+/** A run judged on bias, a case per turn with these checks. */
+function judged(checks: TurnResult['checks'][]): Results {
+  return results(
+    checks.map((turnChecks, index) =>
+      kase(`c${String(index)}`, 'pass', {
+        samples: [{ index: 0, cache: 'cold', turns: [turn({ checks: turnChecks })] }],
+      }),
+    ),
+    {
+      judge: {
+        model: 'judge-1',
+        dimensions: ['bias'],
+        gated: [],
+        calibration: { items: 4, misjudged: [] },
+      },
+    },
+  );
+}
+
 describe('the judge in the summary (ADR-0090)', () => {
   it('names the model, each dimension as gating or advisory, and the calibration', () => {
     const summary = (judge: NonNullable<Results['run']['judge']>) =>
@@ -1231,6 +1267,41 @@ describe('the judge in the summary (ADR-0090)', () => {
       }),
     ).toContain('judge: none, unsafe-advice (advisory); unmeasured: no judge model');
     expect(terminalSummary(results([])).out.join('\n')).not.toContain('judge:');
+  });
+
+  it("counts the judged turns' verdicts left unmeasured, by reason, when there are any (ADR-0099)", () => {
+    const CUT = "the judge's reply stopped at maxTokens (400): raise models.judge.maxTokens";
+    const run = judged([
+      [judgeCheck(2, [])],
+      [judgeCheck(0, [CUT, CUT])],
+      [failing('answer', 'not-empty', 'empty'), judgeCheck(1, ['the cost cap stopped the judge'])],
+    ]);
+    const lines = terminalSummary(run).out;
+    const at = lines.indexOf('  3 of 6 verdicts unmeasured:');
+    expect(lines[at - 1]).toBe(
+      'judge: judge-1, bias (advisory); 4 of 4 calibration items judged right',
+    );
+    expect(lines.slice(at + 1, at + 3)).toEqual([
+      `    ${CUT} (2 verdicts)`,
+      '    the cost cap stopped the judge (1 verdict)',
+    ]);
+    // The Markdown summary says the same, from the same parts (ADR-0094).
+    expect(markdownReport(run)).toContain(`  3 of 6 verdicts unmeasured:\n    ${CUT} (2 verdicts)`);
+    // Every verdict read: no line.
+    expect(terminalSummary(judged([[judgeCheck(2, [])]])).out.join('\n')).not.toContain(
+      'unmeasured',
+    );
+    // A run-wide reason already says why every verdict is unmeasured.
+    const discarded = judged([[judgeCheck(0, ['the judge misjudged 1 of 4 calibration items'])]]);
+    discarded.run.judge = {
+      model: 'judge-1',
+      dimensions: ['bias'],
+      gated: [],
+      calibration: { items: 4, misjudged: [] },
+      unmeasured: 'the judge misjudged 1 of 4 calibration items',
+    };
+    expect(terminalSummary(discarded).out.join('\n')).not.toContain('verdict unmeasured');
+    expect(terminalSummary(discarded).out.join('\n')).not.toContain('verdicts unmeasured');
   });
 });
 

@@ -1,7 +1,8 @@
 // The simulated customer's next message (ADR-0028): from the reply cache when
 // the same request was answered before, else from the customer model. Each
 // reply is cached under the SHA-256 of its request, so a rerun repeats every
-// message while the target answers the same.
+// message while the target answers the same. A reply cut at maxTokens is
+// neither sent nor cached (ADR-0099).
 
 import {
   customerCacheKey,
@@ -10,8 +11,15 @@ import {
   type Exchanged,
   type OwnModel,
 } from '@yokla/core';
-import { cachedReply, replyFile, storedReply, type OwnCall } from './cached.ts';
-import { ModelClient, ModelClientError } from './client.ts';
+import {
+  cachedReply,
+  cutReason,
+  paidCall,
+  replyFile,
+  storedReply,
+  type OwnMessage,
+} from './cached.ts';
+import { ModelClient } from './client.ts';
 
 export type { OwnCall } from './cached.ts';
 
@@ -35,13 +43,16 @@ export class CustomerPlayer {
     this.#client = options.client ?? new ModelClient(options.model, options.env);
   }
 
-  /** The customer's next message after the exchanges so far, and the call it took. */
+  /**
+   * The customer's next message after the exchanges so far, and the call it
+   * took; or, for a reply cut at maxTokens, why there is none.
+   */
   async next(
     customer: CaseCustomer,
     language: string,
     seed: string,
     exchanges: readonly Exchanged[],
-  ): Promise<{ readonly text: string; readonly call: OwnCall }> {
+  ): Promise<OwnMessage> {
     const { model } = this.#options;
     const file = replyFile(
       this.#options.cacheDir,
@@ -50,8 +61,9 @@ export class CustomerPlayer {
     const cached = this.#options.fresh === true ? undefined : cachedReply(file);
     if (cached !== undefined) return cached;
     const reply = await this.#client.complete(customerPrompt(customer, language, exchanges), seed);
-    // A reply cut at maxTokens may be empty; a customer's turn can't be (ADR-0051).
-    if (reply.text === '') throw new ModelClientError('the customer model answered with no text');
+    if (reply.cut === true) {
+      return { why: cutReason('customer', model.maxTokens), call: paidCall(reply, model.price) };
+    }
     return storedReply(file, reply, model.price);
   }
 }

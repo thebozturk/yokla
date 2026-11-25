@@ -91,6 +91,12 @@ describe('customerCacheKey (ADR-0028)', () => {
     ];
     for (const parts of changed) expect(customerCacheKey(parts)).not.toBe(key);
   });
+
+  it("doesn't change with maxTokens: a cut reply is never cached (ADR-0099)", () => {
+    // A role's whole model goes in, maxTokens with it.
+    const longer = { ...model, maxTokens: 2000 };
+    expect(customerCacheKey({ ...base, model: longer })).toBe(key);
+  });
 });
 
 /** An answer on this route, with these items in the cart. */
@@ -211,7 +217,7 @@ describe('the customer case and model (ADR-0028)', () => {
     });
     expect(parsed.models.customer).toMatchObject({
       temperature: 0,
-      maxTokens: 400,
+      maxTokens: 2000,
       timeoutMs: 60_000,
     });
     expect(
@@ -230,17 +236,25 @@ describe('the customer case and model (ADR-0028)', () => {
     ]);
   });
 
-  it("gives the analyzer's model 2,000 tokens by default, the others 400 (ADR-0072)", () => {
+  it('gives every own model 2,000 tokens by default (ADR-0072, ADR-0099)', () => {
     const model = { kind: 'anthropic', url: 'https://example.test/v1', model: 'm' } as const;
     const { models } = YoklaConfig.parse({
       version: 1,
-      models: { analyzer: model, customer: model, transform: model },
+      models: {
+        analyzer: model,
+        customer: model,
+        transform: model,
+        attacker: model,
+        judge: model,
+      },
     });
     expect([
       models.analyzer?.maxTokens,
       models.customer?.maxTokens,
       models.transform?.maxTokens,
-    ]).toEqual([2000, 400, 400]);
+      models.attacker?.maxTokens,
+      models.judge?.maxTokens,
+    ]).toEqual([2000, 2000, 2000, 2000, 2000]);
     expect(
       YoklaConfig.parse({ version: 1, models: { analyzer: { ...model, maxTokens: 300 } } }).models
         .analyzer?.maxTokens,

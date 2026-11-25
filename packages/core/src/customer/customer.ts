@@ -85,9 +85,10 @@ export function customerPrompt(
 /**
  * What keys a cached customer reply: the model, the customer, the seed and the
  * conversation so far. The runtime hashes it; equal keys mean an equal request.
+ * maxTokens isn't in it: a cut reply is never cached (ADR-0099).
  */
 export function customerCacheKey(parts: {
-  readonly model: Pick<OwnModel, 'kind' | 'url' | 'model' | 'temperature' | 'maxTokens'>;
+  readonly model: Pick<OwnModel, 'kind' | 'url' | 'model' | 'temperature'>;
   readonly customer: Pick<CaseCustomer, 'persona' | 'goal'>;
   readonly language: string;
   readonly seed: string;
@@ -95,7 +96,7 @@ export function customerCacheKey(parts: {
 }): string {
   const { model, customer } = parts;
   return JSON.stringify([
-    [model.kind, model.url, model.model, model.temperature, model.maxTokens],
+    [model.kind, model.url, model.model, model.temperature],
     [customer.persona, customer.goal, parts.language, parts.seed],
     parts.exchanges.map((exchange) => [exchange.customer, exchange.answer]),
   ]);

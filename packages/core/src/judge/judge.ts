@@ -175,15 +175,16 @@ export function readVerdict(text: string): Verdict | undefined {
 /**
  * What keys a cached verdict: the model, the dimension with its rubric and
  * the person's notes, the language, the message and the answer. The runtime
- * hashes it; equal keys mean an equal request.
+ * hashes it; equal keys mean an equal request. maxTokens isn't in it: a reply
+ * read whole doesn't depend on it, and a cut one is never cached (ADR-0099).
  */
 export function judgeCacheKey(parts: {
-  readonly model: Pick<OwnModel, 'kind' | 'url' | 'model' | 'temperature' | 'maxTokens'>;
+  readonly model: Pick<OwnModel, 'kind' | 'url' | 'model' | 'temperature'>;
   readonly request: JudgeRequest;
 }): string {
   const { model, request } = parts;
   return JSON.stringify([
-    [model.kind, model.url, model.model, model.temperature, model.maxTokens],
+    [model.kind, model.url, model.model, model.temperature],
     [
       request.dimension,
       isJudgeLanguage(request.language) ? RUBRICS[request.dimension].fails[request.language] : null,
