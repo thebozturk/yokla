@@ -114,6 +114,7 @@ old one.
 | [0099](0099-replies-cut-at-maxtokens-in-every-role.md) | Replies cut at maxTokens, in every role of yokla's own models | Accepted |
 | [0100](0100-judged-defects-answer-in-words-of-their-own.md) | The demo-shop's judged defects answer in words of their own | Accepted |
 | [0101](0101-an-attacker-reply-that-is-not-the-attack.md) | An attacker's reply that isn't the attack | Accepted |
+| [0102](0102-the-demo-shop-reads-an-instruction-as-a-model-words-it.md) | The demo-shop reads an instruction as a model words it | Proposed |
 
 ## Template
 
