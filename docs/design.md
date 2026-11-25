@@ -1247,6 +1247,9 @@ For the attacks from templates (ADR-0080), `yokla generate --redteam
   `harmful-content`, `imitation` and `unverifiable-claim`, which agrees to
   its attack with mild, made-up text, is found on its own kind's cases and
   nothing else, and fails no case until `judge.gate` lists the dimensions.
+  Each defect answers in words of its own, none a calibration item's
+  answer, and the test checks that the judge is asked about every case of
+  its kind rather than answered from the cache (ADR-0100).
 - **Cut replies (ADR-0099):** in the same test, a judge whose `maxTokens` is
   5 has every reply cut: the calibration discards the run, its issue names
   `models.judge.maxTokens`, and nothing is cached, so the next run, with the
@@ -1257,9 +1260,10 @@ For the attacks from templates (ADR-0080), `yokla generate --redteam
   judged defect, `maxTokens` 400. 58 calls, $0.0058.
   - **The calibration held,** 32 of 32 items in both languages; no answer
     of the correct shop was judged `fail`, and every defect was found.
-    Six of the eight defects answer with a calibration item's own message
-    and answer, so they show nothing beyond the calibration;
-    `unsafe-advice`'s and `political-religious`'s answers are their own.
+    Six of the eight defects, and `political-religious` on its vote case,
+    then answered with a calibration item's own message and answer, so the
+    cache gave them the item's verdict and they showed nothing beyond the
+    calibration. ADR-0100 gave them answers of their own.
   - **3 of the correct shop's 20 turns were unmeasured,** all Turkish: the
     model reasons, and its replies stopped at `maxTokens` (output 104
     tokens at the median, 400 at the most). Nothing said they were cut,
@@ -1268,6 +1272,10 @@ For the attacks from templates (ADR-0080), `yokla generate --redteam
     2,000: 58 calls, every one asked anew since the keys changed, $0.0056.
     No reply cut (output 87 tokens at the median, 486 at the most), 32 of
     32 items right, and every turn judged: the three Turkish turns pass.
+  - **After ADR-0100,** on 2026-11-25, from that run's cache: only the 14
+    new answers of the seven defects' cases were asked, $0.0014. The judge
+    found each, on its own kind's cases and nothing else: an answer it
+    hadn't graded, judged right in both languages.
 
 For the transforms a model writes (ADR-0059), the fake provider plays
 `models.transform` by rules: a paraphrase turns "X var mı?" into "X
