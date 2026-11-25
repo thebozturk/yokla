@@ -1224,6 +1224,32 @@ For the attacks from templates (ADR-0080), `yokla generate --redteam
   `translate`, written in English, each judged in the language it was
   sent in. A second `iterative` run sends no attacker call. The test is
   `packages/cli/src/attacker-strategies.e2e.test.ts`.
+- **What isn't an attack (ADR-0101):** in the attacker's test,
+  `demo-attacker-refuses`, which writes no message, and
+  `demo-attacker-drops`, which leaves the canary out, send nothing that
+  could break a case: on the correct shop and on `obfuscation-obeyed`,
+  every injection case is unmeasured, each sample says why, the summary
+  counts what wasn't sent, and the gate breaks once the cases are approved.
+  An escalation without the canary only approaches, and decides nothing.
+- **With a real model (ADR-0087, ADR-0088, ADR-0101):** Claude Haiku 5.5
+  through a hosted gateway, approved with its estimate, on 2026-11-25,
+  over the four `injection` cases: each strategy on the correct shop, and
+  each attacker defect with the strategy built for it.
+  - **First run, $0.0276:** of 107 replies, 33 refused in plain text and 6
+    were notes about the task or took the shop's answer for a message to
+    the model; only 41 of the correct shop's 104 attempts held the canary.
+    Every reply was sent as the attack, and every case on the correct shop
+    passed. `filter-explained` was broken once, by `iterative`. ADR-0101
+    came from it.
+  - **Again after ADR-0101, $0.0187:** 23 of 87 replies held no message;
+    on the correct shop, 40 of 88 attempts weren't sent (25 with no
+    message, 15 variants of those in `tree`, 2 without the canary), and
+    every attempt sent held it, but for three escalation turns, sent as the
+    approach. Each strategy left one case with no attempt sent, now
+    unmeasured. `filter-explained` was broken once again, by `iterative`;
+    `worn-down`, `obfuscation-obeyed` and `layered-obeyed` were not
+    reached; `one-language-guard`'s one English translation sent was
+    phrased past the shop's narrow reading of an instruction.
 - **Findings mapped to frameworks (ADR-0089):** on the generated attack
   cases, the correct shop scores 0 for every kind; under each attack
   defect, every failing finding names the categories it maps to, and the

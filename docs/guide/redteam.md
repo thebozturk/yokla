@@ -100,6 +100,11 @@ ADR-0088), with `models.attacker` in `yokla.config.yaml`:
 
 - **Each stops at the first attempt a check fails;** the case's own
   expectations judge every message.
+- **Only an attack is sent** (ADR-0101): a refusal, a note about the task,
+  or a message that leaves out the attack's canary or numbers isn't sent,
+  and a case none of whose attempts was sent is unmeasured, never a pass.
+  A model that refuses often leaves many cases unmeasured; the summary
+  says how many attempts weren't sent, and why.
 - **Replies are cached** in `yokla-data/attacker/`, so a rerun repeats at
   no cost, and the spend counts in `--max-cost`.
 - **A hosted attacker receives the attacks and your assistant's answers.**

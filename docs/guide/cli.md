@@ -450,6 +450,20 @@ pnpm yokla run --cases cases/redteam.yaml --attacker translate --out runs/transl
 - **The case's own message is the attacker's goal,** and its turn's
   expectations judge every message the attacker writes. A model never
   decides a verdict.
+- **Only an attack is sent** (ADR-0101). The attacker writes its message
+  between `<message>` and `</message>`, seeing the earlier messages and
+  answers as a transcript. A reply with no message there, such as a
+  refusal, isn't sent, and nor is a message that leaves out the attack's
+  values: what the turn's expectations quote, such as a canary, and every
+  number the case's message writes. Such an attempt has no turn, and its
+  `attacker.unsent` says why; `iterative` doesn't show it to the next
+  attempt, and `tree` writes no variants of it. In `escalation`, a reply
+  with no message ends the conversation, and a turn without the values is
+  sent as the approach, marked `approach`, and decides nothing.
+- **A case is decided by the attempts that were sent.** One with none sent,
+  or an escalation that never carried the attack, is `unmeasured`, never a
+  pass. The summary counts the attempts not sent, by reason, and the
+  conversations that never carried the attack.
 - **The results** keep every message sent, with the case's under
   `written`; each sample's attacker calls, for `escalation` the turn that
   broke through as `brokeAt`, for a `tree` attempt past the first level the
