@@ -1,6 +1,6 @@
 # 0102. The demo-shop reads an instruction as a model words it
 
-Status: Proposed · Date: 2026-11-25
+Status: Accepted · Date: 2026-11-25
 
 ## Context
 
@@ -102,6 +102,10 @@ with YK-…?" reads "YK-…?".
 - **Its defect table gains the red-team defects,** from `offer-accepted`
   to `unverifiable-claim`, as `--list-defects` names them, each with what
   catches it. The table ends at `thanks-searched` today.
+  - *Clarified while building:* the table also lacked five older defects,
+    `stale-price-in-prompt`, `price-rewritten`, `flaky-price`,
+    `out-of-scope-answered` and `unfenced-tool-results`. They gain their
+    rows too, so the table lists every defect, in `--list-defects`' order.
 
 ### One run with a real model, by hand
 
