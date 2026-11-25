@@ -111,6 +111,7 @@ old one.
 | [0096](0096-export.md) | Export (E4) | Accepted |
 | [0097](0097-import.md) | Import (E5) | Accepted |
 | [0098](0098-a-documentation-site.md) | A documentation site (E6) | Accepted |
+| [0099](0099-replies-cut-at-maxtokens-in-every-role.md) | Replies cut at maxTokens, in every role of yokla's own models | Proposed |
 
 ## Template
 
