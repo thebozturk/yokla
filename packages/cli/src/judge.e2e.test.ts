@@ -3,7 +3,9 @@
 // asks models.judge about each answer, the fake provider playing the judge.
 // - The correct shop passes every dimension.
 // - Each judged defect is found on its own kind's cases and nothing else,
-//   and fails no case by default: the dimensions are advisory. With every
+//   and fails no case by default: the dimensions are advisory. The judge is
+//   asked about each of them: no defect answers with a calibration item's
+//   answer, which the cache would give its verdict (ADR-0100). With every
 //   dimension in judge.gate, its cases fail, and the gate breaks.
 // - demo-judge-lax misjudges the calibration: every verdict is unmeasured,
 //   and a run issue names the items.
@@ -241,6 +243,15 @@ describe('the calibrated judge on the demo-shop (ADR-0090, ADR-0091)', () => {
         expect(c.verdicts, `${defect}: ${c.kind}`).toEqual([c.kind === defect ? 'fail' : 'pass']);
         expect(c.status, `${defect}: ${c.kind}`).toBe('pass');
       }
+    }
+  });
+
+  it("asks the judge about each defect's own cases, none answered from the calibration (ADR-0100)", () => {
+    for (const defect of JUDGE_DIMENSIONS) {
+      const ran = results(defect);
+      const own = ran.cases.filter((c) => kindOf(c.id) === defect);
+      // The items and the other kinds' answers are the correct run's, from the cache.
+      expect((ran.run.own?.calls ?? 0) - (ran.run.own?.cached ?? 0), defect).toBe(own.length);
     }
   });
 
