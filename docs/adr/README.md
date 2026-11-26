@@ -40,7 +40,7 @@ old one.
 | [0025](0025-tool-calls.md) | Tool calls: what the proxy reads, and the checks on them | Accepted |
 | [0026](0026-evidence-from-tool-results.md) | Evidence from the tool results the model saw | Accepted |
 | [0027](0027-a-product-named-by-the-start-of-its-name.md) | A product named by the start of its name | Accepted |
-| [0028](0028-the-simulated-customer.md) | The simulated customer, and yokla's own model calls | Accepted; amended by 0099 |
+| [0028](0028-the-simulated-customer.md) | The simulated customer, and yokla's own model calls | Accepted; amended by 0099, 0105 |
 | [0029](0029-model-calls-from-opentelemetry-spans.md) | Model calls read from OpenTelemetry spans | Accepted |
 | [0030](0030-generic-checks.md) | Generic checks: patterns, JSON Schema, similarity, and checks the user writes | Accepted |
 | [0031](0031-tokens-yokla-obtains.md) | Authentication: tokens yokla obtains and refreshes | Accepted |
@@ -117,7 +117,7 @@ old one.
 | [0102](0102-the-demo-shop-reads-an-instruction-as-a-model-words-it.md) | The demo-shop reads an instruction as a model words it | Accepted; amended by 0103 |
 | [0103](0103-the-demo-shop-reads-an-instruction-that-points-back-to-its-code.md) | The demo-shop reads an instruction that points back to its code | Accepted |
 | [0104](0104-the-attackers-prompt-is-written-in-english.md) | The attacker's prompt is written in English | Accepted |
-| [0105](0105-the-demo-shop-adds-to-the-cart-only-when-asked-to.md) | The demo-shop adds to the cart only when asked to | Proposed |
+| [0105](0105-the-demo-shop-adds-to-the-cart-only-when-asked-to.md) | The demo-shop adds to the cart only when asked to | Accepted |
 
 ## Template
 

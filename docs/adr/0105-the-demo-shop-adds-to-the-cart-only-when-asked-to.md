@@ -1,6 +1,6 @@
 # 0105. The demo-shop adds to the cart only when asked to
 
-Status: Proposed · Date: 2026-11-26
+Status: Accepted · Date: 2026-11-26
 
 ## Context
 
@@ -49,9 +49,16 @@ The tolerance for typos reads other words as the shop's words too, such as
   - *a negation:* not, never, a word ending in n't such as don't or
     didn't, no need; the add word negated, such as ekleme, eklemeyin,
     eklemedim or koyma; istemiyorum, istemedim, gerek yok.
+  - *Clarified while building:* don't, didn't and doesn't count written
+    without the apostrophe too.
 - **They are read as the cart words are:** on folded text, after the typo
   reading. A sentence ends at a full stop, an exclamation or a question
   mark followed by a space, or at a line break.
+  - *Clarified while building:* only the cart word is read after the typo
+    reading. The add words and the words that take it back are read on
+    the folded text as written. The typo reading knows none of them, so it
+    could only change them: it reads "siler" as "sizer" and "gerek" as
+    "gerik".
 - **Otherwise as before:** only after an answer that showed products, the
   product the message names or else the first shown. The restriction
   (ADR-0082) and the quantity limit (ADR-0086) still apply.
