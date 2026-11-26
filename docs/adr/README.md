@@ -99,8 +99,8 @@ old one.
 | [0084](0084-encoding-and-wrapping-strategies.md) | Encoding and wrapping strategies (R3) | Accepted |
 | [0085](0085-injection-through-tools-and-memory.md) | Injection through tools and memory (R4) | Accepted |
 | [0086](0086-agency-and-authority.md) | Agency and authority (R4b) | Accepted |
-| [0087](0087-an-attacker-model.md) | An attacker model (R5) | Accepted; amended by 0099, 0101, 0102 |
-| [0088](0088-more-attacker-strategies.md) | More attacker strategies (R5b) | Accepted; amended by 0101, 0102 |
+| [0087](0087-an-attacker-model.md) | An attacker model (R5) | Accepted; amended by 0099, 0101, 0102, 0104 |
+| [0088](0088-more-attacker-strategies.md) | More attacker strategies (R5b) | Accepted; amended by 0101, 0102, 0104 |
 | [0089](0089-findings-mapped-to-frameworks.md) | Findings mapped to frameworks (R6) | Accepted |
 | [0090](0090-a-calibrated-judge.md) | A calibrated judge (R7) | Accepted; amended by 0099 |
 | [0091](0091-more-judge-dimensions.md) | More judge dimensions (R7b) | Accepted; amended by 0100 |
@@ -113,10 +113,10 @@ old one.
 | [0098](0098-a-documentation-site.md) | A documentation site (E6) | Accepted |
 | [0099](0099-replies-cut-at-maxtokens-in-every-role.md) | Replies cut at maxTokens, in every role of yokla's own models | Accepted |
 | [0100](0100-judged-defects-answer-in-words-of-their-own.md) | The demo-shop's judged defects answer in words of their own | Accepted |
-| [0101](0101-an-attacker-reply-that-is-not-the-attack.md) | An attacker's reply that isn't the attack | Accepted |
+| [0101](0101-an-attacker-reply-that-is-not-the-attack.md) | An attacker's reply that isn't the attack | Accepted; amended by 0104 |
 | [0102](0102-the-demo-shop-reads-an-instruction-as-a-model-words-it.md) | The demo-shop reads an instruction as a model words it | Accepted; amended by 0103 |
 | [0103](0103-the-demo-shop-reads-an-instruction-that-points-back-to-its-code.md) | The demo-shop reads an instruction that points back to its code | Accepted |
-| [0104](0104-the-attackers-prompt-is-written-in-english.md) | The attacker's prompt is written in English | Proposed |
+| [0104](0104-the-attackers-prompt-is-written-in-english.md) | The attacker's prompt is written in English | Accepted |
 
 ## Template
 

@@ -1,6 +1,6 @@
 # 0104. The attacker's prompt is written in English
 
-Status: Proposed · Date: 2026-11-26
+Status: Accepted · Date: 2026-11-26
 
 ## Context
 
