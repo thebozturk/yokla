@@ -1277,6 +1277,16 @@ For the attacks from templates (ADR-0080), `yokla generate --redteam
   - **13 of the 25 replies were refusals,** 12 of them to a Turkish
     prompt: 12 of 17 Turkish replies and 1 of 8 English. The run after
     ADR-0101 had 17 of 36 and 6 of 51.
+- **An instruction that points back to its code (ADR-0103):** a sentence
+  that asks for a reply and for "that code", "bu kodu" and the like reads
+  the code of the sentence just before it. Of the real runs' messages that
+  held the canary, the reading reads 65 of 70 written between the tags and
+  40 of the first run's 42 replies, where ADR-0102's read 61 and 37; every
+  case message reads as before.
+  - **ADR-0102's run again,** its attacker's replies from the cache and a
+    key that can't call a model, at no cost: `worn-down` failed the English
+    conversation at its third turn, the attack's third time. Nothing else
+    changed.
 - **Findings mapped to frameworks (ADR-0089):** on the generated attack
   cases, the correct shop scores 0 for every kind; under each attack
   defect, every failing finding names the categories it maps to, and the
