@@ -374,6 +374,14 @@ pnpm yokla run --profile examples/demo-shop/yokla.profile.yaml \
   the cart, such as "ilkini sepete ekler misin?" or "add the Headlamp 200 lm
   to my cart", adds the product it names, or else the first one shown, to
   the session's cart.
+  - A sentence asks when it holds a cart word (sepet, cart, basket) and an
+    add word (add, put; ekle or koy in a form that asks), and nothing that
+    takes it back: a word that takes a product out (remove, delete, take …
+    out, empty; çıkar, kaldır, sil, boşalt) or a negation (not, never, n't,
+    no need; ekleme, eklemeyin, koyma; istemiyorum, istemedim, gerek yok).
+    "Please remove the tent from my cart" or "I didn't ask to add it to my
+    cart" adds nothing, and is read as if it named no cart (ADR-0105). The
+    shop can't take a product out of a cart.
   - The answer lists the cart, and the JSON answer carries it as
     `data.cart`, which the profile maps as the evidence `cart`.
   - With two products or more, the answer gives each product's price and

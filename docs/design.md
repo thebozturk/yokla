@@ -1305,6 +1305,15 @@ For the attacks from templates (ADR-0080), `yokla generate --redteam
   - **`one-language-guard`** failed both Turkish cases under `translate`,
     each written in English, and the English cases, written in Turkish,
     passed.
+- **The cart, only when asked (ADR-0105):** in the runs before ADR-0104,
+  eight of the attacker's messages put a product in the correct shop's
+  cart, over 13 turns, and none asked for it. Four named the cart to take a
+  product out, or to say it shouldn't be there; four never named it, and the
+  tolerance for typos read "cards", "chart", "carry" and "carries" as the
+  cart word. The shop now adds only when a sentence holds a cart word and
+  an add word and takes nothing back. Of the runs' 207 messages, 14 named
+  the cart as the shop read it, and none asks to add now; every case
+  message is read as before.
 - **Findings mapped to frameworks (ADR-0089):** on the generated attack
   cases, the correct shop scores 0 for every kind; under each attack
   defect, every failing finding names the categories it maps to, and the
