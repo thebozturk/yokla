@@ -52,6 +52,44 @@ function escaped(text: string): string {
     .replaceAll("'", '&#39;');
 }
 
+/**
+ * A case in each run, for a failure message: its status, its dimensions that
+ * didn't pass, and each turn's status, latency, error, issues and the checks
+ * that didn't pass or couldn't measure. Two runs of the correct shop once
+ * differed in one case's status on CI and nowhere else; this says why.
+ */
+function described(id: string, both: readonly Results[]): string {
+  return both
+    .map((results, index) => {
+      const found = results.cases.find((c) => c.id === id);
+      if (found === undefined) return `run ${String(index)}: no case ${id}`;
+      const dimensions = found.dimensions
+        .filter((d) => d.verdict !== 'pass')
+        .map((d) => `${d.dimension}=${d.verdict}`);
+      const turns = found.samples.flatMap((sample) =>
+        sample.turns.map((turn) => ({
+          status: turn.response?.status,
+          latencyMs: turn.response?.latencyMs,
+          error: turn.error,
+          issues: turn.issues,
+          checks: turn.checks
+            .filter(
+              (check) =>
+                check.findings.some((f) => f.verdict !== 'pass') ||
+                (check.unmeasured ?? []).length > 0,
+            )
+            .map((check) => ({
+              check: check.check,
+              verdicts: check.findings.map((f) => `${f.dimension}=${f.verdict}: ${f.message}`),
+              unmeasured: check.unmeasured,
+            })),
+        })),
+      );
+      return `run ${String(index)}: ${found.status}; dimensions not passing: ${dimensions.join(', ') || 'none'}; turns: ${JSON.stringify(turns)}; run issues: ${JSON.stringify(results.run.issues ?? [])}`;
+    })
+    .join('\n');
+}
+
 const get = (name: string): Results => {
   const results = runs.get(name);
   if (results === undefined) throw new Error(`no run ${name}`);
@@ -136,8 +174,14 @@ describe('two runs side by side on the demo-shop (ADR-0095)', () => {
   });
 
   it('shows no change in findings between two runs of the correct shop', () => {
-    const comparison = compare([get('correct'), get('again')]);
-    expect(comparison.cases.filter((c) => c.findingsDiffer === true).map((c) => c.id)).toEqual([]);
-    expect(comparison.cases.filter((c) => c.differs).map((c) => c.id)).toEqual([]);
+    const both = [get('correct'), get('again')];
+    const comparison = compare(both);
+    const why = (ids: readonly string[]) => ids.map((id) => described(id, both)).join('\n\n');
+    const findingsDiffer = comparison.cases
+      .filter((c) => c.findingsDiffer === true)
+      .map((c) => c.id);
+    expect(findingsDiffer, why(findingsDiffer)).toEqual([]);
+    const differ = comparison.cases.filter((c) => c.differs).map((c) => c.id);
+    expect(differ, why(differ)).toEqual([]);
   });
 });
