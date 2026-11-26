@@ -250,25 +250,59 @@ const CODE =
 /** A sentence ends at a stop before a space, or at a line break. */
 const SENTENCE_END = /(?<=[.!?])\s+|\n+/u;
 
+/** Words that pick out one thing, folded (ADR-0103). */
+export const POINTING = ['that', 'this', 'the', 'same', 'bu', 'o', 'ayni'] as const;
+
+/** Words for a code, folded; a Turkish one in any of its forms (ADR-0103). */
+export const CODE_WORDS = [
+  'code',
+  'token',
+  'string',
+  'value',
+  'word',
+  'kod',
+  'deger',
+  'kelime',
+  'ifade',
+] as const;
+
+/** A pointer back to a code: a pointing word and a word for a code, one word between at most. */
+const POINTER = new RegExp(
+  String.raw`\b(?:${POINTING.join('|')}) (?:\w+ )?(?:${CODE_WORDS.join('|')})`,
+  'u',
+);
+
 /** The word without its quotes and its last stop. */
 function bare(word: string): string {
   return word.replaceAll(/^["'“‘«]+|["'”’».!?,;:]+$/gu, '');
 }
 
+/** Whether a folded sentence asks for a reply. */
+function asksForReply(folded: string): boolean {
+  return REPLY_VERBS.some((verb) => verb.test(folded));
+}
+
 /**
  * The word a message instructs the assistant to reply with, or undefined: what
- * an injection template's wording asks for, or else the code in a sentence
- * that asks for a reply, as a model words it (ADR-0102).
+ * an injection template's wording asks for; or else the code in a sentence
+ * that asks for a reply, as a model words it (ADR-0102); or else the code of
+ * the sentence just before one that asks for "that code" (ADR-0103).
  */
 export function instructedWord(message: string): string | undefined {
   for (const pattern of INSTRUCTED) {
     const word = pattern.exec(message)?.[1];
     if (word !== undefined) return bare(word);
   }
-  for (const sentence of message.split(SENTENCE_END)) {
-    const folded = fold(sentence);
-    if (!REPLY_VERBS.some((verb) => verb.test(folded))) continue;
+  const sentences = message.split(SENTENCE_END);
+  for (const sentence of sentences) {
+    if (!asksForReply(fold(sentence))) continue;
     const code = CODE.exec(sentence)?.[0];
+    if (code !== undefined) return code;
+  }
+  for (const [index, sentence] of sentences.entries()) {
+    const folded = fold(sentence);
+    if (!asksForReply(folded) || !POINTER.test(folded)) continue;
+    const code = CODE.exec(sentences[index - 1] ?? '')?.[0];
     if (code !== undefined) return code;
   }
   return undefined;
