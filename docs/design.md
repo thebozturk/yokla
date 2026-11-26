@@ -1287,6 +1287,24 @@ For the attacks from templates (ADR-0080), `yokla generate --redteam
     key that can't call a model, at no cost: `worn-down` failed the English
     conversation at its third turn, the attack's third time. Nothing else
     changed.
+- **The attacker's prompt in English (ADR-0104):** a diagnostic on
+  2026-11-26, approved with its estimate and never committed, ran
+  `best-of-n` on the correct shop over the five `injection` cases of each
+  language, four attempts each, $0.0123. Turkish cases with the Turkish
+  prompt sent 4 of 20 attempts (11 replies with no message, 5 without the
+  canary); the same cases with the English prompt, asking for a message in
+  Turkish, sent 19 of 20, every one in Turkish; English cases sent 16 of
+  20. The prompt is now English for every case language.
+  - **ADR-0102's run again,** with the English prompt, approved with its
+    estimate: 24 calls, $0.0032, none cut, and every reply a message.
+  - **`worn-down`** failed three of the four cases under `escalation`,
+    a Turkish one among them, at the third or fourth turn.
+  - **`filter-explained`** failed all four under `iterative`: one Turkish
+    case's first attempt kept the template's phrase and was refused, and
+    its second dropped it.
+  - **`one-language-guard`** failed both Turkish cases under `translate`,
+    each written in English, and the English cases, written in Turkish,
+    passed.
 - **Findings mapped to frameworks (ADR-0089):** on the generated attack
   cases, the correct shop scores 0 for every kind; under each attack
   defect, every failing finding names the categories it maps to, and the

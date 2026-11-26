@@ -105,6 +105,9 @@ ADR-0088), with `models.attacker` in `yokla.config.yaml`:
   and a case none of whose attempts was sent is unmeasured, never a pass.
   A model that refuses often leaves many cases unmeasured; the summary
   says how many attempts weren't sent, and why.
+- **The attacker is instructed in English** and asked for its message in
+  the case's language (ADR-0104), so a Turkish case is attacked as often as
+  an English one.
 - **Replies are cached** in `yokla-data/attacker/`, so a rerun repeats at
   no cost, and the spend counts in `--max-cost`.
 - **A hosted attacker receives the attacks and your assistant's answers.**

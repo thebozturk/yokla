@@ -450,6 +450,11 @@ pnpm yokla run --cases cases/redteam.yaml --attacker translate --out runs/transl
 - **The case's own message is the attacker's goal,** and its turn's
   expectations judge every message the attacker writes. A model never
   decides a verdict.
+- **The attacker is instructed in English** whatever the case's language,
+  and asked for its message in the case's language by name, "in Turkish"
+  (ADR-0104). The attack and the answers it sees stay in the case's
+  language. Instructed in Turkish, a model measured refused most Turkish
+  attacks it wrote when instructed in English.
 - **Only an attack is sent** (ADR-0101). The attacker writes its message
   between `<message>` and `</message>`, seeing the earlier messages and
   answers as a transcript. A reply with no message there, such as a
