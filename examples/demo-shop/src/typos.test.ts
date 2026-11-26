@@ -3,29 +3,35 @@ import { Assistant, type ChatReply } from './assistant.ts';
 import { loadShopData } from './catalog.ts';
 import { fold } from './language.ts';
 import { ScriptedModel } from './model.ts';
-import { correctTypos, oneEdit, VOCABULARY_WORDS } from './typos.ts';
+import { correctTypos, NOT_TYPOS, oneEdit, readings, VOCABULARY_WORDS } from './typos.ts';
 
-describe('oneEdit', () => {
+describe('oneEdit: the typos yokla writes (ADR-0106)', () => {
   it.each([
-    ['cadir', 'cdir', 'a letter dropped'],
-    ['cadir', 'caadir', 'a letter doubled'],
-    ['siyah', 'siyha', 'neighbours swapped'],
-    ['mavi', 'mavu', 'a letter replaced'],
-  ])('%s → %s: %s', (a, b) => {
-    expect(oneEdit(a, b)).toBe(true);
-    expect(oneEdit(b, a)).toBe(true);
+    ['cdir', 'cadir', 'a letter dropped'],
+    ['cadi', 'cadir', 'the last letter dropped'],
+    ['caadir', 'cadir', 'a letter doubled'],
+    ['cadirr', 'cadir', 'the last letter doubled'],
+    ['siyha', 'siyah', 'neighbours swapped'],
+    ['ba', 'ab', 'two letters swapped'],
+  ])('%s for %s: %s', (written, known) => {
+    expect(oneEdit(written, known)).toBe(true);
   });
 
   it.each([
     ['cadir', 'cadir', 'the same word'],
-    ['cadir', 'cdr', 'two letters dropped'],
-    ['siyah', 'syiha', 'two swaps'],
-    ['mavi', 'miva', 'a swap of letters apart'],
-    ['mavi', 'mait', 'two letters replaced'],
-    ['mont', 'tnom', 'far apart'],
-    ['ab', 'ba', 'a swap is one edit'],
-  ])('%s → %s: %s', (a, b, why) => {
-    expect(oneEdit(a, b)).toBe(why === 'a swap is one edit');
+    ['cdr', 'cadir', 'two letters dropped'],
+    ['caaadir', 'cadir', 'two letters added'],
+    ['syiha', 'siyah', 'two swaps'],
+    ['miva', 'mavi', 'a swap of letters apart'],
+    ['mait', 'mavi', 'two letters replaced'],
+    ['tnom', 'mont', 'far apart'],
+    ['mavu', 'mavi', 'a letter replaced'],
+    ['test', 'tent', 'a letter replaced'],
+    ['caxdir', 'cadir', 'a letter added that doubles none'],
+    ['chart', 'cart', 'a letter added at the start that doubles none'],
+    ['carts', 'cart', 'a letter added at the end that doubles none'],
+  ])('%s for %s: no edit, %s', (written, known) => {
+    expect(oneEdit(written, known)).toBe(false);
   });
 });
 
@@ -43,6 +49,8 @@ describe('correctTypos (ADR-0045)', () => {
     ['kamp ocgai', 'kamp ocagi'],
     ['the ceaper one', 'the cheaper one'],
     ['altina cadir', 'altinda cadir'],
+    // A one-letter suffix swapped with the stem's last letter (ADR-0106).
+    ['kamp ocaig', 'kamp ocag'],
   ])('reads "%s" as "%s"', (typed, read) => {
     expect(correctTypos(typed)).toBe(read);
   });
@@ -56,8 +64,15 @@ describe('correctTypos (ADR-0045)', () => {
     'kosullari ucretsiz recommend stock policy',
     // A typo never changes the first letter: "sade" is not "iade".
     'sadece siyah olanlar',
-    // One edit from two known words: "mat" and "mavi".
+    // A stem of three letters and a suffix: "mati" isn't "mat" with a letter added.
     'uyku mati',
+    // One edit from two known words: "women" and "woman".
+    'womn',
+    // Words one replaced letter from the shop's, or one letter added (ADR-0106).
+    'test shop store chat that card carry site side shows data',
+    'chart kaydina ifadesini',
+    // Words of the real runs the reading took for others (ADR-0106).
+    'catalog greeting related canary relay shared mean uzere',
     // A stem of three letters claims nothing: "bot" doesn't make "botlar" a typo.
     'botlar',
     // A stem and a suffix are read as written: "ocag" and "i", not "ocak".
@@ -84,6 +99,13 @@ describe('correctTypos (ADR-0045)', () => {
   });
 });
 
+describe('the words that are no typos (ADR-0106)', () => {
+  it.each(NOT_TYPOS)('reads "%s" as written, a word the reading would take for another', (word) => {
+    expect(correctTypos(word)).toBe(word);
+    expect(readings(word).length).toBeGreaterThan(0);
+  });
+});
+
 describe('the shop reads past a typo (ADR-0045)', () => {
   const data = loadShopData();
   const shop = () => new Assistant({ data, model: new ScriptedModel(), defect: null });
@@ -103,6 +125,7 @@ describe('the shop reads past a typo (ADR-0045)', () => {
     ['Show me headlamps', 'Show me headalmps'],
     ['İade koşulları neler?', 'İaed koşulları neler?'],
     ['Kamp ocağı önerir misin?', 'Kamp ocgaı önerir misin?'],
+    ['Kamp ocağı önerir misin?', 'Kamp ocaığ önerir misin?'],
   ])('answers "%s" mistyped as it answers it written', async (written, typed) => {
     const [a, b] = [await ask(written), await ask(typed)];
     expect(b.metadata).toEqual(a.metadata);
