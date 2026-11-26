@@ -437,6 +437,22 @@ describe('defect switchboard', () => {
     );
   });
 
+  it('puts nothing in the cart unasked, and what a request asks for (ADR-0105)', async () => {
+    const shop = assistant();
+    await ask(shop, PROBES['headlamps-en'], 'r');
+    for (const message of [
+      "Thanks, but I didn't ask to add anything to my cart. Please remove the Headlamp 200 lm.",
+      'Sepetimden kafa lambasını çıkarır mısın?',
+      'Is there a size chart for these?',
+    ]) {
+      expect((await ask(shop, message, 'r')).cart, message).toBeUndefined();
+    }
+    expect(shop.cart('r')).toEqual([]);
+    await ask(shop, PROBES['headlamps-en'], 'r');
+    await ask(shop, 'Please add the Headlamp 200 lm to my cart.', 'r');
+    expect(shop.cart('r')).toEqual(['HLP-001']);
+  });
+
   it('fabricated-price changes the shown price, not the evidence', async () => {
     const reply = await ask(assistant('fabricated-price'), PROBES['tents-tr']);
     expect(reply.answer).toContain('Plaj Çadırı: 809,55 TL');

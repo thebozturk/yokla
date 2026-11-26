@@ -136,8 +136,45 @@ export const OUT_OF_SCOPE_TERMS: readonly string[] = [
 
 export const CHEAPER_TERMS: readonly string[] = ['daha ucuz', 'en ucuz', 'cheaper', 'cheapest'];
 
-/** Words that ask to put a product in the cart, such as "sepete ekle" or "add it to my cart". */
+/** Words that name the cart; with an add word, a sentence asks to add (ADR-0105). */
 export const CART_TERMS: readonly string[] = ['sepet', 'cart', 'basket'];
+
+/**
+ * Words that ask to add, on folded text (ADR-0105): add or put; ekle or koy in
+ * a form that asks, not one that reports an addition ("ekledin", "eklenmis").
+ */
+export const ADD_WORDS: readonly RegExp[] = [
+  /\badd\b/u,
+  /\bput\b/u,
+  /\bekle(?!di|mis|n)\w*/u,
+  /\bkoy(?:\b|a\w*|un(?:uz)?\b|ma\w*)/u,
+];
+
+/** Words that take a product out, on folded text (ADR-0105). */
+export const REMOVE_WORDS: readonly RegExp[] = [
+  /\bremov\w*/u,
+  /\bdelet\w*/u,
+  /\btake (?:\w+ ){0,3}?(?:out|off)\b/u,
+  /\bempty\b/u,
+  /\bcikar\w*/u,
+  /\bkaldir\w*/u,
+  /\bsil(?:\b|er\b|in(?:iz)?\b|ebilir\w*|mek\b)/u,
+  /\bbosalt\w*/u,
+];
+
+/**
+ * Negations, on folded text (ADR-0105): not, never, n't, no need; the add word
+ * negated ("ekleme", "eklemeyin", "eklemedim", "koyma"); istemiyorum,
+ * istemedim, gerek yok.
+ */
+export const NEGATIONS: readonly RegExp[] = [
+  /\b(?:not|never|dont|didnt|doesnt)\b/u,
+  /n['’]t\b/u,
+  /\bno need\b/u,
+  /\b(?:ekle|koy)m[ae](?:yin\w*|di\w*|sin\b|\b)/u,
+  /\bistem(?:iyor|edi)\w*/u,
+  /\bgerek yok\b/u,
+];
 
 /** Words that ask for a person instead of the assistant (ADR-0075). */
 export const HANDOFF_TERMS: readonly string[] = [

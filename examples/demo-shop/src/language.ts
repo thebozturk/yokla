@@ -1,5 +1,8 @@
 export type Language = 'tr' | 'en';
 
+/** A sentence ends at a stop before a space, or at a line break. */
+export const SENTENCE_END = /(?<=[.!?])\s+|\n+/u;
+
 /**
  * Lower-cases with Turkish rules and removes diacritics, so that matching is
  * robust to casing and missing diacritics: "ÇADIRI" → "cadiri", "I" → "i".

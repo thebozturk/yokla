@@ -3,7 +3,7 @@
 // assistant decides when they apply.
 
 import type { Product } from './catalog.ts';
-import { fold, type Language } from './language.ts';
+import { fold, SENTENCE_END, type Language } from './language.ts';
 import { TOOL } from './tools.ts';
 
 /** The shop's rule: camping stoves are sold from age 18, not abroad, and two to an order (ADR-0086). */
@@ -246,9 +246,6 @@ export const REPLY_VERBS = [
 /** A code: capital letters and digits, at least one of each, with hyphens between its parts. */
 const CODE =
   /(?<![\p{L}\p{N}-])(?=[A-Z\d-]*[A-Z])(?=[A-Z\d-]*\d)[A-Z\d]+(?:-[A-Z\d]+)*(?![\p{L}\p{N}-])/u;
-
-/** A sentence ends at a stop before a space, or at a line break. */
-const SENTENCE_END = /(?<=[.!?])\s+|\n+/u;
 
 /** Words that pick out one thing, folded (ADR-0103). */
 export const POINTING = ['that', 'this', 'the', 'same', 'bu', 'o', 'ayni'] as const;

@@ -12,20 +12,24 @@ import {
   formatMoney,
   hasEnglishProductWord,
   parseAmount,
+  SENTENCE_END,
   type Language,
 } from './language.ts';
 import { MAX_QUANTITY, RESTRICTED_TYPE } from './guards.ts';
 import { correctTypos } from './typos.ts';
 import {
   ABSENT_TYPES,
+  ADD_WORDS,
   CART_TERMS,
   CHEAPER_TERMS,
   COLORS,
   GENDERS,
   HANDOFF_TERMS,
+  NEGATIONS,
   OUT_OF_SCOPE_TERMS,
   POLICY_TOPICS,
   PRODUCT_TYPES,
+  REMOVE_WORDS,
   longestMatch,
   type Color,
   type Gender,
@@ -338,6 +342,24 @@ function quantityIn(text: string): number | undefined {
   return undefined;
 }
 
+/**
+ * Whether a folded message asks to add to the cart (ADR-0105): one of its
+ * sentences holds a cart word and an add word, and nothing that takes it back,
+ * a word that takes a product out or a negation. The cart word is read past a
+ * typo (ADR-0045); the other words are read as written, since the typo reading
+ * knows none of them and could only change them ("siler" to "sizer").
+ */
+export function asksToAdd(folded: string): boolean {
+  return folded
+    .split(SENTENCE_END)
+    .some(
+      (sentence) =>
+        longestMatch(correctTypos(sentence), CART_TERMS) > 0 &&
+        ADD_WORDS.some((word) => word.test(sentence)) &&
+        ![...REMOVE_WORDS, ...NEGATIONS].some((word) => word.test(sentence)),
+    );
+}
+
 export class ScriptedModel implements ChatModel {
   readonly #defect: Defect | null;
 
@@ -365,7 +387,8 @@ export class ScriptedModel implements ChatModel {
         ? 'en'
         : detectLanguage(message, this.#defect === 'language-by-letters');
     // A typo of a word the shop knows is read past (ADR-0045).
-    const text = correctTypos(fold(message));
+    const folded = fold(message);
+    const text = correctTypos(folded);
 
     if (longestMatch(text, OUT_OF_SCOPE_TERMS) > 0) return { route: 'refusal', language };
 
@@ -380,9 +403,10 @@ export class ScriptedModel implements ChatModel {
     if (topic !== undefined) return { route: 'policy', language, topic };
 
     // "Add it to my cart": a product shown before goes into the cart, the one the
-    // message names or else the first. Before any product was shown, it is a search.
+    // message names or else the first. Before any product was shown, it is a search;
+    // a message that doesn't ask to add is read as naming no cart (ADR-0105).
     const shown = context?.products ?? [];
-    if (longestMatch(text, CART_TERMS) > 0 && shown.length > 0) {
+    if (asksToAdd(folded) && shown.length > 0) {
       const named = shown.find(
         (product) => text.includes(fold(product.name.tr)) || text.includes(fold(product.name.en)),
       );
