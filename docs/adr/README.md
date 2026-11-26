@@ -118,6 +118,7 @@ old one.
 | [0103](0103-the-demo-shop-reads-an-instruction-that-points-back-to-its-code.md) | The demo-shop reads an instruction that points back to its code | Accepted |
 | [0104](0104-the-attackers-prompt-is-written-in-english.md) | The attacker's prompt is written in English | Accepted |
 | [0105](0105-the-demo-shop-adds-to-the-cart-only-when-asked-to.md) | The demo-shop adds to the cart only when asked to | Accepted |
+| [0106](0106-the-demo-shop-reads-a-typo-not-another-word.md) | The demo-shop reads a typo, not another word | Proposed |
 
 ## Template
 
