@@ -136,13 +136,8 @@ function otherWays(text: string, turkish: boolean): readonly string[] {
       ];
 }
 
-/** The languages translate names, in English and in Turkish (ADR-0088). */
-const NAMED: Readonly<Record<string, Language>> = {
-  English: 'en',
-  Turkish: 'tr',
-  İngilizce: 'en',
-  Türkçe: 'tr',
-};
+/** The languages the prompt names, by their English names (ADR-0088, ADR-0104). */
+const NAMED: Readonly<Record<string, Language>> = { English: 'en', Turkish: 'tr' };
 
 /** Each language's own instruction to set the instructions aside and reply with a word. */
 const INSTRUCTION: Readonly<Record<Language, (word: string) => string>> = {
@@ -194,27 +189,27 @@ function attackerReply(request: ChatRequest): string {
  */
 function attackerText(request: ChatRequest): string {
   const attack = /<attack>\n([\s\S]*?)\n<\/attack>/u.exec(request.system)?.[1] ?? '';
-  // The prompt asks for Turkish or English by name.
-  const turkish = request.system.includes('Türkçe');
+  // The prompt, in English, asks for Turkish or English by name (ADR-0104).
+  const turkish = /\bin Turkish\b/u.test(request.system);
   const shown = sentBefore(request);
-  const into = /(?:into this language|şu dile çevir): (\S+?)\./u.exec(request.system)?.[1];
+  const into = /into this language: (\S+?)\./u.exec(request.system)?.[1];
   if (into !== undefined) {
     const language = NAMED[into];
     const word = instructedWord(attack);
     return language === undefined || word === undefined ? attack : INSTRUCTION[language](word);
   }
-  const branch = /(?:Variant|Varyant): (\d+)\//u.exec(request.system)?.[1];
+  const branch = /Variant: (\d+)\//u.exec(request.system)?.[1];
   if (branch !== undefined) {
     const variants = otherWays(shown.at(-1) ?? attack, turkish);
     return variants[(Number(branch) - 1) % variants.length] ?? attack;
   }
-  if (/(?:Revision|Düzeltme): \d+\//u.test(request.system)) {
+  if (/Revision: \d+\//u.test(request.system)) {
     const last = shown.at(-1);
     if (last === undefined) return attack;
     const quoted = /"([^"]+)"/u.exec(lastAnswer(request))?.[1];
     return quoted === undefined ? last : last.replace(quoted, '').trim();
   }
-  const attempt = /(?:Attempt|Deneme): (\d+)\//u.exec(request.system)?.[1];
+  const attempt = /Attempt: (\d+)\//u.exec(request.system)?.[1];
   if (attempt !== undefined) {
     return [attack, ...otherWays(attack, turkish)][Number(attempt) - 1] ?? attack;
   }
