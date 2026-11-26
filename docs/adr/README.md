@@ -57,7 +57,7 @@ old one.
 | [0042](0042-comparing-models-through-the-proxy.md) | Comparing models through the proxy | Accepted; amended by 0043, 0045 |
 | [0043](0043-tool-results-changed-by-the-proxy.md) | Tool results changed by the proxy | Accepted |
 | [0044](0044-a-search-for-untried-paths.md) | A search for untried paths | Accepted; amended by 0046 |
-| [0045](0045-robustness-transforms-of-a-cases-messages.md) | Robustness transforms of a case's messages | Accepted |
+| [0045](0045-robustness-transforms-of-a-cases-messages.md) | Robustness transforms of a case's messages | Accepted; amended by 0106 |
 | [0046](0046-intents-that-state-what-they-ask.md) | Intents that state what they ask, across the catalog's types | Accepted; amended by 0048 |
 | [0047](0047-the-analyzer-deterministic-first.md) | The analyzer, deterministic first: inventory, data and probes | Accepted; amended by 0066, 0067, 0068 |
 | [0048](0048-intents-ask-as-a-shopper-names-things.md) | Intents ask as a shopper names things | Accepted; amended by 0050, 0052 |
@@ -118,7 +118,7 @@ old one.
 | [0103](0103-the-demo-shop-reads-an-instruction-that-points-back-to-its-code.md) | The demo-shop reads an instruction that points back to its code | Accepted |
 | [0104](0104-the-attackers-prompt-is-written-in-english.md) | The attacker's prompt is written in English | Accepted |
 | [0105](0105-the-demo-shop-adds-to-the-cart-only-when-asked-to.md) | The demo-shop adds to the cart only when asked to | Accepted |
-| [0106](0106-the-demo-shop-reads-a-typo-not-another-word.md) | The demo-shop reads a typo, not another word | Proposed |
+| [0106](0106-the-demo-shop-reads-a-typo-not-another-word.md) | The demo-shop reads a typo, not another word | Accepted |
 
 ## Template
 
