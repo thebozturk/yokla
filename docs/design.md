@@ -1314,6 +1314,17 @@ For the attacks from templates (ADR-0080), `yokla generate --redteam
   an add word and takes nothing back. Of the runs' 207 messages, 14 named
   the cart as the shop read it, and none asks to add now; every case
   message is read as before.
+- **A typo, not another word (ADR-0106):** the shop's typo reading
+  (ADR-0045) took ordinary words for its own through a replaced letter:
+  over the real runs' 207 messages it rewrote 831 words, "test" as "tent"
+  106 times, "shop" as "shoe" 58 and "store" as "stove" 15, and read 91
+  messages differently than without it. It now reads the typos yokla
+  writes, swaps, drops and doubles, and a one-letter suffix swapped with
+  the stem's end. It rewrites 14 words, and 5 messages are read
+  differently, each through a word a dropped letter of a shop word gives,
+  such as "back" for "black". Of the 743 typo forms of the acceptance
+  messages, it misreads 36, where it misread 38, and every case keeps its
+  verdict under the typos transform.
 - **Findings mapped to frameworks (ADR-0089):** on the generated attack
   cases, the correct shop scores 0 for every kind; under each attack
   defect, every failing finding names the categories it maps to, and the

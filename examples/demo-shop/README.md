@@ -435,9 +435,13 @@ them (ADR-0029).
 - **Typos.** It reads past a typo of a word it knows (`src/typos.ts`): a
   word of four letters or more, or its start before a suffix, one edit away
   from exactly one word of its vocabulary with the same first letter. An
-  edit is a letter swapped with its neighbour, dropped, doubled or replaced.
-  Its common words and the words of its products' names are never read as
-  typos, so "carbon" stays "carbon".
+  edit is a typo yokla writes: a letter swapped with its neighbour, dropped
+  or doubled. A letter replaced is no edit, so "test" stays "test" and
+  "shop" stays "shop" (ADR-0106). A one-letter suffix swapped with the
+  stem's last letter is read too: "Uyku maıt" is "Uyku matı".
+  Its common words, the words of its products' names and a few words the
+  real runs held, such as "catalog", are never read as typos, so "carbon"
+  stays "carbon".
 
 ## Defects
 
