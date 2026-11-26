@@ -1,6 +1,6 @@
 # 0103. The demo-shop reads an instruction that points back to its code
 
-Status: Proposed · Date: 2026-11-26
+Status: Accepted · Date: 2026-11-26
 
 ## Context
 
