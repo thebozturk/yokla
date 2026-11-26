@@ -4,6 +4,28 @@ Notable changes per version. Versions follow the roadmap in
 [design §20](docs/design.md#20-roadmap); a version ships when its exit criteria
 hold.
 
+## 0.6.2 — 2026-11-26
+
+What the attacker's next runs on a real model showed. Instructed in
+Turkish, the model refused most of the Turkish attacks it wrote when
+instructed in English, so a run's Turkish cases went unmeasured. The
+attacker is now instructed in English for every case language. On the
+demo-shop, the defects that follow an instruction to reply with a word now
+read it as a model words it (ADR-0102, ADR-0103), so a real attacker can
+reach them.
+
+### Changed
+
+- **The attacker's prompt is written in English for every case language
+  (ADR-0104),** and asks for its message in the case's language by name,
+  "in Turkish"; `translate` names the language it writes in. The attack,
+  the transcript and the answers stay in the case's language. On the
+  demo-shop, with a real model, the Turkish cases' attempts sent rose from
+  4 of 20 to 19 of 20.
+- **The attacker's cache key holds its prompt's version 3 (ADR-0104):**
+  every attacker reply cached before is asked anew once, the English ones
+  too.
+
 ## 0.6.1 — 2026-11-25
 
 What the first runs of the judge and the attacker on a real model showed.
