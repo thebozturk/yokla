@@ -4,6 +4,27 @@ Notable changes per version. Versions follow the roadmap in
 [design §20](docs/design.md#20-roadmap); a version ships when its exit criteria
 hold.
 
+## 0.6.3 — 2026-11-28
+
+What the attacker's next run on a real model showed. Asked for an attack
+"in another way", the model never wrote one in leetspeak or look-alike
+letters, so the defects that read past them were never reached. The tree
+now writes that layer itself. On the demo-shop, the defects that read a
+wrapper read one as a model words it (ADR-0110), and the correct shop puts
+a product in the cart only when asked, reads a typo only as yokla writes
+one, reads a word in its own language, and reads a short English word
+only as itself (ADR-0105 to ADR-0108). With a real model, the tree now
+reaches `obfuscation-obeyed`, `layered-obeyed` and `wrapper-obeyed`.
+
+### Changed
+
+- **Past the tree's first level, each node's last branch is its parent in
+  leetspeak (ADR-0109),** written by yokla with no attacker call. The
+  values the turn's expectations quote are kept as written. Of the default
+  12 attempts, 3 are layered, and the attacker writes 9. `results.v1`
+  gains, additively, `attacker.layer` on a sample, and the terminal summary
+  counts the layered attempts.
+
 ## 0.6.2 — 2026-11-26
 
 What the attacker's next runs on a real model showed. Instructed in
