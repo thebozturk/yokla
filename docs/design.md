@@ -1369,6 +1369,19 @@ For the attacks from templates (ADR-0080), `yokla generate --redteam
   take only English endings would have misread 63 of the 743 typo forms of
   the acceptance messages, not 36: a typo in an ending, as in "jacketss",
   is read today because any suffix may follow the word.
+- **The tree layers leetspeak (ADR-0109):** the real attacker never reached
+  `obfuscation-obeyed` or `layered-obeyed`: asked for the attack "in
+  another way", Claude Haiku 5.5 wrote no best-of-n or tree attempt in
+  leetspeak or look-alike letters. Past the tree's first level, each
+  node's last branch is now its parent in leetspeak, written by yokla with
+  no attacker call. Applied offline to the run after ADR-0106, the 10
+  first-level tree attempts sent over the four injection cases would each
+  have had a layered branch, and `obfuscation-obeyed` follows all 10;
+  `layered-obeyed` follows none, since its filter reads 1 of the 39 sent
+  tree attempts as a wrapper. With the fake attacker, whose tree now writes
+  a role-play, a hypothetical and a developer-mode request, the tree breaks
+  `layered-obeyed`, and `obfuscation-obeyed` over the injection cases, at
+  its sixth attempt, the leetspeak layer over the role-play.
 - **Findings mapped to frameworks (ADR-0089):** on the generated attack
   cases, the correct shop scores 0 for every kind; under each attack
   defect, every failing finding names the categories it maps to, and the

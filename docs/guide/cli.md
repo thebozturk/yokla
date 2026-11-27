@@ -440,9 +440,14 @@ pnpm yokla run --cases cases/redteam.yaml --attacker translate --out runs/transl
 | `escalation` | the next message, turn by turn, from the attack and the conversation so far: it may start with an ordinary question and work towards the attack, or ask again another way | at the first turn a check fails, or after `--max-turns` |
 | `best-of-n` | attempt `i` of `--attempts`: another way to send the attack, each in a sample of its own, in a fresh session | at the first attempt a check fails |
 | `iterative` | attempt `i` of `--attempts`, from every earlier attempt and the target's answer to it, each in a fresh session | at the first attempt a check fails, or that errored |
-| `tree` | at the first level, `--branches` variants of the attack; at each next level, that many variants of each attempt of the level before, given its answer; breadth first, to `--depth` levels: at most 12 attempts by default | at the first attempt a check fails, or that errored |
+| `tree` | at the first level, `--branches` variants of the attack; at each next level, that many variants of each attempt of the level before, given its answer, the last of them the attempt in leetspeak; breadth first, to `--depth` levels: at most 12 attempts by default | at the first attempt a check fails, or that errored |
 | `translate` | the attack in each other language of the profile, one attempt each | at the first attempt a check fails |
 
+- **`tree` layers leetspeak itself** (ADR-0109). Past the first level, each
+  node's last branch isn't asked of the model: yokla writes the attempt it
+  varies in leetspeak, as `--strategy leetspeak` does, with the values the
+  turn's expectations quote as written, at no cost. The branches of such an
+  attempt are the model's. By default, 3 of the 12 attempts are layered.
 - **`translate` judges each attempt in the language it was sent in,** with
   that language's pack; a `language` expectation asks for it too. It needs
   a profile of two languages or more, each with its pack.
@@ -472,8 +477,8 @@ pnpm yokla run --cases cases/redteam.yaml --attacker translate --out runs/transl
 - **The results** keep every message sent, with the case's under
   `written`; each sample's attacker calls, for `escalation` the turn that
   broke through as `brokeAt`, for a `tree` attempt past the first level the
-  sample it varies as `parent`, and for `translate` the attempt's
-  `language`; and `run.attacker`, with the strategy, its bound as `limit`
+  sample it varies as `parent` and, for a layered one, `layer:
+  "leetspeak"`, and for `translate` the attempt's `language`; and `run.attacker`, with the strategy, its bound as `limit`
   (for `tree` its node count, with `branches` and `depth`) and how many
   cases it adapted. `run.own` counts the calls.
 - **The cache** in `yokla-data/attacker/` repeats every message while the

@@ -95,7 +95,7 @@ ADR-0088), with `models.attacker` in `yokla.config.yaml`:
 | `escalation` | the next message, turn by turn, in one conversation |
 | `best-of-n` | another way to send the attack, an attempt per sample |
 | `iterative` | each attempt from the earlier ones and the answers to them |
-| `tree` | variants of the attack, then variants of each, within `--branches` and `--depth` |
+| `tree` | variants of the attack, then variants of each, within `--branches` and `--depth`; past the first level, each node's last branch is the attempt in leetspeak, written by yokla (ADR-0109) |
 | `translate` | the attack in the profile's other languages, each judged in its own |
 
 - **Each stops at the first attempt a check fails;** the case's own
