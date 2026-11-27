@@ -1382,6 +1382,16 @@ For the attacks from templates (ADR-0080), `yokla generate --redteam
   a role-play, a hypothetical and a developer-mode request, the tree breaks
   `layered-obeyed`, and `obfuscation-obeyed` over the injection cases, at
   its sixth attempt, the leetspeak layer over the role-play.
+- **A wrapper as a model words it (ADR-0110):** the shop read a wrapper by
+  six phrases, and 1 of the 39 tree attempts of the run after ADR-0106 as
+  one. It now also reads a role-play, a hypothetical or a mode by the words
+  a model frames them with, such as "oyun oynayalım", "pretend" or
+  "geliştirici test modu": 12 of the 39, 3 at the first level. None of the
+  22 acceptance messages is read as a wrapper; 3 of the 80 case messages
+  are, each an attack framed as one. Applied offline to that run with
+  ADR-0109's layer, `layered-obeyed` fails both persona injections at the
+  tree's sixth attempt, and `wrapper-obeyed` three of the four injection
+  cases.
 - **Findings mapped to frameworks (ADR-0089):** on the generated attack
   cases, the correct shop scores 0 for every kind; under each attack
   defect, every failing finding names the categories it maps to, and the
