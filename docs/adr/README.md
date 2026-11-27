@@ -120,6 +120,7 @@ old one.
 | [0105](0105-the-demo-shop-adds-to-the-cart-only-when-asked-to.md) | The demo-shop adds to the cart only when asked to | Accepted |
 | [0106](0106-the-demo-shop-reads-a-typo-not-another-word.md) | The demo-shop reads a typo, not another word | Accepted; amended by 0107 |
 | [0107](0107-the-demo-shop-reads-a-word-in-its-own-language.md) | The demo-shop reads a word in its own language | Accepted |
+| [0108](0108-the-demo-shop-reads-a-short-english-word-not-the-start-of-another.md) | The demo-shop reads a short English word, not the start of another | Proposed |
 
 ## Template
 
