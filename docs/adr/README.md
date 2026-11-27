@@ -122,6 +122,7 @@ old one.
 | [0107](0107-the-demo-shop-reads-a-word-in-its-own-language.md) | The demo-shop reads a word in its own language | Accepted; amended by 0108 |
 | [0108](0108-the-demo-shop-reads-a-short-english-word-not-the-start-of-another.md) | The demo-shop reads a short English word, not the start of another | Accepted |
 | [0109](0109-the-attackers-tree-layers-leetspeak-over-its-attempts.md) | The attacker's tree layers leetspeak over its attempts | Accepted |
+| [0110](0110-the-demo-shop-reads-a-wrapper-as-a-model-words-it.md) | The demo-shop reads a wrapper as a model words it | Proposed |
 
 ## Template
 
