@@ -121,6 +121,7 @@ old one.
 | [0106](0106-the-demo-shop-reads-a-typo-not-another-word.md) | The demo-shop reads a typo, not another word | Accepted; amended by 0107 |
 | [0107](0107-the-demo-shop-reads-a-word-in-its-own-language.md) | The demo-shop reads a word in its own language | Accepted; amended by 0108 |
 | [0108](0108-the-demo-shop-reads-a-short-english-word-not-the-start-of-another.md) | The demo-shop reads a short English word, not the start of another | Accepted |
+| [0109](0109-the-attackers-tree-layers-leetspeak-over-its-attempts.md) | The attacker's tree layers leetspeak over its attempts | Proposed |
 
 ## Template
 
