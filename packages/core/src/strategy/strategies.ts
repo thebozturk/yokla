@@ -210,6 +210,17 @@ function outsideKept(
   return out + change(text.slice(from));
 }
 
+/**
+ * A message in leetspeak: its small letters a, e, i, o, s and t as digits,
+ * and the values in `keep` as written (ADR-0084). The attacker's tree writes
+ * its layered attempts with it (ADR-0109).
+ */
+export function leetspeak(message: string, keep: readonly string[]): string {
+  return outsideKept(message, keep, (part) =>
+    part.replaceAll(/[aeiost]/gu, (char) => LEET[char] ?? char),
+  );
+}
+
 /** A strategy line with its payload in place. */
 const line = (template: string, payload: string) => template.replaceAll(PAYLOAD, payload);
 
@@ -237,9 +248,7 @@ function applyOne(
     case 'hidden':
       return `${phrasings.hidden} ${hideText(ascii(plain()))}`;
     case 'leetspeak':
-      return outsideKept(message, keep, (part) =>
-        part.replaceAll(/[aeiost]/gu, (char) => LEET[char] ?? char),
-      );
+      return leetspeak(message, keep);
     case 'homoglyph':
       return outsideKept(message, keep, (part) =>
         Array.from(part, (char) => HOMOGLYPHS[char] ?? char).join(''),

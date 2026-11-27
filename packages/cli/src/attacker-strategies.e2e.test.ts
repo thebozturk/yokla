@@ -4,9 +4,13 @@
 // - The correct shop withstands every attempt of each strategy.
 // - filter-explained, which quotes the phrase it refused, passes the written
 //   cases and best-of-n, and iterative breaks it at its second attempt.
+// - Each tree writes the last branch of each node past its first level as
+//   the parent in leetspeak, with no attacker call (ADR-0109).
 // - layered-obeyed, which refuses a wrapper it can read and reads past
 //   leetspeak, passes the written cases and best-of-n, and tree breaks it at
-//   its fifth attempt, the role-play in leetspeak.
+//   its sixth attempt, its leetspeak layer over the role-play.
+// - obfuscation-obeyed, which reads past leetspeak, breaks under tree at the
+//   same attempt, over the injection cases.
 // - one-language-guard, which follows English instructions only, fails the
 //   English injections as written and the Turkish ones under translate.
 // - A second iterative run sends no attacker call.
@@ -71,6 +75,7 @@ const PLAN: Readonly<Record<string, readonly string[]>> = {
   none: ['iterative', 'tree', 'translate@injection', 'iterative-again'],
   'filter-explained': ['written', 'best-of-n', 'iterative'],
   'layered-obeyed': ['written', 'best-of-n', 'tree'],
+  'obfuscation-obeyed': ['tree@injection'],
   'one-language-guard': ['written@injection', 'best-of-n@injection', 'translate@injection'],
 };
 /** The kinds whose own message, followed, breaks a check (ADR-0084). */
@@ -246,6 +251,27 @@ describe('the attacker strategies of R5b on the demo-shop (ADR-0088)', () => {
       2,
       2,
     ]);
+    // Each node's last branch past the first level is its parent in leetspeak,
+    // written with no attacker call (ADR-0109); a case whose attempts the attacker
+    // never sent writes none (ADR-0101).
+    const sent = tree.filter((c) =>
+      c.samples.every((sample) => sample.attacker?.unsent === undefined),
+    );
+    expect(sent.length).toBeGreaterThan(10);
+    for (const c of sent) {
+      expect(
+        c.samples.flatMap((sample, index) =>
+          sample.attacker?.layer === 'leetspeak' ? [index] : [],
+        ),
+        c.id,
+      ).toEqual([5, 8, 11]);
+      for (const index of [5, 8, 11]) {
+        const sample = c.samples[index];
+        const parent = c.samples[sample?.attacker?.parent ?? -1];
+        expect(sample?.attacker?.calls, `${c.id} ${String(index)}`).toEqual([]);
+        expect(sample?.turns[0]?.user, `${c.id} ${String(index)}`).not.toBe(parent?.turns[0]?.user);
+      }
+    }
     // Each translated attempt is written, and judged, in the case's other language.
     for (const c of results('none', 'translate@injection').cases) {
       expect(
@@ -269,7 +295,7 @@ describe('the attacker strategies of R5b on the demo-shop (ADR-0088)', () => {
     }
   });
 
-  it('layered-obeyed passes the written cases and best-of-n, and tree breaks it at the role-play in leetspeak', () => {
+  it('layered-obeyed passes the written cases and best-of-n, and tree breaks it at its leetspeak layer over the role-play', () => {
     expect(failed('layered-obeyed', 'written')).toEqual([]);
     expect(failed('layered-obeyed', 'best-of-n')).toEqual([]);
     const broken = results('layered-obeyed', 'tree').cases.filter((c) => c.status === 'fail');
@@ -278,10 +304,25 @@ describe('the attacker strategies of R5b on the demo-shop (ADR-0088)', () => {
     );
     for (const c of broken) {
       expect(FOLLOWED.has(kindOf(c.id)), c.id).toBe(true);
-      // The fifth attempt, the second branch of the first: the role-play, in leetspeak.
-      expect(c.samples, c.id).toHaveLength(5);
+      // The sixth attempt, the first node's last branch: its role-play in leetspeak (ADR-0109).
+      expect(c.samples, c.id).toHaveLength(6);
       expect(c.samples.at(-1)?.attacker?.parent, c.id).toBe(0);
+      expect(c.samples.at(-1)?.attacker?.layer, c.id).toBe('leetspeak');
       expect(c.samplesPlanned, c.id).toBe(12);
+    }
+  });
+
+  it('obfuscation-obeyed breaks under tree at the same attempt, the leetspeak layer (ADR-0109)', () => {
+    const broken = results('obfuscation-obeyed', 'tree@injection').cases.filter(
+      (c) => c.status === 'fail',
+    );
+    expect(broken.map((c) => c.id)).toEqual(
+      expect.arrayContaining(injections('obfuscation-obeyed', 'tree@injection')),
+    );
+    for (const c of broken) {
+      expect(c.samples, c.id).toHaveLength(6);
+      expect(c.samples.at(-1)?.attacker?.layer, c.id).toBe('leetspeak');
+      expect(failingChecks(c), c.id).toContain('answer-text');
     }
   });
 

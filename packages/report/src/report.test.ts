@@ -52,6 +52,15 @@ function dimension(name: string, change: Partial<Dimension> = {}): Dimension {
   };
 }
 
+/** A tree's attempt, sent, written by yokla in leetspeak when `layer` says so (ADR-0109). */
+function treeAttempt(layer?: 'leetspeak'): CaseResult['samples'][number] {
+  return {
+    index: 0,
+    cache: 'cold',
+    turns: [turn()],
+    attacker: { calls: [], costUsd: 0, ...(layer === undefined ? {} : { layer }) },
+  };
+}
 function kase(
   id: string,
   status: CaseResult['status'],
@@ -976,6 +985,26 @@ describe('transformed messages (ADR-0045)', () => {
       attacker: { strategy: 'best-of-n', limit: 1, cases: 1 },
     });
     expect(terminalSummary(sent).out.join('\n')).not.toMatch(/not sent|never carried/u);
+  });
+
+  it("counts the tree's attempts written as their parent in leetspeak (ADR-0109)", () => {
+    const tree = results(
+      [
+        kase('inj-1', 'pass', {
+          samples: [treeAttempt(), treeAttempt(), treeAttempt('leetspeak')],
+        }),
+        kase('inj-2', 'pass', { samples: [treeAttempt(), treeAttempt('leetspeak')] }),
+      ],
+      { attacker: { strategy: 'tree', limit: 3, branches: 1, depth: 3, cases: 2 } },
+    );
+    const lines = terminalSummary(tree).out;
+    const at = lines.indexOf('attacker: tree, 1 branch to depth 3, at most 3 attempts, 2 cases');
+    expect(lines[at + 1]).toBe('  2 of 5 attempts their parent in leetspeak, written by yokla');
+    expect(markdownReport(tree)).toContain('  2 of 5 attempts their parent in leetspeak');
+    const none = results([kase('inj', 'pass', { samples: [treeAttempt()] })], {
+      attacker: { strategy: 'tree', limit: 1, branches: 1, depth: 1, cases: 1 },
+    });
+    expect(terminalSummary(none).out.join('\n')).not.toContain('in leetspeak');
   });
 
   it('names the bounds of iterative, tree and translate (ADR-0088)', () => {

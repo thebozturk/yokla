@@ -229,6 +229,11 @@ export const Sample = z.object({
       /** translate: the language the attempt was written in, and judged in. */
       language: LanguageCode.optional(),
       /**
+       * tree: the attempt is its parent rewritten in leetspeak by yokla, with
+       * no attacker call (ADR-0109).
+       */
+      layer: z.literal('leetspeak').optional(),
+      /**
        * Why this sample's attempt, or its conversation's last turn, wasn't
        * sent: the attacker wrote no message, or one without the attack's
        * values (ADR-0101).

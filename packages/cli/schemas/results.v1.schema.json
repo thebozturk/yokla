@@ -1914,6 +1914,10 @@
                       "type": "string",
                       "pattern": "^[a-z]{2}$"
                     },
+                    "layer": {
+                      "type": "string",
+                      "const": "leetspeak"
+                    },
                     "unsent": {
                       "type": "string"
                     }

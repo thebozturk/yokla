@@ -72,7 +72,8 @@ Options:
   --attacker <name>     adapt each redteam case of one turn with models.attacker (ADR-0087,
                         ADR-0088): escalation (turn by turn), best-of-n (an attempt per
                         sample), iterative (each attempt from the earlier ones' answers), tree
-                        (variants of variants) or translate (the profile's other languages);
+                        (variants of variants, each node's last past the first level in
+                        leetspeak, ADR-0109) or translate (the profile's other languages);
                         stops at the first message a check fails
   --attempts <n>        best-of-n's and iterative's attempts (default: 4)
   --max-turns <n>       escalation's most turns (default: 5)

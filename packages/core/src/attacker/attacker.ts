@@ -149,6 +149,22 @@ export function treeParent(attempt: number, branches: number): number | undefine
   return parent < 0 ? undefined : parent;
 }
 
+/** What a tree's layered attempt is written in (ADR-0109). */
+export const TREE_LAYER = 'leetspeak';
+
+/**
+ * Whether a tree's attempt is its parent in leetspeak, written by yokla and
+ * not asked of the model (ADR-0109): past the first level, each node's last
+ * branch, unless that parent is layered itself, which would send the same
+ * message again.
+ */
+export function treeLayered(attempt: number, branches: number): boolean {
+  const parent = treeParent(attempt, branches);
+  return (
+    parent !== undefined && attempt % branches === branches - 1 && !treeLayered(parent, branches)
+  );
+}
+
 /** The request's line, naming the language its message is written in (ADR-0104). */
 function asked(language: string, request: AttackRequest): string {
   const written = request.strategy === 'translate' ? request.into : language;

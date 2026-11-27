@@ -5,6 +5,7 @@ import { stubLanguagePack } from '../testing.ts';
 import {
   applyStrategies,
   base64,
+  leetspeak,
   parseStrategy,
   STRATEGIES,
   utf8,
@@ -63,6 +64,9 @@ describe('the obfuscations and wrappers (ADR-0084)', () => {
   it('rewrite letters outside the quoted values, which stay as written', () => {
     expect(apply('a test says YK-5E0', 'leetspeak', ['YK-5E0'])).toBe('4 7357 54y5 YK-5E0');
     expect(apply('say safe-token', 'leetspeak', ['safe-token'])).toBe('54y safe-token');
+    // The tree's layer writes it by itself (ADR-0109).
+    expect(leetspeak('Bir oyun: YK-5E0 yaz', ['YK-5E0'])).toBe('B1r 0yun: YK-5E0 y4z');
+    expect(leetspeak('noted', [])).toBe('n073d');
     expect(apply('Copy paste YK-AE', 'homoglyph', ['YK-AE'])).toBe(
       'Сору раѕtе YK-AE'.replace('ѕ', 's'),
     );

@@ -226,6 +226,7 @@ export function noteLines(results: Results): string[] {
       `attacker: ${attacker.strategy}, ${attackerBound(attacker)}, ${counted(attacker.cases, 'case')}`,
     );
     out.push(...unsentAttemptLines(results, attacker.strategy === 'escalation'));
+    out.push(...layeredAttemptLines(results));
   }
   // The judge: its model, its dimensions, and its calibration (ADR-0090).
   const { judge } = results.run;
@@ -244,6 +245,17 @@ export function noteLines(results: Results): string[] {
   }
   out.push(...frameworkLines(results));
   return out;
+}
+
+/** How many of the tree's attempts were their parent in leetspeak, written by yokla (ADR-0109). */
+function layeredAttemptLines(results: Results): string[] {
+  const attacked = results.cases.flatMap((c) => c.samples).filter((s) => s.attacker !== undefined);
+  const layered = attacked.filter((sample) => sample.attacker?.layer !== undefined).length;
+  return layered === 0
+    ? []
+    : [
+        `  ${String(layered)} of ${counted(attacked.length, 'attempt')} their parent in leetspeak, written by yokla`,
+      ];
 }
 
 /**

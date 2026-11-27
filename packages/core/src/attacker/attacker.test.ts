@@ -11,6 +11,7 @@ import {
   type AttackRequest,
   leftOut,
   translatable,
+  treeLayered,
   treeParent,
   treeSize,
 } from './attacker.ts';
@@ -238,6 +239,31 @@ describe("a tree's numbering (ADR-0088)", () => {
     // The third level varies the second: attempt 12 is the first child of attempt 3.
     expect(treeParent(12, 3)).toBe(3);
     expect([0, 1, 2, 5].map((k) => treeParent(k, 1))).toEqual([undefined, 0, 1, 4]);
+  });
+});
+
+/** A tree's layered attempts among its first `size`. */
+const layered = (branches: number, size: number) =>
+  Array.from({ length: size }, (_unused, attempt) => attempt).filter((attempt) =>
+    treeLayered(attempt, branches),
+  );
+
+describe("a tree's layered attempts (ADR-0109)", () => {
+  it("lays leetspeak on each node's last branch past the first level", () => {
+    expect(layered(3, 12)).toEqual([5, 8, 11]);
+    expect(layered(2, 6)).toEqual([3, 5]);
+  });
+
+  it('leaves the branches of a layered attempt to the model', () => {
+    // At the third level, attempt 9 varies attempt 3 and attempt 13 attempt 5, both layered.
+    expect(layered(2, 14)).toEqual([3, 5, 7, 11]);
+    // Attempt 20 is attempt 5's last branch; attempt 14 is attempt 3's.
+    expect(treeLayered(20, 3)).toBe(false);
+    expect(treeLayered(14, 3)).toBe(true);
+  });
+
+  it('alternates with one branch: a model attempt, then it in leetspeak', () => {
+    expect(layered(1, 5)).toEqual([1, 3]);
   });
 });
 

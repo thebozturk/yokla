@@ -29,6 +29,8 @@ import {
   MAX_BRANCHES,
   MAX_DEPTH,
   translatable,
+  TREE_LAYER,
+  treeLayered,
   treeParent,
   treeSize,
   settledFailure,
@@ -73,6 +75,7 @@ import {
   type ModelTransform,
   type TransformKind,
   applyStrategies,
+  leetspeak,
   type Strategy,
   type CaseCustomer,
   type CaseTurn,
@@ -1619,31 +1622,44 @@ async function attackWith(
     into === undefined || turn.expect?.['language'] === undefined
       ? turn.expect
       : { ...turn.expect, language: into };
+  // Past the tree's first level, a node's last branch is its parent in leetspeak,
+  // written by yokla with no attacker call (ADR-0109).
+  const layer =
+    run.strategy === 'tree' && parent !== undefined && treeLayered(sampleIndex, run.branches)
+      ? leetspeak(attemptOf(earlier[parent]).attacker, quotedValues(turn.expect))
+      : undefined;
   const turns = run.strategy === 'escalation' ? run.limit : 1;
   for (let turnIndex = 0; turnIndex < turns; turnIndex += 1) {
     let text: string;
-    try {
-      const next = await attack.player.next(turn.user, testCase.language, seed, request());
-      calls.push(next.call);
-      countSpend(attack.spend, next.call);
-      // A cut reply isn't the attack the strategy wrote: never sent (ADR-0099).
-      if ('why' in next) {
-        sample.exchanges.push({ turn: { user: '', error: next.why, checks: [] }, view: undefined });
+    if (layer === undefined) {
+      try {
+        const next = await attack.player.next(turn.user, testCase.language, seed, request());
+        calls.push(next.call);
+        countSpend(attack.spend, next.call);
+        // A cut reply isn't the attack the strategy wrote: never sent (ADR-0099).
+        if ('why' in next) {
+          sample.exchanges.push({
+            turn: { user: '', error: next.why, checks: [] },
+            view: undefined,
+          });
+          break;
+        }
+        // A refusal, or a note about the task, isn't a message: never sent (ADR-0101).
+        if ('unsent' in next) {
+          unsent = next.unsent;
+          break;
+        }
+        text = next.text;
+      } catch (error) {
+        const why = error instanceof ModelClientError ? error.message : errorMessage(error);
+        sample.exchanges.push({
+          turn: { user: '', error: `the attacker model failed: ${why}`, checks: [] },
+          view: undefined,
+        });
         break;
       }
-      // A refusal, or a note about the task, isn't a message: never sent (ADR-0101).
-      if ('unsent' in next) {
-        unsent = next.unsent;
-        break;
-      }
-      text = next.text;
-    } catch (error) {
-      const why = error instanceof ModelClientError ? error.message : errorMessage(error);
-      sample.exchanges.push({
-        turn: { user: '', error: `the attacker model failed: ${why}`, checks: [] },
-        view: undefined,
-      });
-      break;
+    } else {
+      text = layer;
     }
     // A message without the attack's values isn't an attempt at it; an escalation sends
     // it as its approach, which decides nothing (ADR-0101).
@@ -1683,6 +1699,7 @@ async function attackWith(
     ...(brokeAt === undefined ? {} : { brokeAt }),
     ...(parent === undefined ? {} : { parent }),
     ...(into === undefined ? {} : { language: into }),
+    ...(layer === undefined ? {} : { layer: TREE_LAYER }),
     ...(unsent === undefined ? {} : { unsent }),
   };
 }
