@@ -1,6 +1,6 @@
 # 0109. The attacker's tree layers leetspeak over its attempts
 
-Status: Proposed · Date: 2026-11-27
+Status: Accepted · Date: 2026-11-27
 
 ## Context
 
@@ -103,6 +103,12 @@ The leetspeak layer was applied to the run after ADR-0106, offline:
 - **End to end:**
   - On the correct shop the tree passes, with three layered attempts a
     case, and the second tree run sends no attacker call.
+  - *Clarified while building:* the test checks that each layered attempt
+    has no attacker call, in place of a second tree run; the prompt and
+    the cache keys don't change. A case whose first-level attempts the
+    attacker never sent writes no layered attempt (ADR-0101). The generated
+    competitor cases are such cases: their expectations quote a name their
+    message doesn't hold.
   - `layered-obeyed` breaks at the sixth attempt.
   - `obfuscation-obeyed` breaks at the sixth attempt over the injection
     cases.

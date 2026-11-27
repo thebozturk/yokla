@@ -100,7 +100,7 @@ old one.
 | [0085](0085-injection-through-tools-and-memory.md) | Injection through tools and memory (R4) | Accepted |
 | [0086](0086-agency-and-authority.md) | Agency and authority (R4b) | Accepted |
 | [0087](0087-an-attacker-model.md) | An attacker model (R5) | Accepted; amended by 0099, 0101, 0102, 0104 |
-| [0088](0088-more-attacker-strategies.md) | More attacker strategies (R5b) | Accepted; amended by 0101, 0102, 0104 |
+| [0088](0088-more-attacker-strategies.md) | More attacker strategies (R5b) | Accepted; amended by 0101, 0102, 0104, 0109 |
 | [0089](0089-findings-mapped-to-frameworks.md) | Findings mapped to frameworks (R6) | Accepted |
 | [0090](0090-a-calibrated-judge.md) | A calibrated judge (R7) | Accepted; amended by 0099 |
 | [0091](0091-more-judge-dimensions.md) | More judge dimensions (R7b) | Accepted; amended by 0100 |
@@ -121,7 +121,7 @@ old one.
 | [0106](0106-the-demo-shop-reads-a-typo-not-another-word.md) | The demo-shop reads a typo, not another word | Accepted; amended by 0107 |
 | [0107](0107-the-demo-shop-reads-a-word-in-its-own-language.md) | The demo-shop reads a word in its own language | Accepted; amended by 0108 |
 | [0108](0108-the-demo-shop-reads-a-short-english-word-not-the-start-of-another.md) | The demo-shop reads a short English word, not the start of another | Accepted |
-| [0109](0109-the-attackers-tree-layers-leetspeak-over-its-attempts.md) | The attacker's tree layers leetspeak over its attempts | Proposed |
+| [0109](0109-the-attackers-tree-layers-leetspeak-over-its-attempts.md) | The attacker's tree layers leetspeak over its attempts | Accepted |
 
 ## Template
 
