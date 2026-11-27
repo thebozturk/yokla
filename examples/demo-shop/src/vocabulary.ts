@@ -229,11 +229,20 @@ export const ENGLISH_TOO: readonly string[] = ['bot', 'bay'];
 const IN_ENGLISH = String.raw`(?:s|i|u|si|su)?(?![a-z0-9])`;
 
 /**
+ * What may follow an English word of fewer than four letters, such as "man",
+ * in a message of either language (ADR-0108): nothing or a plural s. Then the
+ * word ends; an apostrophe ends it too, so "men's" is read. Many words start
+ * with such a word: "manager" isn't "man", nor "reduce" "red".
+ */
+const SHORT_ENGLISH = String.raw`s?(?![a-z0-9])`;
+
+/**
  * Length of the longest of `terms` in folded `text`, written in `written`, or 0
- * (ADR-0107). An English word, or a Turkish word in a Turkish message, takes
- * any suffix. In an English message a Turkish word takes only the endings
- * above, so "months" isn't "mont" and "grill" isn't "gri", and the words that
- * are English too aren't read.
+ * (ADR-0107). An English word of four letters or more, or a Turkish word in a
+ * Turkish message, takes any suffix; a shorter English word takes only the
+ * endings above (ADR-0108). In an English message a Turkish word takes only
+ * the endings of IN_ENGLISH, so "months" isn't "mont" and "grill" isn't "gri",
+ * and the words that are English too aren't read.
  */
 export function longestTerm(text: string, terms: Terms, written: Language): number {
   const turkish =
@@ -244,5 +253,13 @@ export function longestTerm(text: string, terms: Terms, written: Language): numb
           terms.tr.filter((term) => !ENGLISH_TOO.includes(term)),
           IN_ENGLISH,
         );
-  return Math.max(longestMatch(text, terms.en), turkish);
+  const short = terms.en.filter((term) => term.length < 4);
+  const english = Math.max(
+    longestMatch(
+      text,
+      terms.en.filter((term) => !short.includes(term)),
+    ),
+    longestMatch(text, short, SHORT_ENGLISH),
+  );
+  return Math.max(english, turkish);
 }

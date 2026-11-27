@@ -63,12 +63,32 @@ describe('longestTerm: a word in its own language (ADR-0107)', () => {
     },
   );
 
-  it.each(ENGLISH)(
+  it.each(ENGLISH.filter((term) => term.length >= 4))(
     'reads the English "%s" with any suffix in a message of either language',
     (term) => {
       for (const written of ['tr', 'en'] as const) {
         expect(reads(`a ${term} b`, term, 'en', written), written).toBe(true);
         expect(reads(`a ${term}ing b`, term, 'en', written), written).toBe(true);
+        expect(reads(`a ${term}ss b`, term, 'en', written), written).toBe(true);
+      }
+    },
+  );
+
+  it('knows men, man and red as its English words of fewer than four letters (ADR-0108)', () => {
+    expect(ENGLISH.filter((term) => term.length < 4).toSorted()).toEqual(['man', 'men', 'red']);
+  });
+
+  it.each(ENGLISH.filter((term) => term.length < 4))(
+    'reads the short English "%s" alone or with a plural s, not at the start of a longer word (ADR-0108)',
+    (term) => {
+      for (const written of ['tr', 'en'] as const) {
+        for (const ending of ['', 's', "'s", '’s']) {
+          expect(reads(`a ${term}${ending} b`, term, 'en', written), ending).toBe(true);
+          expect(reads(`a ${term}${ending}`, term, 'en', written), ending).toBe(true);
+        }
+        for (const longer of ['ager', 'y', 'u', 'tion', 'uce', 'gal', 'ss', 'es', '1']) {
+          expect(reads(`a ${term}${longer} b`, term, 'en', written), longer).toBe(false);
+        }
       }
     },
   );
