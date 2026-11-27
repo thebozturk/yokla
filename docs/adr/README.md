@@ -96,11 +96,11 @@ old one.
 | [0081](0081-the-red-team-track-widened.md) | The red-team track, widened | Accepted |
 | [0082](0082-more-attack-kinds-from-templates.md) | More attack kinds from templates (R1b) | Accepted |
 | [0083](0083-leakage-and-another-customers-data.md) | Leakage and another customer's data (R2) | Accepted |
-| [0084](0084-encoding-and-wrapping-strategies.md) | Encoding and wrapping strategies (R3) | Accepted |
+| [0084](0084-encoding-and-wrapping-strategies.md) | Encoding and wrapping strategies (R3) | Accepted; amended by 0110 |
 | [0085](0085-injection-through-tools-and-memory.md) | Injection through tools and memory (R4) | Accepted |
 | [0086](0086-agency-and-authority.md) | Agency and authority (R4b) | Accepted |
 | [0087](0087-an-attacker-model.md) | An attacker model (R5) | Accepted; amended by 0099, 0101, 0102, 0104 |
-| [0088](0088-more-attacker-strategies.md) | More attacker strategies (R5b) | Accepted; amended by 0101, 0102, 0104, 0109 |
+| [0088](0088-more-attacker-strategies.md) | More attacker strategies (R5b) | Accepted; amended by 0101, 0102, 0104, 0109, 0110 |
 | [0089](0089-findings-mapped-to-frameworks.md) | Findings mapped to frameworks (R6) | Accepted |
 | [0090](0090-a-calibrated-judge.md) | A calibrated judge (R7) | Accepted; amended by 0099 |
 | [0091](0091-more-judge-dimensions.md) | More judge dimensions (R7b) | Accepted; amended by 0100 |
@@ -122,7 +122,7 @@ old one.
 | [0107](0107-the-demo-shop-reads-a-word-in-its-own-language.md) | The demo-shop reads a word in its own language | Accepted; amended by 0108 |
 | [0108](0108-the-demo-shop-reads-a-short-english-word-not-the-start-of-another.md) | The demo-shop reads a short English word, not the start of another | Accepted |
 | [0109](0109-the-attackers-tree-layers-leetspeak-over-its-attempts.md) | The attacker's tree layers leetspeak over its attempts | Accepted |
-| [0110](0110-the-demo-shop-reads-a-wrapper-as-a-model-words-it.md) | The demo-shop reads a wrapper as a model words it | Proposed |
+| [0110](0110-the-demo-shop-reads-a-wrapper-as-a-model-words-it.md) | The demo-shop reads a wrapper as a model words it | Accepted |
 
 ## Template
 

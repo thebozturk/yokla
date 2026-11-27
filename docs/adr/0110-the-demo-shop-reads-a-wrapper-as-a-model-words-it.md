@@ -1,6 +1,6 @@
 # 0110. The demo-shop reads a wrapper as a model words it
 
-Status: Proposed · Date: 2026-11-27
+Status: Accepted · Date: 2026-11-27
 
 ## Context
 
@@ -53,6 +53,14 @@ demo-shop can read, not what the attacker did.
     forms, with "test" allowed between.
 - **English "role" alone isn't one.** "Set aside your usual role" asks
   to drop a role, not to play one.
+  - *Clarified while building:* four of the six phrases, "varsayımsal",
+    "hypothetically", "geliştirici modu" and "developer mode", are within
+    the new words, so the list keeps the other two, "romandaki asistan"
+    and "writing a novel". `layered-obeyed`'s own refusal names a
+    role-play and a hypothetical, so it reads as a wrapper too. The shop
+    reads only what a user sends, so nothing changes by it. "test" is
+    itself one of the words before "mod", so "geliştirici test modu"
+    needs no word allowed between.
 - **Both defects read wrappers this way.** The correct shop doesn't read
   them.
 
