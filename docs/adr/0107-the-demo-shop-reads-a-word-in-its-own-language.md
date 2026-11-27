@@ -1,6 +1,6 @@
 # 0107. The demo-shop reads a word in its own language
 
-Status: Proposed · Date: 2026-11-26
+Status: Accepted · Date: 2026-11-26
 
 ## Context
 
@@ -45,6 +45,10 @@ measurement didn't show it.
   language:** the product types, the types the catalog lacks, the colours,
   the genders, the policy topics, and the words for out of scope, a
   cheaper product, the cart and a person.
+  - *Clarified while building:* the words of the price and size phrases
+    the typo reading knows are split too, such as "altında" and "under".
+    The thank-you words stay one list: only the `thanks-searched` defect
+    (ADR-0075) reads them, not the correct shop.
 - **A message's language is the one the correct shop detects:** Turkish
   letters, else the more common words of one language, with ties going to
   Turkish. The language defects (ADR-0045, ADR-0059) change the language
@@ -75,6 +79,9 @@ measurement didn't show it.
   Turkish words,** in a message of either language. A one-letter suffix is
   Turkish grammar. "read" isn't "red" and "main" isn't "man". "maıt" is
   still "mat".
+  - *Clarified while building:* "mean" leaves ADR-0106's words that are no
+    typos. The suffix swap was its only reading, as "men", so it no longer
+    has one.
 
 ### Measured before this ADR
 
