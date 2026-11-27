@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { Assistant, type ChatReply } from './assistant.ts';
 import { loadShopData } from './catalog.ts';
-import { fold } from './language.ts';
+import { detectLanguage, fold } from './language.ts';
 import { ScriptedModel } from './model.ts';
-import { correctTypos, NOT_TYPOS, oneEdit, readings, VOCABULARY_WORDS } from './typos.ts';
+import { correctTypos, NOT_TYPOS, oneEdit, readings, VOCABULARY_WORDS, WORDS_IN } from './typos.ts';
 
 describe('oneEdit: the typos yokla writes (ADR-0106)', () => {
   it.each([
@@ -35,6 +35,9 @@ describe('oneEdit: the typos yokla writes (ADR-0106)', () => {
   });
 });
 
+/** Folded text as the scripted model reads it, in the language it is written in (ADR-0107). */
+const read = (text: string): string => correctTypos(text, detectLanguage(text));
+
 describe('correctTypos (ADR-0045)', () => {
   it.each([
     ['cdir onerir misin?', 'cadir onerir misin?'],
@@ -51,8 +54,8 @@ describe('correctTypos (ADR-0045)', () => {
     ['altina cadir', 'altinda cadir'],
     // A one-letter suffix swapped with the stem's last letter (ADR-0106).
     ['kamp ocaig', 'kamp ocag'],
-  ])('reads "%s" as "%s"', (typed, read) => {
-    expect(correctTypos(typed)).toBe(read);
+  ])('reads "%s" as "%s"', (typed, corrected) => {
+    expect(read(typed)).toBe(corrected);
   });
 
   it.each([
@@ -86,7 +89,7 @@ describe('correctTypos (ADR-0045)', () => {
     // The words of its products' names are no typos: "carbon" isn't "cart", "polar" isn't "pole".
     'carbon trekking poles, polar ceket, su gecirmez bot, mountaineering boot',
   ])('leaves "%s" as it is', (text) => {
-    expect(correctTypos(text)).toBe(text);
+    expect(read(text)).toBe(text);
   });
 
   it('reads typos as the words of its terms and phrases, and nothing else', () => {
@@ -101,8 +104,8 @@ describe('correctTypos (ADR-0045)', () => {
 
 describe('the words that are no typos (ADR-0106)', () => {
   it.each(NOT_TYPOS)('reads "%s" as written, a word the reading would take for another', (word) => {
-    expect(correctTypos(word)).toBe(word);
-    expect(readings(word).length).toBeGreaterThan(0);
+    expect(correctTypos(word, 'tr')).toBe(word);
+    expect(readings(word, 'tr').length).toBeGreaterThan(0);
   });
 });
 
@@ -132,5 +135,30 @@ describe('the shop reads past a typo (ADR-0045)', () => {
     expect(b.products.map((p) => p.id)).toEqual(a.products.map((p) => p.id));
     expect(b.answer).toBe(a.answer);
     expect(fold(typed)).not.toBe(fold(written));
+  });
+});
+
+describe('the typo reading in a word’s own language (ADR-0107)', () => {
+  it('reads a typo in an English message only as an English word', () => {
+    expect(correctTypos('the terms', 'en')).toBe('the terms');
+    expect(correctTypos('terms', 'tr')).toBe('termos');
+    expect(correctTypos('a boat', 'en')).toBe('a boat');
+    expect(correctTypos('back backpack', 'en')).toBe('black backpack');
+    expect(correctTypos('a water bottel', 'en')).toBe('a water bottle');
+  });
+
+  it('reads the suffix swap only as a Turkish word, in a message of either language', () => {
+    for (const written of ['tr', 'en'] as const) {
+      expect(correctTypos('read main', written), written).toBe('read main');
+      expect(correctTypos('uyku mait', written), written).toBe('uyku mat');
+    }
+    expect(correctTypos('kamp ocaig', 'tr')).toBe('kamp ocag');
+  });
+
+  it('knows the words of each language', () => {
+    expect([WORDS_IN.tr.has('termos'), WORDS_IN.en.has('termos')]).toEqual([true, false]);
+    expect([WORDS_IN.tr.has('under'), WORDS_IN.en.has('under')]).toEqual([false, true]);
+    expect([WORDS_IN.tr.has('mat'), WORDS_IN.en.has('mat')]).toEqual([true, true]);
+    expect([WORDS_IN.tr.has('altinda'), WORDS_IN.en.has('cheaper')]).toEqual([true, true]);
   });
 });

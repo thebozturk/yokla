@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { loadShopData } from './catalog.ts';
-import { fold } from './language.ts';
+import { detectLanguage, fold } from './language.ts';
 import { asksToAdd, matchProductType, parseFilters, ScriptedModel } from './model.ts';
 import { ADD_WORDS, NEGATIONS, REMOVE_WORDS } from './vocabulary.ts';
 
@@ -18,11 +18,11 @@ describe('matchProductType', () => {
     ['HAMAK', 'hammock'],
     ['kamp ocağı', 'camping-stove'],
   ])('%s → %s', (message, expected) => {
-    expect(matchProductType(fold(message))).toBe(expected);
+    expect(matchProductType(fold(message), detectLanguage(message))).toBe(expected);
   });
 
   it('returns undefined when no type is named', () => {
-    expect(matchProductType(fold('Merhaba, nasılsınız?'))).toBeUndefined();
+    expect(matchProductType(fold('Merhaba, nasılsınız?'), 'tr')).toBeUndefined();
   });
 });
 
@@ -156,8 +156,8 @@ describe('ScriptedModel: orders and quantities (ADR-0086)', () => {
   });
 });
 
-/** Whether a message asks to add, read as the scripted model reads it: folded (ADR-0105). */
-const asks = (message: string) => asksToAdd(fold(message));
+/** Whether a message asks to add, read as the scripted model reads it: folded, in its language (ADR-0105, ADR-0107). */
+const asks = (message: string) => asksToAdd(fold(message), detectLanguage(message));
 
 describe('asksToAdd: a sentence asks to add to the cart (ADR-0105)', () => {
   // Each add word, and the same sentence without it.
@@ -342,5 +342,112 @@ describe('ScriptedModel: the cart, only when asked (ADR-0105)', () => {
     expect(
       await new ScriptedModel().interpret('Please add the Dome Tent, 2-Person to my cart.', shown),
     ).toEqual({ route: 'cart', language: 'en', productId: 'TNT-001' });
+  });
+});
+
+/** How the correct shop reads a message, alone or after a search. */
+const read = (message: string, context?: Parameters<ScriptedModel['interpret']>[1]) =>
+  new ScriptedModel().interpret(message, context);
+
+describe('ScriptedModel: a word in its own language (ADR-0107)', () => {
+  const { catalog } = loadShopData();
+  const tents = {
+    productType: 'tent',
+    filters: {},
+    products: catalog.filter((p) => p.type === 'tent'),
+  };
+
+  // Shaped like the real runs' messages read as the shop's Turkish words (design §19).
+  it.each([
+    "I'm writing a quick test for the shop's support bot.",
+    "I'm checking the support bot's response formatting.",
+    'Is the chat bot down?',
+    'Can you check both of them?',
+    'Which one is at the bottom of the list?',
+    'I bought it two months ago and it broke.',
+    "The shop's discount terms are best checked on the order page.",
+    'Please read the terms carefully.',
+    'The cat hissed at me.',
+  ])('%s asks for nothing the shop sells', async (message) => {
+    expect(await read(message)).toEqual({ route: 'fallback', language: 'en' });
+  });
+
+  it('narrows no search by a Turkish word inside an English one', async () => {
+    for (const message of ['Can I keep a charcoal grill inside?', 'We live in the bay area.']) {
+      expect(await read(message, tents), message).toEqual({ route: 'fallback', language: 'en' });
+    }
+    expect(await read('Gri olanlar?', tents)).toMatchObject({ filters: { color: 'grey' } });
+    expect(await read('Bay için olanlar?', tents)).toMatchObject({ filters: { gender: 'men' } });
+  });
+
+  it('reads bot as boots in a Turkish message', async () => {
+    expect(await read('Siyah bot var mı?')).toEqual({
+      route: 'product-search',
+      language: 'tr',
+      productType: 'footwear',
+      filters: { color: 'black' },
+    });
+    expect(await read('botlar')).toMatchObject({ productType: 'footwear' });
+  });
+
+  it('reads the Turkish product words of an English message as bilingual shoppers write them (ADR-0059)', async () => {
+    expect(await read('Do you have a matara under 300?')).toEqual({
+      route: 'product-search',
+      language: 'en',
+      productType: 'water-bottle',
+      filters: { priceMax: 300 },
+    });
+    expect(await read('Do you have black monts?')).toMatchObject({
+      productType: 'jacket',
+      filters: { color: 'black' },
+    });
+    expect(await read('Do you have an uyku tulumu under 2000?')).toMatchObject({
+      productType: 'sleeping-bag',
+    });
+    expect(await read('Show me kafa lambasi options')).toMatchObject({ productType: 'headlamp' });
+    expect(await read('What is your iade policy?')).toEqual({
+      route: 'policy',
+      language: 'en',
+      topic: 'returns',
+    });
+  });
+
+  it('reads the words in the language the message is written in, under a language defect', async () => {
+    const byLetters = new ScriptedModel('language-by-letters');
+    expect(await byLetters.interpret('Cadir var mi?', undefined)).toEqual({
+      route: 'product-search',
+      language: 'en',
+      productType: 'tent',
+      filters: {},
+    });
+    // Read as English, "bay" would name no gender.
+    expect(await byLetters.interpret('Bay mont var mi?', undefined)).toEqual({
+      route: 'product-search',
+      language: 'en',
+      productType: 'jacket',
+      filters: { gender: 'men' },
+    });
+  });
+
+  it('reads no Turkish word with another Turkish suffix in an English message, in any list', async () => {
+    const nothing = { route: 'fallback', language: 'en' };
+    expect(await read('Can I talk to your temsilciniz, please?')).toEqual(nothing);
+    expect(await read('What is your iadeler policy?')).toEqual(nothing);
+    expect(await read('Please add it to my sepetim.', tents)).toEqual(nothing);
+    expect(await read('Can you show me the one that is daha ucuzlar?', tents)).toEqual(nothing);
+    // Nor a typo of a Turkish word: "septe" isn't "sepet".
+    expect(await read('Please add it to my septe.', tents)).toEqual(nothing);
+    // In a Turkish message, each is read.
+    expect(await read('Temsilcinizle görüşebilir miyim?')).toMatchObject({ route: 'handoff' });
+    expect(await read('İadeler nasıl oluyor?')).toMatchObject({
+      route: 'policy',
+      topic: 'returns',
+    });
+    expect(await read('Sepetime ekler misin?', tents)).toMatchObject({ route: 'cart' });
+    expect(await read('Septe ekler misin?', tents)).toMatchObject({ route: 'cart' });
+    expect(await read('Hangisi daha ucuzlar?', tents)).toMatchObject({
+      route: 'follow-up-cheapest',
+    });
+    expect(await read('Hangi hisseyi almalıyım?')).toMatchObject({ route: 'refusal' });
   });
 });

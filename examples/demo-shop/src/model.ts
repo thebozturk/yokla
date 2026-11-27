@@ -30,10 +30,11 @@ import {
   POLICY_TOPICS,
   PRODUCT_TYPES,
   REMOVE_WORDS,
-  longestMatch,
+  longestTerm,
   type Color,
   type Gender,
   type PolicyTopic,
+  type Terms,
 } from './vocabulary.ts';
 
 export interface Filters {
@@ -191,12 +192,13 @@ function firstAmount(
 
 function bestKey<K extends string>(
   text: string,
-  entries: readonly { readonly key: K; readonly terms: readonly string[] }[],
+  entries: readonly { readonly key: K; readonly terms: Terms }[],
+  written: Language,
 ): K | undefined {
   let best: K | undefined;
   let bestLength = 0;
   for (const entry of entries) {
-    const length = longestMatch(text, entry.terms);
+    const length = longestTerm(text, entry.terms, written);
     if (length > bestLength) {
       best = entry.key;
       bestLength = length;
@@ -205,14 +207,22 @@ function bestKey<K extends string>(
   return best;
 }
 
-export function parseFilters(text: string, language: Language): Filters {
+/**
+ * The filters a folded message states. `language` reads its amounts, and
+ * `written`, the language it is written in, its words (ADR-0107).
+ */
+export function parseFilters(
+  text: string,
+  language: Language,
+  written: Language = language,
+): Filters {
   const priceMax = firstAmount(text, PRICE_MAX_PATTERNS, language);
   const priceMin = firstAmount(text, PRICE_MIN_PATTERNS, language);
   const size = SIZE_PATTERNS.map((pattern) => pattern.exec(text)?.[1]).find(
     (match) => match !== undefined,
   );
-  const color = bestKey(text, COLORS);
-  const gender = bestKey(text, GENDERS);
+  const color = bestKey(text, COLORS, written);
+  const gender = bestKey(text, GENDERS, written);
   return {
     ...(priceMax === undefined ? {} : { priceMax }),
     ...(priceMin === undefined ? {} : { priceMin }),
@@ -222,8 +232,8 @@ export function parseFilters(text: string, language: Language): Filters {
   };
 }
 
-export function matchProductType(text: string): string | undefined {
-  return bestKey(text, [...PRODUCT_TYPES, ...ABSENT_TYPES]);
+export function matchProductType(text: string, written: Language): string | undefined {
+  return bestKey(text, [...PRODUCT_TYPES, ...ABSENT_TYPES], written);
 }
 
 function typeName(key: string, language: Language): string {
@@ -343,18 +353,19 @@ function quantityIn(text: string): number | undefined {
 }
 
 /**
- * Whether a folded message asks to add to the cart (ADR-0105): one of its
- * sentences holds a cart word and an add word, and nothing that takes it back,
- * a word that takes a product out or a negation. The cart word is read past a
- * typo (ADR-0045); the other words are read as written, since the typo reading
- * knows none of them and could only change them ("siler" to "sizer").
+ * Whether a folded message, written in `written`, asks to add to the cart
+ * (ADR-0105): one of its sentences holds a cart word and an add word, and
+ * nothing that takes it back, a word that takes a product out or a negation.
+ * The cart word is read past a typo (ADR-0045); the other words are read as
+ * written, since the typo reading knows none of them and could only change
+ * them ("siler" to "sizer").
  */
-export function asksToAdd(folded: string): boolean {
+export function asksToAdd(folded: string, written: Language): boolean {
   return folded
     .split(SENTENCE_END)
     .some(
       (sentence) =>
-        longestMatch(correctTypos(sentence), CART_TERMS) > 0 &&
+        longestTerm(correctTypos(sentence, written), CART_TERMS, written) > 0 &&
         ADD_WORDS.some((word) => word.test(sentence)) &&
         ![...REMOVE_WORDS, ...NEGATIONS].some((word) => word.test(sentence)),
     );
@@ -386,27 +397,30 @@ export class ScriptedModel implements ChatModel {
       this.#defect === 'language-by-words' && hasEnglishProductWord(message)
         ? 'en'
         : detectLanguage(message, this.#defect === 'language-by-letters');
+    // Its words are read in the language it is written in; a language defect
+    // changes only the answer's (ADR-0107).
+    const written = detectLanguage(message);
     // A typo of a word the shop knows is read past (ADR-0045).
     const folded = fold(message);
-    const text = correctTypos(folded);
+    const text = correctTypos(folded, written);
 
-    if (longestMatch(text, OUT_OF_SCOPE_TERMS) > 0) return { route: 'refusal', language };
+    if (longestTerm(text, OUT_OF_SCOPE_TERMS, written) > 0) return { route: 'refusal', language };
 
     // Asking for a person comes before the topic: "customer service about a return" (ADR-0075).
-    if (longestMatch(text, HANDOFF_TERMS) > 0) return { route: 'handoff', language };
+    if (longestTerm(text, HANDOFF_TERMS, written) > 0) return { route: 'handoff', language };
 
     // An action on an order comes before the topic too: "cancel my order" asks for no policy (ADR-0086).
     const order = orderActionOf(message);
     if (order !== undefined) return { route: 'order', language, ...order };
 
-    const topic = bestKey(text, POLICY_TOPICS);
+    const topic = bestKey(text, POLICY_TOPICS, written);
     if (topic !== undefined) return { route: 'policy', language, topic };
 
     // "Add it to my cart": a product shown before goes into the cart, the one the
     // message names or else the first. Before any product was shown, it is a search;
     // a message that doesn't ask to add is read as naming no cart (ADR-0105).
     const shown = context?.products ?? [];
-    if (asksToAdd(folded) && shown.length > 0) {
+    if (asksToAdd(folded, written) && shown.length > 0) {
       const named = shown.find(
         (product) => text.includes(fold(product.name.tr)) || text.includes(fold(product.name.en)),
       );
@@ -430,8 +444,8 @@ export class ScriptedModel implements ChatModel {
       }
     }
 
-    const filters = parseFilters(text, language);
-    const namedType = matchProductType(text);
+    const filters = parseFilters(text, language, written);
+    const namedType = matchProductType(text, written);
     // A follow-up such as "only black ones" refines the previous search.
     const productType = namedType ?? (hasFilters(filters) ? context?.productType : undefined);
     if (productType !== undefined) {
@@ -443,7 +457,7 @@ export class ScriptedModel implements ChatModel {
     }
 
     if (
-      longestMatch(text, CHEAPER_TERMS) > 0 &&
+      longestTerm(text, CHEAPER_TERMS, written) > 0 &&
       context !== undefined &&
       context.products.length > 0
     ) {

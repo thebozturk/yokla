@@ -4,10 +4,13 @@
 // An edit is a typo yokla writes, two neighbours swapped, a letter dropped or
 // one doubled, never a letter replaced, so "test" isn't read as "tent"
 // (ADR-0106). Like yokla's typos, a typo here never changes a word's first
-// letter, so a word such as "sadece" isn't read as "iade" with a suffix.
+// letter, so a word such as "sadece" isn't read as "iade" with a suffix. In
+// an English message a typo is read only as an English word, so "terms" isn't
+// "termos"; a one-letter suffix is Turkish, so the suffix swap reads only a
+// Turkish word, and "read" isn't "red" (ADR-0107).
 
 import { loadShopData } from './catalog.ts';
-import { ENGLISH_HINTS, fold, TURKISH_HINTS } from './language.ts';
+import { ENGLISH_HINTS, fold, TURKISH_HINTS, type Language } from './language.ts';
 import {
   ABSENT_TYPES,
   CART_TERMS,
@@ -18,53 +21,68 @@ import {
   OUT_OF_SCOPE_TERMS,
   POLICY_TOPICS,
   PRODUCT_TYPES,
+  type Terms,
 } from './vocabulary.ts';
 
 /** The words of the price and size phrases the scripted model reads, folded. */
-const PHRASE_WORDS = [
-  'alti',
-  'altinda',
-  'altindaki',
-  'ucuz',
-  'fazla',
-  'ustu',
-  'uzeri',
-  'uzerinde',
-  'uzerindeki',
-  'pahali',
-  'beden',
-  'numara',
-  'under',
-  'below',
-  'less',
-  'than',
-  'cheaper',
-  'most',
-  'over',
-  'above',
-  'more',
-  'least',
-  'size',
+const PHRASE_WORDS: Terms = {
+  tr: [
+    'alti',
+    'altinda',
+    'altindaki',
+    'ucuz',
+    'fazla',
+    'ustu',
+    'uzeri',
+    'uzerinde',
+    'uzerindeki',
+    'pahali',
+    'beden',
+    'numara',
+  ],
+  en: [
+    'under',
+    'below',
+    'less',
+    'than',
+    'cheaper',
+    'most',
+    'over',
+    'above',
+    'more',
+    'least',
+    'size',
+  ],
+};
+
+const LISTS: readonly Terms[] = [
+  ...[...PRODUCT_TYPES, ...ABSENT_TYPES, ...COLORS, ...GENDERS, ...POLICY_TOPICS].map(
+    (entry) => entry.terms,
+  ),
+  OUT_OF_SCOPE_TERMS,
+  CHEAPER_TERMS,
+  CART_TERMS,
+  HANDOFF_TERMS,
+  PHRASE_WORDS,
 ];
+
+/** The words of each language the shop reads requests by, folded (ADR-0107). */
+export const WORDS_IN: Readonly<Record<Language, ReadonlySet<string>>> = {
+  tr: new Set(LISTS.flatMap((terms) => terms.tr.flatMap((term) => term.split(' ')))),
+  en: new Set(LISTS.flatMap((terms) => terms.en.flatMap((term) => term.split(' ')))),
+};
 
 /**
  * The words the shop reads requests by, folded: its terms' words and its
- * phrases' words. A typo is read as one of them.
+ * phrases' words, in either language. A typo is read as one of them.
  */
-export const VOCABULARY_WORDS: ReadonlySet<string> = new Set([
-  ...[...PRODUCT_TYPES, ...ABSENT_TYPES, ...COLORS, ...GENDERS, ...POLICY_TOPICS].flatMap((entry) =>
-    entry.terms.flatMap((term) => term.split(' ')),
-  ),
-  ...[...OUT_OF_SCOPE_TERMS, ...CHEAPER_TERMS, ...CART_TERMS, ...HANDOFF_TERMS].flatMap((term) =>
-    term.split(' '),
-  ),
-  ...PHRASE_WORDS,
-]);
+export const VOCABULARY_WORDS: ReadonlySet<string> = new Set([...WORDS_IN.tr, ...WORDS_IN.en]);
 
 /**
  * Words the real runs held that the typo reading took for the shop's words,
  * though no typo yokla writes of a shop word gives them (ADR-0106): "catalog"
- * isn't "canta" and a suffix, nor "mean" "men".
+ * isn't "canta" and a suffix, nor "greeting" "green" and one. "mean" left the
+ * list when the suffix swap became Turkish (ADR-0107).
  */
 export const NOT_TYPOS: readonly string[] = [
   'catalog',
@@ -73,7 +91,6 @@ export const NOT_TYPOS: readonly string[] = [
   'canary',
   'relay',
   'shared',
-  'mean',
   'uzere',
 ];
 
@@ -135,14 +152,19 @@ interface Reading {
   readonly length: number;
 }
 
-/** The ways to read a word as a vocabulary word with the same first letter, or a stem and a suffix. */
-export function readings(word: string): Reading[] {
+/**
+ * The ways to read a word of a message written in `written` as a vocabulary
+ * word with the same first letter, or a stem and a suffix. In an English
+ * message only an English word is a reading, and the suffix swap reads only a
+ * Turkish word (ADR-0107).
+ */
+export function readings(word: string, written: Language): Reading[] {
   const found: Reading[] = [];
-  for (const known of VOCABULARY_WORDS) {
+  for (const known of written === 'en' ? WORDS_IN.en : VOCABULARY_WORDS) {
     if (known[0] !== word[0]) continue;
     if (known.length >= 4 && word.startsWith(known)) {
       found.push({ word: known, length: known.length });
-    } else if (oneEdit(word, known) || suffixSwapped(word, known)) {
+    } else if (oneEdit(word, known) || (WORDS_IN.tr.has(known) && suffixSwapped(word, known))) {
       found.push({ word: known, length: word.length });
     } else if (known.length >= 4) {
       const length = [known.length - 1, known.length, known.length + 1].find(
@@ -161,11 +183,11 @@ export function readings(word: string): Reading[] {
  * "headlamps", not "head"; "ocagi" stays, as "ocag" and a suffix, not "ocak";
  * and "mati", a stem of three letters and a suffix, stays as written.
  */
-function correction(word: string): string | undefined {
+function correction(word: string, written: Language): string | undefined {
   if (word.length < 4 || VOCABULARY_WORDS.has(word) || OTHER_KNOWN_WORDS.has(word)) {
     return undefined;
   }
-  const found = readings(word);
+  const found = readings(word, written);
   const longest = Math.max(0, ...found.map((reading) => reading.length));
   const best = found.filter((reading) => reading.length === longest);
   const words = new Set(best.map((reading) => reading.word));
@@ -173,7 +195,7 @@ function correction(word: string): string | undefined {
   return words.size === 1 && only !== undefined ? only + word.slice(longest) : undefined;
 }
 
-/** Folded text with each typo of a vocabulary word read as that word. */
-export function correctTypos(text: string): string {
-  return text.replaceAll(/[a-z]+/gu, (word) => correction(word) ?? word);
+/** Folded text, written in `written`, with each typo of a vocabulary word read as that word. */
+export function correctTypos(text: string, written: Language): string {
+  return text.replaceAll(/[a-z]+/gu, (word) => correction(word, written) ?? word);
 }
