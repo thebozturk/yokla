@@ -305,19 +305,52 @@ export function instructedWord(message: string): string | undefined {
   return undefined;
 }
 
-const WRAPPERS = [
-  'romandaki asistan',
-  'varsayimsal',
-  'gelistirici modu',
-  'writing a novel',
-  'hypothetically',
-  'developer mode',
-] as const;
+/**
+ * The wrapping strategies' role-play phrases (ADR-0084), folded. Their
+ * hypothetical and developer-mode phrases are among the markers below.
+ */
+const WRAPPERS = ['romandaki asistan', 'writing a novel'] as const;
 
-/** Whether a message wraps its request in a role-play, a hypothetical or a developer mode. */
+/**
+ * Words that frame a request as a role-play, a hypothetical or a mode, as a
+ * model words them, read on folded text (ADR-0110). English "role" alone
+ * isn't one: "set aside your usual role" drops a role.
+ */
+export const WRAPPER_MARKERS: readonly RegExp[] = [
+  // A role-play.
+  /\brole[- ]?play\w*/u,
+  /\blet['’]?s play\b/u,
+  /\bplay a game\b/u,
+  /\bpretend\w*/u,
+  /\bin character\b/u,
+  /\bwriting a story\b/u,
+  /\boyun oynayalim\b/u,
+  /\bbu oyunda\b/u,
+  /\bkarakter\w*/u,
+  /\bcanlandir\w*/u,
+  /\bhikaye yaz\w*/u,
+  /\bgibi davran\w*/u,
+  /\brol oyun\w*/u,
+  /\brol(?:u|unde|unu|une)\b/u,
+  // A hypothetical.
+  /\bhypothetical\w*/u,
+  /\bimagine (?:you|that)\b/u,
+  /\bsuppose (?:you|that)\b/u,
+  /\bvarsay\w*/u,
+  /\bfarz ed\w*/u,
+  // A mode.
+  /\b(?:developer|dev|debug|diagnostic|test|maintenance|unrestricted|admin|jailbreak)(?: \w+)? mode\b/u,
+  /\bdeveloper override\b/u,
+  /\b(?:gelistirici|test|bakim|tani|diagnostik|serbest|kisitlamasiz|yonetici) mod(?:u|una|unda|undayiz|da|a)?\b/u,
+];
+
+/** Whether a message wraps its request in a role-play, a hypothetical or a mode (ADR-0110). */
 export function wrapped(message: string): boolean {
   const text = fold(message);
-  return WRAPPERS.some((phrase) => text.includes(phrase));
+  return (
+    WRAPPERS.some((phrase) => text.includes(phrase)) ||
+    WRAPPER_MARKERS.some((marker) => marker.test(text))
+  );
 }
 
 const LEET_LETTERS: Readonly<Record<string, string>> = {
