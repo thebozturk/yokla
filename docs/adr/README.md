@@ -119,6 +119,7 @@ old one.
 | [0104](0104-the-attackers-prompt-is-written-in-english.md) | The attacker's prompt is written in English | Accepted |
 | [0105](0105-the-demo-shop-adds-to-the-cart-only-when-asked-to.md) | The demo-shop adds to the cart only when asked to | Accepted |
 | [0106](0106-the-demo-shop-reads-a-typo-not-another-word.md) | The demo-shop reads a typo, not another word | Accepted |
+| [0107](0107-the-demo-shop-reads-a-word-in-its-own-language.md) | The demo-shop reads a word in its own language | Proposed |
 
 ## Template
 
