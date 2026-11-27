@@ -1343,6 +1343,19 @@ For the attacks from templates (ADR-0080), `yokla generate --redteam
     **`obfuscation-obeyed` and `layered-obeyed` were not reached,** as after
     ADR-0101: the shop read none of the model's attempts as digits for
     letters, or as a message wrapped in another.
+- **A word in its own language (ADR-0107):** over the real runs' 277
+  messages, the shop read a Turkish word of its own in four English ones:
+  "bot" in two about a support bot, both read as a search for boots, and
+  "terms", read through a typo as "termos", in two. The same reading took
+  "both" and "bottom" for "bot", "months" for "mont" and "grill" for
+  "gri", and the typo reading's suffix swap took "read" for "red" and
+  "main" for "man". An English message now reads a Turkish word only
+  alone, with an English plural or with a compound's ending, never "bot"
+  or "bay", and reads a typo only as an English word; the suffix swap
+  reads only Turkish words. Three of the 277 messages are read
+  differently, each as asking for nothing the shop sells. None of the 80
+  case messages is, nor any of 46 code-switched English messages; not
+  reading Turkish words in English at all would lose 12 of those.
 - **Findings mapped to frameworks (ADR-0089):** on the generated attack
   cases, the correct shop scores 0 for every kind; under each attack
   defect, every failing finding names the categories it maps to, and the

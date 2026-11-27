@@ -432,13 +432,25 @@ them (ADR-0029).
 - **Language.** It answers in Turkish when the message has a Turkish letter,
   and otherwise in the language whose common words the message uses more:
   "Cadir onerir misin?" is Turkish.
+- **A word in its own language.** Each word it reads requests by is Turkish
+  or English, and a message is read in the language it is written in
+  (ADR-0107). A Turkish message reads both, so "500 TL altı backpack" is a
+  search. An English message reads a Turkish word alone, with an English
+  plural or with a compound's ending, as bilingual shoppers write it: "a
+  matara", "black monts", "an uyku tulumu". A Turkish word inside a longer
+  English one isn't read, so "months" isn't "mont" and "grill" isn't "gri".
+  "bot" and "bay" are English words too, and an English message never reads
+  them as boots or a gender.
 - **Typos.** It reads past a typo of a word it knows (`src/typos.ts`): a
   word of four letters or more, or its start before a suffix, one edit away
   from exactly one word of its vocabulary with the same first letter. An
   edit is a typo yokla writes: a letter swapped with its neighbour, dropped
   or doubled. A letter replaced is no edit, so "test" stays "test" and
   "shop" stays "shop" (ADR-0106). A one-letter suffix swapped with the
-  stem's last letter is read too: "Uyku maıt" is "Uyku matı".
+  stem's last letter is read too: "Uyku maıt" is "Uyku matı". A one-letter
+  suffix is Turkish, so that swap reads only a Turkish word: "read" isn't
+  "red". In an English message, a typo is read only as an English word, so
+  "terms" isn't "termos" (ADR-0107).
   Its common words, the words of its products' names and a few words the
   real runs held, such as "catalog", are never read as typos, so "carbon"
   stays "carbon".
