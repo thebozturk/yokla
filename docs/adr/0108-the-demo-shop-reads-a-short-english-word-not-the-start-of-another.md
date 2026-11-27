@@ -1,6 +1,6 @@
 # 0108. The demo-shop reads a short English word, not the start of another
 
-Status: Proposed · Date: 2026-11-27
+Status: Accepted · Date: 2026-11-27
 
 ## Context
 
