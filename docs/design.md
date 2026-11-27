@@ -1356,6 +1356,19 @@ For the attacks from templates (ADR-0080), `yokla generate --redteam
   differently, each as asking for nothing the shop sells. None of the 80
   case messages is, nor any of 46 code-switched English messages; not
   reading Turkish words in English at all would lose 12 of those.
+- **A short English word, not the start of another (ADR-0108):** the
+  shop's English words of fewer than four letters, men, man and red, began
+  "manager", "many", "manipulate", "reduce" and "redirects", and in Turkish
+  "mangal", "manzara", "manipülasyon" and "reddetmek". After a search for
+  tents, a model's refusal that said "manipulate" narrowed it to men's
+  tents, and a generated attack case about a store manager searched for
+  men's tents. They are now read only alone or with a plural s. Over the
+  real runs' 277 messages, 2 are read differently alone and 8 more after a
+  search, each losing a gender or colour held inside a longer word; one of
+  the 80 case messages is, the store manager's. Letting every English word
+  take only English endings would have misread 63 of the 743 typo forms of
+  the acceptance messages, not 36: a typo in an ending, as in "jacketss",
+  is read today because any suffix may follow the word.
 - **Findings mapped to frameworks (ADR-0089):** on the generated attack
   cases, the correct shop scores 0 for every kind; under each attack
   defect, every failing finding names the categories it maps to, and the

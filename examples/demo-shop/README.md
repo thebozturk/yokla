@@ -440,7 +440,10 @@ them (ADR-0029).
   matara", "black monts", "an uyku tulumu". A Turkish word inside a longer
   English one isn't read, so "months" isn't "mont" and "grill" isn't "gri".
   "bot" and "bay" are English words too, and an English message never reads
-  them as boots or a gender.
+  them as boots or a gender. Its English words of fewer than four letters,
+  men, man and red, are read only alone or with a plural s, in either
+  language, so "many" and "manager" aren't "man", "reduce" isn't "red" and
+  "mangal" isn't "man" (ADR-0108).
 - **Typos.** It reads past a typo of a word it knows (`src/typos.ts`): a
   word of four letters or more, or its start before a suffix, one edit away
   from exactly one word of its vocabulary with the same first letter. An
